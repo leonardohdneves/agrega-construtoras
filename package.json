@@ -1,0 +1,15 @@
+{
+  "name": "agrega",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Agrega - ERP para concreteiras",
+  "workspaces": ["apps/api", "apps/web"],
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "build": "npm run build -w apps/web",
+    "start": "npm run start -w apps/api",
+    "dev:api": "npm run dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "test": "npm run test -w apps/api"
+  }
+}
