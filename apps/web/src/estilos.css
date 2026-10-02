@@ -270,4 +270,23 @@ select.busca { appearance: auto; }
 .linha-item { grid-template-columns: 160px minmax(200px, 2fr) 110px 160px; }
 @media (max-width: 760px) { .linha-item { grid-template-columns: 1fr 1fr; } .linha-item .campo:nth-child(2) { grid-column: 1 / -1; } }
 
+/* ---------- Financeiro ---------- */
+.texto-perigo { color: var(--status-danger-ink); font-weight: 600; }
+@media (min-width: 760px) { .campos .largo { grid-column: span 2; } }
+.segmentado.tres-opcoes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.linha-ap { grid-template-columns: minmax(220px, 2fr) minmax(150px, 1fr) minmax(110px, .8fr) minmax(150px, 1fr); align-items: end; padding: 6px 0; border-bottom: 1px dashed var(--border); }
+.linha-ap:last-of-type { border-bottom: 0; }
+@media (max-width: 760px) { .linha-ap { grid-template-columns: 1fr 1fr; } .linha-ap .campo:first-child { grid-column: 1 / -1; } }
+.lista-parcelas { display: flex; flex-direction: column; gap: 6px; }
+.linha-parcela { display: grid; grid-template-columns: 28px minmax(140px, 180px) minmax(110px, 160px) auto; gap: 8px; align-items: center; }
+.linha-parcela input { height: 42px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-card); color: var(--ink); padding: 0 10px; font: inherit; width: 100%; }
+.tabela tr.linha-form td { background: var(--surface-sunken); padding: 14px 16px; }
+.navegar-mes { display: flex; align-items: center; gap: 4px; }
+.navegar-mes .btn-link { font-size: 22px; min-width: 36px; }
+.linha-grupo td { background: var(--surface-sunken); }
+.bloco-saldo { display: flex; flex-direction: column; gap: 2px; padding: 12px 14px; border-radius: var(--radius-md); background: var(--surface-sunken); color: var(--ink); text-decoration: none; }
+.bloco-saldo strong { font-size: 26px; font-weight: 600; line-height: 1.2; }
+.sub-titulo { font: 600 13px/1.2 var(--font-sans); color: var(--ink-muted); text-transform: uppercase; letter-spacing: .04em; margin: 0 0 4px; }
+.lista-alertas.compacta li { padding-block: 6px; }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

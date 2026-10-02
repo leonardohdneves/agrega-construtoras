@@ -255,3 +255,129 @@ export async function garantirManutencaoDemo(banco: Banco, log = console.log): P
   });
   log('Fornecedores, colaboradores, plano de manutenção e ordens de serviço de exemplo criados.');
 }
+
+/** Financeiro de exemplo: contas, plano padrão, clientes, receitas e despesas com parcelas pagas, abertas e vencidas. */
+export async function garantirFinanceiroDemo(banco: Banco, log = console.log): Promise<void> {
+  const e = (await banco.query('SELECT id FROM empresas WHERE cnpj = $1', [CNPJ_DEMO])).rows[0];
+  if (!e) return;
+  if ((await banco.query('SELECT 1 FROM contas_financeiras WHERE empresa_id = $1 LIMIT 1', [e.id])).rowCount) return;
+  const { aplicarPlanoPadrao } = await import('./rotas/financeiro.ts');
+  const { hojeBrasil } = await import('./lib/frota.ts');
+  const { somarDias, somarMeses } = await import('./lib/financeiro.ts');
+  const hoje = hojeBrasil();
+  const d = (n: number) => somarDias(hoje, n);
+
+  await emTransacao(banco, async (c) => {
+    await aplicarPlanoPadrao(c, e.id);
+    const mapa = async (sql: string, chave: string) =>
+      Object.fromEntries((await c.query(sql, [e.id])).rows.map((r) => [r[chave], r.id])) as Record<string, string>;
+    const plano = await mapa('SELECT id, codigo FROM plano_contas WHERE empresa_id = $1', 'codigo');
+    const centro = await mapa('SELECT id, nome FROM centros_custo WHERE empresa_id = $1', 'nome');
+    const veic = await mapa('SELECT id, codigo FROM veiculos WHERE empresa_id = $1', 'codigo');
+    const forn = await mapa('SELECT id, nome_fantasia FROM fornecedores WHERE empresa_id = $1', 'nome_fantasia');
+
+    const conta = async (nome: string, tipo: string, banco_: string | null, saldo: number) =>
+      (
+        await c.query(
+          `INSERT INTO contas_financeiras (empresa_id, nome, tipo, banco, agencia, conta, saldo_inicial_centavos, data_saldo_inicial)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+          [e.id, nome, tipo, banco_, banco_ ? '0001' : null, banco_ ? '12345-6' : null, Math.round(saldo * 100), d(-75)],
+        )
+      ).rows[0].id as string;
+    const banco1 = await conta('Banco Exemplo · conta corrente', 'banco', 'Banco Exemplo', 85000);
+    const caixa = await conta('Caixa da usina', 'caixa', null, 2000);
+
+    const cli: Record<string, string> = {};
+    for (const [razao, fantasia, tipo] of [
+      ['Construtora Horizonte Ltda (exemplo)', 'Construtora Horizonte', 'PJ'],
+      ['Incorporadora Serra Azul Ltda (exemplo)', 'Incorporadora Serra Azul', 'PJ'],
+      ['João Pereira (exemplo)', null, 'PF'],
+    ] as const) {
+      const r = await c.query(
+        `INSERT INTO clientes (empresa_id, tipo_pessoa, razao_social, nome_fantasia, ramo, cidade, uf) VALUES ($1,$2,$3,$4,$5,'Palmas','TO') RETURNING id`,
+        [e.id, tipo, razao, fantasia, tipo === 'PJ' ? 'Construção civil' : 'Obra residencial'],
+      );
+      cli[fantasia ?? razao] = r.rows[0].id;
+    }
+
+    type Ap = [codigo: string, valor: number, centro?: string, veiculo?: string];
+    type Pa = [vencimento: string, valor: number, pagoEm?: string, conta?: string, forma?: string];
+    const lanc = async (
+      tipo: 'receita' | 'despesa',
+      competencia: string,
+      descricao: string,
+      pessoa: { cliente?: string; fornecedor?: string },
+      aps: Ap[],
+      pas: Pa[],
+      extra: { documento?: string; recorrencia?: string; paiId?: string; ordem?: number } = {},
+    ) => {
+      const total = Math.round(aps.reduce((s, a) => s + a[1], 0) * 100);
+      const l = (
+        await c.query(
+          `INSERT INTO lancamentos (empresa_id, tipo, competencia, descricao, documento, valor_total_centavos, cliente_id, fornecedor_id, recorrencia, recorrencia_pai_id, recorrencia_ordem)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
+          [
+            e.id, tipo, competencia, descricao, extra.documento ?? null, total,
+            pessoa.cliente ? cli[pessoa.cliente] : null, pessoa.fornecedor ? forn[pessoa.fornecedor] : null,
+            extra.recorrencia ?? 'nenhuma', extra.paiId ?? null, extra.ordem ?? null,
+          ],
+        )
+      ).rows[0].id as string;
+      if (extra.recorrencia && !extra.paiId) await c.query('UPDATE lancamentos SET recorrencia_pai_id = id WHERE id = $1', [l]);
+      for (const [codigo, valor, cc, v] of aps) {
+        await c.query(
+          `INSERT INTO apropriacoes (empresa_id, lancamento_id, plano_conta_id, centro_custo_id, veiculo_id, valor_centavos) VALUES ($1,$2,$3,$4,$5,$6)`,
+          [e.id, l, plano[codigo], cc ? centro[cc] : null, v ? veic[v] ?? null : null, Math.round(valor * 100)],
+        );
+      }
+      for (const [i, [venc, valor, pagoEm, contaId, forma]] of pas.entries()) {
+        const pago = pagoEm && pagoEm <= hoje;
+        await c.query(
+          `INSERT INTO parcelas (empresa_id, lancamento_id, numero, vencimento, valor_centavos, status, data_pagamento, conta_financeira_id, forma_pagamento, valor_pago_centavos)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+          [e.id, l, i + 1, venc, Math.round(valor * 100), pago ? 'paga' : 'aberta', pago ? pagoEm : null, pago ? contaId ?? banco1 : null, pago ? forma ?? 'pix' : null, pago ? Math.round(valor * 100) : null],
+        );
+      }
+      return l;
+    };
+
+    // Receitas.
+    await lanc('receita', d(-45), 'Concreto fck 25 · 42 m³ · Ed. Horizonte', { cliente: 'Construtora Horizonte' }, [['1.1', 21840, 'Usina']],
+      [[d(-30), 10920, d(-29), banco1, 'boleto'], [d(-2), 10920]], { documento: 'NFS 1021' });
+    await lanc('receita', d(-20), 'Concreto fck 30 · 74 m³ + bombeamento · Res. Serra Azul', { cliente: 'Incorporadora Serra Azul' },
+      [['1.1', 33300, 'Usina'], ['1.2', 2400, 'Bombas', 'BOM-01']], [[d(10), 35700]], { documento: 'NFS 1034' });
+    await lanc('receita', d(-8), 'Concreto fck 20 · 6 m³ · casa', { cliente: 'João Pereira (exemplo)' }, [['1.1', 3120, 'Usina']], [[d(-8), 3120, d(-8), caixa, 'pix']]);
+    await lanc('receita', d(-3), 'Concreto fck 25 · 36 m³ · Ed. Horizonte, 2ª etapa', { cliente: 'Construtora Horizonte' }, [['1.1', 18900, 'Usina']], [[d(25), 18900]], { documento: 'NFS 1040' });
+
+    // Despesas.
+    await lanc('despesa', d(-40), 'Cimento CP-II 60 t', { fornecedor: 'Cimento Exemplo' }, [['3.1', 28500, 'Usina']],
+      [[d(-12), 9500, d(-12), banco1, 'boleto'], [d(16), 9500], [d(44), 9500]], { documento: 'NF 88213' });
+    await lanc('despesa', d(-25), 'Brita 1 e areia média', { fornecedor: 'Pedreira Exemplo' }, [['3.3', 7800, 'Usina'], ['3.2', 4500, 'Usina']], [[d(3), 12300]], { documento: 'NF 5120' });
+    await lanc('despesa', d(-15), 'Diesel S10 · quinzena', { fornecedor: 'Posto Exemplo' }, [['4.1', 16350, 'Frota'], ['4.1', 3500, 'Bombas']], [[hoje, 19850]], { documento: 'NF 33190' });
+    await lanc('despesa', d(-9), 'Oficina · OS do BET-02 (freios)', { fornecedor: 'Oficina Diesel Exemplo' }, [['4.2', 1282, 'Frota', 'BET-02']], [[d(-5), 1282, d(-5), banco1, 'pix']]);
+    await lanc('despesa', d(-6), 'Financiamento caminhão BET-07 · parcela', { fornecedor: 'Banco Exemplo · financiamento' }, [['11.3', 8200, 'Frota', 'BET-07'], ['8.3', 1300, 'Frota', 'BET-07']], [[d(-6), 9500]]);
+    await lanc('despesa', d(-1), 'Tarifas bancárias', {}, [['8.2', 89.9, 'Administrativo']], [[d(-1), 89.9, d(-1), banco1, 'debito_automatico']]);
+    await lanc('despesa', d(-2), 'IPVA BET-04 · cota única', {}, [['4.5', 2340, 'Frota', 'BET-04']], [[d(5), 2340]]);
+
+    // Salários do mês anterior, pagos no 5º dia.
+    const mesAnterior = somarMeses(`${hoje.slice(0, 7)}-01`, -1);
+    const dia5 = `${hoje.slice(0, 7)}-05`;
+    await lanc('despesa', mesAnterior, 'Folha de pagamento', {}, [['5.1', 24000, 'Frota'], ['5.3', 6500, 'Administrativo']], [[dia5, 30500, dia5, banco1, 'transferencia']]);
+
+    // Aluguel do terreno da usina: mensal, 6 meses a partir de 2 meses atrás.
+    const base = somarMeses(`${hoje.slice(0, 7)}-10`, -2);
+    let pai = '';
+    for (let k = 0; k < 6; k++) {
+      const venc = somarMeses(base, k);
+      const id = await lanc('despesa', somarMeses(`${hoje.slice(0, 7)}-01`, k - 2), 'Aluguel do terreno da usina', {}, [['6.1', 4500, 'Administrativo']],
+        [[venc, 4500, venc < hoje ? venc : undefined, banco1, 'boleto']], { recorrencia: 'mensal', paiId: k ? pai : undefined, ordem: k + 1 });
+      if (!k) pai = id;
+    }
+
+    await c.query(
+      `INSERT INTO transferencias (empresa_id, conta_origem_id, conta_destino_id, data, valor_centavos, descricao) VALUES ($1,$2,$3,$4,$5,'Reforço do caixa')`,
+      [e.id, banco1, caixa, d(-10), 150000],
+    );
+  });
+  log('Financeiro de exemplo criado: contas, plano de contas, clientes, receitas e despesas.');
+}

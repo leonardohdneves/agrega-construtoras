@@ -1,6 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, formatarData, formatarNumero, NOMES_PERFIL, NOMES_TIPO_DOCUMENTO, seloVencimento, textoFalta, type Alerta, type DocumentoVeiculo, type ItemManutencao } from '../api';
+import {
+  api,
+  formatarData,
+  formatarMoeda,
+  formatarNumero,
+  NOMES_PERFIL,
+  NOMES_TIPO_DOCUMENTO,
+  seloVencimento,
+  textoFalta,
+  type Alerta,
+  type ContaFinanceira,
+  type DocumentoVeiculo,
+  type ItemManutencao,
+} from '../api';
 import { useSessao } from '../sessao';
 
 const ETAPAS = [
@@ -8,7 +21,7 @@ const ETAPAS = [
   { n: 1, nome: 'Cadastros da frota: veículos, motoristas e documentos', pronta: true },
   { n: 2, nome: 'Abastecimento pelo celular, km/L e L/h', pronta: true },
   { n: 3, nome: 'Manutenção preventiva e ordens de serviço', pronta: true },
-  { n: 4, nome: 'Financeiro: contas, plano de contas, a pagar e a receber' },
+  { n: 4, nome: 'Financeiro: contas, plano de contas, a pagar e a receber', pronta: true },
   { n: 5, nome: 'Nota fiscal: lançamento manual e importação de XML' },
   { n: 6, nome: 'Conciliação bancária com OFX' },
   { n: 7, nome: 'Relatórios: DRE, fluxo de caixa e custo por veículo' },
@@ -16,6 +29,84 @@ const ETAPAS = [
 
 type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: { kmPorLitro: number | null; litrosPorHora: number | null }; media90: { kmPorLitro: number | null; litrosPorHora: number | null } };
 type Resumo = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; manutencao: ItemManutencao[]; osAbertas: number; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
+
+type Bloco = { quantidade: number; valor: number };
+type ResumoFin = {
+  saldoTotal: number;
+  contas: ContaFinanceira[];
+  pagar: { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
+  receber: { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
+  configurado: { planoContas: boolean; contas: boolean };
+};
+
+function LinhaFin({ rotulo, b, para, perigo }: { rotulo: string; b: Bloco; para: string; perigo?: boolean }) {
+  return (
+    <li>
+      <Link to={para} style={{ textDecoration: 'none' }}>
+        {rotulo}
+        <span className="small muted"> · {b.quantidade}</span>
+      </Link>
+      <span className="mono" style={{ fontWeight: 600, color: perigo && b.quantidade ? 'var(--status-danger-ink)' : undefined }}>{formatarMoeda(b.valor)}</span>
+    </li>
+  );
+}
+
+function CardFinanceiro() {
+  const [r, setR] = useState<ResumoFin | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    api<ResumoFin>('/fin/resumo').then(setR).catch((e) => setErro(e.message));
+  }, []);
+  return (
+    <div className="card">
+      <div className="cabecalho" style={{ marginBottom: 12 }}>
+        <h2>Financeiro</h2>
+        <Link to="/fin/pagar-receber" className="small" style={{ fontWeight: 600, textDecoration: 'none' }}>
+          A pagar e a receber ›
+        </Link>
+      </div>
+      {erro ? (
+        <p className="muted">{erro}</p>
+      ) : !r ? (
+        <p className="muted">Carregando…</p>
+      ) : !r.configurado.planoContas || !r.configurado.contas ? (
+        <p className="muted" style={{ margin: 0 }}>
+          Para começar, {!r.configurado.planoContas ? <Link to="/fin/plano-contas">aplique o plano de contas</Link> : null}
+          {!r.configurado.planoContas && !r.configurado.contas ? ' e ' : ''}
+          {!r.configurado.contas ? <Link to="/fin/contas">cadastre o banco e o caixa</Link> : null}.
+        </p>
+      ) : (
+        <>
+          <Link to="/fin/contas" className="bloco-saldo">
+            <span className="small">Saldo em bancos e caixa</span>
+            <strong className="mono" style={{ color: r.saldoTotal < 0 ? 'var(--status-danger-ink)' : undefined }}>{formatarMoeda(r.saldoTotal)}</strong>
+          </Link>
+          <div className="dois" style={{ marginTop: 12 }}>
+            <div>
+              <h3 className="sub-titulo">A pagar</h3>
+              <ul className="lista-alertas compacta">
+                <LinhaFin rotulo="Vencidas" b={r.pagar.vencidas} para="/fin/pagar-receber?tipo=despesa&situacao=vencidas" perigo />
+                <LinhaFin rotulo="Hoje" b={r.pagar.hoje} para="/fin/pagar-receber?tipo=despesa&situacao=hoje" />
+                <LinhaFin rotulo="7 dias" b={r.pagar.semana} para="/fin/pagar-receber?tipo=despesa&situacao=semana" />
+              </ul>
+            </div>
+            <div>
+              <h3 className="sub-titulo">A receber</h3>
+              <ul className="lista-alertas compacta">
+                <LinhaFin rotulo="Vencidas" b={r.receber.vencidas} para="/fin/pagar-receber?tipo=receita&situacao=vencidas" perigo />
+                <LinhaFin rotulo="Hoje" b={r.receber.hoje} para="/fin/pagar-receber?tipo=receita&situacao=hoje" />
+                <LinhaFin rotulo="7 dias" b={r.receber.semana} para="/fin/pagar-receber?tipo=receita&situacao=semana" />
+              </ul>
+            </div>
+          </div>
+          <p className="small muted" style={{ margin: '10px 0 0' }}>
+            No mês: recebido {formatarMoeda(r.receber.realizadoMes)} · pago {formatarMoeda(r.pagar.realizadoMes)}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
 
 function PainelGestao() {
   const [dados, setDados] = useState<Resumo | null>(null);
@@ -33,6 +124,8 @@ function PainelGestao() {
 
   return (
     <div className="grade">
+      <CardFinanceiro />
+
       <div className="card">
         <div className="cabecalho" style={{ marginBottom: 12 }}>
           <h2>Frota agora</h2>

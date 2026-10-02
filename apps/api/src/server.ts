@@ -1,7 +1,7 @@
 import { config } from './config.ts';
 import { criarBanco } from './db.ts';
 import { aplicarMigracoes } from './migrar.ts';
-import { garantirAbastecimentosDemo, garantirAdmin, garantirDemo, garantirFrotaDemo, garantirManutencaoDemo } from './sementes.ts';
+import { garantirAbastecimentosDemo, garantirAdmin, garantirDemo, garantirFinanceiroDemo, garantirFrotaDemo, garantirManutencaoDemo } from './sementes.ts';
 import { criarApp } from './app.ts';
 
 const banco = criarBanco(config.databaseUrl);
@@ -12,6 +12,7 @@ if (config.seedDemo) {
   await garantirFrotaDemo(banco);
   await garantirAbastecimentosDemo(banco);
   await garantirManutencaoDemo(banco);
+  await garantirFinanceiroDemo(banco);
 }
 
 const app = await criarApp(banco);

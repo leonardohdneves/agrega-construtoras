@@ -43,6 +43,13 @@ const TEXTOS = {
     vazio: 'Nenhum fornecedor cadastrado. Fornecedores também serão criados automaticamente ao importar notas fiscais.',
     ramo: 'Ramo (ex.: cimento, oficina, posto)',
   },
+  cliente: {
+    titulo: 'Clientes',
+    sub: 'Quem compra o concreto: construtoras, incorporadoras, empresas e pessoas físicas.',
+    novo: 'Novo cliente',
+    vazio: 'Nenhum cliente cadastrado.',
+    ramo: 'Segmento (ex.: construtora, obra residencial)',
+  },
   credor: {
     titulo: 'Credores',
     sub: 'A quem a concreteira deve sem ser por compra: bancos, financiamentos, consórcios, impostos e aluguéis.',
@@ -52,8 +59,9 @@ const TEXTOS = {
   },
 };
 
-export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor' }) {
+export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor' | 'cliente' }) {
   const t = TEXTOS[categoria];
+  const base = categoria === 'cliente' ? '/adm/clientes' : '/adm/fornecedores';
   const [lista, setLista] = useState<Fornecedor[] | null>(null);
   const [form, setForm] = useState<Dados | null>(null);
   const [busca, setBusca] = useState('');
@@ -63,7 +71,8 @@ export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor'
 
   const carregar = useCallback(async () => {
     try {
-      setLista((await api<{ fornecedores: Fornecedor[] }>(`/adm/fornecedores?categoria=${categoria}`)).fornecedores);
+      if (categoria === 'cliente') setLista((await api<{ clientes: Fornecedor[] }>('/adm/clientes')).clientes);
+      else setLista((await api<{ fornecedores: Fornecedor[] }>(`/adm/fornecedores?categoria=${categoria}`)).fornecedores);
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -84,8 +93,8 @@ export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor'
     setOcupado(true);
     try {
       const { id, ...corpo } = form;
-      if (id) await api(`/adm/fornecedores/${id}`, { metodo: 'PATCH', corpo });
-      else await api('/adm/fornecedores', { corpo: { ...corpo, categoria } });
+      if (id) await api(`${base}/${id}`, { metodo: 'PATCH', corpo });
+      else await api(base, { corpo: categoria === 'cliente' ? corpo : { ...corpo, categoria } });
       setAviso(`${form.nomeFantasia || form.razaoSocial} ${id ? 'atualizado' : 'cadastrado'}.`);
       setForm(null);
       await carregar();
@@ -99,7 +108,7 @@ export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor'
   async function alternar(f: Fornecedor) {
     setOcupado(true);
     try {
-      await api(`/adm/fornecedores/${f.id}`, { metodo: 'PATCH', corpo: { ativo: !f.ativo } });
+      await api(`${base}/${f.id}`, { metodo: 'PATCH', corpo: { ativo: !f.ativo } });
       await carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -211,7 +220,7 @@ export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor'
               <tr>
                 <th>Nome</th>
                 <th>CNPJ / CPF</th>
-                <th>{categoria === 'fornecedor' ? 'Ramo' : 'Natureza'}</th>
+                <th>{categoria === 'fornecedor' ? 'Ramo' : categoria === 'cliente' ? 'Segmento' : 'Natureza'}</th>
                 <th>Contato</th>
                 <th>Cidade</th>
                 <th><span style={{ position: 'absolute', left: -9999 }}>Ações</span></th>

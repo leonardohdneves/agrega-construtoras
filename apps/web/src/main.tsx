@@ -21,6 +21,11 @@ import { Manutencao } from './paginas/Manutencao';
 import { OrdensServico } from './paginas/OrdensServico';
 import { OrdemServico } from './paginas/OrdemServico';
 import { Fornecedores } from './paginas/Fornecedores';
+import { ContasPagarReceber } from './paginas/ContasPagarReceber';
+import { Lancamentos } from './paginas/Lancamentos';
+import { Lancamento } from './paginas/Lancamento';
+import { ContasFinanceiras } from './paginas/ContasFinanceiras';
+import { PlanoContas } from './paginas/PlanoContas';
 
 registerSW({ immediate: true });
 
@@ -67,6 +72,12 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="frota/manutencao" element={<Protegido perfis={['dono', 'gestor']}><Manutencao /></Protegido>} />
             <Route path="frota/os" element={<Protegido perfis={['dono', 'gestor']}><OrdensServico /></Protegido>} />
             <Route path="frota/os/:id" element={<Protegido perfis={['dono', 'gestor']}><OrdemServico /></Protegido>} />
+            <Route path="fin/pagar-receber" element={<Protegido perfis={['dono', 'gestor']}><ContasPagarReceber /></Protegido>} />
+            <Route path="fin/lancamentos" element={<Protegido perfis={['dono', 'gestor']}><Lancamentos /></Protegido>} />
+            <Route path="fin/lancamentos/:id" element={<Protegido perfis={['dono', 'gestor']}><Lancamento /></Protegido>} />
+            <Route path="fin/contas" element={<Protegido perfis={['dono', 'gestor']}><ContasFinanceiras /></Protegido>} />
+            <Route path="fin/plano-contas" element={<Protegido perfis={['dono', 'gestor']}><PlanoContas /></Protegido>} />
+            <Route path="adm/clientes" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores key="clientes" categoria="cliente" /></Protegido>} />
             <Route path="adm/fornecedores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="fornecedor" /></Protegido>} />
             <Route path="adm/credores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="credor" /></Protegido>} />
             <Route path="adm/colaboradores" element={<Protegido perfis={['dono', 'gestor']}><Motoristas key="colaboradores" modo="colaboradores" /></Protegido>} />

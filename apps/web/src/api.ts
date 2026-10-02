@@ -380,3 +380,166 @@ export function intervaloTexto(p: Pick<Plano, 'intervaloKm' | 'intervaloHoras' |
   if (p.intervaloDias) t.push(`${formatarNumero(p.intervaloDias)} dias`);
   return t.join(' ou ');
 }
+
+// ---------- Financeiro ----------
+export type TipoLanc = 'receita' | 'despesa';
+export type ContaFinanceira = {
+  id: string;
+  nome: string;
+  tipo: 'banco' | 'caixa' | 'cartao' | 'aplicacao';
+  banco: string | null;
+  agencia: string | null;
+  conta: string | null;
+  saldoInicial: number;
+  dataSaldoInicial: string;
+  saldo: number;
+  ativo: boolean;
+};
+export type LinhaDre =
+  | 'receita_bruta' | 'deducoes' | 'custo_producao' | 'custo_frota' | 'custo_pessoal' | 'despesas_pessoal' | 'despesas_administrativas'
+  | 'despesas_comerciais' | 'receitas_financeiras' | 'despesas_financeiras' | 'outras_receitas' | 'outras_despesas' | 'impostos_lucro' | 'fora_dre';
+export type PlanoConta = { id: string; codigo: string; nome: string; tipo: TipoLanc; linhaDre: LinhaDre; paiId: string | null; aceitaLancamento: boolean; ativo: boolean };
+export type CentroCusto = { id: string; nome: string; ativo: boolean };
+export type SituacaoParcela = 'paga' | 'cancelada' | 'vencida' | 'vence_hoje' | 'a_vencer';
+export type Parcela = {
+  id: string;
+  lancamentoId: string;
+  numero: number;
+  totalParcelas: number | null;
+  vencimento: string;
+  valor: number;
+  status: 'aberta' | 'paga' | 'cancelada';
+  situacao: SituacaoParcela;
+  dataPagamento: string | null;
+  juros: number;
+  desconto: number;
+  valorPago: number | null;
+  contaId: string | null;
+  contaNome: string | null;
+  forma: FormaPagamento | null;
+  observacoes: string | null;
+  tipo?: TipoLanc;
+  descricao?: string;
+  documento?: string | null;
+  pessoa?: string | null;
+  categorias?: string | null;
+  competencia?: string;
+};
+export type Apropriacao = {
+  id: string;
+  planoContaId: string;
+  planoCodigo: string;
+  planoNome: string;
+  centroCustoId: string | null;
+  centroNome: string | null;
+  veiculoId: string | null;
+  veiculoCodigo: string | null;
+  descricao: string | null;
+  valor: number;
+};
+export type Lancamento = {
+  id: string;
+  tipo: TipoLanc;
+  competencia: string;
+  descricao: string;
+  documento: string | null;
+  valorTotal: number;
+  clienteId: string | null;
+  clienteNome: string | null;
+  fornecedorId: string | null;
+  fornecedorNome: string | null;
+  origem: string;
+  status: 'rascunho' | 'aguardando_conferencia' | 'confirmado' | 'cancelado';
+  recorrencia: 'nenhuma' | 'semanal' | 'mensal' | 'anual';
+  recorrenciaOrdem: number | null;
+  recorrenciaTotal: number | null;
+  observacoes: string | null;
+  apropriacoes: Apropriacao[];
+  parcelas: Parcela[];
+};
+export type LancamentoResumo = {
+  id: string;
+  tipo: TipoLanc;
+  competencia: string;
+  descricao: string;
+  documento: string | null;
+  valorTotal: number;
+  status: Lancamento['status'];
+  recorrencia: Lancamento['recorrencia'];
+  recorrenciaOrdem: number | null;
+  pessoa: string | null;
+  categorias: string | null;
+  veiculos: string | null;
+  parcelas: number;
+  pagas: number;
+  valorAberto: number;
+  proximoVencimento: string | null;
+};
+export type FormaPagamento = 'pix' | 'boleto' | 'transferencia' | 'cartao' | 'dinheiro' | 'cheque' | 'debito_automatico';
+export const NOMES_FORMA: Record<FormaPagamento, string> = {
+  pix: 'PIX', boleto: 'Boleto', transferencia: 'Transferência', cartao: 'Cartão', dinheiro: 'Dinheiro', cheque: 'Cheque', debito_automatico: 'Débito automático',
+};
+export const NOMES_TIPO_CONTA: Record<ContaFinanceira['tipo'], string> = { banco: 'Conta bancária', caixa: 'Caixa', cartao: 'Cartão de crédito', aplicacao: 'Aplicação' };
+export const NOMES_LINHA_DRE: Record<LinhaDre, string> = {
+  receita_bruta: 'Receita bruta',
+  deducoes: 'Deduções e impostos sobre vendas',
+  custo_producao: 'Custo de produção do concreto',
+  custo_frota: 'Custo da frota',
+  custo_pessoal: 'Custo de pessoal operacional',
+  despesas_pessoal: 'Despesas com pessoal administrativo',
+  despesas_administrativas: 'Despesas administrativas',
+  despesas_comerciais: 'Despesas comerciais',
+  receitas_financeiras: 'Receitas financeiras',
+  despesas_financeiras: 'Despesas financeiras',
+  outras_receitas: 'Outras receitas',
+  outras_despesas: 'Outras despesas',
+  impostos_lucro: 'IRPJ e CSLL',
+  fora_dre: 'Fora da DRE (investimentos, empréstimos, sócios)',
+};
+export const SELO_PARCELA: Record<SituacaoParcela, { texto: string; classe: string }> = {
+  paga: { texto: 'Paga', classe: 'selo-ok' },
+  cancelada: { texto: 'Cancelada', classe: 'selo-neutro' },
+  vencida: { texto: 'Vencida', classe: 'selo-perigo' },
+  vence_hoje: { texto: 'Vence hoje', classe: 'selo-aviso' },
+  a_vencer: { texto: 'A vencer', classe: 'selo-neutro' },
+};
+
+export const hojeLocal = () => agoraLocal().slice(0, 10);
+
+/** Soma meses mantendo o dia (ajusta para o último dia do mês). */
+export function somarMeses(data: string, meses: number): string {
+  const [a, m, d] = data.split('-').map(Number);
+  const total = a * 12 + (m - 1) + meses;
+  const ano = Math.floor(total / 12);
+  const mes = total % 12;
+  const ultimo = new Date(Date.UTC(ano, mes + 1, 0)).getUTCDate();
+  return `${ano}-${String(mes + 1).padStart(2, '0')}-${String(Math.min(d, ultimo)).padStart(2, '0')}`;
+}
+export function somarDias(data: string, dias: number): string {
+  const d = new Date(`${data}T12:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + dias);
+  return d.toISOString().slice(0, 10);
+}
+const MESES = ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'];
+export function nomeMes(aaaamm: string): string {
+  const [a, m] = aaaamm.split('-').map(Number);
+  return `${MESES[m - 1]} de ${a}`;
+}
+
+/** Divide o total em parcelas iguais (a sobra dos centavos vai na primeira). */
+export function dividirParcelas(total: number, quantidade: number, primeiro: string, intervaloDias: number | 'mensal') {
+  const centavos = Math.round(total * 100);
+  const n = Math.max(1, Math.floor(quantidade));
+  const base = Math.floor(centavos / n);
+  const resto = centavos - base * n;
+  return Array.from({ length: n }, (_, i) => ({
+    vencimento: intervaloDias === 'mensal' ? somarMeses(primeiro, i) : somarDias(primeiro, i * intervaloDias),
+    valor: (base + (i === 0 ? resto : 0)) / 100,
+  }));
+}
+
+/** Valor para campo de texto no padrão brasileiro, sem "R$". */
+export function moedaCampo(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '';
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}

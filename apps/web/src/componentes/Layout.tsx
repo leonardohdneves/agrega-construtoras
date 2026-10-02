@@ -51,9 +51,11 @@ export const MODULOS: Modulo[] = [
     icone: <IconeDinheiro />,
     perfis: GESTAO,
     itens: [
-      { rotulo: 'Contas a pagar e receber', etapa: 4 },
-      { rotulo: 'Lançamentos e notas fiscais', etapa: 5 },
-      { rotulo: 'Bancos e conciliação', etapa: 6 },
+      { rotulo: 'Contas a pagar e receber', para: '/fin/pagar-receber' },
+      { rotulo: 'Lançamentos', para: '/fin/lancamentos' },
+      { rotulo: 'Notas fiscais e XML', etapa: 5 },
+      { rotulo: 'Bancos e conciliação', para: '/fin/contas' },
+      { rotulo: 'Plano de contas', para: '/fin/plano-contas' },
     ],
   },
   {
@@ -86,6 +88,7 @@ export const MODULOS: Modulo[] = [
     icone: <IconePasta />,
     perfis: GESTAO,
     itens: [
+      { rotulo: 'Clientes', para: '/adm/clientes' },
       { rotulo: 'Fornecedores', para: '/adm/fornecedores' },
       { rotulo: 'Credores', para: '/adm/credores' },
       { rotulo: 'Colaboradores', para: '/adm/colaboradores' },

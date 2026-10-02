@@ -1,4 +1,4 @@
-// Módulo Administrativo: fornecedores e credores.
+// Módulo Administrativo: fornecedores, credores e clientes.
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Banco } from '../db.ts';
@@ -74,9 +74,63 @@ export function fornecedorPublico(r: Record<string, any>) {
   };
 }
 
+export function clientePublico(r: Record<string, any>) {
+  const { categoria: _c, criadoAutomaticamente: _a, ...resto } = fornecedorPublico(r);
+  return resto;
+}
+
 export function rotasAdministrativo(banco: Banco) {
   return async function (app: FastifyInstance) {
     const gestao = exigir(banco, 'dono', 'gestor');
+
+    // ----- Clientes (quem compra o concreto) -----
+    app.get('/clientes', { preHandler: gestao }, async (req) => {
+      const r = await banco.query(
+        `SELECT * FROM clientes WHERE empresa_id = $1 AND excluido_em IS NULL ORDER BY ativo DESC, coalesce(nome_fantasia, razao_social)`,
+        [empresaDo(req)],
+      );
+      return { clientes: r.rows.map(clientePublico) };
+    });
+
+    app.post('/clientes', { preHandler: gestao }, async (req, reply) => {
+      const d = esquemaFornecedor.parse(req.body);
+      const empresaId = empresaDo(req);
+      const n = await emTransacao(banco, async (c) => {
+        const novo = (
+          await c.query(
+            `INSERT INTO clientes (empresa_id, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, telefone, email, cidade, uf, chave_pix, observacoes, ativo)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+            [empresaId, d.tipoPessoa, d.cnpjCpf, d.razaoSocial, d.nomeFantasia, d.ramo, d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.chavePix, d.observacoes, d.ativo],
+          )
+        ).rows[0];
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'clientes', entidadeId: novo.id, depois: novo });
+        return novo;
+      });
+      reply.code(201);
+      return { cliente: clientePublico(n) };
+    });
+
+    app.patch<{ Params: { id: string } }>('/clientes/:id', { preHandler: gestao }, async (req) => {
+      const d = esquemaAlterarFornecedor.parse(req.body) as Record<string, unknown>;
+      delete d.categoria;
+      const empresaId = empresaDo(req);
+      const f = await emTransacao(banco, async (c) => {
+        const antes = (await c.query('SELECT * FROM clientes WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])).rows[0];
+        if (!antes) throw naoEncontrado('Cliente');
+        const partes: string[] = [];
+        const valores: unknown[] = [];
+        for (const [k, v] of Object.entries(d)) {
+          if (!COLUNAS[k] || v === undefined) continue;
+          valores.push(v);
+          partes.push(`${COLUNAS[k]} = $${valores.length + 2}`);
+        }
+        if (!partes.length) return antes;
+        const depois = (await c.query(`UPDATE clientes SET ${partes.join(', ')}, atualizado_em = now() WHERE id = $1 AND empresa_id = $2 RETURNING *`, [antes.id, empresaId, ...valores])).rows[0];
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'clientes', entidadeId: antes.id, antes, depois });
+        return depois;
+      });
+      return { cliente: clientePublico(f) };
+    });
 
     app.get<{ Querystring: { categoria?: string } }>('/fornecedores', { preHandler: gestao }, async (req) => {
       const categoria = req.query.categoria === 'credor' || req.query.categoria === 'fornecedor' ? req.query.categoria : null;
