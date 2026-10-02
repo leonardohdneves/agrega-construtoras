@@ -28,6 +28,10 @@ import { ContasFinanceiras } from './paginas/ContasFinanceiras';
 import { PlanoContas } from './paginas/PlanoContas';
 import { Notas } from './paginas/Notas';
 import { Nota } from './paginas/Nota';
+import { Cargas, NovaCarga } from './paginas/ProdCargas';
+import { Insumos, Tracos } from './paginas/ProdTracos';
+import { MinhaEscala, MinhaProducao, ProducaoMotoristas } from './paginas/ProdMotoristas';
+import { Escala } from './paginas/ProdEscala';
 import { Regras } from './paginas/Regras';
 import { Dre } from './paginas/Dre';
 import { Fluxo } from './paginas/Fluxo';
@@ -107,6 +111,14 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="adm/fornecedores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="fornecedor" /></Protegido>} />
             <Route path="adm/credores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="credor" /></Protegido>} />
             <Route path="adm/colaboradores" element={<Protegido perfis={['dono', 'gestor']}><Motoristas key="colaboradores" modo="colaboradores" /></Protegido>} />
+            <Route path="prod/cargas" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><Cargas /></Protegido>} />
+            <Route path="prod/cargas/nova" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><NovaCarga /></Protegido>} />
+            <Route path="prod/tracos" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><Tracos /></Protegido>} />
+            <Route path="prod/insumos" element={<Protegido perfis={['dono', 'gestor']}><Insumos /></Protegido>} />
+            <Route path="prod/motoristas" element={<Protegido perfis={['dono', 'gestor']}><ProducaoMotoristas /></Protegido>} />
+            <Route path="prod/escala" element={<Protegido perfis={['dono', 'gestor']}><Escala /></Protegido>} />
+            <Route path="minha-producao" element={<Protegido perfis={['motorista']}><MinhaProducao /></Protegido>} />
+            <Route path="minha-escala" element={<Protegido perfis={['motorista']}><MinhaEscala /></Protegido>} />
             <Route path="conta" element={<Conta />} />
             <Route path="admin/empresas" element={<Protegido perfis={['admin_sistema']}><AdminEmpresas /></Protegido>} />
             <Route path="*" element={<NaoEncontrado />} />

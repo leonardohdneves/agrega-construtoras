@@ -27,7 +27,7 @@ export async function api<T = any>(caminho: string, opcoes: { metodo?: string; c
   return dados as T;
 }
 
-export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista';
+export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista' | 'operador_usina';
 
 export type Usuario = {
   id: string;
@@ -61,6 +61,7 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   dono: 'Dono',
   gestor: 'Gestor',
   motorista: 'Motorista',
+  operador_usina: 'Operador de usina',
 };
 
 export function formatarCnpj(c: string): string {
@@ -635,4 +636,50 @@ export const TEXTO_SUGESTAO: Record<NonNullable<ItemNota['sugestao']>, string> =
 };
 export function formatarChave(c: string | null): string {
   return c ? c.replace(/(\d{4})(?=\d)/g, '$1 ') : '—';
+}
+
+// ---------------------------------------------------------------- Produção
+export type TipoInsumo = 'cimento' | 'areia' | 'brita' | 'aditivo' | 'agua' | 'fibra' | 'outro';
+export type UnidadeInsumo = 'kg' | 'L' | 'm3' | 't' | 'un';
+export const NOMES_TIPO_INSUMO: Record<TipoInsumo, string> = { cimento: 'Cimento', areia: 'Areia', brita: 'Brita', aditivo: 'Aditivo', agua: 'Água', fibra: 'Fibra', outro: 'Outro' };
+export const NOMES_UNIDADE: Record<UnidadeInsumo, string> = { kg: 'kg', L: 'L', m3: 'm³', t: 't', un: 'un' };
+export type Insumo = { id: string; nome: string; tipo: TipoInsumo; unidade: UnidadeInsumo; custoUnitario: number | null; estoqueMinimo: number | null; ativo: boolean; usadoEmTracos: number };
+export type ItemTraco = { insumoId: string; nome: string; tipo: TipoInsumo; unidade: UnidadeInsumo; quantidade: number; custo: number | null };
+export type Traco = {
+  id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null; brita: string | null; observacoes: string | null; ativo: boolean;
+  itens: ItemTraco[]; cimentoKgM3: number; custoM3: number | null; custoIncompleto: boolean;
+};
+export type Carga = {
+  id: string; numero: number; dataHora: string; dia: string; tracoId: string; tracoCodigo: string; volume: number; clienteId: string | null; clienteNome: string | null;
+  obra: string | null; betoneiraId: string; betoneiraCodigo: string; motoristaId: string | null; motoristaNome: string | null; bombaId: string | null; bombaCodigo: string | null;
+  operadorBombaId: string | null; operadorBombaNome: string | null; volumeBombeado: number | null; devolvido: number; documento: string | null; observacoes: string | null;
+  status: 'produzida' | 'cancelada'; motivoCancelamento: string | null; registradoPor: string | null;
+};
+export type OpcoesCarga = {
+  tracos: { id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null }[];
+  betoneiras: { id: string; codigo: string; placa: string | null; capacidade: number | null; status: StatusVeiculo }[];
+  bombas: { id: string; codigo: string; placa: string | null; status: StatusVeiculo }[];
+  pessoas: { id: string; nome: string; funcao: Funcao; escala: string | null }[];
+  clientes: { id: string; nome: string }[];
+  motoristaDaBetoneira: Record<string, string>;
+};
+export type ProducaoPessoa = {
+  pessoaId: string; nome: string; funcao: Funcao; entregas: number; m3Entregue: number; valorEntregas: number; bombeamentos: number; m3Bombeado: number;
+  valorBombeamento: number; total: number; diasTrabalhados: number;
+};
+export type LinhaProducao = {
+  cargaId: string; numero: number; dia: string; dataHora: string; pessoaId: string; pessoaNome: string; funcao: Funcao; papel: 'entrega' | 'bombeamento';
+  tracoCodigo: string; clienteNome: string | null; obra: string | null; veiculoCodigo: string | null; m3: number; valorM3: number | null; valor: number;
+};
+export type ValoresVigentes = { motorista: { valorM3: number; vigencia: string } | null; operadorBomba: { valorM3: number; vigencia: string } | null };
+export type ItemEscala = { motoristaId: string; nome: string; funcao: Funcao; entrada: string | null; folga: boolean; observacao: string | null };
+
+/** "2026-10-02" → "sexta-feira, 2 de outubro de 2026" */
+export function dataPorExtenso(iso: string): string {
+  return new Date(`${iso}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
+}
+/** "2026-10-02" → "sex, 02/10" */
+export function diaCurto(iso: string): string {
+  const d = new Date(`${iso}T12:00:00`);
+  return `${d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}, ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }

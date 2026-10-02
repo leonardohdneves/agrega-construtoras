@@ -69,7 +69,7 @@ export const esquemaEmpresa = z.object({
 export const esquemaNovoUsuario = z.object({
   nome: texto('o nome', 2),
   email: esquemaEmail,
-  perfil: z.enum(['dono', 'gestor', 'motorista'], { message: 'Escolha o perfil.' }),
+  perfil: z.enum(['dono', 'gestor', 'operador_usina', 'motorista'], { message: 'Escolha o perfil.' }),
   senha: esquemaSenha,
   telefoneWhatsapp: opcional,
 });
@@ -77,7 +77,7 @@ export const esquemaNovoUsuario = z.object({
 export const esquemaAlterarUsuario = z
   .object({
     nome: texto('o nome', 2).optional(),
-    perfil: z.enum(['dono', 'gestor', 'motorista']).optional(),
+    perfil: z.enum(['dono', 'gestor', 'operador_usina', 'motorista']).optional(),
     ativo: z.boolean().optional(),
     telefoneWhatsapp: opcional,
     senha: esquemaSenha.optional(),

@@ -21,8 +21,16 @@ export async function garantirDemo(banco: Banco, senha: string, log = console.lo
     log('SEED_DEMO ativo, mas DEMO_SENHA não foi definida: dados de exemplo não criados.');
     return;
   }
-  const existe = await banco.query('SELECT 1 FROM empresas WHERE cnpj = $1', [CNPJ_DEMO]);
-  if (existe.rowCount) return;
+  const existe = (await banco.query('SELECT id FROM empresas WHERE cnpj = $1', [CNPJ_DEMO])).rows[0];
+  if (existe) {
+    // Perfis novos ganham o seu usuário de exemplo na empresa que já existe.
+    for (const u of USUARIOS_DEMO) {
+      if ((await banco.query('SELECT 1 FROM usuarios WHERE lower(email) = $1 AND excluido_em IS NULL', [u.email])).rowCount) continue;
+      await banco.query('INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil) VALUES ($1, $2, $3, $4, $5)', [existe.id, u.nome, u.email, await gerarHashSenha(senha), u.perfil]);
+      log(`Usuário de exemplo ${u.email} criado.`);
+    }
+    return;
+  }
   const hash = await gerarHashSenha(senha);
   await emTransacao(banco, async (c) => {
     const e = (

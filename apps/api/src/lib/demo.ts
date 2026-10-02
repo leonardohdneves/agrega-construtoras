@@ -4,4 +4,5 @@ export const USUARIOS_DEMO = [
   { nome: 'Dono Exemplo', email: 'dono@demo.agrega.test', perfil: 'dono' },
   { nome: 'Gestor Exemplo', email: 'gestor@demo.agrega.test', perfil: 'gestor' },
   { nome: 'Motorista Exemplo', email: 'motorista@demo.agrega.test', perfil: 'motorista' },
+  { nome: 'Operador Exemplo', email: 'operador@demo.agrega.test', perfil: 'operador_usina' },
 ] as const;

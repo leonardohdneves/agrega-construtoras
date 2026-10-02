@@ -4,6 +4,7 @@ import { NOMES_PERFIL, type Perfil } from '../api';
 import { useSessao } from '../sessao';
 import { Logo } from './Logo';
 import {
+  IconeBetoneira,
   IconeBomba,
   IconeCaminhao,
   IconeConta,
@@ -20,6 +21,7 @@ type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; p
 type Modulo = { id: string; numero?: number; titulo: string; icone: ReactNode; perfis?: Perfil[]; itens: Item[] };
 
 const GESTAO: Perfil[] = ['dono', 'gestor'];
+const USINA: Perfil[] = ['dono', 'gestor', 'operador_usina'];
 
 export const MODULOS: Modulo[] = [
   {
@@ -43,6 +45,24 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Manutenção preventiva', para: '/frota/manutencao', perfis: GESTAO },
       { rotulo: 'Ordens de serviço', para: '/frota/os', perfis: GESTAO },
       { rotulo: 'Relatórios', para: '/frota/relatorios', perfis: GESTAO },
+    ],
+  },
+  {
+    id: 'producao',
+    titulo: 'Produção',
+    icone: <IconeBetoneira />,
+    perfis: ['dono', 'gestor', 'operador_usina', 'motorista'],
+    itens: [
+      { rotulo: 'Registrar carga', para: '/prod/cargas/nova', perfis: USINA },
+      { rotulo: 'Cargas', para: '/prod/cargas', perfis: USINA },
+      { rotulo: 'Traços', para: '/prod/tracos', perfis: USINA },
+      { rotulo: 'Insumos', para: '/prod/insumos', perfis: GESTAO },
+      { rotulo: 'Produção dos motoristas', para: '/prod/motoristas', perfis: GESTAO },
+      { rotulo: 'Escala de trabalho', para: '/prod/escala', perfis: GESTAO },
+      { rotulo: 'Estoque e inventário', etapa: 8, perfis: GESTAO },
+      { rotulo: 'Relatórios', etapa: 8, perfis: GESTAO },
+      { rotulo: 'Minha produção', para: '/minha-producao', perfis: ['motorista'] },
+      { rotulo: 'Minha escala', para: '/minha-escala', perfis: ['motorista'] },
     ],
   },
   {
@@ -244,10 +264,29 @@ export function Layout() {
           <IconeInicio />
           Início
         </NavLink>
-        <NavLink to="/abastecer" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-          <IconeBomba />
-          Abastecer
-        </NavLink>
+        {perfil === 'operador_usina' ? (
+          <NavLink to="/prod/cargas/nova" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeBetoneira />
+            Carga
+          </NavLink>
+        ) : (
+          <NavLink to="/abastecer" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeBomba />
+            Abastecer
+          </NavLink>
+        )}
+        {perfil === 'operador_usina' && (
+          <NavLink to="/prod/cargas" end className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeCaminhao />
+            Cargas
+          </NavLink>
+        )}
+        {perfil === 'motorista' && (
+          <NavLink to="/minha-producao" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeBetoneira />
+            Produção
+          </NavLink>
+        )}
         {gestao && (
           <NavLink to="/frota/veiculos" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconeCaminhao />

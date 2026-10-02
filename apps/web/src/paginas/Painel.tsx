@@ -5,6 +5,7 @@ import {
   formatarData,
   formatarMoeda,
   formatarNumero,
+  hojeLocal,
   NOMES_PERFIL,
   NOMES_TIPO_DOCUMENTO,
   seloVencimento,
@@ -18,6 +19,7 @@ import {
 import { useSessao } from '../sessao';
 import { fmtIndicador, type IndicadorDados, type RespIndicadores } from '../componentes/Indicadores';
 import { mesCurto } from '../componentes/Periodo';
+import { MinhaEscala } from './ProdMotoristas';
 
 const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
@@ -602,16 +604,95 @@ export function Painel() {
       </div>
 
       {usuario.perfil === 'motorista' ? (
-        <div className="card form">
-          <h2>Abasteceu?</h2>
-          <p className="muted" style={{ margin: 0 }}>Registre logo depois de abastecer, com os números da bomba e do painel.</p>
-          <Link to="/abastecer" className="btn btn-primario btn-bloco">
-            Registrar abastecimento
-          </Link>
-        </div>
+        <>
+          <div className="card form">
+            <h2>Abasteceu?</h2>
+            <p className="muted" style={{ margin: 0 }}>Registre logo depois de abastecer, com os números da bomba e do painel.</p>
+            <Link to="/abastecer" className="btn btn-primario btn-bloco">
+              Registrar abastecimento
+            </Link>
+          </div>
+          <div className="grade-larga">
+            <div className="card">
+              <div className="cartao-topo">
+                <h2>Sua escala</h2>
+                <Link className="btn btn-link" to="/minha-escala">Ver tudo</Link>
+              </div>
+              <MinhaEscala compacta />
+            </div>
+            <ResumoMinhaProducao />
+          </div>
+        </>
+      ) : usuario.perfil === 'operador_usina' ? (
+        <InicioUsina />
       ) : (
         <PainelGestao />
       )}
+    </>
+  );
+}
+
+/** Produção do mês do motorista, no início do app. */
+function ResumoMinhaProducao() {
+  const [r, setR] = useState<{ resumo: { entregas: number; m3Entregue: number; bombeamentos: number; m3Bombeado: number; total: number } | null } | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    const hoje = hojeLocal();
+    api(`/prod/minha-producao?de=${hoje.slice(0, 7)}-01&ate=${hoje}`).then(setR).catch((e) => setErro((e as Error).message));
+  }, []);
+  return (
+    <div className="card">
+      <div className="cartao-topo">
+        <h2>Sua produção no mês</h2>
+        <Link className="btn btn-link" to="/minha-producao">Detalhes</Link>
+      </div>
+      {erro && <p className="small muted" style={{ margin: 0 }}>{erro}</p>}
+      {r && !r.resumo && <p className="muted" style={{ margin: 0 }}>Nenhuma entrega registrada neste mês.</p>}
+      {r?.resumo && (
+        <>
+          <div className="valor-ind mono">{formatarMoeda(r.resumo.total)}</div>
+          <p className="small muted" style={{ margin: '4px 0 0' }}>
+            {r.resumo.entregas} entregas · {formatarNumero(r.resumo.m3Entregue, 1)} m³
+            {r.resumo.bombeamentos ? ` · ${r.resumo.bombeamentos} bombeamentos · ${formatarNumero(r.resumo.m3Bombeado, 1)} m³` : ''}
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Início do operador de usina: registrar carga e o resumo do dia. */
+function InicioUsina() {
+  const [r, setR] = useState<{ resumo: { cargas: number; m3: number; bombeado: number } } | null>(null);
+  useEffect(() => {
+    api('/prod/cargas').then(setR).catch(() => {});
+  }, []);
+  return (
+    <>
+      <div className="card form">
+        <h2>Saiu carga?</h2>
+        <p className="muted" style={{ margin: 0 }}>Registre cada viagem quando a betoneira sair da usina: traço, volume, betoneira e motorista.</p>
+        <Link to="/prod/cargas/nova" className="btn btn-primario btn-bloco">
+          Registrar carga
+        </Link>
+      </div>
+      <div className="grade">
+        <div className="card indicador">
+          <span className="rotulo-ind">Cargas hoje</span>
+          <span className="valor-ind mono">{r ? r.resumo.cargas : '—'}</span>
+        </div>
+        <div className="card indicador">
+          <span className="rotulo-ind">Volume hoje</span>
+          <span className="valor-ind mono">{r ? `${formatarNumero(r.resumo.m3, 1)} m³` : '—'}</span>
+        </div>
+        <div className="card indicador">
+          <span className="rotulo-ind">Bombeado hoje</span>
+          <span className="valor-ind mono">{r ? `${formatarNumero(r.resumo.bombeado, 1)} m³` : '—'}</span>
+        </div>
+      </div>
+      <p>
+        <Link to="/prod/cargas">Ver as cargas do dia</Link> · <Link to="/prod/tracos">Consultar traços</Link>
+      </p>
     </>
   );
 }

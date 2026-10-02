@@ -14,7 +14,7 @@ export function rotasUsuarios(banco: Banco) {
     app.get('/', { preHandler: exigir(banco, 'dono', 'gestor') }, async (req) => {
       const r = await banco.query(
         `SELECT * FROM usuarios WHERE empresa_id = $1 AND excluido_em IS NULL
-          ORDER BY ativo DESC, array_position(ARRAY['dono','gestor','motorista']::perfil[], perfil), nome`,
+          ORDER BY ativo DESC, array_position(ARRAY['dono','gestor','operador_usina','motorista']::perfil[], perfil), nome`,
         [empresaDo(req)],
       );
       return { usuarios: r.rows.map(usuarioPublico) };

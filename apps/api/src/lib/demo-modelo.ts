@@ -8,7 +8,7 @@ import { normalizar } from './sugestoes.ts';
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v1';
+export const VERSAO_DEMO = 'modelo-2026-10-v2';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -168,7 +168,7 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
   await c.query('UPDATE notas_fiscais SET lancamento_id = NULL WHERE empresa_id = $1', [empresaId]);
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
   for (const t of [
-    'extrato_linhas', 'extratos_ofx', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
+    'extrato_linhas', 'extratos_ofx', 'escalas', 'cargas', 'tracos_itens', 'tracos', 'insumos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
     'transferencias', 'notas_duplicatas', 'notas_itens', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
     'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
   ]) {
@@ -197,7 +197,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   const usuarios = (await q('SELECT id, email FROM usuarios WHERE empresa_id = $1', [e])).rows as { id: string; email: string }[];
   const usuario = (p: string) => usuarios.find((u) => u.email.startsWith(p))?.id ?? null;
   const gestor = usuario('gestor@') ?? usuario('dono@');
-  for (const [p, nome] of [['dono@', 'Roberto Almeida'], ['gestor@', 'Juliana Freitas'], ['motorista@', 'Carlos Pereira']]) {
+  for (const [p, nome] of [['dono@', 'Roberto Almeida'], ['gestor@', 'Juliana Freitas'], ['motorista@', 'Carlos Pereira'], ['operador@', 'Sérgio Nunes']]) {
     await q('UPDATE usuarios SET nome = $3 WHERE empresa_id = $1 AND email LIKE $2', [e, `${p}%`, nome]);
   }
 
@@ -481,6 +481,46 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   let sexta = inicio;
   while (diaSemana(sexta) !== 5) sexta = somarDias(sexta, 1);
   let bomba = 0;
+  // Cargas produzidas na usina: o volume vendido é dividido em viagens das betoneiras ao longo da semana.
+  // Sorteio separado, para as cargas não mudarem os números do financeiro.
+  const rc = sorteio(4242);
+  type CargaDemo = { dataHora: string; traco: string; m3: number; cliente: string; obra: string; betoneira: string; bomba: string | null; bombeado: number | null; devolvido: number };
+  const cargasDemo: CargaDemo[] = [];
+  const agoraHora = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hour12: false }).format(new Date()));
+  const tracoDoFck = (fck: string) => ({ 'fck 20': 'C20-S100-B1', 'fck 25': 'C25-S100-B1', 'fck 30': 'C30-S120-B1', 'fck 35': 'C35-S120-B1' })[fck] ?? 'C25-S100-B1';
+  const distribuir = (dias: string[], cliente: string, fck: string, m3: number, bombaCodigo: string | null, m3Bomba: number, obra: string) => {
+    const validos = dias.filter((d) => d >= inicio && d <= hoje && diaSemana(d) !== 0 && !(d === hoje && agoraHora < 9));
+    if (!validos.length) return;
+    let resta = m3;
+    let bombaResta = m3Bomba;
+    const doDia = bombaCodigo ? validos[Math.floor(rc() * validos.length)] : null;
+    while (resta > 0.01) {
+      const dia = bombaCodigo && bombaResta > 0 ? doDia! : validos[Math.floor(rc() * validos.length)];
+      const livres = codigos.filter((c) => c.startsWith('BET') && !(c === 'BET-04' && dia >= somarDias(hoje, -2)));
+      const bet = livres[Math.floor(rc() * livres.length)];
+      const vol = Math.round(Math.min(bet >= 'BET-05' ? 10 : 8, resta) * 2) / 2 || resta;
+      const ultimaHora = dia === hoje ? Math.max(7, agoraHora - 1) : 16;
+      const hh = String(7 + Math.floor(rc() * (ultimaHora - 6))).padStart(2, '0');
+      const mm = String(Math.floor(rc() * 60)).padStart(2, '0');
+      const bombeado = bombaCodigo && bombaResta > 0 ? Math.min(vol, bombaResta) : null;
+      if (bombeado) bombaResta -= bombeado;
+      cargasDemo.push({ dataHora: `${dia}T${hh}:${mm}:00-03:00`, traco: tracoDoFck(fck), m3: vol, cliente, obra, betoneira: bet,
+        bomba: bombeado ? bombaCodigo : null, bombeado, devolvido: rc() < 0.04 ? Math.min(vol, Math.round((0.3 + rc() * 0.9) * 10) / 10) : 0 });
+      resta = Math.round((resta - vol) * 100) / 100;
+    }
+  };
+  const OBRAS: Record<string, string[]> = {
+    'Construtora Alvorada Ltda': ['Ed. Alvorada Prime · Torre A', 'Ed. Alvorada Prime · Torre B'],
+    'Incorporadora Vale Verde Ltda': ['Condomínio Vale Verde · Quadra 3'],
+    'Engenharia Pilar Forte Ltda': ['Galpão logístico · BR-153', 'Hospital regional · ampliação'],
+    'Residencial Jardim das Palmeiras SPE Ltda': ['Jardim das Palmeiras · casas 40 a 80'],
+    'Pavimentadora Rota Norte Ltda': ['Calçadas e meio-fio · Av. Teotônio Segurado'],
+    'Construtora Novo Lar Ltda': ['Residencial Novo Lar · bloco 2'],
+  };
+  const obraDe = (cliente: string) => {
+    const l = OBRAS[cliente] ?? ['Obra'];
+    return l[Math.floor(rc() * l.length)];
+  };
   for (; sexta <= ontem; sexta = somarDias(sexta, 7)) {
     const idx = Math.min(6, (Number(sexta.slice(0, 4)) - Number(inicio.slice(0, 4))) * 12 + Number(sexta.slice(5, 7)) - Number(inicio.slice(5, 7)));
     let sextas = 0;
@@ -509,6 +549,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
         [{ codigo: '1.1', valor: concreto, centro: 'Usina' }, ...(bombeamento ? [{ codigo: '1.2', valor: bombeamento, centro: 'Bombas', veiculo: qualBomba }] : [])],
         [{ venc, valor: 0, pago }]);
       somaReceita(sexta, concreto + bombeamento, true);
+      distribuir([0, 1, 2, 3, 4].map((n) => somarDias(segunda, n)), x.nome, x.fck, m3, m3Bomba ? qualBomba : null, m3Bomba, obraDe(x.nome));
     }
     // Balcão: pessoa física, paga na entrega.
     for (let k = 0; k < 2 + Math.floor(r() * 2); k++) {
@@ -521,8 +562,75 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
       await lanc('receita', dia, `Concreto fck 25 · ${m3} m³ · obra residencial`, { documento: `NFS-e ${++nfs}`, cliente: nome },
         [{ codigo: '1.1', valor, centro: 'Usina' }], [{ venc: dia, valor: 0, pago: { data: dia, conta: banco, forma: 'pix' } }]);
       somaReceita(dia, valor, false);
+      distribuir([dia], nome, 'fck 25', m3, null, 0, 'Residência particular');
     }
     volumeSemana.push({ sexta, m3: m3Semana });
+  }
+  // Semana em andamento: cargas já entregues, que serão medidas na sexta.
+  for (let d = somarDias(sexta, -4); d <= hoje; d = somarDias(d, 1)) {
+    for (const x of CLIENTES_PJ) {
+      if (rc() < 0.25) continue;
+      const m3 = Math.max(4, Math.round((1350 / 21.5) * x.parte * (0.7 + rc() * 0.6)));
+      const m3Bomba = Math.round(m3 * x.bomba);
+      distribuir([d], x.nome, x.fck, m3, m3Bomba ? codigos[6 + (bomba++ % 2)] : null, m3Bomba, obraDe(x.nome));
+    }
+  }
+
+  // ----- insumos, traços e cargas
+  const INSUMOS: [string, string, string, number][] = [
+    ['Cimento CP II-F 40', 'cimento', 'kg', 0.575],
+    ['Areia média lavada', 'areia', 'kg', 0.0307],
+    ['Brita 1', 'brita', 'kg', 0.04],
+    ['Brita 0', 'brita', 'kg', 0.042],
+    ['Água', 'agua', 'L', 0.005],
+    ['Aditivo plastificante polifuncional', 'aditivo', 'L', 5.2],
+  ];
+  const insumo: Record<string, string> = {};
+  for (const [nome, tipo, unidade, custo] of INSUMOS) {
+    insumo[nome] = (await um(`INSERT INTO insumos (empresa_id, nome, tipo, unidade, custo_unitario_centavos, estoque_minimo) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [e, nome, tipo, unidade, custo * 100, tipo === 'cimento' ? 60000 : tipo === 'aditivo' ? 800 : tipo === 'agua' ? null : 150000])).id;
+  }
+  const TRACOS: [string, string, number, string, string, number[]][] = [
+    ['C20-S100-B1', 'Concreto convencional fck 20', 20, '10 ± 2', 'Brita 1', [250, 820, 1000, 0, 190, 1.8]],
+    ['C25-S100-B1', 'Concreto convencional fck 25', 25, '10 ± 2', 'Brita 1', [275, 800, 1010, 0, 185, 2.1]],
+    ['C30-S120-B1', 'Concreto bombeável fck 30', 30, '12 ± 2', 'Brita 1', [310, 770, 1020, 0, 180, 2.5]],
+    ['C35-S120-B1', 'Concreto bombeável fck 35', 35, '12 ± 2', 'Brita 1', [345, 740, 1030, 0, 178, 2.9]],
+    ['C25-S160-B0', 'Concreto bombeável fck 25 com brita 0', 25, '16 ± 2', 'Brita 0', [300, 880, 0, 900, 195, 2.6]],
+  ];
+  const traco: Record<string, string> = {};
+  for (const [codigo, descricao, fck, slump, brita, qtds] of TRACOS) {
+    traco[codigo] = (await um(`INSERT INTO tracos (empresa_id, codigo, descricao, fck, slump, brita) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`, [e, codigo, descricao, fck, slump, brita])).id;
+    for (const [j, qtd] of qtds.entries()) {
+      if (qtd > 0) await q('INSERT INTO tracos_itens (empresa_id, traco_id, insumo_id, quantidade) VALUES ($1,$2,$3,$4)', [e, traco[codigo], insumo[INSUMOS[j][0]], qtd]);
+    }
+  }
+  cargasDemo.sort((a, b) => a.dataHora.localeCompare(b.dataHora));
+  for (const [i, x] of cargasDemo.entries()) {
+    const motorista = rc() < 0.08 ? motoristas[8] : motoristaDo[x.betoneira] ?? null;
+    await q(
+      `INSERT INTO cargas (empresa_id, numero, data_hora, traco_id, volume_m3, cliente_id, obra, betoneira_id, motorista_id, bomba_id, operador_bomba_id,
+                           volume_bombeado_m3, devolvido_m3, registrado_por_id, criado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$3)`,
+      [e, 10001 + i, x.dataHora, traco[x.traco], x.m3, cli[x.cliente], x.obra, veic[x.betoneira], motorista, x.bomba ? veic[x.bomba] : null,
+        x.bomba ? motoristaDo[x.bomba] : null, x.bombeado, x.devolvido, usuario('operador@') ?? gestor],
+    );
+  }
+
+  // ----- valores da produção dos motoristas (com um reajuste no meio do período) e escala
+  for (const [funcao, valor, vigencia] of [['motorista', 250, inicio], ['motorista', 280, somarMeses(inicio, 3)], ['operador_bomba', 180, inicio]] as const) {
+    await q('INSERT INTO valores_producao (empresa_id, funcao, valor_m3_centavos, vigencia, criado_por_id) VALUES ($1,$2,$3,$4,$5)', [e, funcao, valor, vigencia, gestor]);
+  }
+  const pessoasEscala = [...Object.entries(motoristaDo).map(([v, id]) => ({ id, bomba: v.startsWith('BOM') })), { id: motoristas[8], bomba: false }];
+  for (let d = somarDias(hoje, -14); d <= somarDias(hoje, 6); d = somarDias(d, 1)) {
+    const w = diaSemana(d);
+    if (w === 0) continue;
+    const folga = Math.floor(rc() * pessoasEscala.length);
+    for (const [k, p] of pessoasEscala.entries()) {
+      const deFolga = w === 6 ? k % 3 === 0 : k === folga && rc() < 0.5;
+      await q('INSERT INTO escalas (empresa_id, data, motorista_id, entrada, folga, atualizado_por_id) VALUES ($1,$2,$3,$4,$5,$6)', [
+        e, d, p.id, deFolga ? null : p.bomba ? '07:30' : k % 2 ? '07:00' : '06:30', deFolga, gestor,
+      ]);
+    }
   }
 
   // ----- insumos da usina
