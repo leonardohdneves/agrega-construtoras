@@ -16,7 +16,7 @@ import {
   IconeEmpresa,
 } from './Icones';
 
-type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[] };
+type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[]; soDemo?: boolean };
 type Modulo = { id: string; numero?: number; titulo: string; icone: ReactNode; perfis?: Perfil[]; itens: Item[] };
 
 const GESTAO: Perfil[] = ['dono', 'gestor'];
@@ -86,6 +86,8 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Minha conta', para: '/conta' },
       { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
       { rotulo: 'Manual de operação (PDF)', arquivo: '/manual/agrega-manual-de-operacao.pdf' },
+      { rotulo: 'Extrato OFX de demonstração', arquivo: '/api/demo/extrato.ofx', perfis: GESTAO, soDemo: true },
+      { rotulo: 'NF-e de demonstração (XML)', arquivo: '/api/demo/nfe-posto.xml', perfis: GESTAO, soDemo: true },
     ],
   },
   {
@@ -109,10 +111,11 @@ function permitido(perfis: Perfil[] | undefined, perfil: Perfil) {
 }
 
 function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: string; aoNavegar?: () => void }) {
+  const demo = useSessao().empresa?.plano === 'demonstracao';
   // Toque (celular/tablet) abre e fecha; no computador o módulo abre ao passar o mouse.
   const [aberto, setAberto] = useState<string | null>(null);
   const modulos = MODULOS.filter((m) => permitido(m.perfis, perfil))
-    .map((m) => ({ ...m, itens: m.itens.filter((i) => permitido(i.perfis, perfil)) }))
+    .map((m) => ({ ...m, itens: m.itens.filter((i) => permitido(i.perfis, perfil) && (!i.soDemo || demo)) }))
     .filter((m) => m.itens.length);
 
   return (
