@@ -200,3 +200,66 @@ export function seloVencimento(s: Situacao, dias: number | null): { texto: strin
   if (s === 'vencendo') return { texto: dias === 0 ? 'Vence hoje' : dias === 1 ? 'Vence amanhã' : `Vence em ${dias} dias`, classe: 'selo-aviso' };
   return { texto: 'Em dia', classe: 'selo-ok' };
 }
+
+// ---------- Abastecimento ----------
+export type Abastecimento = {
+  id: string;
+  veiculoId: string;
+  veiculoCodigo: string;
+  motoristaId: string | null;
+  motoristaNome: string | null;
+  dataHora: string;
+  litros: number;
+  valorTotal: number | null;
+  precoLitro: number | null;
+  km: number | null;
+  horimetro: number | null;
+  origem: 'posto' | 'tanque_proprio';
+  posto: string | null;
+  tanqueCheio: boolean;
+  observacoes: string | null;
+  temNota: boolean;
+  kmRodados: number | null;
+  horas: number | null;
+  kmPorLitro: number | null;
+  litrosPorHora: number | null;
+};
+
+export type ConsumoVeiculo = {
+  veiculoId: string;
+  codigo: string;
+  tipo: TipoVeiculo;
+  abastecimentos: number;
+  litros: number;
+  valor: number;
+  km: number;
+  horas: number;
+  kmPorLitro: number | null;
+  litrosPorHora: number | null;
+  media90: { kmPorLitro: number | null; litrosPorHora: number | null };
+  ultimo: { kmPorLitro: number | null; litrosPorHora: number | null } | null;
+  ultimaData: string | null;
+  piora: number | null;
+};
+
+/** Converte número digitado no padrão brasileiro ("1.234,5") em número. */
+export function lerNumero(s: string): number | null {
+  const t = (s ?? '').trim().replace(/\s/g, '');
+  if (!t) return null;
+  let n = t;
+  if (t.includes(',')) n = t.replace(/\./g, '').replace(',', '.');
+  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) n = t.replace(/\./g, '');
+  const v = Number(n);
+  return Number.isFinite(v) ? v : null;
+}
+
+/** Data e hora local de Brasília no formato do campo datetime-local. */
+export function agoraLocal(d = new Date()): string {
+  const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(d);
+  const g = (t: string) => p.find((x) => x.type === t)?.value ?? '';
+  return `${g('year')}-${g('month')}-${g('day')}T${g('hour')}:${g('minute')}`;
+}
+
+export function formatarDataHoraCurta(iso: string): string {
+  return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}

@@ -15,6 +15,8 @@ import { AdminEmpresas } from './paginas/AdminEmpresas';
 import { Veiculos } from './paginas/Veiculos';
 import { VeiculoDetalhe } from './paginas/VeiculoDetalhe';
 import { Motoristas } from './paginas/Motoristas';
+import { Abastecer } from './paginas/Abastecer';
+import { Abastecimentos } from './paginas/Abastecimentos';
 
 registerSW({ immediate: true });
 
@@ -56,6 +58,8 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="frota/veiculos" element={<Protegido perfis={['dono', 'gestor']}><Veiculos /></Protegido>} />
             <Route path="frota/veiculos/:id" element={<Protegido perfis={['dono', 'gestor']}><VeiculoDetalhe /></Protegido>} />
             <Route path="frota/motoristas" element={<Protegido perfis={['dono', 'gestor']}><Motoristas /></Protegido>} />
+            <Route path="abastecer" element={<Protegido perfis={['dono', 'gestor', 'motorista']}><Abastecer /></Protegido>} />
+            <Route path="frota/abastecimentos" element={<Protegido perfis={['dono', 'gestor']}><Abastecimentos /></Protegido>} />
             <Route path="conta" element={<Conta />} />
             <Route path="admin/empresas" element={<Protegido perfis={['admin_sistema']}><AdminEmpresas /></Protegido>} />
             <Route path="*" element={<NaoEncontrado />} />

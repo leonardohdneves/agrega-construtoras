@@ -110,3 +110,50 @@ export async function garantirFrotaDemo(banco: Banco, log = console.log): Promis
   });
   log('Frota de exemplo criada na Concreteira Exemplo.');
 }
+
+/** Histórico de 45 dias de abastecimentos da frota de exemplo, só se ainda não houver nenhum. */
+export async function garantirAbastecimentosDemo(banco: Banco, log = console.log): Promise<void> {
+  const e = (await banco.query('SELECT id FROM empresas WHERE cnpj = $1', [CNPJ_DEMO])).rows[0];
+  if (!e) return;
+  const tem = await banco.query('SELECT 1 FROM abastecimentos WHERE empresa_id = $1 LIMIT 1', [e.id]);
+  if (tem.rowCount) return;
+  const veiculos = (await banco.query(`SELECT id, codigo, tipo, km_atual, horimetro_atual FROM veiculos WHERE empresa_id = $1 AND excluido_em IS NULL AND status <> 'inativo' ORDER BY codigo`, [e.id])).rows;
+  const motoristas = (await banco.query('SELECT id FROM motoristas WHERE empresa_id = $1 AND ativo ORDER BY nome', [e.id])).rows.map((m) => m.id);
+  if (!veiculos.length) return;
+
+  // Gerador pseudoaleatório fixo, para os dados de exemplo serem sempre iguais.
+  let semente = 20261002;
+  const aleatorio = () => ((semente = (semente * 1103515245 + 12345) % 2147483648) / 2147483648);
+  const entre = (a: number, b: number) => a + (b - a) * aleatorio();
+
+  await emTransacao(banco, async (c) => {
+    for (const v of veiculos) {
+      const bomba = String(v.tipo).startsWith('bomba');
+      // Monta do mais recente para o mais antigo, partindo da leitura atual do veículo.
+      const registros: { dias: number; litros: number; km: number; hor: number }[] = [];
+      let km = Number(v.km_atual);
+      let hor = Number(v.horimetro_atual);
+      let dias = entre(0.3, 1.5);
+      while (dias < 45) {
+        const horas = bomba ? entre(9, 12) : entre(12.5, 15.5);
+        const kmRodado = bomba ? entre(25, 60) : entre(320, 410);
+        let litros = bomba ? horas * entre(6.2, 7.0) : kmRodado / entre(2.05, 2.3);
+        // BET-03: último abastecimento com consumo bem pior, para mostrar o alerta.
+        if (v.codigo === 'BET-03' && registros.length === 0) litros = kmRodado / 1.75;
+        registros.push({ dias, litros: Math.round(litros * 10) / 10, km: Math.round(km), hor: Math.round(hor * 10) / 10 });
+        km -= kmRodado;
+        hor -= horas;
+        dias += bomba ? entre(1.5, 3) : entre(1.8, 2.6);
+      }
+      for (const r of registros) {
+        const preco = entre(6.15, 6.35);
+        await c.query(
+          `INSERT INTO abastecimentos (empresa_id, veiculo_id, motorista_id, data_hora, litros, valor_total_centavos, km, horimetro, origem, posto)
+           VALUES ($1, $2, $3, now() - make_interval(secs => $4), $5, $6, $7, $8, 'posto', 'Posto Exemplo')`,
+          [e.id, v.id, motoristas.length ? motoristas[Math.floor(aleatorio() * motoristas.length)] : null, Math.round(r.dias * 86400), r.litros, Math.round(r.litros * preco * 100), r.km, r.hor],
+        );
+      }
+    }
+  });
+  log('Abastecimentos de exemplo criados (45 dias).');
+}

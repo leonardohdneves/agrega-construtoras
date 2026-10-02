@@ -9,3 +9,4 @@ export const IconeCaminhao = () => (<svg {...base}><rect x="2" y="7" width="13" 
 export const IconeDinheiro = () => (<svg {...base}><rect x="2" y="6" width="20" height="13" rx="2" /><path d="M2 10h20M6 15h4" /></svg>);
 export const IconeGrafico = () => (<svg {...base}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>);
 export const IconeSair = () => (<svg {...base}><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" /></svg>);
+export const IconeBomba = () => (<svg {...base}><path d="M4 21V5a2 2 0 012-2h6a2 2 0 012 2v16" /><path d="M3 21h12" /><path d="M14 9h2a2 2 0 012 2v5a1.5 1.5 0 003 0V8l-3-3" /><path d="M7 8h4" /></svg>);

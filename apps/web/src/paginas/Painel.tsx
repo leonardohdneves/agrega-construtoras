@@ -1,12 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, formatarData, NOMES_PERFIL, NOMES_TIPO_DOCUMENTO, seloVencimento, type Alerta, type DocumentoVeiculo } from '../api';
+import { api, formatarData, formatarNumero, NOMES_PERFIL, NOMES_TIPO_DOCUMENTO, seloVencimento, type Alerta, type DocumentoVeiculo } from '../api';
 import { useSessao } from '../sessao';
 
 const ETAPAS = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
   { n: 1, nome: 'Cadastros da frota: veículos, motoristas e documentos', pronta: true },
-  { n: 2, nome: 'Abastecimento pelo celular, km/L e L/h' },
+  { n: 2, nome: 'Abastecimento pelo celular, km/L e L/h', pronta: true },
   { n: 3, nome: 'Manutenção preventiva e ordens de serviço' },
   { n: 4, nome: 'Financeiro: contas, plano de contas, a pagar e a receber' },
   { n: 5, nome: 'Nota fiscal: lançamento manual e importação de XML' },
@@ -14,7 +14,8 @@ const ETAPAS = [
   { n: 7, nome: 'Relatórios: DRE, fluxo de caixa e custo por veículo' },
 ];
 
-type Resumo = { alertas: Alerta[]; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
+type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: { kmPorLitro: number | null; litrosPorHora: number | null }; media90: { kmPorLitro: number | null; litrosPorHora: number | null } };
+type Resumo = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
 
 function PainelGestao() {
   const [dados, setDados] = useState<Resumo | null>(null);
@@ -98,6 +99,38 @@ function PainelGestao() {
       </div>
 
       <div className="card">
+        <div className="cabecalho" style={{ marginBottom: 12 }}>
+          <h2>Consumo acima da média</h2>
+          <Link to="/frota/abastecimentos" className="small" style={{ fontWeight: 600, textDecoration: 'none' }}>
+            Consumo ›
+          </Link>
+        </div>
+        {!dados ? (
+          <p className="muted">Carregando…</p>
+        ) : dados.consumoAlto.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>Nenhum veículo com consumo mais de 15% pior que a sua média dos últimos 90 dias.</p>
+        ) : (
+          <ul className="lista-alertas">
+            {dados.consumoAlto.map((c) => (
+              <li key={c.veiculoId}>
+                <span>
+                  <Link to={`/frota/veiculos/${c.veiculoId}`} className="mono" style={{ textDecoration: 'none', fontWeight: 500 }}>
+                    {c.codigo}
+                  </Link>
+                  <div className="small muted mono">
+                    {c.ultimo.kmPorLitro && c.media90.kmPorLitro
+                      ? `${formatarNumero(c.ultimo.kmPorLitro, 2)} km/L · média ${formatarNumero(c.media90.kmPorLitro, 2)}`
+                      : `${formatarNumero(c.ultimo.litrosPorHora, 1)} L/h · média ${formatarNumero(c.media90.litrosPorHora, 1)}`}
+                  </div>
+                </span>
+                <span className="selo selo-aviso">{formatarNumero(c.piora * 100)}% pior</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="card">
         <h2>Implantação do Agrega</h2>
         <ul className="lista-etapas">
           {ETAPAS.map((e) => (
@@ -153,11 +186,12 @@ export function Painel() {
       </div>
 
       {usuario.perfil === 'motorista' ? (
-        <div className="card">
-          <h2>Registro de abastecimento</h2>
-          <p className="muted" style={{ margin: 0 }}>
-            Em breve você vai registrar cada abastecimento por aqui, direto do celular.
-          </p>
+        <div className="card form">
+          <h2>Abasteceu?</h2>
+          <p className="muted" style={{ margin: 0 }}>Registre logo depois de abastecer, com os números da bomba e do painel.</p>
+          <Link to="/abastecer" className="btn btn-primario btn-bloco">
+            Registrar abastecimento
+          </Link>
         </div>
       ) : (
         <PainelGestao />

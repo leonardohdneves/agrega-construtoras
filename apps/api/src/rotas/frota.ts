@@ -14,6 +14,7 @@ import {
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil, situacaoVencimento } from '../lib/frota.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { consumoDaFrota } from './abastecimentos.ts';
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 const dataIso = (v: unknown) => (v ? (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)) : null);
@@ -342,7 +343,10 @@ export function rotasFrota(banco: Banco) {
         [empresaId],
       );
       const resumo = Object.fromEntries(frota.rows.map((r) => [r.status, r.n]));
-      return { alertas, frota: { disponivel: resumo.disponivel ?? 0, manutencao: resumo.manutencao ?? 0, parado: resumo.parado ?? 0, inativo: resumo.inativo ?? 0 } };
+      const consumoAlto = (await consumoDaFrota(banco, empresaId, 30))
+        .filter((v) => v.piora !== null)
+        .map((v) => ({ veiculoId: v.veiculoId, codigo: v.codigo, piora: v.piora, ultimo: v.ultimo, media90: v.media90, ultimaData: v.ultimaData }));
+      return { alertas, consumoAlto, frota: { disponivel: resumo.disponivel ?? 0, manutencao: resumo.manutencao ?? 0, parado: resumo.parado ?? 0, inativo: resumo.inativo ?? 0 } };
     });
   };
 }

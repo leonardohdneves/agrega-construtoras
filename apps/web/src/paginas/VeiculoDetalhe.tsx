@@ -11,6 +11,9 @@ import {
   NOMES_TIPO_DOCUMENTO,
   NOMES_TIPO_VEICULO,
   seloVencimento,
+  formatarDataHoraCurta,
+  type Abastecimento,
+  type ConsumoVeiculo,
   type DocumentoVeiculo,
   type Veiculo,
 } from '../api';
@@ -29,6 +32,17 @@ export function VeiculoDetalhe() {
   const [doc, setDoc] = useState<DadosDoc | null>(null);
   const [excluir, setExcluir] = useState<DocumentoVeiculo | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [consumo, setConsumo] = useState<ConsumoVeiculo | null>(null);
+  const [abast, setAbast] = useState<Abastecimento[]>([]);
+
+  useEffect(() => {
+    api<{ veiculos: ConsumoVeiculo[] }>('/frota/consumo?dias=30')
+      .then((r) => setConsumo(r.veiculos.find((c) => c.veiculoId === id) ?? null))
+      .catch(() => {});
+    api<{ abastecimentos: Abastecimento[] }>(`/frota/abastecimentos?dias=90&veiculoId=${id}`)
+      .then((r) => setAbast(r.abastecimentos.slice(0, 6)))
+      .catch(() => {});
+  }, [id]);
 
   const carregar = useCallback(async () => {
     try {
@@ -138,9 +152,53 @@ export function VeiculoDetalhe() {
             </span>
           </div>
           <div className="card indicador">
-            <span className="rotulo-ind">Consumo e custos</span>
-            <span className="small muted">Disponível nas Etapas 2 e 3</span>
+            <span className="rotulo-ind">Consumo (30 dias)</span>
+            <span className="valor-ind mono">
+              {consumo?.kmPorLitro ? `${formatarNumero(consumo.kmPorLitro, 2)} km/L` : consumo?.litrosPorHora ? `${formatarNumero(consumo.litrosPorHora, 1)} L/h` : '—'}
+            </span>
+            {consumo?.kmPorLitro && consumo.litrosPorHora ? <span className="small mono muted">{formatarNumero(consumo.litrosPorHora, 1)} L/h</span> : null}
+            {consumo?.piora != null && <span className="selo selo-aviso" style={{ alignSelf: 'flex-start' }}>Último {formatarNumero(consumo.piora * 100)}% pior</span>}
           </div>
+          <div className="card indicador">
+            <span className="rotulo-ind">Diesel (30 dias)</span>
+            <span className="valor-ind mono">{consumo ? `${formatarNumero(consumo.litros)} L` : '—'}</span>
+            {consumo && consumo.valor > 0 ? <span className="small mono muted">{formatarMoeda(consumo.valor)}</span> : null}
+          </div>
+        </div>
+      )}
+
+      {abast.length > 0 && (
+        <div className="card tabela-caixa">
+          <div className="cabecalho" style={{ marginBottom: 12 }}>
+            <h2>Últimos abastecimentos</h2>
+            <Link to="/frota/abastecimentos" className="small" style={{ fontWeight: 600, textDecoration: 'none' }}>
+              Todos ›
+            </Link>
+          </div>
+          <table className="tabela">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Motorista</th>
+                <th style={{ textAlign: 'right' }}>Litros</th>
+                <th style={{ textAlign: 'right' }}>Km</th>
+                <th style={{ textAlign: 'right' }}>km/L</th>
+                <th style={{ textAlign: 'right' }}>L/h</th>
+              </tr>
+            </thead>
+            <tbody>
+              {abast.map((a) => (
+                <tr key={a.id}>
+                  <td className="mono small">{formatarDataHoraCurta(a.dataHora)}</td>
+                  <td className="small">{a.motoristaNome ?? '—'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{formatarNumero(a.litros, 1)}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{formatarNumero(a.km)}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{a.kmPorLitro ? formatarNumero(a.kmPorLitro, 2) : '—'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{a.litrosPorHora ? formatarNumero(a.litrosPorHora, 1) : '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 

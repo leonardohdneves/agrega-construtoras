@@ -218,4 +218,15 @@ table.tabela { border-collapse: collapse; width: 100%; }
 .bloco-status strong { font: 800 26px/1.1 var(--font-display); }
 .bloco-status span { font-size: 13px; font-weight: 600; }
 
+/* ---------- Abastecimento ---------- */
+.dois { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.segmentado { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; padding: 4px; border-radius: 10px; background: var(--surface-sunken); }
+.segmentado button { min-height: 40px; border: 0; border-radius: 8px; background: transparent; color: var(--ink-muted); font: 500 15px/1 var(--font-sans); cursor: pointer; }
+.segmentado button.ativo { background: var(--surface-card); color: var(--ink); font-weight: 600; box-shadow: 0 0 0 1px var(--border); }
+.previa { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; }
+.previa div { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.previa span { font-size: 12px; color: var(--cement); }
+.previa strong { font-weight: 500; font-size: 15px; }
+select.busca { appearance: auto; }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

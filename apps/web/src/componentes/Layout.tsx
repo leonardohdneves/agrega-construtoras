@@ -2,7 +2,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { NOMES_PERFIL, type Perfil } from '../api';
 import { useSessao } from '../sessao';
 import { Logo } from './Logo';
-import { IconeCaminhao, IconeConta, IconeEmpresa, IconeInicio, IconeUsuarios } from './Icones';
+import { IconeBomba, IconeCaminhao, IconeConta, IconeInicio, IconeUsuarios } from './Icones';
 
 type Item = { rotulo: string; para?: string; etapa?: number; perfis?: Perfil[] };
 type Secao = { titulo?: string; perfis?: Perfil[]; itens: Item[] };
@@ -18,7 +18,8 @@ export const MENU: Secao[] = [
     itens: [
       { rotulo: 'Veículos', para: '/frota/veiculos', perfis: GESTAO },
       { rotulo: 'Motoristas', para: '/frota/motoristas', perfis: GESTAO },
-      { rotulo: 'Abastecimentos', etapa: 2 },
+      { rotulo: 'Registrar abastecimento', para: '/abastecer' },
+      { rotulo: 'Abastecimentos e consumo', para: '/frota/abastecimentos', perfis: GESTAO },
       { rotulo: 'Manutenção', etapa: 3, perfis: GESTAO },
     ],
   },
@@ -120,16 +121,14 @@ export function Layout() {
           <IconeInicio />
           Início
         </NavLink>
+        <NavLink to="/abastecer" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+          <IconeBomba />
+          Abastecer
+        </NavLink>
         {gestao && (
           <NavLink to="/frota/veiculos" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconeCaminhao />
             Frota
-          </NavLink>
-        )}
-        {gestao && (
-          <NavLink to="/empresa" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeEmpresa />
-            Empresa
           </NavLink>
         )}
         {gestao && (
