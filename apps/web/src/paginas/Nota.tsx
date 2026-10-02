@@ -15,6 +15,7 @@ import {
   NOMES_ITEM_OS,
   NOMES_MODELO,
   SELO_NOTA,
+  somarDias,
   TEXTO_SUGESTAO,
   type FormaPagamento,
   type ItemNota,
@@ -232,7 +233,7 @@ type Candidatos = {
   osItens: { id: string; tipo: keyof typeof NOMES_ITEM_OS; descricao: string; quantidade: number; total: number; osNumero: number; abertura: string; osStatus: string; veiculoCodigo: string; oficina: string | null; mesmoFornecedor: boolean; vinculado: boolean; emOutraNota: string | null }[];
 };
 
-function Vinculos({ item, aoSalvar, aoFechar }: { item: ItemNota; aoSalvar: (n: NotaFiscal) => void; aoFechar: () => void }) {
+function Vinculos({ item, emissao, aoSalvar, aoFechar }: { item: ItemNota; emissao: string; aoSalvar: (n: NotaFiscal) => void; aoFechar: () => void }) {
   const [c, setC] = useState<Candidatos | null>(null);
   const [selA, setSelA] = useState<Set<string>>(new Set());
   const [selO, setSelO] = useState<Set<string>>(new Set());
@@ -265,6 +266,21 @@ function Vinculos({ item, aoSalvar, aoFechar }: { item: ItemNota; aoSalvar: (n: 
   const litros = soma(escolhidosA.map((a) => a.litros));
   const valorA = soma(escolhidosA.map((a) => a.valor ?? 0));
   const valorO = soma((c?.osItens ?? []).filter((o) => selO.has(o.id)).map((o) => o.total));
+
+  // Do mais recente para o mais antigo (até a emissão), soma os litros até chegar na quantidade do item.
+  function completar() {
+    const livres = abast
+      .filter((a) => !a.emOutraNota && a.dataHora.slice(0, 10) <= somarDias(emissao, 1))
+      .sort((a, b) => b.dataHora.localeCompare(a.dataHora));
+    const novo = new Set<string>();
+    let total = 0;
+    for (const a of livres) {
+      if (total >= item.quantidade - 0.5) break;
+      novo.add(a.id);
+      total += a.litros;
+    }
+    setSelA(novo);
+  }
 
   async function salvar() {
     setErro('');
@@ -301,13 +317,9 @@ function Vinculos({ item, aoSalvar, aoFechar }: { item: ItemNota; aoSalvar: (n: 
               <input type="checkbox" checked={todos} onChange={(e) => setTodos(e.target.checked)} />
               <span>Mostrar de outros postos</span>
             </label>
-            {abast.length > 0 && (
-              <button
-                className="btn btn-link"
-                type="button"
-                onClick={() => setSelA(new Set([...selA, ...abast.filter((a) => !a.emOutraNota).map((a) => a.id)]))}
-              >
-                Marcar todos os sem nota
+            {abast.length > 0 && item.quantidade > 0 && (
+              <button className="btn btn-link" type="button" onClick={completar}>
+                Marcar até completar {formatarNumero(item.quantidade, 0)} {item.unidade ?? ''}
               </button>
             )}
             {selA.size > 0 && <button className="btn btn-link" type="button" onClick={() => setSelA(new Set())}>Desmarcar</button>}
@@ -542,6 +554,7 @@ function LinhaItem({
           <td colSpan={nota.direcao === 'entrada' ? 7 : 6}>
             <Vinculos
               item={item}
+              emissao={nota.dataEmissao}
               aoFechar={() => setVinculo(false)}
               aoSalvar={(n) => {
                 setVinculo(false);

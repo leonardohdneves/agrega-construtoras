@@ -818,15 +818,15 @@ export function rotasNotas(banco: Banco) {
           let partes: { veiculoId: string | null; valor: number; obs: string | null }[] = [{ veiculoId: i.veiculo_id, valor: custo, obs: null }];
           const ab = (
             await c.query(
-              `SELECT veiculo_id, sum(coalesce(valor_total_centavos, 0)) AS valor, sum(litros) AS litros FROM abastecimentos
-                WHERE nota_item_id = $1 AND excluido_em IS NULL GROUP BY veiculo_id ORDER BY veiculo_id`,
+              `SELECT a.veiculo_id, sum(coalesce(a.valor_total_centavos, 0)) AS valor, sum(a.litros) AS litros FROM abastecimentos a JOIN veiculos v ON v.id = a.veiculo_id
+                WHERE a.nota_item_id = $1 AND a.excluido_em IS NULL GROUP BY a.veiculo_id, v.codigo ORDER BY v.codigo`,
               [i.id],
             )
           ).rows;
           const os = (
             await c.query(
               `SELECT o.veiculo_id, sum(round(oi.quantidade * oi.valor_unitario_centavos)) AS valor FROM os_itens oi JOIN ordens_servico o ON o.id = oi.os_id
-                WHERE oi.nota_item_id = $1 AND oi.excluido_em IS NULL GROUP BY o.veiculo_id ORDER BY o.veiculo_id`,
+                WHERE oi.nota_item_id = $1 AND oi.excluido_em IS NULL GROUP BY o.veiculo_id ORDER BY min(o.numero)`,
               [i.id],
             )
           ).rows;
