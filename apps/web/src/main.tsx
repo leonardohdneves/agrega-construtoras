@@ -38,6 +38,7 @@ import { RelAdm } from './paginas/RelAdm';
 import { RelConfig } from './paginas/RelConfig';
 import { RelGerencial } from './paginas/RelGerencial';
 import { Indicadores } from './paginas/Indicadores';
+import { Conciliacao } from './paginas/Conciliacao';
 
 registerSW({ immediate: true });
 
@@ -99,6 +100,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="ger/dre" element={<Protegido perfis={['dono', 'gestor']}><Dre /></Protegido>} />
             <Route path="ger/fluxo" element={<Protegido perfis={['dono', 'gestor']}><Fluxo /></Protegido>} />
             <Route path="ger/custo-veiculo" element={<Protegido perfis={['dono', 'gestor']}><CustoVeiculo /></Protegido>} />
+            <Route path="fin/conciliacao" element={<Protegido perfis={['dono', 'gestor']}><Conciliacao /></Protegido>} />
             <Route path="fin/regras" element={<Protegido perfis={['dono', 'gestor']}><Regras /></Protegido>} />
             <Route path="fin/plano-contas" element={<Protegido perfis={['dono', 'gestor']}><PlanoContas /></Protegido>} />
             <Route path="adm/clientes" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores key="clientes" categoria="cliente" /></Protegido>} />

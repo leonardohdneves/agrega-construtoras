@@ -56,7 +56,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Lançamentos', para: '/fin/lancamentos' },
       { rotulo: 'Notas fiscais e XML', para: '/fin/notas' },
       { rotulo: 'Bancos e caixa', para: '/fin/contas' },
-      { rotulo: 'Conciliação OFX', etapa: 6 },
+      { rotulo: 'Conciliação OFX', para: '/fin/conciliacao' },
       { rotulo: 'Plano de contas', para: '/fin/plano-contas' },
       { rotulo: 'Relatórios', para: '/fin/relatorios' },
     ],

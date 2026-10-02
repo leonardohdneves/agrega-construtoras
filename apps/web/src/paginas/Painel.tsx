@@ -26,7 +26,7 @@ const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] 
   { n: 3, nome: 'Manutenção preventiva e ordens de serviço', pronta: true },
   { n: 4, nome: 'Financeiro: contas, plano de contas, a pagar e a receber', pronta: true },
   { n: 5, nome: 'Nota fiscal: lançamento manual e importação de XML', pronta: true },
-  { n: 6, nome: 'Conciliação bancária com OFX', adiada: true },
+  { n: 6, nome: 'Conciliação bancária com OFX', pronta: true },
   { n: 7, nome: 'Relatórios: DRE, fluxo de caixa e custo por veículo', pronta: true },
 ];
 
@@ -34,7 +34,7 @@ type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: {
 type ResumoFrota = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; manutencao: ItemManutencao[]; osAbertas: number; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
 type Bloco = { quantidade: number; valor: number };
 type LadoFin = { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
-type ResumoFin = { saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin; receber: LadoFin; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number };
+type ResumoFin = { saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin; receber: LadoFin; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number; extratoPendente: number };
 type CustoManut = { veiculoId: string; codigo: string; ordens: number; total: number; pecas: number };
 type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: ConsumoVeiculo[]; manut: CustoManut[]; erro: string };
 
@@ -115,6 +115,7 @@ function AbaGeral({ d }: { d: Dados }) {
     if (fin.notasParaConferir) atencao.push({ chave: 'notas', para: '/fin/notas?situacao=rascunho', titulo: plural(fin.notasParaConferir, 'nota fiscal para conferir', 'notas fiscais para conferir'), valor: 'Conferir', tom: 'aviso' });
     if (fin.pagar.vencidas.quantidade) atencao.push({ chave: 'pv', para: '/fin/pagar-receber?tipo=despesa&situacao=vencidas', titulo: plural(fin.pagar.vencidas.quantidade, 'conta a pagar vencida', 'contas a pagar vencidas'), valor: formatarMoeda(fin.pagar.vencidas.valor), tom: 'perigo' });
     if (fin.pagar.hoje.quantidade) atencao.push({ chave: 'ph', para: '/fin/pagar-receber?tipo=despesa&situacao=hoje', titulo: plural(fin.pagar.hoje.quantidade, 'conta a pagar hoje', 'contas a pagar hoje'), valor: formatarMoeda(fin.pagar.hoje.valor), tom: 'aviso' });
+    if (fin.extratoPendente) atencao.push({ chave: 'ofx', para: '/fin/conciliacao', titulo: plural(fin.extratoPendente, 'linha do extrato para conciliar', 'linhas do extrato para conciliar'), valor: 'Conciliar', tom: 'aviso' });
     if (fin.receber.vencidas.quantidade) atencao.push({ chave: 'rv', para: '/fin/pagar-receber?tipo=receita&situacao=vencidas', titulo: plural(fin.receber.vencidas.quantidade, 'recebimento atrasado', 'recebimentos atrasados'), valor: formatarMoeda(fin.receber.vencidas.valor), tom: 'perigo' });
   }
   if (frota) {

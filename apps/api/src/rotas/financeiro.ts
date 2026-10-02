@@ -548,6 +548,10 @@ export function rotasFinanceiro(banco: Banco) {
         const antes = (await c.query('SELECT * FROM transferencias WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])).rows[0];
         if (!antes) throw naoEncontrado('Transferência');
         await c.query('UPDATE transferencias SET excluido_em = now() WHERE id = $1', [antes.id]);
+        await c.query(
+          `UPDATE extrato_linhas SET status = 'pendente', acao = NULL, transferencia_id = NULL, conciliado_por_id = NULL, conciliado_em = NULL WHERE transferencia_id = $1`,
+          [antes.id],
+        );
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'transferencias', entidadeId: antes.id, antes });
       });
       return { ok: true };
@@ -865,6 +869,11 @@ export function rotasFinanceiro(banco: Banco) {
         const antes = (await c.query('SELECT * FROM parcelas WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [req.params.id, empresaId])).rows[0];
         if (!antes) throw naoEncontrado('Parcela');
         if (antes.status !== 'paga') throw new ErroHttp(409, 'Esta parcela não está paga.');
+        // Se estava conciliada com o extrato, a linha do extrato volta a ficar pendente.
+        await c.query(
+          `UPDATE extrato_linhas SET status = 'pendente', acao = NULL, parcela_id = NULL, conciliado_por_id = NULL, conciliado_em = NULL WHERE parcela_id = $1`,
+          [antes.id],
+        );
         const depois = (
           await c.query(
             `UPDATE parcelas SET status = 'aberta', data_pagamento = NULL, conta_financeira_id = NULL, forma_pagamento = NULL, juros_centavos = 0,
@@ -934,6 +943,9 @@ export function rotasFinanceiro(banco: Banco) {
         };
       };
       const temPlano = (await banco.query('SELECT 1 FROM plano_contas WHERE empresa_id = $1 LIMIT 1', [empresaId])).rowCount! > 0;
+      const extratoPendente = (
+        await banco.query("SELECT count(*)::int AS n FROM extrato_linhas WHERE empresa_id = $1 AND status = 'pendente'", [empresaId])
+      ).rows[0].n;
       const notasParaConferir = (
         await banco.query("SELECT count(*)::int AS n FROM notas_fiscais WHERE empresa_id = $1 AND excluido_em IS NULL AND status IN ('rascunho', 'aguardando_conferencia')", [empresaId])
       ).rows[0].n;
@@ -944,6 +956,7 @@ export function rotasFinanceiro(banco: Banco) {
         receber: bloco('receita'),
         configurado: { planoContas: temPlano, contas: contas.length > 0 },
         notasParaConferir,
+        extratoPendente,
       };
     });
   };
