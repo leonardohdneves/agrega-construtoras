@@ -366,7 +366,7 @@ export function textoFalta(i: Pick<ItemManutencao, 'situacao' | 'faltaKm' | 'fal
   const partes: { v: number; t: string }[] = [];
   if (i.faltaKm !== null) partes.push({ v: i.faltaKm, t: `${formatarNumero(Math.abs(i.faltaKm))} km` });
   if (i.faltaHoras !== null) partes.push({ v: i.faltaHoras * 30, t: `${formatarNumero(Math.abs(i.faltaHoras))} h` });
-  if (i.faltaDias !== null) partes.push({ v: i.faltaDias * 400, t: `${formatarNumero(Math.abs(i.faltaDias))} dias` });
+  if (i.faltaDias !== null) partes.push({ v: i.faltaDias * 400, t: `${formatarNumero(Math.abs(i.faltaDias))} ${Math.abs(i.faltaDias) === 1 ? 'dia' : 'dias'}` });
   const vencidos = partes.filter((p) => p.v < 0);
   if (vencidos.length) return `Passou ${vencidos.map((p) => p.t).join(' e ')}`;
   const menor = partes.sort((a, b) => a.v - b.v)[0];
