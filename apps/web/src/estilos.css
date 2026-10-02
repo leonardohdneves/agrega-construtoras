@@ -256,7 +256,7 @@ select.busca { appearance: auto; }
 .nav-celular .nav-botao { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; min-height: 48px; font: 400 12px/1.2 var(--font-sans); color: var(--cement); background: none; border: 0; cursor: pointer; }
 
 /* ---------- Abas, caixas de marcar, OS ---------- */
-.abas { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; }
+.abas { display: flex; gap: 4px; border-bottom: 1px solid var(--border); overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
 .abas button { background: none; border: 0; border-bottom: 3px solid transparent; margin-bottom: -1px; padding: 10px 14px; min-height: 44px; font: 500 15px/1 var(--font-sans); color: var(--ink-muted); cursor: pointer; white-space: nowrap; }
 .abas button:hover { color: var(--ink); }
 .abas button.ativa { color: var(--ink); font-weight: 600; border-bottom-color: var(--action); }
@@ -310,7 +310,7 @@ select.campo-tabela { width: 100%; min-width: 150px; }
 @media (max-width: 760px) { .linha-item-nota { grid-template-columns: 1fr 1fr; } .linha-item-nota .campo:first-child, .linha-item-nota .campo:nth-child(4) { grid-column: 1 / -1; } }
 
 /* ---------- Painel por abas ---------- */
-.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+.kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); }
 @media (max-width: 640px) { .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; } }
 .kpi {
   container-type: inline-size; min-width: 0; display: flex; flex-direction: column; gap: 4px;
