@@ -7,7 +7,7 @@ const VAZIO: Novo = { nome: '', email: '', perfil: 'motorista', senha: '', telef
 
 function podeGerenciar(quem: Perfil, alvo: Perfil) {
   if (quem === 'dono') return alvo !== 'admin_sistema';
-  if (quem === 'gestor') return alvo === 'motorista' || alvo === 'operador_usina';
+  if (quem === 'gestor') return alvo === 'motorista' || alvo === 'operador_usina' || alvo === 'laboratorista';
   return false;
 }
 
@@ -34,7 +34,7 @@ export function Usuarios() {
   }, [carregar]);
 
   if (!eu) return null;
-  const perfisPermitidos = (['dono', 'gestor', 'operador_usina', 'motorista'] as const).filter((p) => podeGerenciar(eu.perfil, p));
+  const perfisPermitidos = (['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista'] as const).filter((p) => podeGerenciar(eu.perfil, p));
 
   async function executar(acao: () => Promise<void>, mensagem: string) {
     setErro('');
@@ -186,7 +186,7 @@ export function Usuarios() {
                           }
                           style={{ height: 36, borderRadius: 8, border: '1px solid var(--border)', background: 'var(--surface-card)', color: 'var(--ink)', padding: '0 8px' }}
                         >
-                          {(['dono', 'gestor', 'operador_usina', 'motorista'] as const).map((p) => (
+                          {(['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista'] as const).map((p) => (
                             <option key={p} value={p}>
                               {NOMES_PERFIL[p]}
                             </option>

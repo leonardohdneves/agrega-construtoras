@@ -4,7 +4,7 @@ export type Unidade = 'pct' | 'moeda' | 'km_l' | 'l_h' | 'dias' | 'numero' | 'mo
 export type IndicadorDados = {
   id: string;
   nome: string;
-  modulo: 'Frota' | 'Financeiro' | 'Gerencial' | 'Administrativo' | 'Produção';
+  modulo: 'Frota' | 'Financeiro' | 'Gerencial' | 'Administrativo' | 'Produção' | 'Qualidade';
   unidade: Unidade;
   formula: string;
   fonte: string;

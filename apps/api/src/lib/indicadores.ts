@@ -32,6 +32,13 @@ export type Bruto = {
   materialTeorico: number; // centavos
   materialLancado: number; // centavos: cimento, areia, brita e aditivos lançados
   betoneiraDias: number;
+  qualRelSoma: number; // soma de (resultado na idade de controle ÷ fck)
+  qualN: number;
+  qualAbaixo: number;
+  slumpMedidos: number;
+  slumpFora: number;
+  cpsPrevistos: number;
+  cpsNoPrazo: number;
 };
 
 export type Retrato = {
@@ -46,13 +53,14 @@ export type Retrato = {
   notasPendentes: number;
   perdaInventario: number; // diferença (valor) do último inventário, negativa quando falta
   consumoInventario: number; // consumo (valor) no período do último inventário
+  calibracoesVencidas: number;
 };
 
 export const BRUTO_ZERO: Bruto = {
   receita: 0, lucroBruto: 0, resultado: 0, custoFrotaLancado: 0, custoFrotaSemNota: 0, dieselValor: 0, dieselLitros: 0, kmBet: 0, litrosBet: 0,
   horasBomba: 0, litrosBomba: 0, custoBet: 0, custoBomba: 0, osConcluidas: 0, osDiasParado: 0, osCusto: 0, recPonderado: 0, recValor: 0,
   pagPonderado: 0, pagValor: 0, abastPosto: 0, abastComNota: 0, m3Produzido: 0, m3Devolvido: 0, cimentoKg: 0, materialTeorico: 0,
-  materialLancado: 0, betoneiraDias: 0,
+  materialLancado: 0, betoneiraDias: 0, qualRelSoma: 0, qualN: 0, qualAbaixo: 0, slumpMedidos: 0, slumpFora: 0, cpsPrevistos: 0, cpsNoPrazo: 0,
 };
 
 export function somarBrutos(xs: Bruto[]): Bruto {
@@ -66,7 +74,7 @@ const div = (a: number, b: number) => (b ? a / b : null);
 export type Indicador = {
   id: string;
   nome: string;
-  modulo: 'Frota' | 'Financeiro' | 'Gerencial' | 'Administrativo' | 'Produção';
+  modulo: 'Frota' | 'Financeiro' | 'Gerencial' | 'Administrativo' | 'Produção' | 'Qualidade';
   unidade: Unidade;
   formula: string;
   fonte: string;
@@ -255,6 +263,42 @@ export const INDICADORES: Indicador[] = [
     fonte: 'Inventários de insumos.',
     leitura: 'Quanto do material sumiu além do traço: dosagem acima, umidade, desperdício ou desvio.',
     agora: (r) => (r.consumoInventario ? -r.perdaInventario / r.consumoInventario : null),
+  },
+  // ---------- Qualidade ----------
+  {
+    id: 'resistencia_relativa', nome: 'Resistência sobre o fck', modulo: 'Qualidade', unidade: 'pct', melhor: 'maior',
+    formula: 'Média de (resultado do exemplar na idade de controle ÷ fck do traço), pelas cargas moldadas no mês.',
+    fonte: 'Corpos de prova rompidos e traços.',
+    leitura: 'Quanto o concreto entregue passa do fck. Muito acima indica traço com cimento sobrando; perto de 100%, risco de não conformidade.',
+    bruto: (b) => div(b.qualRelSoma, b.qualN),
+  },
+  {
+    id: 'abaixo_fck', nome: 'Exemplares abaixo do fck', modulo: 'Qualidade', unidade: 'pct', melhor: 'menor',
+    formula: 'Exemplares com resultado na idade de controle abaixo do fck ÷ exemplares rompidos.',
+    fonte: 'Corpos de prova rompidos e traços.',
+    leitura: 'Parte das cargas que não atingiu o fck. Cada caso merece análise com o responsável técnico.',
+    bruto: (b) => div(b.qualAbaixo, b.qualN),
+  },
+  {
+    id: 'slump_fora', nome: 'Slump fora da faixa', modulo: 'Qualidade', unidade: 'pct', melhor: 'menor',
+    formula: 'Cargas com slump medido fora da faixa do traço ÷ cargas com slump medido.',
+    fonte: 'Slump das amostras e faixa do traço.',
+    leitura: 'Consistência fora do pedido: reclamação na obra, água adicionada ou concreto devolvido.',
+    bruto: (b) => div(b.slumpFora, b.slumpMedidos),
+  },
+  {
+    id: 'cps_no_prazo', nome: 'CPs rompidos no prazo', modulo: 'Qualidade', unidade: 'pct', melhor: 'maior',
+    formula: 'Corpos de prova rompidos até a data prevista ÷ corpos de prova previstos para o mês (até hoje).',
+    fonte: 'Corpos de prova.',
+    leitura: 'Disciplina do laboratório. CP rompido fora da idade perde o valor de controle.',
+    bruto: (b) => div(b.cpsNoPrazo, b.cpsPrevistos),
+  },
+  {
+    id: 'calibracoes_vencidas', nome: 'Calibrações vencidas', modulo: 'Qualidade', unidade: 'numero', melhor: 'menor', retrato: true,
+    formula: 'Equipamentos ativos com a calibração vencida, hoje.',
+    fonte: 'Cadastro de equipamentos.',
+    leitura: 'Balança ou prensa sem calibração compromete a dosagem e os resultados.',
+    agora: (r) => r.calibracoesVencidas,
   },
   // ---------- Administrativo ----------
   {

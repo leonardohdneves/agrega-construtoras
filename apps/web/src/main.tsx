@@ -34,6 +34,8 @@ import { MinhaEscala, MinhaProducao, ProducaoMotoristas } from './paginas/ProdMo
 import { Escala } from './paginas/ProdEscala';
 import { Estoque } from './paginas/ProdEstoque';
 import { RelProducao } from './paginas/RelProducao';
+import { Amostras, CpsARomper, Laudo, Resistencia } from './paginas/Qualidade';
+import { ConfigQualidade, EnsaiosInsumos, Equipamentos } from './paginas/QualCadastros';
 import { Regras } from './paginas/Regras';
 import { Dre } from './paginas/Dre';
 import { Fluxo } from './paginas/Fluxo';
@@ -115,7 +117,14 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="adm/colaboradores" element={<Protegido perfis={['dono', 'gestor']}><Motoristas key="colaboradores" modo="colaboradores" /></Protegido>} />
             <Route path="prod/cargas" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><Cargas /></Protegido>} />
             <Route path="prod/cargas/nova" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><NovaCarga /></Protegido>} />
-            <Route path="prod/tracos" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><Tracos /></Protegido>} />
+            <Route path="prod/tracos" element={<Protegido perfis={['dono', 'gestor', 'operador_usina', 'laboratorista']}><Tracos /></Protegido>} />
+            <Route path="qual/cps" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><CpsARomper /></Protegido>} />
+            <Route path="qual/amostras" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Amostras /></Protegido>} />
+            <Route path="qual/resistencia" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Resistencia /></Protegido>} />
+            <Route path="qual/laudo" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Laudo /></Protegido>} />
+            <Route path="qual/insumos" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><EnsaiosInsumos /></Protegido>} />
+            <Route path="qual/equipamentos" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Equipamentos /></Protegido>} />
+            <Route path="qual/config" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><ConfigQualidade /></Protegido>} />
             <Route path="prod/insumos" element={<Protegido perfis={['dono', 'gestor']}><Insumos /></Protegido>} />
             <Route path="prod/motoristas" element={<Protegido perfis={['dono', 'gestor']}><ProducaoMotoristas /></Protegido>} />
             <Route path="prod/estoque" element={<Protegido perfis={['dono', 'gestor']}><Estoque /></Protegido>} />

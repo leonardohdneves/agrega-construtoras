@@ -959,7 +959,21 @@ export function rotasFinanceiro(banco: Banco) {
           [empresaId, hojeBrasil()],
         )
       ).rows[0].n;
+      // Qualidade: corpos de prova atrasados, resultados abaixo do fck (60 dias) e calibrações vencidas.
+      const qual = (
+        await banco.query(
+          `SELECT (SELECT count(*) FROM corpos_prova cp JOIN amostras a ON a.id = cp.amostra_id
+                    WHERE cp.empresa_id = $1 AND cp.situacao = 'aguardando' AND a.status = 'ativa' AND cp.data_prevista < $2)::int AS cps,
+                  (SELECT count(*) FROM equipamentos WHERE empresa_id = $1 AND excluido_em IS NULL AND ativo AND ultima_calibracao + validade_dias < $2)::int AS calib,
+                  (SELECT count(*) FROM amostras a JOIN cargas ca ON ca.id = a.carga_id JOIN tracos t ON t.id = ca.traco_id
+                    WHERE a.empresa_id = $1 AND a.status = 'ativa' AND a.data_moldagem > $2::date - 60 AND t.fck IS NOT NULL
+                      AND (SELECT max(cp.resistencia_mpa) FROM corpos_prova cp WHERE cp.amostra_id = a.id AND cp.situacao = 'rompido'
+                            AND cp.idade_dias = coalesce((SELECT idade_controle FROM qualidade_config WHERE empresa_id = $1), 28)) < t.fck)::int AS abaixo`,
+          [empresaId, hojeBrasil()],
+        )
+      ).rows[0];
       return {
+        qualidade: { cpsAtrasados: qual.cps, calibracoesVencidas: qual.calib, abaixoFck: qual.abaixo },
         estoqueBaixo,
         saldoTotal: Math.round(contas.reduce((s, c) => s + (c.saldo ?? 0), 0) * 100) / 100,
         contas,

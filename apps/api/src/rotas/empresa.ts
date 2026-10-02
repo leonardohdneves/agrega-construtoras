@@ -9,7 +9,7 @@ import { empresaDo, exigir } from '../sessao.ts';
 
 export function rotasEmpresa(banco: Banco) {
   return async function (app: FastifyInstance) {
-    app.get('/', { preHandler: exigir(banco, 'dono', 'gestor', 'motorista', 'operador_usina') }, async (req) => {
+    app.get('/', { preHandler: exigir(banco, 'dono', 'gestor', 'motorista', 'operador_usina', 'laboratorista') }, async (req) => {
       const r = await banco.query('SELECT * FROM empresas WHERE id = $1', [empresaDo(req)]);
       if (!r.rows[0]) throw naoEncontrado('Empresa');
       return { empresa: empresaPublica(r.rows[0]) };

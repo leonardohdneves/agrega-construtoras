@@ -9,6 +9,7 @@ import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { gravarConsumoCarga } from '../lib/estoque.ts';
+import { cancelarAmostraCarga, criarAmostraCarga, reprogramarAmostra } from '../lib/qualidade.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -67,6 +68,7 @@ const esquemaCarga = z.object({
   operadorBombaId: idOpcional,
   volumeBombeado: decimal('Volume bombeado inválido.').nullable().optional(),
   devolvido: decimal('Volume devolvido inválido.').optional().default(0),
+  slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
   documento: texto(60),
   observacoes: texto(1000),
 });
@@ -148,6 +150,7 @@ function cargaPublica(r: Record<string, any>) {
     operadorBombaNome: r.operador_nome,
     volumeBombeado: num(r.volume_bombeado_m3),
     devolvido: Number(r.devolvido_m3),
+    slump: r.slump_cm === null || r.slump_cm === undefined ? null : Number(r.slump_cm),
     documento: r.documento,
     observacoes: r.observacoes,
     status: r.status,
@@ -158,11 +161,11 @@ function cargaPublica(r: Record<string, any>) {
 
 const SELECT_CARGA = `
   SELECT c.*, ${DIA_LOCAL('c.data_hora')} AS dia, t.codigo AS traco_codigo, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome,
-         b.codigo AS betoneira_codigo, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por
+         b.codigo AS betoneira_codigo, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por, am.slump_cm
     FROM cargas c JOIN tracos t ON t.id = c.traco_id JOIN veiculos b ON b.id = c.betoneira_id
     LEFT JOIN clientes cl ON cl.id = c.cliente_id LEFT JOIN motoristas m ON m.id = c.motorista_id
     LEFT JOIN veiculos bo ON bo.id = c.bomba_id LEFT JOIN motoristas o ON o.id = c.operador_bomba_id
-    LEFT JOIN usuarios u ON u.id = c.registrado_por_id`;
+    LEFT JOIN usuarios u ON u.id = c.registrado_por_id LEFT JOIN amostras am ON am.carga_id = c.id`;
 
 /** Confere se os cadastros escolhidos na carga são desta empresa e do tipo certo. */
 async function validarCarga(c: Cliente, empresaId: string, d: z.infer<typeof esquemaCarga>) {
@@ -309,10 +312,11 @@ export function rotasProducao(banco: Banco) {
   return async function (app: FastifyInstance) {
     const gestao = exigir(banco, 'dono', 'gestor');
     const usina = exigir(banco, 'dono', 'gestor', 'operador_usina');
+    const consultaTracos = exigir(banco, 'dono', 'gestor', 'operador_usina', 'laboratorista');
     const motorista = exigir(banco, 'motorista');
 
     // ======================= Insumos =======================
-    app.get('/insumos', { preHandler: usina }, async (req) => {
+    app.get('/insumos', { preHandler: consultaTracos }, async (req) => {
       const r = await banco.query(
         `SELECT i.*, (SELECT count(*) FROM tracos_itens ti JOIN tracos t ON t.id = ti.traco_id WHERE ti.insumo_id = i.id AND t.excluido_em IS NULL) AS tracos
            FROM insumos i WHERE i.empresa_id = $1 AND i.excluido_em IS NULL
@@ -370,7 +374,7 @@ export function rotasProducao(banco: Banco) {
     });
 
     // ======================= Traços =======================
-    app.get<{ Querystring: { todos?: string } }>('/tracos', { preHandler: usina }, async (req) => {
+    app.get<{ Querystring: { todos?: string } }>('/tracos', { preHandler: consultaTracos }, async (req) => {
       const empresaId = empresaDo(req);
       const tracos = (
         await banco.query(`SELECT * FROM tracos WHERE empresa_id = $1 AND excluido_em IS NULL ${req.query.todos === '1' ? '' : 'AND ativo'} ORDER BY ativo DESC, fck NULLS LAST, codigo`, [empresaId])
@@ -386,7 +390,7 @@ export function rotasProducao(banco: Banco) {
       return { tracos: tracos.map((t) => tracoPublico(t, itens.filter((i) => i.traco_id === t.id))) };
     });
 
-    app.get<{ Params: { id: string } }>('/tracos/:id', { preHandler: usina }, async (req) => ({ traco: await carregarTraco(banco, empresaDo(req), req.params.id) }));
+    app.get<{ Params: { id: string } }>('/tracos/:id', { preHandler: consultaTracos }, async (req) => ({ traco: await carregarTraco(banco, empresaDo(req), req.params.id) }));
 
     async function gravarItens(c: Cliente, empresaId: string, tracoId: string, itens: { insumoId: string; quantidade: number }[]) {
       const ids = [...new Set(itens.map((i) => i.insumoId))];
@@ -541,6 +545,7 @@ export function rotasProducao(banco: Banco) {
           )
         ).rows[0];
         await gravarConsumoCarga(c, x.id);
+        await criarAmostraCarga(c, empresaId, x.id, dataHora, d.slump ?? null);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'cargas', entidadeId: x.id, depois: { ...d, numero } });
         return x.id as string;
       });
@@ -581,6 +586,8 @@ export function rotasProducao(banco: Banco) {
             d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes],
         );
         if (parcial.tracoId !== undefined || parcial.volume !== undefined) await gravarConsumoCarga(c, antes.id);
+        if (dataHora) await reprogramarAmostra(c, antes.id, dataHora);
+        if (parcial.slump !== undefined) await c.query('UPDATE amostras SET slump_cm = $2, atualizado_em = now() WHERE carga_id = $1', [antes.id, parcial.slump]);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'cargas', entidadeId: antes.id, antes: cargaPublica(antes), depois: parcial });
       });
       const r = await banco.query(`${SELECT_CARGA} WHERE c.id = $1`, [req.params.id]);
@@ -595,6 +602,7 @@ export function rotasProducao(banco: Banco) {
         if (antes.status === 'cancelada') throw new ErroHttp(400, 'A carga já está cancelada.');
         await c.query(`UPDATE cargas SET status = 'cancelada', motivo_cancelamento = $3, atualizado_em = now() WHERE id = $1 AND empresa_id = $2`, [antes.id, empresaId, motivo]);
         await gravarConsumoCarga(c, antes.id);
+        await cancelarAmostraCarga(c, antes.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'cargas', entidadeId: antes.id, antes: { status: antes.status }, depois: { status: 'cancelada', motivo } });
       });
       const r = await banco.query(`${SELECT_CARGA} WHERE c.id = $1`, [req.params.id]);

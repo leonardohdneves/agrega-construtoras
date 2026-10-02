@@ -6,7 +6,7 @@ import { ATALHOS, mesCurto, SeletorPeriodo, type Periodo } from '../componentes/
 import { baixarCsv } from '../componentes/Relatorio';
 import { CabecalhoDocumento, textoPeriodo } from '../componentes/Documento';
 
-const MODULOS = ['Gerencial', 'Financeiro', 'Frota', 'Produção', 'Administrativo'] as const;
+const MODULOS = ['Gerencial', 'Financeiro', 'Frota', 'Produção', 'Qualidade', 'Administrativo'] as const;
 
 export function Indicadores() {
   const [params, setParams] = useSearchParams();

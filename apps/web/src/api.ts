@@ -27,7 +27,7 @@ export async function api<T = any>(caminho: string, opcoes: { metodo?: string; c
   return dados as T;
 }
 
-export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista' | 'operador_usina';
+export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista' | 'operador_usina' | 'laboratorista';
 
 export type Usuario = {
   id: string;
@@ -62,6 +62,7 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   gestor: 'Gestor',
   motorista: 'Motorista',
   operador_usina: 'Operador de usina',
+  laboratorista: 'Laboratorista',
 };
 
 export function formatarCnpj(c: string): string {
@@ -660,7 +661,7 @@ export type Carga = {
   id: string; numero: number; dataHora: string; dia: string; tracoId: string; tracoCodigo: string; volume: number; clienteId: string | null; clienteNome: string | null;
   obra: string | null; betoneiraId: string; betoneiraCodigo: string; motoristaId: string | null; motoristaNome: string | null; bombaId: string | null; bombaCodigo: string | null;
   operadorBombaId: string | null; operadorBombaNome: string | null; volumeBombeado: number | null; devolvido: number; documento: string | null; observacoes: string | null;
-  status: 'produzida' | 'cancelada'; motivoCancelamento: string | null; registradoPor: string | null;
+  status: 'produzida' | 'cancelada'; motivoCancelamento: string | null; registradoPor: string | null; slump: number | null;
 };
 export type OpcoesCarga = {
   tracos: { id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null }[];
@@ -690,3 +691,29 @@ export function diaCurto(iso: string): string {
   const d = new Date(`${iso}T12:00:00`);
   return `${d.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '')}, ${iso.slice(8, 10)}/${iso.slice(5, 7)}`;
 }
+
+// ---------------------------------------------------------------- Qualidade
+export type ConfigQualidade = { idades: number[]; cpsPorIdade: number; idadeControle: number; diametroMm: number; responsavelNome: string | null; responsavelRegistro: string | null };
+export type CpAromper = {
+  id: string; amostraId: string; idade: number; numero: number; previsto: string; atraso: number; cargaNumero: number; moldagem: string; tracoCodigo: string; fck: number | null;
+  clienteNome: string | null; obra: string | null; betoneiraCodigo: string; slump: number | null; anterior: number | null;
+};
+export type Amostra = {
+  amostraId: string; cargaId: string; numero: number; dataHora: string; dia: string; tracoId: string; tracoCodigo: string; fck: number | null; slumpTraco: string | null;
+  faixa: [number, number] | null; volume: number; clienteId: string | null; clienteNome: string | null; obra: string | null; betoneiraCodigo: string; documento: string | null;
+  slump: number | null; slumpFora: boolean | null; temperatura: number | null; moldadoPor: string | null; observacao: string | null; status: 'ativa' | 'cancelada';
+  idades: { idade: number; previsto: string; cps: { id: string; numero: number; resistencia: number | null; situacao: 'aguardando' | 'rompido' | 'descartado'; dataRuptura: string | null }[]; exemplar: number | null }[];
+  resultadoControle: number | null; conforme: boolean | null;
+};
+export type ResumoQualidade = {
+  cargas: number; m3: number; exemplares: number; aguardando: number; media: number | null; desvio: number | null; minimo: number | null; fck: number | null;
+  fckEstimado: number | null; abaixoFck: number; conforme: boolean | null; slumpMedidos: number; slumpFora: number;
+};
+export type Equipamento = {
+  id: string; nome: string; tipo: 'balanca' | 'prensa' | 'cone_slump' | 'termometro' | 'molde' | 'outro'; identificacao: string | null; ultimaCalibracao: string | null;
+  validadeDias: number | null; proximaCalibracao: string | null; dias: number | null; situacao: 'vencido' | 'vencendo' | 'em_dia' | 'sem_data'; certificado: string | null;
+  laboratorio: string | null; observacoes: string | null; ativo: boolean;
+};
+export const NOMES_TIPO_EQUIP: Record<Equipamento['tipo'], string> = { balanca: 'Balança', prensa: 'Prensa', cone_slump: 'Cone de slump', termometro: 'Termômetro', molde: 'Moldes', outro: 'Outro' };
+/** 31.5 → "31,5 MPa" */
+export const mpa = (v: number | null | undefined) => (v === null || v === undefined ? '—' : `${v.toLocaleString('pt-BR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} MPa`);

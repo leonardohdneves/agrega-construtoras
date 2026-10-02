@@ -31,6 +31,7 @@ type Dados = {
   operadorBombaId: string;
   volumeBombeado: string;
   devolvido: string;
+  slump: string;
   documento: string;
   observacoes: string;
 };
@@ -48,6 +49,7 @@ const vazio = (): Dados => ({
   operadorBombaId: '',
   volumeBombeado: '',
   devolvido: '',
+  slump: '',
   documento: '',
   observacoes: '',
 });
@@ -66,6 +68,7 @@ function deCarga(c: Carga): Dados {
     operadorBombaId: c.operadorBombaId ?? '',
     volumeBombeado: c.volumeBombeado === null ? '' : String(c.volumeBombeado).replace('.', ','),
     devolvido: c.devolvido ? String(c.devolvido).replace('.', ',') : '',
+    slump: c.slump === null ? '' : String(c.slump).replace('.', ','),
     documento: c.documento ?? '',
     observacoes: c.observacoes ?? '',
   };
@@ -108,6 +111,7 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
         operadorBombaId: d.comBomba ? d.operadorBombaId || null : null,
         volumeBombeado: d.comBomba ? (lerNumero(d.volumeBombeado) ?? volume) : null,
         devolvido: lerNumero(d.devolvido) ?? 0,
+        slump: d.slump.trim() ? lerNumero(d.slump) : null,
         documento: d.documento,
         observacoes: d.observacoes,
       };
@@ -227,10 +231,14 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
 
       <div className="campos">
         <div className="campo">
+          <label htmlFor="c-slump">Slump medido (cm)</label>
+          <input id="c-slump" className="mono" inputMode="decimal" placeholder="ex.: 10" value={d.slump} onChange={(e) => setD({ ...d, slump: e.target.value })} />
+        </div>
+        <div className="campo">
           <label htmlFor="c-dev">Concreto devolvido (m³)</label>
           <input id="c-dev" className="mono" inputMode="decimal" placeholder="0" value={d.devolvido} onChange={(e) => setD({ ...d, devolvido: e.target.value })} />
         </div>
-        <div className="campo" style={{ gridColumn: 'span 2' }}>
+        <div className="campo">
           <label htmlFor="c-obs">Observações</label>
           <input id="c-obs" value={d.observacoes} onChange={(e) => setD({ ...d, observacoes: e.target.value })} />
         </div>

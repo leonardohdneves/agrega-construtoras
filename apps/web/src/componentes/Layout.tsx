@@ -5,6 +5,7 @@ import { useSessao } from '../sessao';
 import { Logo } from './Logo';
 import {
   IconeBetoneira,
+  IconeFrasco,
   IconeBomba,
   IconeCaminhao,
   IconeConta,
@@ -22,6 +23,7 @@ type Modulo = { id: string; numero?: number; titulo: string; icone: ReactNode; p
 
 const GESTAO: Perfil[] = ['dono', 'gestor'];
 const USINA: Perfil[] = ['dono', 'gestor', 'operador_usina'];
+const LAB: Perfil[] = ['dono', 'gestor', 'laboratorista'];
 
 export const MODULOS: Modulo[] = [
   {
@@ -63,6 +65,22 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Relatórios', para: '/prod/relatorios', perfis: GESTAO },
       { rotulo: 'Minha produção', para: '/minha-producao', perfis: ['motorista'] },
       { rotulo: 'Minha escala', para: '/minha-escala', perfis: ['motorista'] },
+    ],
+  },
+  {
+    id: 'qualidade',
+    titulo: 'Qualidade',
+    icone: <IconeFrasco />,
+    perfis: LAB,
+    itens: [
+      { rotulo: 'CPs a romper', para: '/qual/cps' },
+      { rotulo: 'Amostras e resultados', para: '/qual/amostras' },
+      { rotulo: 'Resistência e fck estimado', para: '/qual/resistencia' },
+      { rotulo: 'Laudo para o cliente', para: '/qual/laudo' },
+      { rotulo: 'Ensaios de insumos', para: '/qual/insumos' },
+      { rotulo: 'Equipamentos e calibração', para: '/qual/equipamentos' },
+      { rotulo: 'Traços', para: '/prod/tracos', perfis: ['laboratorista'] },
+      { rotulo: 'Configurações da qualidade', para: '/qual/config' },
     ],
   },
   {
@@ -264,7 +282,12 @@ export function Layout() {
           <IconeInicio />
           Início
         </NavLink>
-        {perfil === 'operador_usina' ? (
+        {perfil === 'laboratorista' ? (
+          <NavLink to="/qual/cps" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeFrasco />
+            CPs
+          </NavLink>
+        ) : perfil === 'operador_usina' ? (
           <NavLink to="/prod/cargas/nova" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconeBetoneira />
             Carga
@@ -279,6 +302,12 @@ export function Layout() {
           <NavLink to="/prod/cargas" end className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconeCaminhao />
             Cargas
+          </NavLink>
+        )}
+        {perfil === 'laboratorista' && (
+          <NavLink to="/qual/amostras" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeGrafico />
+            Resultados
           </NavLink>
         )}
         {perfil === 'motorista' && (

@@ -14,3 +14,4 @@ export const IconeEngrenagem = () => (<svg {...base}><circle cx="12" cy="12" r="
 export const IconePasta = () => (<svg {...base}><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>);
 export const IconeMenu = () => (<svg {...base}><path d="M4 6h16M4 12h16M4 18h16" /></svg>);
 export const IconeBetoneira = () => (<svg {...base}><path d="M2 16V9h5l2 3h3" /><path d="M12 15l9-5-1-3-8 3z" /><path d="M2 16h19" /><circle cx="6" cy="18" r="2" /><circle cx="17" cy="18" r="2" /></svg>);
+export const IconeFrasco = () => (<svg {...base}><path d="M9 3h6" /><path d="M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3" /><path d="M7.5 15h9" /></svg>);

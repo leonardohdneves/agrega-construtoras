@@ -9,6 +9,7 @@ import { empresaDo, exigir } from '../sessao.ts';
 import { SQL_SALDO } from './financeiro.ts';
 import { periodo } from './gerencial.ts';
 import { situacaoManutencao } from './manutencao.ts';
+import { faixaSlump } from '../lib/qualidade.ts';
 
 const reais = (c: unknown) => Math.round(Number(c ?? 0)) / 100;
 const num = (v: unknown) => (v === null || v === undefined ? 0 : Number(v));
@@ -476,6 +477,46 @@ async function brutosPorMes(banco: Banco, empresaId: string, meses: string[], in
   ).rows;
   for (const x of mat) add(x.mes, 'materialLancado', x.v);
 
+  // Qualidade: resultados na idade de controle, slump e corpos de prova no prazo.
+  const idadeControle = (await banco.query('SELECT idade_controle FROM qualidade_config WHERE empresa_id = $1', [empresaId])).rows[0]?.idade_controle ?? 28;
+  const qa = (
+    await banco.query(
+      `SELECT ${MES_TS('a.data_moldagem')} AS mes, a.slump_cm, t.slump AS faixa, t.fck,
+              (SELECT max(cp.resistencia_mpa) FROM corpos_prova cp WHERE cp.amostra_id = a.id AND cp.situacao = 'rompido' AND cp.idade_dias = $4) AS resultado
+         FROM amostras a JOIN cargas ca ON ca.id = a.carga_id JOIN tracos t ON t.id = ca.traco_id
+        WHERE a.empresa_id = $1 AND a.status = 'ativa'
+          AND (a.data_moldagem AT TIME ZONE 'America/Sao_Paulo')::date >= $2::date AND (a.data_moldagem AT TIME ZONE 'America/Sao_Paulo')::date < $3::date`,
+      [...p, idadeControle],
+    )
+  ).rows;
+  for (const x of qa) {
+    if (x.resultado !== null && x.fck) {
+      add(x.mes, 'qualN', 1);
+      add(x.mes, 'qualRelSoma', Number(x.resultado) / Number(x.fck));
+      if (Number(x.resultado) < Number(x.fck)) add(x.mes, 'qualAbaixo', 1);
+    }
+    const f = faixaSlump(x.faixa);
+    if (x.slump_cm !== null && f) {
+      add(x.mes, 'slumpMedidos', 1);
+      if (Number(x.slump_cm) < f[0] || Number(x.slump_cm) > f[1]) add(x.mes, 'slumpFora', 1);
+    }
+  }
+  const cpsMes = (
+    await banco.query(
+      `SELECT to_char(cp.data_prevista, 'YYYY-MM') AS mes, count(*)::int AS previstos,
+              count(*) FILTER (WHERE cp.situacao = 'rompido' AND cp.data_ruptura <= cp.data_prevista)::int AS no_prazo
+         FROM corpos_prova cp JOIN amostras a ON a.id = cp.amostra_id
+        WHERE cp.empresa_id = $1 AND a.status = 'ativa' AND cp.situacao <> 'descartado' AND cp.data_prevista >= $2 AND cp.data_prevista < $3
+          AND cp.data_prevista <= (now() AT TIME ZONE 'America/Sao_Paulo')::date
+        GROUP BY 1`,
+      p,
+    )
+  ).rows;
+  for (const x of cpsMes) {
+    add(x.mes, 'cpsPrevistos', x.previstos);
+    add(x.mes, 'cpsNoPrazo', x.no_prazo);
+  }
+
   // Prazos médios de recebimento e pagamento.
   const prazos = (
     await banco.query(
@@ -550,5 +591,8 @@ async function retratoAtual(banco: Banco, empresaId: string, hoje: string): Prom
     notasPendentes: notas,
     perdaInventario: num(inv?.diferenca),
     consumoInventario: num(inv?.consumo),
+    calibracoesVencidas: (
+      await banco.query('SELECT count(*)::int AS n FROM equipamentos WHERE empresa_id = $1 AND excluido_em IS NULL AND ativo AND ultima_calibracao + validade_dias < $2', [empresaId, hoje])
+    ).rows[0].n,
   };
 }

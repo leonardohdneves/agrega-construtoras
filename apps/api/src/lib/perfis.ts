@@ -1,7 +1,7 @@
 // Regras de quem pode fazer o quê com os usuários da empresa.
 import type { Perfil } from './token.ts';
 
-export const PERFIS_EMPRESA: Perfil[] = ['dono', 'gestor', 'operador_usina', 'motorista'];
+export const PERFIS_EMPRESA: Perfil[] = ['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista'];
 
 export const NOMES_PERFIL: Record<Perfil, string> = {
   admin_sistema: 'Administrador do sistema',
@@ -9,6 +9,7 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   gestor: 'Gestor',
   motorista: 'Motorista',
   operador_usina: 'Operador de usina',
+  laboratorista: 'Laboratorista',
 };
 
 /** Perfis com acesso ao módulo Financeiro. */
@@ -20,7 +21,7 @@ export function acessaFinanceiro(perfil: Perfil): boolean {
 export function podeGerenciarPerfil(quem: Perfil, alvo: Perfil): boolean {
   if (alvo === 'admin_sistema') return false;
   if (quem === 'dono') return true;
-  if (quem === 'gestor') return alvo === 'motorista' || alvo === 'operador_usina';
+  if (quem === 'gestor') return alvo === 'motorista' || alvo === 'operador_usina' || alvo === 'laboratorista';
   return false;
 }
 

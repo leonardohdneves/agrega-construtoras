@@ -20,6 +20,7 @@ import { useSessao } from '../sessao';
 import { fmtIndicador, type IndicadorDados, type RespIndicadores } from '../componentes/Indicadores';
 import { mesCurto } from '../componentes/Periodo';
 import { MinhaEscala } from './ProdMotoristas';
+import { InicioLaboratorio } from './Qualidade';
 
 const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
@@ -36,7 +37,7 @@ type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: {
 type ResumoFrota = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; manutencao: ItemManutencao[]; osAbertas: number; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
 type Bloco = { quantidade: number; valor: number };
 type LadoFin = { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
-type ResumoFin = { saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin; receber: LadoFin; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number; extratoPendente: number; estoqueBaixo?: number };
+type ResumoFin = { saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin; receber: LadoFin; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number; extratoPendente: number; estoqueBaixo?: number; qualidade?: { cpsAtrasados: number; calibracoesVencidas: number; abaixoFck: number } };
 type CustoManut = { veiculoId: string; codigo: string; ordens: number; total: number; pecas: number };
 type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: ConsumoVeiculo[]; manut: CustoManut[]; erro: string };
 
@@ -117,6 +118,9 @@ function AbaGeral({ d }: { d: Dados }) {
     if (fin.notasParaConferir) atencao.push({ chave: 'notas', para: '/fin/notas?situacao=rascunho', titulo: plural(fin.notasParaConferir, 'nota fiscal para conferir', 'notas fiscais para conferir'), valor: 'Conferir', tom: 'aviso' });
     if (fin.pagar.vencidas.quantidade) atencao.push({ chave: 'pv', para: '/fin/pagar-receber?tipo=despesa&situacao=vencidas', titulo: plural(fin.pagar.vencidas.quantidade, 'conta a pagar vencida', 'contas a pagar vencidas'), valor: formatarMoeda(fin.pagar.vencidas.valor), tom: 'perigo' });
     if (fin.pagar.hoje.quantidade) atencao.push({ chave: 'ph', para: '/fin/pagar-receber?tipo=despesa&situacao=hoje', titulo: plural(fin.pagar.hoje.quantidade, 'conta a pagar hoje', 'contas a pagar hoje'), valor: formatarMoeda(fin.pagar.hoje.valor), tom: 'aviso' });
+    if (fin.qualidade?.abaixoFck) atencao.push({ chave: 'fck', para: '/qual/amostras', titulo: plural(fin.qualidade.abaixoFck, 'resultado abaixo do fck (60 dias)', 'resultados abaixo do fck (60 dias)'), valor: 'Analisar', tom: 'perigo' });
+    if (fin.qualidade?.cpsAtrasados) atencao.push({ chave: 'cps', para: '/qual/cps', titulo: plural(fin.qualidade.cpsAtrasados, 'corpo de prova atrasado', 'corpos de prova atrasados'), valor: 'Romper', tom: 'aviso' });
+    if (fin.qualidade?.calibracoesVencidas) atencao.push({ chave: 'calib', para: '/qual/equipamentos', titulo: plural(fin.qualidade.calibracoesVencidas, 'calibração vencida', 'calibrações vencidas'), valor: 'Ver', tom: 'perigo' });
     if (fin.estoqueBaixo) atencao.push({ chave: 'estoque', para: '/prod/estoque', titulo: plural(fin.estoqueBaixo, 'insumo abaixo do estoque mínimo', 'insumos abaixo do estoque mínimo'), valor: 'Ver estoque', tom: 'perigo' });
     if (fin.extratoPendente) atencao.push({ chave: 'ofx', para: '/fin/conciliacao', titulo: plural(fin.extratoPendente, 'linha do extrato para conciliar', 'linhas do extrato para conciliar'), valor: 'Conciliar', tom: 'aviso' });
     if (fin.receber.vencidas.quantidade) atencao.push({ chave: 'rv', para: '/fin/pagar-receber?tipo=receita&situacao=vencidas', titulo: plural(fin.receber.vencidas.quantidade, 'recebimento atrasado', 'recebimentos atrasados'), valor: formatarMoeda(fin.receber.vencidas.valor), tom: 'perigo' });
@@ -421,12 +425,13 @@ function AbaFinanceiro({ d }: { d: Dados }) {
 }
 
 // ---------- Aba Indicadores (só o dono) ----------
-const RETRATO = ['disponibilidade', 'cobertura_caixa', 'inadimplencia', 'revisoes_em_dia', 'notas_pendentes', 'perda_inventario'];
+const RETRATO = ['disponibilidade', 'cobertura_caixa', 'inadimplencia', 'revisoes_em_dia', 'notas_pendentes', 'perda_inventario', 'calibracoes_vencidas'];
 const GRUPOS_IND: { titulo: string; ids: string[] }[] = [
   { titulo: 'Resultado', ids: ['receita_bruta', 'margem_bruta', 'margem_liquida', 'frota_sobre_receita'] },
   { titulo: 'Prazos', ids: ['pmr', 'pmp'] },
   { titulo: 'Frota', ids: ['consumo_bet', 'consumo_bomba', 'preco_diesel', 'custo_km', 'custo_hora_bomba', 'dias_parado_os', 'custo_manutencao'] },
   { titulo: 'Produção', ids: ['volume_produzido', 'm3_betoneira_dia', 'cimento_m3', 'material_teorico_m3', 'material_real_m3', 'frota_m3', 'devolvido_pct'] },
+  { titulo: 'Qualidade', ids: ['resistencia_relativa', 'abaixo_fck', 'slump_fora', 'cps_no_prazo'] },
   { titulo: 'Controle', ids: ['abastecimentos_com_nota'] },
 ];
 
@@ -627,6 +632,8 @@ export function Painel() {
         </>
       ) : usuario.perfil === 'operador_usina' ? (
         <InicioUsina />
+      ) : usuario.perfil === 'laboratorista' ? (
+        <InicioLaboratorio />
       ) : (
         <PainelGestao />
       )}

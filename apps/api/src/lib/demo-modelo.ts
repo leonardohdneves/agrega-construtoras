@@ -9,7 +9,7 @@ import { registrarEntradasNota, saldosEm } from './estoque.ts';
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v3';
+export const VERSAO_DEMO = 'modelo-2026-10-v4';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -169,7 +169,7 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
   await c.query('UPDATE notas_fiscais SET lancamento_id = NULL WHERE empresa_id = $1', [empresaId]);
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
   for (const t of [
-    'extrato_linhas', 'extratos_ofx', 'escalas', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'insumos_produtos',
+    'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'insumos_produtos',
     'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
     'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
     'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
@@ -199,7 +199,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   const usuarios = (await q('SELECT id, email FROM usuarios WHERE empresa_id = $1', [e])).rows as { id: string; email: string }[];
   const usuario = (p: string) => usuarios.find((u) => u.email.startsWith(p))?.id ?? null;
   const gestor = usuario('gestor@') ?? usuario('dono@');
-  for (const [p, nome] of [['dono@', 'Roberto Almeida'], ['gestor@', 'Juliana Freitas'], ['motorista@', 'Carlos Pereira'], ['operador@', 'Sérgio Nunes']]) {
+  for (const [p, nome] of [['dono@', 'Roberto Almeida'], ['gestor@', 'Juliana Freitas'], ['motorista@', 'Carlos Pereira'], ['operador@', 'Sérgio Nunes'], ['laboratorio@', 'Fábio Ramos']]) {
     await q('UPDATE usuarios SET nome = $3 WHERE empresa_id = $1 AND email LIKE $2', [e, `${p}%`, nome]);
   }
 
@@ -609,15 +609,83 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
     }
   }
   cargasDemo.sort((a, b) => a.dataHora.localeCompare(b.dataHora));
+  // Qualidade: toda carga é amostrada (slump e 2 CPs aos 7 e aos 28 dias). Sorteio separado.
+  const rq = sorteio(777);
+  const gauss = () => Math.sqrt(-2 * Math.log(rq() || 1e-9)) * Math.cos(2 * Math.PI * rq());
+  await q(
+    `INSERT INTO qualidade_config (empresa_id, idades, cps_por_idade, idade_controle, diametro_mm, responsavel_nome, responsavel_registro)
+     VALUES ($1, '{7,28}', 2, 28, 100, 'Eng.ª Patrícia Lemos', 'CREA-TO 000000/D (exemplo)')`,
+    [e],
+  );
+  const lab = usuario('laboratorio@') ?? gestor;
+  let baixoForcado = false;
   for (const [i, x] of cargasDemo.entries()) {
     const motorista = rc() < 0.08 ? motoristas[8] : motoristaDo[x.betoneira] ?? null;
-    await q(
+    const carga = await um(
       `INSERT INTO cargas (empresa_id, numero, data_hora, traco_id, volume_m3, cliente_id, obra, betoneira_id, motorista_id, bomba_id, operador_bomba_id,
                            volume_bombeado_m3, devolvido_m3, registrado_por_id, criado_em)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$3)`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$3) RETURNING id`,
       [e, 10001 + i, x.dataHora, traco[x.traco], x.m3, cli[x.cliente], x.obra, veic[x.betoneira], motorista, x.bomba ? veic[x.bomba] : null,
         x.bomba ? motoristaDo[x.bomba] : null, x.bombeado, x.devolvido, usuario('operador@') ?? gestor],
     );
+    const t = TRACOS.find((y) => y[0] === x.traco)!;
+    const centro = Number(t[3].split('±')[0]);
+    const slump = Math.round((centro + gauss() * 1.0 + (rq() < 0.04 ? (rq() < 0.5 ? -3.5 : 3.5) : 0)) * 2) / 2;
+    const am = await um(`INSERT INTO amostras (empresa_id, carga_id, data_moldagem, slump_cm, temperatura_c, moldado_por) VALUES ($1,$2,$3,$4,$5,'Fábio Ramos') RETURNING id`, [
+      e, carga.id, x.dataHora, Math.max(2, slump), Math.round((26 + gauss() * 2.5) * 10) / 10,
+    ]);
+    const fck = t[2];
+    // Um resultado abaixo do fck recente, para o alerta aparecer; os demais raros.
+    const recente = !baixoForcado && somarDias(x.dataHora.slice(0, 10), 28) >= somarDias(hoje, -12) && somarDias(x.dataHora.slice(0, 10), 28) < somarDias(hoje, -3);
+    if (recente) baixoForcado = true;
+    const fc28 = recente || rq() < 0.012 ? fck * (0.9 + rq() * 0.08) : fck * (1.24 + gauss() * 0.07);
+    const fc7 = fc28 * (0.66 + rq() * 0.1);
+    const dia = x.dataHora.slice(0, 10);
+    const linhas: string[] = [];
+    const vals: unknown[] = [];
+    for (const [idade, base] of [[7, fc7], [28, fc28]] as const) {
+      const prevista = somarDias(dia, idade);
+      const atrasado = prevista < hoje && prevista >= somarDias(hoje, -2) && rq() < 0.12;
+      const rompido = prevista < hoje && !atrasado;
+      for (const n of [1, 2]) {
+        const valor = Math.round(base * (n === 1 ? 1 : 0.94 + rq() * 0.05) * 10) / 10;
+        vals.push(e, am.id, idade, n, prevista, rompido ? prevista : null, rompido ? valor : null, rompido ? 'rompido' : 'aguardando', rompido ? lab : null);
+        const k = vals.length - 9;
+        linhas.push(`($${k + 1},$${k + 2},$${k + 3},$${k + 4},$${k + 5},$${k + 6},$${k + 7},$${k + 8},$${k + 9})`);
+      }
+    }
+    await q(`INSERT INTO corpos_prova (empresa_id, amostra_id, idade_dias, numero, data_prevista, data_ruptura, resistencia_mpa, situacao, rompido_por_id) VALUES ${linhas.join(',')}`, vals);
+  }
+  // Equipamentos do laboratório e da usina: um vencendo e um vencido, para mostrar os alertas.
+  for (const [nome, tipo, ident, calibrou, validade, cert, labor] of [
+    ['Balança de cimento da central', 'balanca', 'BAL-01 · 0 a 2.000 kg', -160, 180, 'CAL-2026-0412', 'Metrologia Norte (exemplo)'],
+    ['Balança de agregados da central', 'balanca', 'BAL-02 · 0 a 10.000 kg', -95, 180, 'CAL-2026-0563', 'Metrologia Norte (exemplo)'],
+    ['Dosador de água e aditivo', 'balanca', 'DOS-01', -40, 180, 'CAL-2026-0741', 'Metrologia Norte (exemplo)'],
+    ['Prensa hidráulica 100 t', 'prensa', 'PRE-01 · classe 1', -120, 365, 'CAL-2026-0388', 'Laboratório de Calibração (exemplo)'],
+    ['Cone de Abrams (slump)', 'cone_slump', 'CON-01 e CON-02', -200, 365, null, null],
+    ['Termômetro digital', 'termometro', 'TER-01', -372, 365, 'CAL-2025-1102', 'Metrologia Norte (exemplo)'],
+    ['Moldes cilíndricos 10 × 20 cm', 'molde', '60 unidades', -60, 365, null, null],
+  ] as const) {
+    await q(`INSERT INTO equipamentos (empresa_id, nome, tipo, identificacao, ultima_calibracao, validade_dias, certificado, laboratorio) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, [
+      e, nome, tipo, ident, somarDias(hoje, calibrou), validade, cert, labor,
+    ]);
+  }
+  // Ensaios: umidade da areia todo dia útil e granulometria mensal.
+  for (let d = somarDias(hoje, -60); d <= hoje; d = somarDias(d, 1)) {
+    if (diaSemana(d) === 0 || diaSemana(d) === 6) continue;
+    await q(`INSERT INTO ensaios_insumos (empresa_id, insumo_id, data, tipo, umidade_pct, registrado_por_id, criado_em) VALUES ($1,$2,$3,'umidade',$4,$5,$3::date + time '06:40')`, [
+      e, insumo['Areia média lavada'], d, Math.round((5 + gauss() * 1.0) * 10) / 10, lab,
+    ]);
+  }
+  for (const m of [somarMeses(inicioMes(hoje), -2), somarMeses(inicioMes(hoje), -1), inicioMes(hoje)]) {
+    const d = util(diaDoMes(m, 2));
+    if (d > hoje) continue;
+    await q(`INSERT INTO ensaios_insumos (empresa_id, insumo_id, data, tipo, modulo_finura, dimensao_maxima_mm, pulverulento_pct, registrado_por_id) VALUES ($1,$2,$3,'granulometria',$4,4.8,$5,$6)`, [
+      e, insumo['Areia média lavada'], d, Math.round((2.55 + gauss() * 0.08) * 100) / 100, Math.round((2.6 + gauss() * 0.4) * 10) / 10, lab,
+    ]);
+    await q(`INSERT INTO ensaios_insumos (empresa_id, insumo_id, data, tipo, modulo_finura, dimensao_maxima_mm, pulverulento_pct, registrado_por_id) VALUES ($1,$2,$3,'granulometria',$4,19,$5,$6)`, [
+      e, insumo['Brita 1'], d, Math.round((6.9 + gauss() * 0.1) * 100) / 100, Math.round((0.7 + gauss() * 0.15) * 10) / 10, lab,
+    ]);
   }
 
   // ----- valores da produção dos motoristas (com um reajuste no meio do período) e escala
