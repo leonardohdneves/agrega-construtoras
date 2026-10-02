@@ -17,6 +17,7 @@ import {
   valorPago,
 } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { SQL_SALDOS } from '../lib/estoque.ts';
 
 // ---------- Esquemas ----------
 export function numeroBr(v: unknown): unknown {
@@ -949,7 +950,17 @@ export function rotasFinanceiro(banco: Banco) {
       const notasParaConferir = (
         await banco.query("SELECT count(*)::int AS n FROM notas_fiscais WHERE empresa_id = $1 AND excluido_em IS NULL AND status IN ('rascunho', 'aguardando_conferencia')", [empresaId])
       ).rows[0].n;
+      // Insumos abaixo do estoque mínimo (saldo teórico de hoje).
+      const estoqueBaixo = (
+        await banco.query(
+          `WITH s AS (${SQL_SALDOS})
+           SELECT count(*)::int AS n FROM insumos i JOIN s ON s.insumo_id = i.id
+            WHERE i.ativo AND i.controla_estoque AND i.estoque_minimo IS NOT NULL AND s.saldo < i.estoque_minimo`,
+          [empresaId, hojeBrasil()],
+        )
+      ).rows[0].n;
       return {
+        estoqueBaixo,
         saldoTotal: Math.round(contas.reduce((s, c) => s + (c.saldo ?? 0), 0) * 100) / 100,
         contas,
         pagar: bloco('despesa'),

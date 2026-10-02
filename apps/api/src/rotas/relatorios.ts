@@ -444,6 +444,38 @@ async function brutosPorMes(banco: Banco, empresaId: string, meses: string[], in
   ).rows;
   for (const x of cv) add(x.mes, x.bomba ? 'custoBomba' : 'custoBet', x.v);
 
+  // Produção: volume, devolvido, cimento e material teórico das cargas; material lançado (3.1 a 3.4).
+  const prod = (
+    await banco.query(
+      `SELECT ${MES_TS('c.data_hora')} AS mes, sum(c.volume_m3) AS m3, sum(c.devolvido_m3) AS devolvido,
+              count(DISTINCT (c.betoneira_id, (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date))::int AS bet_dias,
+              coalesce(sum((SELECT sum(cc.quantidade * cc.custo_unitario_centavos) FROM cargas_consumo cc WHERE cc.carga_id = c.id)), 0) AS material,
+              coalesce(sum((SELECT sum(CASE WHEN i.unidade = 't' THEN cc.quantidade * 1000 ELSE cc.quantidade END) FROM cargas_consumo cc JOIN insumos i ON i.id = cc.insumo_id
+                             WHERE cc.carga_id = c.id AND i.tipo = 'cimento')), 0) AS cimento
+         FROM cargas c WHERE c.empresa_id = $1 AND c.status = 'produzida'
+          AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date >= $2::date AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date < $3::date
+        GROUP BY 1`,
+      p,
+    )
+  ).rows;
+  for (const x of prod) {
+    add(x.mes, 'm3Produzido', x.m3);
+    add(x.mes, 'm3Devolvido', x.devolvido);
+    add(x.mes, 'betoneiraDias', x.bet_dias);
+    add(x.mes, 'materialTeorico', x.material);
+    add(x.mes, 'cimentoKg', x.cimento);
+  }
+  const mat = (
+    await banco.query(
+      `SELECT to_char(l.competencia, 'YYYY-MM') AS mes, sum(a.valor_centavos) AS v
+         FROM apropriacoes a JOIN lancamentos l ON l.id = a.lancamento_id JOIN plano_contas pc ON pc.id = a.plano_conta_id
+        WHERE l.empresa_id = $1 AND l.status = 'confirmado' AND l.excluido_em IS NULL AND l.tipo = 'despesa' AND pc.codigo IN ('3.1', '3.2', '3.3', '3.4')
+          AND l.competencia >= $2 AND l.competencia < $3 GROUP BY 1`,
+      p,
+    )
+  ).rows;
+  for (const x of mat) add(x.mes, 'materialLancado', x.v);
+
   // Prazos médios de recebimento e pagamento.
   const prazos = (
     await banco.query(
@@ -496,6 +528,15 @@ async function retratoAtual(banco: Banco, empresaId: string, hoje: string): Prom
   const notas = (
     await banco.query("SELECT count(*)::int AS n FROM notas_fiscais WHERE empresa_id = $1 AND excluido_em IS NULL AND status IN ('rascunho', 'aguardando_conferencia')", [empresaId])
   ).rows[0].n;
+  // Último inventário: falta (em valor) e consumo teórico (em valor) do período que ele fechou.
+  const inv = (
+    await banco.query(
+      `SELECT sum(ii.diferenca * coalesce(ii.custo_unitario_centavos, 0)) AS diferenca, sum(ii.consumo_periodo * coalesce(ii.custo_unitario_centavos, 0)) AS consumo
+         FROM inventarios_itens ii WHERE ii.inventario_id = (SELECT id FROM inventarios WHERE empresa_id = $1 ORDER BY data DESC, criado_em DESC LIMIT 1)
+          AND ii.consumo_periodo IS NOT NULL`,
+      [empresaId],
+    )
+  ).rows[0];
   const comRegistro = rev.filter((x: { situacao: string }) => x.situacao !== 'sem_registro');
   return {
     disponiveis: f.disp,
@@ -507,5 +548,7 @@ async function retratoAtual(banco: Banco, empresaId: string, hoje: string): Prom
     saldoCaixa: num(saldo),
     saidasDia: num(saidas) / 90,
     notasPendentes: notas,
+    perdaInventario: num(inv?.diferenca),
+    consumoInventario: num(inv?.consumo),
   };
 }

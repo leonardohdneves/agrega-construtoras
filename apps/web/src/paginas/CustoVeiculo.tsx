@@ -18,6 +18,8 @@ type Linha = {
   litros: number;
   custoKm: number | null;
   custoHora: number | null;
+  m3: number;
+  custoM3: number | null;
 };
 type Resp = { meses: string[]; de: string; ate: string; veiculos: Linha[]; semVeiculo: { codigo: string; nome: string; valor: number }[]; total: number };
 
@@ -103,6 +105,8 @@ export function CustoVeiculo() {
                     <th style={{ textAlign: 'right' }}>Total</th>
                     <th style={{ textAlign: 'right' }}>Uso</th>
                     <th style={{ textAlign: 'right' }}>Custo por uso</th>
+                    <th style={{ textAlign: 'right' }} title="Betoneira: m³ transportados. Bomba: m³ bombeados.">m³</th>
+                    <th style={{ textAlign: 'right' }}>Custo por m³</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -126,10 +130,12 @@ export function CustoVeiculo() {
                           <td className="mono num">
                             {bomba ? (v.custoHora !== null ? `${formatarMoeda(v.custoHora)}/h` : '—') : v.custoKm !== null ? `${formatarMoeda(v.custoKm)}/km` : '—'}
                           </td>
+                          <td className="mono num small">{v.m3 ? formatarNumero(v.m3) : <span className="muted">—</span>}</td>
+                          <td className="mono num">{v.custoM3 !== null ? `${formatarMoeda(v.custoM3)}/m³` : '—'}</td>
                         </tr>
                         {abrir && (
                           <tr className="linha-form">
-                            <td colSpan={6}>
+                            <td colSpan={8}>
                               <ul className="linhas">
                                 {v.categorias.map((c) => (
                                   <li key={c.codigo}>

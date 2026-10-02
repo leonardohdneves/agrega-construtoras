@@ -569,6 +569,10 @@ export type ItemNota = {
   centroNome: string | null;
   veiculoId: string | null;
   veiculoCodigo: string | null;
+  insumoId: string | null;
+  insumoNome: string | null;
+  insumoUnidade: UnidadeInsumo | null;
+  fatorEstoque: number | null;
   sugestao: 'regra' | 'palavras' | 'fornecedor' | null;
   abastecimentos: { quantidade: number; litros: number; valor: number; veiculos: string | null } | null;
   os: { quantidade: number; valor: number; ordens: string | null } | null;
@@ -643,7 +647,10 @@ export type TipoInsumo = 'cimento' | 'areia' | 'brita' | 'aditivo' | 'agua' | 'f
 export type UnidadeInsumo = 'kg' | 'L' | 'm3' | 't' | 'un';
 export const NOMES_TIPO_INSUMO: Record<TipoInsumo, string> = { cimento: 'Cimento', areia: 'Areia', brita: 'Brita', aditivo: 'Aditivo', agua: 'Água', fibra: 'Fibra', outro: 'Outro' };
 export const NOMES_UNIDADE: Record<UnidadeInsumo, string> = { kg: 'kg', L: 'L', m3: 'm³', t: 't', un: 'un' };
-export type Insumo = { id: string; nome: string; tipo: TipoInsumo; unidade: UnidadeInsumo; custoUnitario: number | null; estoqueMinimo: number | null; ativo: boolean; usadoEmTracos: number };
+export type Insumo = {
+  id: string; nome: string; tipo: TipoInsumo; unidade: UnidadeInsumo; custoUnitario: number | null; estoqueMinimo: number | null; ativo: boolean; usadoEmTracos: number;
+  controlaEstoque: boolean; custoOrigem: 'notas' | 'cadastro' | null; custoAtualizadoEm: string | null;
+};
 export type ItemTraco = { insumoId: string; nome: string; tipo: TipoInsumo; unidade: UnidadeInsumo; quantidade: number; custo: number | null };
 export type Traco = {
   id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null; brita: string | null; observacoes: string | null; ativo: boolean;

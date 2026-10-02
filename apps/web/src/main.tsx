@@ -32,6 +32,8 @@ import { Cargas, NovaCarga } from './paginas/ProdCargas';
 import { Insumos, Tracos } from './paginas/ProdTracos';
 import { MinhaEscala, MinhaProducao, ProducaoMotoristas } from './paginas/ProdMotoristas';
 import { Escala } from './paginas/ProdEscala';
+import { Estoque } from './paginas/ProdEstoque';
+import { RelProducao } from './paginas/RelProducao';
 import { Regras } from './paginas/Regras';
 import { Dre } from './paginas/Dre';
 import { Fluxo } from './paginas/Fluxo';
@@ -116,6 +118,8 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="prod/tracos" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><Tracos /></Protegido>} />
             <Route path="prod/insumos" element={<Protegido perfis={['dono', 'gestor']}><Insumos /></Protegido>} />
             <Route path="prod/motoristas" element={<Protegido perfis={['dono', 'gestor']}><ProducaoMotoristas /></Protegido>} />
+            <Route path="prod/estoque" element={<Protegido perfis={['dono', 'gestor']}><Estoque /></Protegido>} />
+            <Route path="prod/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelProducao /></Protegido>} />
             <Route path="prod/escala" element={<Protegido perfis={['dono', 'gestor']}><Escala /></Protegido>} />
             <Route path="minha-producao" element={<Protegido perfis={['motorista']}><MinhaProducao /></Protegido>} />
             <Route path="minha-escala" element={<Protegido perfis={['motorista']}><MinhaEscala /></Protegido>} />

@@ -14,10 +14,12 @@ import {
   NOMES_FORMA,
   NOMES_ITEM_OS,
   NOMES_MODELO,
+  NOMES_UNIDADE,
   SELO_NOTA,
   somarDias,
   TEXTO_SUGESTAO,
   type FormaPagamento,
+  type Insumo,
   type ItemNota,
   type ModeloNota,
   type NotaFiscal,
@@ -393,6 +395,7 @@ function LinhaItem({
   nota,
   cadastros,
   editavel,
+  insumos,
   aoMudar,
   aoErro,
 }: {
@@ -400,6 +403,7 @@ function LinhaItem({
   nota: NotaFiscal;
   cadastros: Cadastros;
   editavel: boolean;
+  insumos: Insumo[];
   aoMudar: (n: NotaFiscal) => void;
   aoErro: (m: string) => void;
 }) {
@@ -407,6 +411,9 @@ function LinhaItem({
   const [salvando, setSalvando] = useState(false);
   const [desc, setDesc] = useState({ descricao: item.descricao, quantidade: formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0), valor: moedaCampo(item.valorProduto) });
   const manual = nota.origem === 'manual';
+  const [fator, setFator] = useState(item.fatorEstoque ? String(item.fatorEstoque).replace('.', ',') : '');
+  useEffect(() => setFator(item.fatorEstoque ? String(item.fatorEstoque).replace('.', ',') : ''), [item.fatorEstoque]);
+  const unidadeInsumo = item.insumoUnidade ? NOMES_UNIDADE[item.insumoUnidade] : '';
 
   async function salvar(corpo: Record<string, unknown>) {
     aoErro('');
@@ -472,6 +479,39 @@ function LinhaItem({
           {item.os && (
             <div className="small" style={{ color: 'var(--status-ok-ink)' }}>
               Ligado a {item.os.quantidade} item(ns) de OS · {item.os.ordens}
+            </div>
+          )}
+          {nota.direcao === 'entrada' && insumos.length > 0 && (editavel || item.insumoId) && (
+            <div className="small" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
+              {editavel ? (
+                <>
+                  <span className="muted">Estoque:</span>
+                  <select aria-label="Insumo do estoque" className="campo-tabela" style={{ width: 'auto' }} value={item.insumoId ?? ''} onChange={(e) => salvar({ insumoId: e.target.value || null })}>
+                    <option value="">não entra no estoque</option>
+                    {insumos.filter((x) => x.controlaEstoque && (x.ativo || x.id === item.insumoId)).map((x) => (
+                      <option key={x.id} value={x.id}>{x.nome}</option>
+                    ))}
+                  </select>
+                  {item.insumoId && (
+                    <>
+                      <span className="muted">1 {item.unidade || 'un'} =</span>
+                      <input
+                        aria-label="Fator de conversão"
+                        className="campo-tabela mono curto"
+                        inputMode="decimal"
+                        value={fator}
+                        onChange={(e) => setFator(e.target.value)}
+                        onBlur={() => lerNumero(fator) !== item.fatorEstoque && lerNumero(fator) && salvar({ insumoId: item.insumoId, fatorEstoque: fator })}
+                      />
+                      <span className="muted">{unidadeInsumo}</span>
+                    </>
+                  )}
+                </>
+              ) : (
+                <span style={{ color: 'var(--status-ok-ink)' }}>
+                  Entrou no estoque: {formatarNumero(item.quantidade * (item.fatorEstoque ?? 1), 0)} {unidadeInsumo} de {item.insumoNome}
+                </span>
+              )}
             </div>
           )}
         </td>
@@ -582,6 +622,10 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
   const [lote, setLote] = useState({ planoContaId: '', centroCustoId: '' });
   const [conf, setConf] = useState({ vencimento: '', paga: false, contaId: '', data: hojeLocal(), forma: '' as FormaPagamento | '', aprender: true });
   const [acao, setAcao] = useState<'reabrir' | 'cancelar' | 'excluir' | null>(null);
+  const [insumos, setInsumos] = useState<Insumo[]>([]);
+  useEffect(() => {
+    api<{ insumos: Insumo[] }>('/prod/insumos').then((r) => setInsumos(r.insumos)).catch(() => {});
+  }, []);
 
   const carregar = useCallback(async () => {
     try {
@@ -805,7 +849,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
           </thead>
           <tbody>
             {nota.itens.map((i) => (
-              <LinhaItem key={`${i.id}-${i.valorProduto}-${i.quantidade}`} item={i} nota={nota} cadastros={cadastros} editavel={!!editavel} aoMudar={setNota} aoErro={setErro} />
+              <LinhaItem key={`${i.id}-${i.valorProduto}-${i.quantidade}`} item={i} nota={nota} cadastros={cadastros} editavel={!!editavel} insumos={insumos} aoMudar={setNota} aoErro={setErro} />
             ))}
           </tbody>
           <tfoot>

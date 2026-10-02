@@ -4,11 +4,12 @@
 import type pg from 'pg';
 import { somarDias, somarMeses } from './financeiro.ts';
 import { normalizar } from './sugestoes.ts';
+import { registrarEntradasNota, saldosEm } from './estoque.ts';
 
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v2';
+export const VERSAO_DEMO = 'modelo-2026-10-v3';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -168,8 +169,9 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
   await c.query('UPDATE notas_fiscais SET lancamento_id = NULL WHERE empresa_id = $1', [empresaId]);
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
   for (const t of [
-    'extrato_linhas', 'extratos_ofx', 'escalas', 'cargas', 'tracos_itens', 'tracos', 'insumos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
-    'transferencias', 'notas_duplicatas', 'notas_itens', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
+    'extrato_linhas', 'extratos_ofx', 'escalas', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'insumos_produtos',
+    'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
+    'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
     'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
   ]) {
     await c.query(`DELETE FROM ${t} WHERE empresa_id = $1`, [empresaId]);
@@ -336,7 +338,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
 
   // ----- notas de compra (confirmadas, com lançamento ligado)
   type ItemNota = { desc: string; ncm: string; cfop: string; un: string; qtd: number; valor: number; codigo: string; centro: string; veiculo?: string | null;
-    abastecimentos?: { id: string; veiculo: string; valor: number }[]; osItens?: string[] };
+    abastecimentos?: { id: string; veiculo: string; valor: number }[]; osItens?: string[]; insumoId?: string; fator?: number };
   const numeros: Record<string, number> = { cimento: 48120, brita: 9310, areia: 2205, aditivo: 731, posto: 18230, oficina: 4410, pneus: 15520, pecas: 3380 };
   let codigoNota = 31000017;
   const notaCompra = async (k: string, emissao: string, itens: ItemNota[], dups: { venc: string; valor: number }[], forma = 'boleto', status = 'confirmada') => {
@@ -356,9 +358,10 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
     for (const [j, i] of itens.entries()) {
       const it = await um(
         `INSERT INTO notas_itens (empresa_id, nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade, quantidade, valor_produto_centavos, valor_custo_centavos,
-                                  plano_conta_id, centro_custo_id, veiculo_id, sugestao)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,'regra') RETURNING id`,
-        [e, n.id, j + 1, String(100 + j), i.desc, i.ncm, i.cfop, i.un, i.qtd, i.valor, plano[i.codigo], centro[i.centro], i.veiculo ? veic[i.veiculo] : null],
+                                  plano_conta_id, centro_custo_id, veiculo_id, sugestao, insumo_id, fator_estoque)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$10,$11,$12,$13,'regra',$14,$15) RETURNING id`,
+        [e, n.id, j + 1, String(100 + j), i.desc, i.ncm, i.cfop, i.un, i.qtd, i.valor, plano[i.codigo], centro[i.centro], i.veiculo ? veic[i.veiculo] : null,
+          i.insumoId ?? null, i.insumoId ? i.fator ?? 1 : null],
       );
       itemIds.push(it.id);
       if (i.abastecimentos?.length) await q('UPDATE abastecimentos SET nota_item_id = $1 WHERE id = ANY($2::uuid[])', [it.id, i.abastecimentos.map((a) => a.id)]);
@@ -383,6 +386,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
       { documento: `NF-e ${numeros[k]}/1`, fornecedor: k, origem: 'manual', notaId: n.id }, aps,
       dups.map((d) => ({ venc: d.venc, valor: d.valor, pago: pagarDesp(d.venc, forma) })));
     await q('UPDATE notas_fiscais SET lancamento_id = $2 WHERE id = $1', [n.id, l]);
+    if (itens.some((i) => i.insumoId)) await registrarEntradasNota(c, e, n.id, gestor);
     return n.id as string;
   };
 
@@ -591,11 +595,11 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
       [e, nome, tipo, unidade, custo * 100, tipo === 'cimento' ? 60000 : tipo === 'aditivo' ? 800 : tipo === 'agua' ? null : 150000])).id;
   }
   const TRACOS: [string, string, number, string, string, number[]][] = [
-    ['C20-S100-B1', 'Concreto convencional fck 20', 20, '10 ± 2', 'Brita 1', [250, 820, 1000, 0, 190, 1.8]],
-    ['C25-S100-B1', 'Concreto convencional fck 25', 25, '10 ± 2', 'Brita 1', [275, 800, 1010, 0, 185, 2.1]],
-    ['C30-S120-B1', 'Concreto bombeável fck 30', 30, '12 ± 2', 'Brita 1', [310, 770, 1020, 0, 180, 2.5]],
-    ['C35-S120-B1', 'Concreto bombeável fck 35', 35, '12 ± 2', 'Brita 1', [345, 740, 1030, 0, 178, 2.9]],
-    ['C25-S160-B0', 'Concreto bombeável fck 25 com brita 0', 25, '16 ± 2', 'Brita 0', [300, 880, 0, 900, 195, 2.6]],
+    ['C20-S100-B1', 'Concreto convencional fck 20', 20, '10 ± 2', 'Brita 1', [240, 820, 1000, 0, 190, 1.8]],
+    ['C25-S100-B1', 'Concreto convencional fck 25', 25, '10 ± 2', 'Brita 1', [262, 800, 1010, 0, 185, 2.1]],
+    ['C30-S120-B1', 'Concreto bombeável fck 30', 30, '12 ± 2', 'Brita 1', [295, 770, 1020, 0, 180, 2.5]],
+    ['C35-S120-B1', 'Concreto bombeável fck 35', 35, '12 ± 2', 'Brita 1', [330, 740, 1030, 0, 178, 2.9]],
+    ['C25-S160-B0', 'Concreto bombeável fck 25 com brita 0', 25, '16 ± 2', 'Brita 0', [285, 880, 0, 900, 195, 2.6]],
   ];
   const traco: Record<string, string> = {};
   for (const [codigo, descricao, fck, slump, brita, qtds] of TRACOS) {
@@ -633,21 +637,24 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
     }
   }
 
-  // ----- insumos da usina
+  // ----- insumos da usina: compras acompanham o consumo das cargas (pelo traço) mais a perda normal da usina
+  const consumoDe = (k: number, de: string, ate: string) =>
+    cargasDemo.filter((x) => x.dataHora.slice(0, 10) >= de && x.dataHora.slice(0, 10) <= ate)
+      .reduce((a, x) => a + x.m3 * (TRACOS.find((t) => t[0] === x.traco)?.[5][k] ?? 0), 0);
   for (const s of volumeSemana) {
-    const t = Math.round(s.m3 * 0.275 * 10) / 10;
-    await notaCompra('cimento', s.sexta, [{ desc: 'CIMENTO CP II-F 40 GRANEL', ncm: '25232910', cfop: '5101', un: 'T', qtd: t, valor: cents(t * 575), codigo: '3.1', centro: 'Usina' }],
+    const t = Math.round((consumoDe(0, somarDias(s.sexta, -6), s.sexta) * 1.011) / 100) / 10;
+    if (!t) continue;
+    await notaCompra('cimento', s.sexta, [{ desc: 'CIMENTO CP II-F 40 GRANEL', ncm: '25232910', cfop: '5101', un: 'T', qtd: t, valor: cents(t * 575), codigo: '3.1', centro: 'Usina', insumoId: insumo['Cimento CP II-F 40'], fator: 1000 }],
       [{ venc: util(somarDias(s.sexta, 28)), valor: 0 }]);
   }
   for (const [de, ate] of quinzenas) {
     if (ate > ontem) continue;
-    const m3 = volumeSemana.filter((s) => s.sexta >= de && s.sexta <= ate).reduce((a, s) => a + s.m3, 0);
-    if (!m3) continue;
-    const brita = Math.round(m3 * 0.78);
-    const areia = Math.round(m3 * 0.62);
-    await notaCompra('brita', ate, [{ desc: 'BRITA 1', ncm: '25171000', cfop: '5101', un: 'M3', qtd: brita, valor: cents(brita * 58), codigo: '3.3', centro: 'Usina' }],
+    const brita = Math.round((consumoDe(2, de, ate) * 1.021) / 1300);
+    const areia = Math.round((consumoDe(1, de, ate) * 1.03) / 1300);
+    if (!brita || !areia) continue;
+    await notaCompra('brita', ate, [{ desc: 'BRITA 1', ncm: '25171000', cfop: '5101', un: 'M3', qtd: brita, valor: cents(brita * 58), codigo: '3.3', centro: 'Usina', insumoId: insumo['Brita 1'], fator: 1300 }],
       [{ venc: util(somarDias(ate, 21)), valor: 0 }]);
-    await notaCompra('areia', ate, [{ desc: 'AREIA MEDIA LAVADA', ncm: '25059000', cfop: '5102', un: 'M3', qtd: areia, valor: cents(areia * 46), codigo: '3.2', centro: 'Usina' }],
+    await notaCompra('areia', ate, [{ desc: 'AREIA MEDIA LAVADA', ncm: '25059000', cfop: '5102', un: 'M3', qtd: areia, valor: cents(areia * 46), codigo: '3.2', centro: 'Usina', insumoId: insumo['Areia média lavada'], fator: 1300 }],
       [{ venc: util(somarDias(ate, 21)), valor: 0 }]);
   }
   const meses: string[] = [];
@@ -655,8 +662,8 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   const fechados = meses.filter((m) => fimMes(m) < hoje);
   const volumeMes = (m: string) => volumeSemana.filter((s) => s.sexta.slice(0, 7) === m.slice(0, 7)).reduce((a, s) => a + s.m3, 0);
   for (const m of fechados) {
-    const litros = Math.round(volumeMes(m) * 2.1);
-    await notaCompra('aditivo', fimMes(m), [{ desc: 'ADITIVO PLASTIFICANTE POLIFUNCIONAL', ncm: '38244000', cfop: '5101', un: 'L', qtd: litros, valor: cents(litros * 5.2), codigo: '3.4', centro: 'Usina' }],
+    const litros = Math.round(consumoDe(5, m, fimMes(m)) * 1.009);
+    await notaCompra('aditivo', fimMes(m), [{ desc: 'ADITIVO PLASTIFICANTE POLIFUNCIONAL', ncm: '38244000', cfop: '5101', un: 'L', qtd: litros, valor: cents(litros * 5.2), codigo: '3.4', centro: 'Usina', insumoId: insumo['Aditivo plastificante polifuncional'], fator: 1 }],
       [{ venc: util(somarDias(fimMes(m), 28)), valor: 0 }]);
     await notaCompra('pecas', diaDoMes(m, 18), [{ desc: 'OLEO LUBRIFICANTE E GRAXA PARA CHASSI', ncm: '27101932', cfop: '5102', un: 'UN', qtd: 1, valor: cents(entre(1450, 1950)), codigo: '4.4', centro: 'Frota' }],
       [{ venc: util(somarDias(diaDoMes(m, 18), 28)), valor: 0 }]);
@@ -865,6 +872,56 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   for (const [f, texto, codigo, ctr, v, vezes] of regras) {
     await q(`INSERT INTO regras_apropriacao (empresa_id, fornecedor_id, texto_contem, plano_conta_id, centro_custo_id, veiculo_id, origem, vezes_aplicada) VALUES ($1,$2,$3,$4,$5,$6,'aprendida',$7)`,
       [e, forn[f], texto ? normalizar(texto) : null, plano[codigo], centro[ctr], v, vezes]);
+  }
+
+  // ----- estoque: consumo das cargas pelo custo das notas, inventário inicial e inventários de fim de mês
+  await q('DELETE FROM cargas_consumo WHERE empresa_id = $1', [e]);
+  await q(
+    `INSERT INTO cargas_consumo (empresa_id, carga_id, insumo_id, quantidade, custo_unitario_centavos)
+     SELECT c.empresa_id, c.id, ti.insumo_id, round(ti.quantidade * c.volume_m3, 3), i.custo_unitario_centavos
+       FROM cargas c JOIN tracos_itens ti ON ti.traco_id = c.traco_id JOIN insumos i ON i.id = ti.insumo_id
+      WHERE c.empresa_id = $1 AND c.status = 'produzida'`,
+    [e],
+  );
+  await q("UPDATE insumos SET controla_estoque = false WHERE empresa_id = $1 AND tipo = 'agua'", [e]);
+  const comEstoque = (await q("SELECT id, nome, custo_unitario_centavos FROM insumos WHERE empresa_id = $1 AND controla_estoque", [e])).rows as { id: string; nome: string; custo_unitario_centavos: string }[];
+  const INICIAL: Record<string, number> = { 'Cimento CP II-F 40': 95000, 'Areia média lavada': 280000, 'Brita 1': 340000, 'Brita 0': 40000, 'Aditivo plastificante polifuncional': 2600 };
+  // Perda típica (fração do consumo) apurada a cada inventário.
+  const PERDA: Record<string, [number, number]> = { 'Cimento CP II-F 40': [0.006, 0.016], 'Areia média lavada': [0.02, 0.04], 'Brita 1': [0.012, 0.03], 'Brita 0': [0, 0], 'Aditivo plastificante polifuncional': [0.004, 0.014] };
+  const inventario = async (data: string, contagem: (id: string, nome: string, teorico: number, consumo: number) => number, anterior: string | null, obs: string) => {
+    const saldos = await saldosEm(c, e, data);
+    const v = await um('INSERT INTO inventarios (empresa_id, data, observacao, criado_por_id, criado_em) VALUES ($1,$2,$3,$4,$2::date + time \'17:30\') RETURNING id', [e, data, obs, gestor]);
+    for (const x of comEstoque) {
+      const teorico = Math.round((saldos.get(x.id) ?? 0) * 1000) / 1000;
+      const consumo = anterior
+        ? Number((await um(
+            `SELECT coalesce(sum(cc.quantidade), 0) AS q FROM cargas_consumo cc JOIN cargas c ON c.id = cc.carga_id
+              WHERE cc.insumo_id = $1 AND c.status = 'produzida' AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date > $2 AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date <= $3`,
+            [x.id, anterior, data])).q)
+        : 0;
+      const contado = Math.max(0, Math.round(contagem(x.id, x.nome, teorico, consumo)));
+      const diferenca = Math.round((contado - teorico) * 1000) / 1000;
+      await q(`INSERT INTO inventarios_itens (empresa_id, inventario_id, insumo_id, saldo_teorico, contado, diferenca, consumo_periodo, custo_unitario_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+        [e, v.id, x.id, teorico, contado, diferenca, anterior ? consumo : null, x.custo_unitario_centavos]);
+      if (diferenca !== 0) {
+        await q(`INSERT INTO estoque_movimentos (empresa_id, insumo_id, data, tipo, quantidade, custo_unitario_centavos, inventario_id, observacao, criado_por_id) VALUES ($1,$2,$3,'ajuste',$4,$5,$6,'Acerto do inventário',$7)`,
+          [e, x.id, data, diferenca, x.custo_unitario_centavos, v.id, gestor]);
+      }
+    }
+  };
+  let ultimoInv = somarDias(inicio, -1);
+  await inventario(ultimoInv, (_id, nome) => INICIAL[nome] ?? 0, null, 'Contagem inicial dos silos e baias');
+  for (const m of fechados) {
+    const fim = fimMes(m);
+    await inventario(fim, (_id, nome, teorico, consumo) => teorico - consumo * (PERDA[nome][0] + rc() * (PERDA[nome][1] - PERDA[nome][0])), ultimoInv, 'Medição de fim de mês');
+    ultimoInv = fim;
+  }
+  // Estoque mínimo: o aditivo fica abaixo do mínimo para mostrar o alerta.
+  const saldosHoje = await saldosEm(c, e, hoje);
+  for (const x of comEstoque) {
+    const saldo = saldosHoje.get(x.id) ?? 0;
+    const minimo = x.nome.startsWith('Aditivo') ? Math.ceil((Math.max(saldo, 0) * 1.25) / 100) * 100 : x.nome === 'Brita 0' ? null : Math.round((Math.max(saldo, 0) * 0.45) / 1000) * 1000;
+    await q('UPDATE insumos SET estoque_minimo = $2 WHERE id = $1', [x.id, minimo]);
   }
 
   // ----- saldo inicial do banco: o menor saldo diário do período fica acima de R$ 60 mil

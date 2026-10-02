@@ -274,8 +274,8 @@ export function Tracos() {
 
 // ======================================================================= Insumos
 
-type DadosInsumo = { id?: string; nome: string; tipo: TipoInsumo; unidade: UnidadeInsumo; custoUnitario: string; estoqueMinimo: string; ativo: boolean };
-const INSUMO_VAZIO: DadosInsumo = { nome: '', tipo: 'cimento', unidade: 'kg', custoUnitario: '', estoqueMinimo: '', ativo: true };
+type DadosInsumo = { id?: string; nome: string; tipo: TipoInsumo; unidade: UnidadeInsumo; custoUnitario: string; estoqueMinimo: string; ativo: boolean; controlaEstoque: boolean };
+const INSUMO_VAZIO: DadosInsumo = { nome: '', tipo: 'cimento', unidade: 'kg', custoUnitario: '', estoqueMinimo: '', ativo: true, controlaEstoque: true };
 
 export function Insumos() {
   const [lista, setLista] = useState<Insumo[] | null>(null);
@@ -309,6 +309,7 @@ export function Insumos() {
         custoUnitario: form.custoUnitario.trim() ? lerNumero(form.custoUnitario) : null,
         estoqueMinimo: form.estoqueMinimo.trim() ? lerNumero(form.estoqueMinimo) : null,
         ativo: form.ativo,
+        controlaEstoque: form.controlaEstoque,
       };
       if (form.id) await api(`/prod/insumos/${form.id}`, { metodo: 'PATCH', corpo });
       else await api('/prod/insumos', { corpo });
@@ -352,7 +353,7 @@ export function Insumos() {
             </div>
             <div className="campo">
               <label htmlFor="i-tipo">Tipo</label>
-              <select id="i-tipo" value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoInsumo, unidade: e.target.value === 'agua' || e.target.value === 'aditivo' ? 'L' : form.unidade })}>
+              <select id="i-tipo" value={form.tipo} onChange={(e) => setForm({ ...form, tipo: e.target.value as TipoInsumo, unidade: e.target.value === 'agua' || e.target.value === 'aditivo' ? 'L' : form.unidade, controlaEstoque: e.target.value !== 'agua' })}>
                 {(Object.keys(NOMES_TIPO_INSUMO) as TipoInsumo[]).map((t) => (
                   <option key={t} value={t}>{NOMES_TIPO_INSUMO[t]}</option>
                 ))}
@@ -376,8 +377,12 @@ export function Insumos() {
             </div>
           </div>
           <p className="small muted" style={{ margin: 0 }}>
-            Dica: compre por tonelada e use kg no traço; o custo vai por kg (R$ 575,00 a tonelada = R$ 0,575 o kg). Na próxima etapa o custo passa a vir das notas fiscais.
+            Dica: compre por tonelada e use kg no traço; o custo vai por kg (R$ 575,00 a tonelada = R$ 0,575 o kg). Depois que as notas de compra forem ligadas ao insumo, o custo passa a ser a média das notas dos últimos 90 dias.
           </p>
+          <label className="marcar">
+            <input type="checkbox" checked={form.controlaEstoque} onChange={(e) => setForm({ ...form, controlaEstoque: e.target.checked })} />
+            Controlar estoque deste insumo (desmarque para a água da rede ou do poço)
+          </label>
           {form.id && (
             <label className="marcar">
               <input type="checkbox" checked={form.ativo} onChange={(e) => setForm({ ...form, ativo: e.target.checked })} />
@@ -413,8 +418,11 @@ export function Insumos() {
                 <tr key={i.id} style={i.ativo ? undefined : { opacity: 0.55 }}>
                   <td>{i.nome}{!i.ativo && <span className="selo selo-neutro" style={{ marginLeft: 8 }}>fora de uso</span>}</td>
                   <td>{NOMES_TIPO_INSUMO[i.tipo]}</td>
-                  <td className="mono" style={{ textAlign: 'right' }}>{custo(i)}</td>
-                  <td className="mono" style={{ textAlign: 'right' }}>{i.estoqueMinimo !== null ? `${formatarNumero(i.estoqueMinimo)} ${NOMES_UNIDADE[i.unidade]}` : '—'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>
+                    {custo(i)}
+                    <div className="small muted" style={{ fontFamily: 'inherit' }}>{i.custoOrigem === 'notas' ? 'média das notas' : i.custoUnitario !== null ? 'digitado' : ''}</div>
+                  </td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{!i.controlaEstoque ? <span className="small muted">sem estoque</span> : i.estoqueMinimo !== null ? `${formatarNumero(i.estoqueMinimo)} ${NOMES_UNIDADE[i.unidade]}` : '—'}</td>
                   <td className="mono" style={{ textAlign: 'right' }}>{i.usadoEmTracos}</td>
                   <td style={{ textAlign: 'right' }}>
                     <button
@@ -429,6 +437,7 @@ export function Insumos() {
                           custoUnitario: i.custoUnitario === null ? '' : String(i.custoUnitario).replace('.', ','),
                           estoqueMinimo: i.estoqueMinimo === null ? '' : String(i.estoqueMinimo).replace('.', ','),
                           ativo: i.ativo,
+                          controlaEstoque: i.controlaEstoque,
                         })
                       }
                     >

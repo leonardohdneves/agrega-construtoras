@@ -8,6 +8,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { gravarConsumoCarga } from '../lib/estoque.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -37,6 +38,7 @@ const esquemaInsumo = z.object({
   custoUnitario: decimal('Custo inválido.').nullable().optional(),
   estoqueMinimo: decimal('Estoque mínimo inválido.').nullable().optional(),
   ativo: z.boolean().optional().default(true),
+  controlaEstoque: z.boolean().optional().default(true),
 });
 
 const esquemaTraco = z.object({
@@ -78,6 +80,9 @@ export function insumoPublico(r: Record<string, any>) {
     custoUnitario: r.custo_unitario_centavos === null ? null : Number((Number(r.custo_unitario_centavos) / 100).toFixed(6)),
     estoqueMinimo: num(r.estoque_minimo),
     ativo: r.ativo,
+    controlaEstoque: r.controla_estoque ?? true,
+    custoOrigem: r.custo_origem ?? null,
+    custoAtualizadoEm: r.custo_atualizado_em ?? null,
     usadoEmTracos: Number(r.tracos ?? 0),
   };
 }
@@ -326,8 +331,9 @@ export function rotasProducao(banco: Banco) {
         }
         const x = (
           await c.query(
-            `INSERT INTO insumos (empresa_id, nome, tipo, unidade, custo_unitario_centavos, estoque_minimo, ativo) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-            [empresaId, d.nome, d.tipo, d.unidade, d.custoUnitario === null || d.custoUnitario === undefined ? null : d.custoUnitario * 100, d.estoqueMinimo ?? null, d.ativo],
+            `INSERT INTO insumos (empresa_id, nome, tipo, unidade, custo_unitario_centavos, estoque_minimo, ativo, controla_estoque, custo_origem)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'cadastro') RETURNING *`,
+            [empresaId, d.nome, d.tipo, d.unidade, d.custoUnitario === null || d.custoUnitario === undefined ? null : d.custoUnitario * 100, d.estoqueMinimo ?? null, d.ativo, d.controlaEstoque],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'insumos', entidadeId: x.id, depois: d });
@@ -350,10 +356,11 @@ export function rotasProducao(banco: Banco) {
           await c.query(
             `UPDATE insumos SET nome = coalesce($3, nome), tipo = coalesce($4, tipo), unidade = coalesce($5, unidade),
                     custo_unitario_centavos = CASE WHEN $6 THEN $7 ELSE custo_unitario_centavos END,
+                    custo_origem = CASE WHEN $6 THEN 'cadastro' ELSE custo_origem END, controla_estoque = coalesce($11, controla_estoque),
                     estoque_minimo = CASE WHEN $8 THEN $9 ELSE estoque_minimo END, ativo = coalesce($10, ativo), atualizado_em = now()
               WHERE id = $1 AND empresa_id = $2 RETURNING *`,
             [antes.id, empresaId, d.nome ?? null, d.tipo ?? null, d.unidade ?? null, 'custoUnitario' in d, d.custoUnitario === null || d.custoUnitario === undefined ? null : d.custoUnitario * 100,
-              'estoqueMinimo' in d, d.estoqueMinimo ?? null, d.ativo ?? null],
+              'estoqueMinimo' in d, d.estoqueMinimo ?? null, d.ativo ?? null, d.controlaEstoque ?? null],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'insumos', entidadeId: x.id, antes, depois: d });
@@ -533,6 +540,7 @@ export function rotasProducao(banco: Banco) {
               d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, req.usuario!.id],
           )
         ).rows[0];
+        await gravarConsumoCarga(c, x.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'cargas', entidadeId: x.id, depois: { ...d, numero } });
         return x.id as string;
       });
@@ -572,6 +580,7 @@ export function rotasProducao(banco: Banco) {
           [antes.id, empresaId, dataHora, d.tracoId, d.volume, d.clienteId, d.obra, d.betoneiraId, d.motoristaId, d.bombaId, d.bombaId ? d.operadorBombaId : null,
             d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes],
         );
+        if (parcial.tracoId !== undefined || parcial.volume !== undefined) await gravarConsumoCarga(c, antes.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'cargas', entidadeId: antes.id, antes: cargaPublica(antes), depois: parcial });
       });
       const r = await banco.query(`${SELECT_CARGA} WHERE c.id = $1`, [req.params.id]);
@@ -585,6 +594,7 @@ export function rotasProducao(banco: Banco) {
         const antes = await cargaEditavel(c, req, req.params.id);
         if (antes.status === 'cancelada') throw new ErroHttp(400, 'A carga já está cancelada.');
         await c.query(`UPDATE cargas SET status = 'cancelada', motivo_cancelamento = $3, atualizado_em = now() WHERE id = $1 AND empresa_id = $2`, [antes.id, empresaId, motivo]);
+        await gravarConsumoCarga(c, antes.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'cargas', entidadeId: antes.id, antes: { status: antes.status }, depois: { status: 'cancelada', motivo } });
       });
       const r = await banco.query(`${SELECT_CARGA} WHERE c.id = $1`, [req.params.id]);

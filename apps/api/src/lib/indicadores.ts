@@ -1,7 +1,7 @@
 // Catálogo dos indicadores do Agrega e o cálculo a partir dos números brutos de cada mês.
 // O mesmo catálogo alimenta a página de conferência e o painel de indicadores do dono.
 
-export type Unidade = 'pct' | 'moeda' | 'km_l' | 'l_h' | 'dias' | 'numero' | 'moeda_km' | 'moeda_l' | 'moeda_h';
+export type Unidade = 'pct' | 'moeda' | 'km_l' | 'l_h' | 'dias' | 'numero' | 'moeda_km' | 'moeda_l' | 'moeda_h' | 'm3' | 'kg_m3' | 'moeda_m3';
 
 export type Bruto = {
   receita: number; // centavos
@@ -26,6 +26,12 @@ export type Bruto = {
   pagValor: number;
   abastPosto: number;
   abastComNota: number;
+  m3Produzido: number;
+  m3Devolvido: number;
+  cimentoKg: number;
+  materialTeorico: number; // centavos
+  materialLancado: number; // centavos: cimento, areia, brita e aditivos lançados
+  betoneiraDias: number;
 };
 
 export type Retrato = {
@@ -38,12 +44,15 @@ export type Retrato = {
   saldoCaixa: number;
   saidasDia: number; // média diária de pagamentos dos últimos 90 dias (centavos)
   notasPendentes: number;
+  perdaInventario: number; // diferença (valor) do último inventário, negativa quando falta
+  consumoInventario: number; // consumo (valor) no período do último inventário
 };
 
 export const BRUTO_ZERO: Bruto = {
   receita: 0, lucroBruto: 0, resultado: 0, custoFrotaLancado: 0, custoFrotaSemNota: 0, dieselValor: 0, dieselLitros: 0, kmBet: 0, litrosBet: 0,
   horasBomba: 0, litrosBomba: 0, custoBet: 0, custoBomba: 0, osConcluidas: 0, osDiasParado: 0, osCusto: 0, recPonderado: 0, recValor: 0,
-  pagPonderado: 0, pagValor: 0, abastPosto: 0, abastComNota: 0,
+  pagPonderado: 0, pagValor: 0, abastPosto: 0, abastComNota: 0, m3Produzido: 0, m3Devolvido: 0, cimentoKg: 0, materialTeorico: 0,
+  materialLancado: 0, betoneiraDias: 0,
 };
 
 export function somarBrutos(xs: Bruto[]): Bruto {
@@ -57,7 +66,7 @@ const div = (a: number, b: number) => (b ? a / b : null);
 export type Indicador = {
   id: string;
   nome: string;
-  modulo: 'Frota' | 'Financeiro' | 'Gerencial' | 'Administrativo';
+  modulo: 'Frota' | 'Financeiro' | 'Gerencial' | 'Administrativo' | 'Produção';
   unidade: Unidade;
   formula: string;
   fonte: string;
@@ -189,6 +198,63 @@ export const INDICADORES: Indicador[] = [
     fonte: 'Ordens de serviço concluídas.',
     leitura: 'Quanto foi gasto em oficina no mês.',
     bruto: (b) => b.osCusto / 100,
+  },
+  // ---------- Produção ----------
+  {
+    id: 'volume_produzido', nome: 'Volume produzido', modulo: 'Produção', unidade: 'm3', melhor: 'maior',
+    formula: 'Soma do volume das cargas produzidas (sem as canceladas).',
+    fonte: 'Cargas registradas na usina.',
+    leitura: 'Quanto concreto saiu da usina no mês.',
+    bruto: (b) => (b.m3Produzido ? b.m3Produzido : null),
+  },
+  {
+    id: 'm3_betoneira_dia', nome: 'm³ por betoneira por dia', modulo: 'Produção', unidade: 'm3', melhor: 'maior',
+    formula: 'Volume das cargas ÷ soma, dia a dia, das betoneiras que fizeram pelo menos uma carga.',
+    fonte: 'Cargas registradas na usina.',
+    leitura: 'Quanto cada caminhão entrega num dia de trabalho. Baixo indica frota sobrando ou ociosa.',
+    bruto: (b) => div(b.m3Produzido, b.betoneiraDias),
+  },
+  {
+    id: 'cimento_m3', nome: 'Cimento por m³', modulo: 'Produção', unidade: 'kg_m3', melhor: 'menor',
+    formula: 'Cimento das cargas pelo traço (kg) ÷ volume produzido.',
+    fonte: 'Cargas e traços.',
+    leitura: 'Consumo médio de cimento do mix vendido. Sobe quando se vende mais fck alto.',
+    bruto: (b) => div(b.cimentoKg, b.m3Produzido),
+  },
+  {
+    id: 'material_teorico_m3', nome: 'Custo de material por m³ (teórico)', modulo: 'Produção', unidade: 'moeda_m3', melhor: 'menor',
+    formula: 'Consumo de cada carga pelo traço × custo do insumo no dia ÷ volume produzido.',
+    fonte: 'Cargas, traços e custo dos insumos (notas).',
+    leitura: 'Quanto deveria custar o material de 1 m³, se a usina dosasse exatamente o traço.',
+    bruto: (b) => div(b.materialTeorico / 100, b.m3Produzido),
+  },
+  {
+    id: 'material_real_m3', nome: 'Custo de material por m³ (lançado)', modulo: 'Produção', unidade: 'moeda_m3', melhor: 'menor',
+    formula: 'Cimento, areia, brita e aditivos lançados no mês (DRE) ÷ volume produzido.',
+    fonte: 'Notas e lançamentos das contas 3.1 a 3.4 e cargas.',
+    leitura: 'Quanto o material custou de fato. Bem acima do teórico indica perda, desvio ou estoque se formando.',
+    bruto: (b) => (b.materialLancado ? div(b.materialLancado / 100, b.m3Produzido) : null),
+  },
+  {
+    id: 'frota_m3', nome: 'Custo da frota por m³', modulo: 'Produção', unidade: 'moeda_m3', melhor: 'menor',
+    formula: '(Custo da frota lançado + abastecimentos e OS ainda sem nota) ÷ volume produzido.',
+    fonte: 'DRE, frota e cargas.',
+    leitura: 'Quanto custa transportar e bombear cada m³ vendido.',
+    bruto: (b) => div((b.custoFrotaLancado + b.custoFrotaSemNota) / 100, b.m3Produzido),
+  },
+  {
+    id: 'devolvido_pct', nome: 'Concreto devolvido', modulo: 'Produção', unidade: 'pct', melhor: 'menor',
+    formula: 'Volume que voltou da obra ÷ volume produzido.',
+    fonte: 'Cargas com concreto devolvido.',
+    leitura: 'Concreto pago na produção e perdido. Acima de 1% merece atenção.',
+    bruto: (b) => div(b.m3Devolvido, b.m3Produzido),
+  },
+  {
+    id: 'perda_inventario', nome: 'Perda de insumos no inventário', modulo: 'Produção', unidade: 'pct', melhor: 'menor', retrato: true,
+    formula: 'Falta (em valor) apurada no último inventário ÷ consumo teórico (em valor) desde o inventário anterior.',
+    fonte: 'Inventários de insumos.',
+    leitura: 'Quanto do material sumiu além do traço: dosagem acima, umidade, desperdício ou desvio.',
+    agora: (r) => (r.consumoInventario ? -r.perdaInventario / r.consumoInventario : null),
   },
   // ---------- Administrativo ----------
   {

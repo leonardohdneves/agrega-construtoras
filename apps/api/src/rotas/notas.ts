@@ -12,6 +12,7 @@ import { somarDias } from '../lib/financeiro.ts';
 import { ErroNfe, fecharCentavos, formaDoTPag, lerNfe, type NotaNfe } from '../lib/nfe.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { fatorPadrao, registrarEntradasNota, removerEntradasNota, sugerirInsumo } from '../lib/estoque.ts';
 import { baixarParcela, dinheiro, esquemaBaixa, numeroBr } from './financeiro.ts';
 
 const reais = (c: unknown) => (c === null || c === undefined ? null : Number(c) / 100);
@@ -79,6 +80,9 @@ const esquemaAlterarItem = z
     planoContaId: uuidOpc,
     centroCustoId: uuidOpc,
     veiculoId: uuidOpc,
+    // Estoque: insumo e quantas unidades do insumo vale cada unidade da nota (t → kg = 1000).
+    insumoId: uuidOpc,
+    fatorEstoque: z.union([z.preprocess(numeroBr, z.number({ invalid_type_error: 'Fator inválido.' }).positive('O fator precisa ser maior que zero.').max(1_000_000)), z.null()]),
     // Só para notas lançadas à mão:
     descricao: z.string().trim().min(2, 'Descreva o item.').max(300),
     unidade: textoOpc(10),
@@ -124,7 +128,8 @@ async function detalharNota(c: Cliente, empresaId: string, id: string) {
                                         'ordens', string_agg(DISTINCT '#' || o.numero || ' ' || vo.codigo, ', '))
                  FROM os_itens oi JOIN ordens_servico o ON o.id = oi.os_id JOIN veiculos vo ON vo.id = o.veiculo_id
                 WHERE oi.nota_item_id = i.id AND oi.excluido_em IS NULL) AS os
-         FROM notas_itens i LEFT JOIN plano_contas pc ON pc.id = i.plano_conta_id
+         , ins.nome AS insumo_nome, ins.unidade AS insumo_unidade
+         FROM notas_itens i LEFT JOIN plano_contas pc ON pc.id = i.plano_conta_id LEFT JOIN insumos ins ON ins.id = i.insumo_id
          LEFT JOIN centros_custo cc ON cc.id = i.centro_custo_id LEFT JOIN veiculos v ON v.id = i.veiculo_id
         WHERE i.nota_id = $1 ORDER BY i.numero_item, i.criado_em`,
       [n.id],
@@ -215,6 +220,10 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
       centroNome: i.centro_nome ?? null,
       veiculoId: i.veiculo_id,
       veiculoCodigo: i.veiculo_codigo ?? null,
+      insumoId: i.insumo_id ?? null,
+      insumoNome: i.insumo_nome ?? null,
+      insumoUnidade: i.insumo_unidade ?? null,
+      fatorEstoque: i.fator_estoque === null || i.fator_estoque === undefined ? null : Number(i.fator_estoque),
       sugestao: i.sugestao,
       abastecimentos: i.abast && Number(i.abast.n) ? { quantidade: Number(i.abast.n), litros: Number(i.abast.litros), valor: Number(i.abast.valor) / 100, veiculos: i.abast.veiculos } : null,
       os: i.os && Number(i.os.n) ? { quantidade: Number(i.os.n), valor: Number(i.os.valor) / 100, ordens: i.os.ordens } : null,
@@ -350,6 +359,7 @@ function dividirProporcional(total: number, pesos: number[]): number[] {
 }
 
 async function desfazerLancamento(c: pg.PoolClient, n: Nota, usuarioId: string) {
+  await removerEntradasNota(c, n.id);
   if (!n.lancamento_id) return;
   const pagas = (await c.query("SELECT count(*)::int AS n FROM parcelas WHERE lancamento_id = $1 AND status = 'paga'", [n.lancamento_id])).rows[0].n;
   if (pagas) throw new ErroHttp(409, 'Há parcelas desta nota já pagas. Estorne os pagamentos em Contas a pagar e receber antes.');
@@ -468,12 +478,13 @@ export function rotasNotas(banco: Banco) {
         ).rows[0];
         for (const i of nfe.itens) {
           const s = sugerir(i.descricao, i.ncm);
+          const ins = direcao === 'entrada' ? await sugerirInsumo(c, empresaId, pessoa.id, i.descricao, i.unidade) : null;
           await c.query(
             `INSERT INTO notas_itens (empresa_id, nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade, quantidade, valor_produto_centavos,
-                                      valor_custo_centavos, plano_conta_id, centro_custo_id, veiculo_id, regra_id, sugestao)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+                                      valor_custo_centavos, plano_conta_id, centro_custo_id, veiculo_id, regra_id, sugestao, insumo_id, fator_estoque)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
             [empresaId, n.id, i.numeroItem, i.codigoProduto, i.descricao.slice(0, 300), i.ncm, i.cfop, i.unidade, i.quantidade, i.valorProduto, i.valorCusto,
-              s.planoContaId, s.centroCustoId, s.veiculoId, s.regraId, s.sugestao],
+              s.planoContaId, s.centroCustoId, s.veiculoId, s.regraId, s.sugestao, ins?.insumoId ?? null, ins?.fator ?? null],
           );
         }
         for (const d of nfe.duplicatas) {
@@ -611,7 +622,19 @@ export function rotasNotas(banco: Banco) {
         const fiscais = (['descricao', 'unidade', 'quantidade', 'valor'] as const).filter((k) => d[k] !== undefined);
         if (n.origem !== 'manual' && fiscais.length) throw new ErroHttp(400, 'Descrição, quantidade e valor vêm do XML e não podem ser alterados.');
         await validarApropriacao(c, empresaId, n.direcao === 'saida' ? 'receita' : 'despesa', d);
+        // Ligação com o insumo do estoque.
+        let fator = d.fatorEstoque;
+        if (d.insumoId) {
+          if (n.direcao !== 'entrada') throw new ErroHttp(400, 'Só notas de compra entram no estoque.');
+          const ins = (await c.query('SELECT unidade FROM insumos WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL', [d.insumoId, empresaId])).rows[0];
+          if (!ins) throw new ErroHttp(400, 'Insumo não encontrado.');
+          if (fator === undefined || fator === null) fator = (i.insumo_id === d.insumoId && i.fator_estoque ? Number(i.fator_estoque) : null) ?? fatorPadrao(d.unidade ?? i.unidade, ins.unidade);
+          if (!fator) throw new ErroHttp(400, `Informe quantos ${ins.unidade === 'm3' ? 'm³' : ins.unidade} vale cada ${i.unidade || 'unidade'} da nota.`);
+        }
+        if (d.insumoId === null) fator = null;
         const campos: Record<string, unknown> = {
+          insumo_id: d.insumoId,
+          fator_estoque: d.insumoId !== undefined || d.fatorEstoque !== undefined ? fator : undefined,
           plano_conta_id: d.planoContaId,
           centro_custo_id: d.centroCustoId,
           veiculo_id: d.veiculoId,
@@ -891,6 +914,7 @@ export function rotasNotas(banco: Banco) {
           `UPDATE notas_fiscais SET status = 'confirmada', lancamento_id = $2, conferido_por_id = $3, conferido_em = now(), atualizado_em = now() WHERE id = $1`,
           [n.id, l.id, usuarioId],
         );
+        if (n.direcao === 'entrada') await registrarEntradasNota(c, empresaId, n.id, usuarioId);
         await auditar(c, { empresaId, usuarioId, acao: 'confirmar', entidade: 'notas_fiscais', entidadeId: n.id, depois: { lancamentoId: l.id, parcelas: parcelas.length, baixa: !!d.baixa } });
       });
       return { nota: await detalharNota(banco, empresaId, req.params.id) };

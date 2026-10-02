@@ -273,6 +273,20 @@ export function rotasGerencial(banco: Banco) {
         )
       ).rows;
 
+      // 5) Produção: m³ transportados pelas betoneiras e bombeados pelas bombas.
+      const prod = (
+        await banco.query(
+          `SELECT betoneira_id AS veiculo_id, sum(volume_m3) AS m3 FROM cargas
+            WHERE empresa_id = $1 AND status = 'produzida' AND (data_hora AT TIME ZONE 'America/Sao_Paulo')::date >= $2 AND (data_hora AT TIME ZONE 'America/Sao_Paulo')::date < $3
+            GROUP BY 1
+           UNION ALL
+           SELECT bomba_id, sum(volume_bombeado_m3) FROM cargas
+            WHERE empresa_id = $1 AND status = 'produzida' AND bomba_id IS NOT NULL AND (data_hora AT TIME ZONE 'America/Sao_Paulo')::date >= $2 AND (data_hora AT TIME ZONE 'America/Sao_Paulo')::date < $3
+            GROUP BY 1`,
+          [empresaId, inicio, fim],
+        )
+      ).rows;
+
       const linhas = veiculos.map((v) => {
         const cats = fin.filter((f) => f.veiculo_id === v.id).map((f) => ({ codigo: f.codigo, nome: f.nome, valor: reais(f.v) }));
         cats.sort((a, b) => a.codigo.localeCompare(b.codigo, 'pt-BR', { numeric: true }));
@@ -299,6 +313,11 @@ export function rotasGerencial(banco: Banco) {
           litros: u ? Number(u.litros) : 0,
           custoKm: !bomba && km > 0 ? Math.round((total / km) * 100) / 100 : null,
           custoHora: bomba && horas > 0 ? Math.round((total / horas) * 100) / 100 : null,
+          m3: Math.round(prod.filter((x) => x.veiculo_id === v.id).reduce((s, x) => s + Number(x.m3 ?? 0), 0) * 100) / 100,
+          custoM3: (() => {
+            const m3 = prod.filter((x) => x.veiculo_id === v.id).reduce((s, x) => s + Number(x.m3 ?? 0), 0);
+            return m3 > 0 ? Math.round((total / m3) * 100) / 100 : null;
+          })(),
         };
       });
       const totalGeral = linhas.reduce((s, l) => s + l.total, 0);
