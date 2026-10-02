@@ -157,3 +157,101 @@ export async function garantirAbastecimentosDemo(banco: Banco, log = console.log
   });
   log('Abastecimentos de exemplo criados (45 dias).');
 }
+
+/** Fornecedores, credores, colaboradores, plano de manutenção e ordens de serviço de exemplo. */
+export async function garantirManutencaoDemo(banco: Banco, log = console.log): Promise<void> {
+  const e = (await banco.query('SELECT id FROM empresas WHERE cnpj = $1', [CNPJ_DEMO])).rows[0];
+  if (!e) return;
+  const tem = await banco.query('SELECT 1 FROM planos_manutencao WHERE empresa_id = $1 LIMIT 1', [e.id]);
+  if (tem.rowCount) return;
+  const { PLANO_PADRAO } = await import('./lib/manutencao.ts');
+
+  await emTransacao(banco, async (c) => {
+    const forn: Record<string, string> = {};
+    const lista: [string, string, string, string, string][] = [
+      ['fornecedor', 'Oficina Diesel Exemplo Ltda', 'Oficina Diesel Exemplo', 'Oficina mecânica', '11444777000161'],
+      ['fornecedor', 'Posto Exemplo Combustíveis Ltda', 'Posto Exemplo', 'Combustível', '45723174000110'],
+      ['fornecedor', 'Pedreira Exemplo Ltda', 'Pedreira Exemplo', 'Brita e areia', '07526557000100'],
+      ['fornecedor', 'Cimento Exemplo S.A.', 'Cimento Exemplo', 'Cimento', '33000167000101'],
+      ['fornecedor', 'Auto Peças Exemplo Ltda', 'Auto Peças Exemplo', 'Peças', '60746948000112'],
+      ['credor', 'Banco Exemplo S.A.', 'Banco Exemplo · financiamento', 'Financiamento de veículos', '90400888000142'],
+      ['credor', 'Prefeitura Municipal (exemplo)', 'Prefeitura · ISS', 'Tributos', ''],
+    ];
+    for (const [cat, razao, fantasia, ramo, doc] of lista) {
+      const r = await c.query(
+        `INSERT INTO fornecedores (empresa_id, categoria, razao_social, nome_fantasia, ramo, cnpj_cpf, cidade, uf) VALUES ($1,$2,$3,$4,$5,$6,'Palmas','TO') RETURNING id`,
+        [e.id, cat, razao, fantasia, ramo, doc || null],
+      );
+      forn[fantasia] = r.rows[0].id;
+    }
+    await c.query(`UPDATE abastecimentos SET fornecedor_id = $2 WHERE empresa_id = $1 AND posto = 'Posto Exemplo'`, [e.id, forn['Posto Exemplo']]);
+
+    // Colaboradores fora da frota.
+    for (const [nome, funcao, cargo] of [
+      ['Rita Souza (exemplo)', 'administrativo', 'Assistente financeiro'],
+      ['Marcos Lima (exemplo)', 'operador_usina', 'Operador da central dosadora'],
+      ['Paulo Reis (exemplo)', 'mecanico', 'Mecânico de manutenção'],
+    ]) {
+      await c.query(`INSERT INTO motoristas (empresa_id, nome, funcao, cargo, data_admissao) VALUES ($1,$2,$3,$4, current_date - 400)`, [e.id, nome, funcao, cargo]);
+    }
+
+    // Plano padrão.
+    const planos: Record<string, { id: string; km?: number; horas?: number; dias?: number; tipo: string | null }> = {};
+    for (const p of PLANO_PADRAO) {
+      const r = await c.query(
+        `INSERT INTO planos_manutencao (empresa_id, tipo_veiculo, item, intervalo_km, intervalo_horas, intervalo_dias) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+        [e.id, p.tipo, p.item, p.km ?? null, p.horas ?? null, p.dias ?? null],
+      );
+      planos[p.item] = { id: r.rows[0].id, km: p.km, horas: p.horas, dias: p.dias, tipo: p.tipo };
+    }
+
+    // Última execução de cada item: a maioria em dia, alguns perto de vencer e poucos vencidos.
+    const veiculos = (await c.query(`SELECT id, codigo, tipo, km_atual, horimetro_atual FROM veiculos WHERE empresa_id = $1 AND excluido_em IS NULL AND status <> 'inativo' ORDER BY codigo`, [e.id])).rows;
+    let k = 0;
+    for (const v of veiculos) {
+      for (const [item, p] of Object.entries(planos)) {
+        if (p.tipo && p.tipo !== v.tipo) continue;
+        k++;
+        // Fração do intervalo já usada: 30% a 85%, com alguns casos próximos (93%) e vencidos (105%).
+        const fracao = k % 11 === 0 ? 1.05 : k % 7 === 0 ? 0.93 : 0.3 + ((k * 37) % 55) / 100;
+        const km = p.km ? Math.round(Number(v.km_atual) - p.km * fracao) : null;
+        const horas = p.horas ? Math.round(Number(v.horimetro_atual) - p.horas * fracao) : null;
+        const dias = p.dias ? Math.round(p.dias * fracao) : Math.round(60 * fracao);
+        await c.query(
+          `INSERT INTO revisoes_veiculo (empresa_id, veiculo_id, plano_id, ultima_km, ultima_horas, ultima_data) VALUES ($1,$2,$3,$4,$5, current_date - $6::int)`,
+          [e.id, v.id, p.id, km, horas, dias],
+        );
+        void item;
+      }
+    }
+
+    // Ordens de serviço: uma aberta (BET-05 na oficina) e algumas concluídas com custo.
+    const id = (codigo: string) => veiculos.find((v) => v.codigo === codigo)?.id;
+    const oleo = planos['Troca de óleo do motor e filtro de óleo'].id;
+    const ordens: { codigo: string; tipo: string; desc: string; abre: number; fecha: number | null; itens: [string, string, number, number, string | null][] }[] = [
+      { codigo: 'BET-05', tipo: 'corretiva', desc: 'Vazamento no redutor do balão', abre: 3, fecha: null, itens: [['peca', 'Retentor do redutor', 2, 380, null], ['mao_de_obra', 'Desmontagem e montagem do redutor', 1, 650, null]] },
+      { codigo: 'BET-02', tipo: 'preventiva', desc: 'Troca de óleo e filtros', abre: 12, fecha: 11, itens: [['peca', 'Óleo de motor 15W40 (L)', 32, 28.5, null], ['peca', 'Filtro de óleo', 2, 95, null], ['servico', 'Troca de óleo do motor e filtro de óleo', 1, 180, oleo]] },
+      { codigo: 'BOM-01', tipo: 'corretiva', desc: 'Troca de mangote de 4 polegadas', abre: 20, fecha: 19, itens: [['peca', 'Mangote 4" × 3 m', 1, 1450, null], ['mao_de_obra', 'Substituição do mangote', 1, 200, null]] },
+      { codigo: 'BET-07', tipo: 'corretiva', desc: 'Pneu traseiro furado', abre: 26, fecha: 26, itens: [['servico', 'Conserto de pneu', 1, 120, null]] },
+    ];
+    let numero = 0;
+    for (const o of ordens) {
+      numero++;
+      const vid = id(o.codigo);
+      if (!vid) continue;
+      const r = await c.query(
+        `INSERT INTO ordens_servico (empresa_id, numero, veiculo_id, tipo, descricao, abertura, conclusao, oficina, fornecedor_id, status, km, horimetro)
+         SELECT $1, $2, v.id, $3, $4, current_date - $5::int, CASE WHEN $6::int IS NULL THEN NULL ELSE current_date - $6::int END, 'externa', $7,
+                CASE WHEN $6::int IS NULL THEN 'aberta'::status_os ELSE 'concluida'::status_os END, v.km_atual, v.horimetro_atual
+           FROM veiculos v WHERE v.id = $8 RETURNING id`,
+        [e.id, numero, o.tipo, o.desc, o.abre, o.fecha, forn['Oficina Diesel Exemplo'], vid],
+      );
+      for (const [tipo, desc, qtd, valor, plano] of o.itens) {
+        await c.query(`INSERT INTO os_itens (empresa_id, os_id, tipo, descricao, quantidade, valor_unitario_centavos, plano_id) VALUES ($1,$2,$3,$4,$5,$6,$7)`, [
+          e.id, r.rows[0].id, tipo, desc, qtd, Math.round(valor * 100), plano,
+        ]);
+      }
+    }
+  });
+  log('Fornecedores, colaboradores, plano de manutenção e ordens de serviço de exemplo criados.');
+}

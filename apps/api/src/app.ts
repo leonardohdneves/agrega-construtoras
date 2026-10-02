@@ -15,8 +15,10 @@ import { rotasUsuarios } from './rotas/usuarios.ts';
 import { rotasAdmin } from './rotas/admin.ts';
 import { rotasFrota } from './rotas/frota.ts';
 import { rotasAbastecimento } from './rotas/abastecimentos.ts';
+import { rotasManutencao } from './rotas/manutencao.ts';
+import { rotasAdministrativo } from './rotas/administrativo.ts';
 
-const VERSAO = '0.3.0';
+const VERSAO = '0.4.0';
 const PASTA_WEB = path.resolve(import.meta.dirname, '..', '..', 'web', 'dist');
 
 export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
@@ -40,6 +42,7 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
         empresas_cnpj_key: 'Já existe uma empresa com este CNPJ.',
         veiculos_codigo_unico: 'Já existe um veículo com este código.',
         veiculos_placa_unica: 'Já existe um veículo com esta placa.',
+        fornecedores_documento_unico: 'Já existe um cadastro com este CNPJ/CPF.',
         usuarios_motorista_unico: 'Este login já está ligado a outro motorista.',
       };
       return reply.code(409).send({ erro: MSG[restricao] ?? 'Já existe um cadastro com esses dados.' });
@@ -61,6 +64,8 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(rotasAdmin(banco), { prefix: '/api/admin' });
   await app.register(rotasFrota(banco), { prefix: '/api/frota' });
   await app.register(rotasAbastecimento(banco), { prefix: '/api/frota' });
+  await app.register(rotasManutencao(banco), { prefix: '/api/frota' });
+  await app.register(rotasAdministrativo(banco), { prefix: '/api/adm' });
 
   // Telas (app React já compilado). Qualquer rota que não seja /api cai no index.html.
   const temWeb = existsSync(path.join(PASTA_WEB, 'index.html'));

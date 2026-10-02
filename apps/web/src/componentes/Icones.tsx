@@ -10,3 +10,6 @@ export const IconeDinheiro = () => (<svg {...base}><rect x="2" y="6" width="20" 
 export const IconeGrafico = () => (<svg {...base}><path d="M4 20V10M10 20V4M16 20v-7M22 20H2" /></svg>);
 export const IconeSair = () => (<svg {...base}><path d="M15 4h4v16h-4M10 8l-4 4 4 4M6 12h11" /></svg>);
 export const IconeBomba = () => (<svg {...base}><path d="M4 21V5a2 2 0 012-2h6a2 2 0 012 2v16" /><path d="M3 21h12" /><path d="M14 9h2a2 2 0 012 2v5a1.5 1.5 0 003 0V8l-3-3" /><path d="M7 8h4" /></svg>);
+export const IconeEngrenagem = () => (<svg {...base}><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 00.3 1.8l.1.1a2 2 0 11-2.8 2.8l-.1-.1a1.7 1.7 0 00-1.8-.3 1.7 1.7 0 00-1 1.5V21a2 2 0 11-4 0v-.1a1.7 1.7 0 00-1.1-1.5 1.7 1.7 0 00-1.8.3l-.1.1a2 2 0 11-2.8-2.8l.1-.1a1.7 1.7 0 00.3-1.8 1.7 1.7 0 00-1.5-1H3a2 2 0 110-4h.1a1.7 1.7 0 001.5-1.1 1.7 1.7 0 00-.3-1.8l-.1-.1a2 2 0 112.8-2.8l.1.1a1.7 1.7 0 001.8.3H9a1.7 1.7 0 001-1.5V3a2 2 0 114 0v.1a1.7 1.7 0 001 1.5 1.7 1.7 0 001.8-.3l.1-.1a2 2 0 112.8 2.8l-.1.1a1.7 1.7 0 00-.3 1.8V9a1.7 1.7 0 001.5 1H21a2 2 0 110 4h-.1a1.7 1.7 0 00-1.5 1z" /></svg>);
+export const IconePasta = () => (<svg {...base}><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2z" /></svg>);
+export const IconeMenu = () => (<svg {...base}><path d="M4 6h16M4 12h16M4 18h16" /></svg>);

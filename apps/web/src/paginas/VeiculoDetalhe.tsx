@@ -12,7 +12,12 @@ import {
   NOMES_TIPO_VEICULO,
   seloVencimento,
   formatarDataHoraCurta,
+  textoFalta,
+  CLASSE_STATUS_OS,
+  NOMES_STATUS_OS,
   type Abastecimento,
+  type ItemManutencao,
+  type OrdemServico,
   type ConsumoVeiculo,
   type DocumentoVeiculo,
   type Veiculo,
@@ -20,6 +25,12 @@ import {
 import { FormVeiculo, dadosDoVeiculo } from '../componentes/FormVeiculo';
 
 type DadosDoc = { id?: string; tipo: DocumentoVeiculo['tipo']; descricao: string; numero: string; vencimento: string; valor: string };
+const SELO_REVISAO: Record<ItemManutencao['situacao'], { texto: string; classe: string }> = {
+  vencida: { texto: 'Vencida', classe: 'selo-perigo' },
+  proxima: { texto: 'Próxima', classe: 'selo-aviso' },
+  em_dia: { texto: 'Em dia', classe: 'selo-ok' },
+  sem_registro: { texto: 'Sem registro', classe: 'selo-neutro' },
+};
 const DOC_VAZIO: DadosDoc = { tipo: 'licenciamento', descricao: '', numero: '', vencimento: '', valor: '' };
 
 export function VeiculoDetalhe() {
@@ -34,6 +45,8 @@ export function VeiculoDetalhe() {
   const [ocupado, setOcupado] = useState(false);
   const [consumo, setConsumo] = useState<ConsumoVeiculo | null>(null);
   const [abast, setAbast] = useState<Abastecimento[]>([]);
+  const [revisoes, setRevisoes] = useState<ItemManutencao[]>([]);
+  const [ordens, setOrdens] = useState<OrdemServico[]>([]);
 
   useEffect(() => {
     api<{ veiculos: ConsumoVeiculo[] }>('/frota/consumo?dias=30')
@@ -41,6 +54,12 @@ export function VeiculoDetalhe() {
       .catch(() => {});
     api<{ abastecimentos: Abastecimento[] }>(`/frota/abastecimentos?dias=90&veiculoId=${id}`)
       .then((r) => setAbast(r.abastecimentos.slice(0, 6)))
+      .catch(() => {});
+    api<{ itens: ItemManutencao[] }>(`/frota/manutencao?veiculoId=${id}`)
+      .then((r) => setRevisoes(r.itens.sort((a, b) => (b.uso ?? -1) - (a.uso ?? -1))))
+      .catch(() => {});
+    api<{ ordens: OrdemServico[] }>(`/frota/os?veiculoId=${id}&dias=365`)
+      .then((r) => setOrdens(r.ordens))
       .catch(() => {});
   }, [id]);
 
@@ -94,6 +113,7 @@ export function VeiculoDetalhe() {
 
   if (!v) return erro ? <div className="alerta alerta-erro">{erro}</div> : <p className="muted">Carregando…</p>;
   const bomba = v.tipo === 'bomba_lanca' || v.tipo === 'bomba_estacionaria';
+  const custoOS = ordens.filter((o) => o.status === 'concluida').reduce((t, o) => t + o.total, 0);
 
   return (
     <>
@@ -113,9 +133,14 @@ export function VeiculoDetalhe() {
           </span>
         </div>
         {!editando && (
-          <button className="btn btn-secundario" type="button" onClick={() => setEditando(true)}>
-            Editar veículo
-          </button>
+          <div className="acoes">
+            <Link className="btn btn-secundario" to={`/frota/os/nova?veiculoId=${v.id}`}>
+              Abrir OS
+            </Link>
+            <button className="btn btn-secundario" type="button" onClick={() => setEditando(true)}>
+              Editar veículo
+            </button>
+          </div>
         )}
       </div>
 
@@ -201,6 +226,62 @@ export function VeiculoDetalhe() {
           </table>
         </div>
       )}
+
+      <div className="card tabela-caixa">
+        <div className="cabecalho" style={{ marginBottom: 12 }}>
+          <h2>Manutenção</h2>
+          <span className="small muted">
+            Custo em 12 meses: <span className="mono" style={{ fontWeight: 600, color: 'var(--ink)' }}>{formatarMoeda(custoOS)}</span>
+          </span>
+        </div>
+        {ordens.length > 0 && (
+          <table className="tabela" style={{ marginBottom: 16 }}>
+            <thead>
+              <tr>
+                <th>OS</th>
+                <th>Abertura</th>
+                <th>Serviço / defeito</th>
+                <th>Situação</th>
+                <th style={{ textAlign: 'right' }}>Custo</th>
+              </tr>
+            </thead>
+            <tbody>
+              {ordens.slice(0, 8).map((o) => (
+                <tr key={o.id}>
+                  <td className="mono"><Link to={`/frota/os/${o.id}`} style={{ fontWeight: 600 }}>#{o.numero}</Link></td>
+                  <td className="mono small">{formatarData(o.abertura)}</td>
+                  <td className="small">{o.tipo === 'preventiva' ? 'Preventiva · ' : 'Corretiva · '}{o.descricao}</td>
+                  <td><span className={`selo ${CLASSE_STATUS_OS[o.status]}`}>{NOMES_STATUS_OS[o.status]}</span></td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(o.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {revisoes.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>
+            Sem plano de manutenção para este veículo. <Link to="/frota/manutencao">Configure o plano</Link>.
+          </p>
+        ) : (
+          <ul className="lista-alertas">
+            {revisoes.map((r) => {
+              const s = SELO_REVISAO[r.situacao];
+              return (
+                <li key={r.planoId}>
+                  <span style={{ minWidth: 0 }}>
+                    <span style={{ fontWeight: 500 }}>{r.item}</span>
+                    <div className="small muted">
+                      {textoFalta(r)}
+                      {r.ultimaData ? ` · última em ${formatarData(r.ultimaData)}` : ''}
+                    </div>
+                  </span>
+                  <span className={`selo ${s.classe}`}>{s.texto}</span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
 
       <div className="card">
         <div className="cabecalho" style={{ marginBottom: 12 }}>

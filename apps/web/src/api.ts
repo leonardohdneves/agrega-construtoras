@@ -106,12 +106,17 @@ export type DocumentoVeiculo = {
   dias: number | null;
 };
 
+export type Funcao = 'motorista' | 'operador_bomba' | 'motorista_operador' | 'operador_usina' | 'mecanico' | 'laboratorista' | 'administrativo' | 'vendedor' | 'outro';
 export type Motorista = {
   id: string;
   nome: string;
   telefone: string | null;
   cpf: string | null;
-  funcao: 'motorista' | 'operador_bomba' | 'motorista_operador';
+  funcao: Funcao;
+  cargo: string | null;
+  email: string | null;
+  dataAdmissao: string | null;
+  observacoes: string | null;
   cnhNumero: string | null;
   cnhCategoria: string | null;
   cnhVencimento: string | null;
@@ -166,11 +171,18 @@ export const NOMES_TIPO_DOCUMENTO: Record<DocumentoVeiculo['tipo'], string> = {
   outro: 'Outro',
 };
 
-export const NOMES_FUNCAO: Record<Motorista['funcao'], string> = {
+export const NOMES_FUNCAO: Record<Funcao, string> = {
   motorista: 'Motorista',
   operador_bomba: 'Operador de bomba',
   motorista_operador: 'Motorista e operador',
+  operador_usina: 'Operador de usina',
+  mecanico: 'Mecânico',
+  laboratorista: 'Laboratorista',
+  administrativo: 'Administrativo',
+  vendedor: 'Vendedor',
+  outro: 'Outra função',
 };
+export const FUNCOES_FROTA: Funcao[] = ['motorista', 'operador_bomba', 'motorista_operador'];
 
 export function formatarPlaca(p: string | null): string {
   if (!p) return '—';
@@ -262,4 +274,109 @@ export function agoraLocal(d = new Date()): string {
 
 export function formatarDataHoraCurta(iso: string): string {
   return new Date(iso).toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+// ---------- Administrativo ----------
+export type Fornecedor = {
+  id: string;
+  categoria: 'fornecedor' | 'credor';
+  tipoPessoa: 'PJ' | 'PF';
+  cnpjCpf: string | null;
+  razaoSocial: string;
+  nomeFantasia: string | null;
+  ramo: string | null;
+  telefone: string | null;
+  email: string | null;
+  cidade: string | null;
+  uf: string | null;
+  chavePix: string | null;
+  observacoes: string | null;
+  ativo: boolean;
+};
+
+export function formatarDocumento(d: string | null): string {
+  if (!d) return '—';
+  if (d.length === 14) return formatarCnpj(d);
+  if (d.length === 11) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+  return d;
+}
+
+// ---------- Manutenção ----------
+export type Plano = {
+  id: string;
+  tipoVeiculo: TipoVeiculo | null;
+  item: string;
+  intervaloKm: number | null;
+  intervaloHoras: number | null;
+  intervaloDias: number | null;
+  ativo: boolean;
+};
+
+export type ItemManutencao = {
+  veiculoId: string;
+  codigo: string;
+  tipoVeiculo: TipoVeiculo;
+  planoId: string;
+  item: string;
+  intervaloKm: number | null;
+  intervaloHoras: number | null;
+  intervaloDias: number | null;
+  ultimaKm: number | null;
+  ultimaHoras: number | null;
+  ultimaData: string | null;
+  situacao: 'vencida' | 'proxima' | 'em_dia' | 'sem_registro';
+  proximaKm: number | null;
+  proximaHoras: number | null;
+  proximaData: string | null;
+  faltaKm: number | null;
+  faltaHoras: number | null;
+  faltaDias: number | null;
+  uso: number | null;
+};
+
+export type ItemOS = { id: string; tipo: 'peca' | 'mao_de_obra' | 'servico'; descricao: string; quantidade: number; valorUnitario: number; total: number; planoId: string | null; planoItem: string | null; temNota: boolean };
+export type OrdemServico = {
+  id: string;
+  numero: number;
+  veiculoId: string;
+  veiculoCodigo: string;
+  tipo: 'preventiva' | 'corretiva';
+  descricao: string;
+  abertura: string;
+  conclusao: string | null;
+  dias: number | null;
+  km: number | null;
+  horimetro: number | null;
+  oficina: 'interna' | 'externa';
+  fornecedorId: string | null;
+  fornecedorNome: string | null;
+  status: 'aberta' | 'em_andamento' | 'concluida' | 'cancelada';
+  observacoes: string | null;
+  total: number;
+  itens: ItemOS[];
+};
+
+export const NOMES_STATUS_OS: Record<OrdemServico['status'], string> = { aberta: 'Aberta', em_andamento: 'Em andamento', concluida: 'Concluída', cancelada: 'Cancelada' };
+export const CLASSE_STATUS_OS: Record<OrdemServico['status'], string> = { aberta: 'selo-aviso', em_andamento: 'selo-aviso', concluida: 'selo-ok', cancelada: 'selo-neutro' };
+export const NOMES_ITEM_OS: Record<ItemOS['tipo'], string> = { peca: 'Peça', mao_de_obra: 'Mão de obra', servico: 'Serviço' };
+
+/** Texto curto do que falta para a revisão (o critério mais próximo). */
+export function textoFalta(i: Pick<ItemManutencao, 'situacao' | 'faltaKm' | 'faltaHoras' | 'faltaDias'>): string {
+  if (i.situacao === 'sem_registro') return 'Sem registro da última execução';
+  const partes: { v: number; t: string }[] = [];
+  if (i.faltaKm !== null) partes.push({ v: i.faltaKm, t: `${formatarNumero(Math.abs(i.faltaKm))} km` });
+  if (i.faltaHoras !== null) partes.push({ v: i.faltaHoras * 30, t: `${formatarNumero(Math.abs(i.faltaHoras))} h` });
+  if (i.faltaDias !== null) partes.push({ v: i.faltaDias * 400, t: `${formatarNumero(Math.abs(i.faltaDias))} dias` });
+  const vencidos = partes.filter((p) => p.v < 0);
+  if (vencidos.length) return `Passou ${vencidos.map((p) => p.t).join(' e ')}`;
+  const menor = partes.sort((a, b) => a.v - b.v)[0];
+  return menor ? `Faltam ${menor.t}` : '—';
+}
+
+export function intervaloTexto(p: Pick<Plano, 'intervaloKm' | 'intervaloHoras' | 'intervaloDias'>): string {
+  const t: string[] = [];
+  if (p.intervaloKm) t.push(`${formatarNumero(p.intervaloKm)} km`);
+  if (p.intervaloHoras) t.push(`${formatarNumero(p.intervaloHoras)} h`);
+  if (p.intervaloDias) t.push(`${formatarNumero(p.intervaloDias)} dias`);
+  return t.join(' ou ');
 }

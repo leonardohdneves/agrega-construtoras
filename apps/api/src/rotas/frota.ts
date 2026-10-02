@@ -15,6 +15,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil, situacaoVencimento } from '../lib/frota.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { consumoDaFrota } from './abastecimentos.ts';
+import { situacaoManutencao } from './manutencao.ts';
 
 const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
 const dataIso = (v: unknown) => (v ? (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10)) : null);
@@ -68,6 +69,10 @@ export function motoristaPublico(r: Record<string, any>, hoje: string) {
     ativo: r.ativo,
     usuarioId: r.usuario_id ?? null,
     usuarioEmail: r.usuario_email ?? null,
+    cargo: r.cargo ?? null,
+    email: r.email ?? null,
+    dataAdmissao: dataIso(r.data_admissao),
+    observacoes: r.observacoes ?? null,
   };
 }
 
@@ -95,6 +100,10 @@ const COLUNAS_MOTORISTA: Record<string, string> = {
   cnhVencimento: 'cnh_vencimento',
   cursos: 'cursos',
   ativo: 'ativo',
+  cargo: 'cargo',
+  email: 'email',
+  dataAdmissao: 'data_admissao',
+  observacoes: 'observacoes',
 };
 const COLUNAS_DOCUMENTO: Record<string, string> = {
   tipo: 'tipo',
@@ -255,9 +264,11 @@ export function rotasFrota(banco: Banco) {
     });
 
     // ---------- Motoristas ----------
-    app.get('/motoristas', { preHandler: gestao }, async (req) => {
+    // Motoristas e operadores; com ?todos=1, todos os colaboradores (módulo Administrativo).
+    app.get<{ Querystring: { todos?: string } }>('/motoristas', { preHandler: gestao }, async (req) => {
       const hoje = hojeBrasil();
-      const r = await banco.query(`${SQL_MOTORISTAS} ORDER BY m.ativo DESC, m.nome`, [empresaDo(req)]);
+      const filtro = req.query.todos === '1' ? '' : ` AND m.funcao IN ('motorista', 'operador_bomba', 'motorista_operador')`;
+      const r = await banco.query(`${SQL_MOTORISTAS}${filtro} ORDER BY m.ativo DESC, m.nome`, [empresaDo(req)]);
       return { motoristas: r.rows.map((m) => motoristaPublico(m, hoje)) };
     });
 
@@ -267,9 +278,9 @@ export function rotasFrota(banco: Banco) {
       const m = await emTransacao(banco, async (c) => {
         const novo = (
           await c.query(
-            `INSERT INTO motoristas (empresa_id, nome, telefone, cpf, funcao, cnh_numero, cnh_categoria, cnh_vencimento, cursos, ativo)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-            [empresaId, d.nome, d.telefone, d.cpf, d.funcao, d.cnhNumero, d.cnhCategoria, d.cnhVencimento, JSON.stringify(d.cursos), d.ativo],
+            `INSERT INTO motoristas (empresa_id, nome, telefone, cpf, funcao, cnh_numero, cnh_categoria, cnh_vencimento, cursos, ativo, cargo, email, data_admissao, observacoes)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+            [empresaId, d.nome, d.telefone, d.cpf, d.funcao, d.cnhNumero, d.cnhCategoria, d.cnhVencimento, JSON.stringify(d.cursos), d.ativo, d.cargo, d.email ?? null, d.dataAdmissao, d.observacoes],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'motoristas', entidadeId: novo.id, depois: novo });
@@ -346,7 +357,12 @@ export function rotasFrota(banco: Banco) {
       const consumoAlto = (await consumoDaFrota(banco, empresaId, 30))
         .filter((v) => v.piora !== null)
         .map((v) => ({ veiculoId: v.veiculoId, codigo: v.codigo, piora: v.piora, ultimo: v.ultimo, media90: v.media90, ultimaData: v.ultimaData }));
-      return { alertas, consumoAlto, frota: { disponivel: resumo.disponivel ?? 0, manutencao: resumo.manutencao ?? 0, parado: resumo.parado ?? 0, inativo: resumo.inativo ?? 0 } };
+      const manutencao = (await situacaoManutencao(banco, empresaId))
+        .filter((i) => i.situacao === 'vencida' || i.situacao === 'proxima')
+        .sort((a, b) => (b.uso ?? 0) - (a.uso ?? 0))
+        .map((i) => ({ veiculoId: i.veiculoId, codigo: i.codigo, item: i.item, situacao: i.situacao, faltaKm: i.faltaKm, faltaHoras: i.faltaHoras, faltaDias: i.faltaDias }));
+      const osAbertas = (await banco.query(`SELECT count(*)::int AS n FROM ordens_servico WHERE empresa_id = $1 AND status IN ('aberta','em_andamento')`, [empresaId])).rows[0].n;
+      return { alertas, consumoAlto, manutencao, osAbertas, frota: { disponivel: resumo.disponivel ?? 0, manutencao: resumo.manutencao ?? 0, parado: resumo.parado ?? 0, inativo: resumo.inativo ?? 0 } };
     });
   };
 }

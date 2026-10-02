@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api, formatarData, formatarNumero, NOMES_PERFIL, NOMES_TIPO_DOCUMENTO, seloVencimento, type Alerta, type DocumentoVeiculo } from '../api';
+import { api, formatarData, formatarNumero, NOMES_PERFIL, NOMES_TIPO_DOCUMENTO, seloVencimento, textoFalta, type Alerta, type DocumentoVeiculo, type ItemManutencao } from '../api';
 import { useSessao } from '../sessao';
 
 const ETAPAS = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
   { n: 1, nome: 'Cadastros da frota: veículos, motoristas e documentos', pronta: true },
   { n: 2, nome: 'Abastecimento pelo celular, km/L e L/h', pronta: true },
-  { n: 3, nome: 'Manutenção preventiva e ordens de serviço' },
+  { n: 3, nome: 'Manutenção preventiva e ordens de serviço', pronta: true },
   { n: 4, nome: 'Financeiro: contas, plano de contas, a pagar e a receber' },
   { n: 5, nome: 'Nota fiscal: lançamento manual e importação de XML' },
   { n: 6, nome: 'Conciliação bancária com OFX' },
@@ -15,7 +15,7 @@ const ETAPAS = [
 ];
 
 type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: { kmPorLitro: number | null; litrosPorHora: number | null }; media90: { kmPorLitro: number | null; litrosPorHora: number | null } };
-type Resumo = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
+type Resumo = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; manutencao: ItemManutencao[]; osAbertas: number; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
 
 function PainelGestao() {
   const [dados, setDados] = useState<Resumo | null>(null);
@@ -95,6 +95,51 @@ function PainelGestao() {
               );
             })}
           </ul>
+        )}
+      </div>
+
+      <div className="card">
+        <div className="cabecalho" style={{ marginBottom: 12 }}>
+          <h2>Manutenção preventiva</h2>
+          <Link to="/frota/manutencao" className="small" style={{ fontWeight: 600, textDecoration: 'none' }}>
+            Manutenção ›
+          </Link>
+        </div>
+        {!dados ? (
+          <p className="muted">Carregando…</p>
+        ) : (
+          <>
+            {dados.osAbertas > 0 && (
+              <p style={{ marginTop: 0 }}>
+                <Link to="/frota/os" style={{ fontWeight: 600 }}>
+                  {dados.osAbertas} {dados.osAbertas === 1 ? 'ordem de serviço aberta' : 'ordens de serviço abertas'} ›
+                </Link>
+              </p>
+            )}
+            {dados.manutencao.length === 0 ? (
+              <p className="muted" style={{ margin: 0 }}>Nenhuma revisão vencida ou próxima. Frota em dia.</p>
+            ) : (
+              <ul className="lista-alertas">
+                {dados.manutencao.slice(0, 6).map((m) => (
+                  <li key={`${m.veiculoId}-${m.planoId}`}>
+                    <span style={{ minWidth: 0 }}>
+                      <Link to={`/frota/veiculos/${m.veiculoId}`} className="mono" style={{ textDecoration: 'none', fontWeight: 500 }}>
+                        {m.codigo}
+                      </Link>
+                      <span className="small"> · {m.item}</span>
+                      <div className="small muted">{textoFalta(m)}</div>
+                    </span>
+                    <span className={`selo ${m.situacao === 'vencida' ? 'selo-perigo' : 'selo-aviso'}`}>{m.situacao === 'vencida' ? 'Vencida' : 'Próxima'}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {dados.manutencao.length > 6 && (
+              <p className="small muted" style={{ margin: '8px 0 0' }}>
+                e mais {dados.manutencao.length - 6}. <Link to="/frota/manutencao">Ver todas</Link>
+              </p>
+            )}
+          </>
         )}
       </div>
 

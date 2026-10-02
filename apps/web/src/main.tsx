@@ -17,6 +17,10 @@ import { VeiculoDetalhe } from './paginas/VeiculoDetalhe';
 import { Motoristas } from './paginas/Motoristas';
 import { Abastecer } from './paginas/Abastecer';
 import { Abastecimentos } from './paginas/Abastecimentos';
+import { Manutencao } from './paginas/Manutencao';
+import { OrdensServico } from './paginas/OrdensServico';
+import { OrdemServico } from './paginas/OrdemServico';
+import { Fornecedores } from './paginas/Fornecedores';
 
 registerSW({ immediate: true });
 
@@ -60,6 +64,12 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="frota/motoristas" element={<Protegido perfis={['dono', 'gestor']}><Motoristas /></Protegido>} />
             <Route path="abastecer" element={<Protegido perfis={['dono', 'gestor', 'motorista']}><Abastecer /></Protegido>} />
             <Route path="frota/abastecimentos" element={<Protegido perfis={['dono', 'gestor']}><Abastecimentos /></Protegido>} />
+            <Route path="frota/manutencao" element={<Protegido perfis={['dono', 'gestor']}><Manutencao /></Protegido>} />
+            <Route path="frota/os" element={<Protegido perfis={['dono', 'gestor']}><OrdensServico /></Protegido>} />
+            <Route path="frota/os/:id" element={<Protegido perfis={['dono', 'gestor']}><OrdemServico /></Protegido>} />
+            <Route path="adm/fornecedores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="fornecedor" /></Protegido>} />
+            <Route path="adm/credores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="credor" /></Protegido>} />
+            <Route path="adm/colaboradores" element={<Protegido perfis={['dono', 'gestor']}><Motoristas key="colaboradores" modo="colaboradores" /></Protegido>} />
             <Route path="conta" element={<Conta />} />
             <Route path="admin/empresas" element={<Protegido perfis={['admin_sistema']}><AdminEmpresas /></Protegido>} />
             <Route path="*" element={<NaoEncontrado />} />

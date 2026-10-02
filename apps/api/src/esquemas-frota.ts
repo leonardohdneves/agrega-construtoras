@@ -73,7 +73,8 @@ export const esquemaDocumento = z.object({
 });
 export const esquemaAlterarDocumento = esquemaDocumento.partial().strict();
 
-export const FUNCOES = ['motorista', 'operador_bomba', 'motorista_operador'] as const;
+export const FUNCOES = ['motorista', 'operador_bomba', 'motorista_operador', 'operador_usina', 'mecanico', 'laboratorista', 'administrativo', 'vendedor', 'outro'] as const;
+export const FUNCOES_FROTA = ['motorista', 'operador_bomba', 'motorista_operador'] as const;
 const CATEGORIAS_CNH = ['A', 'B', 'C', 'D', 'E', 'AB', 'AC', 'AD', 'AE'] as const;
 
 const camposMotorista = {
@@ -101,6 +102,10 @@ const camposMotorista = {
   cnhVencimento: data,
   cursos: z.array(z.string().trim().min(1).max(120)).max(20).optional().default([]),
   ativo: z.boolean().optional().default(true),
+  cargo: textoOpcional,
+  email: z.string().trim().toLowerCase().email('E-mail inválido.').optional().nullable().or(z.literal('').transform(() => null)),
+  dataAdmissao: data,
+  observacoes: textoOpcional,
 };
 
 export const esquemaMotorista = z.object(camposMotorista);

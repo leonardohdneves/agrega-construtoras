@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, formatarData, NOMES_FUNCAO, seloVencimento, type Motorista, type Usuario } from '../api';
+import { api, formatarData, FUNCOES_FROTA, NOMES_FUNCAO, seloVencimento, type Funcao, type Motorista, type Usuario } from '../api';
 
 type Dados = {
   id?: string;
@@ -12,9 +12,12 @@ type Dados = {
   cnhVencimento: string;
   cursos: string;
   usuarioId: string;
+  cargo: string;
+  email: string;
+  dataAdmissao: string;
 };
 
-const VAZIO: Dados = { nome: '', telefone: '', cpf: '', funcao: 'motorista', cnhNumero: '', cnhCategoria: 'E', cnhVencimento: '', cursos: '', usuarioId: '' };
+const VAZIO: Dados = { nome: '', telefone: '', cpf: '', funcao: 'motorista', cnhNumero: '', cnhCategoria: 'E', cnhVencimento: '', cursos: '', usuarioId: '', cargo: '', email: '', dataAdmissao: '' };
 
 function paraDados(m: Motorista): Dados {
   return {
@@ -28,10 +31,15 @@ function paraDados(m: Motorista): Dados {
     cnhVencimento: m.cnhVencimento ?? '',
     cursos: m.cursos.join(', '),
     usuarioId: m.usuarioId ?? '',
+    cargo: m.cargo ?? '',
+    email: m.email ?? '',
+    dataAdmissao: m.dataAdmissao ?? '',
   };
 }
 
-export function Motoristas() {
+export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores' }) {
+  const colab = modo === 'colaboradores';
+  const funcoes = (colab ? Object.keys(NOMES_FUNCAO) : FUNCOES_FROTA) as Funcao[];
   const [lista, setLista] = useState<Motorista[] | null>(null);
   const [logins, setLogins] = useState<Usuario[]>([]);
   const [form, setForm] = useState<Dados | null>(null);
@@ -42,13 +50,13 @@ export function Motoristas() {
 
   const carregar = useCallback(async () => {
     try {
-      const [m, u] = await Promise.all([api<{ motoristas: Motorista[] }>('/frota/motoristas'), api<{ usuarios: Usuario[] }>('/usuarios')]);
+      const [m, u] = await Promise.all([api<{ motoristas: Motorista[] }>(colab ? '/frota/motoristas?todos=1' : '/frota/motoristas'), api<{ usuarios: Usuario[] }>('/usuarios')]);
       setLista(m.motoristas);
       setLogins(u.usuarios.filter((x) => x.perfil === 'motorista' && x.ativo));
     } catch (e) {
       setErro((e as Error).message);
     }
-  }, []);
+  }, [colab]);
   useEffect(() => {
     carregar();
   }, [carregar]);
@@ -69,6 +77,9 @@ export function Motoristas() {
         cnhCategoria: form.cnhCategoria,
         cnhVencimento: form.cnhVencimento,
         cursos: form.cursos.split(',').map((c) => c.trim()).filter(Boolean),
+        cargo: form.cargo,
+        email: form.email,
+        dataAdmissao: form.dataAdmissao,
       };
       let id = form.id;
       if (id) await api(`/frota/motoristas/${id}`, { metodo: 'PATCH', corpo });
@@ -110,12 +121,14 @@ export function Motoristas() {
     <>
       <div className="cabecalho">
         <div className="titulo">
-          <h1>Motoristas</h1>
-          <span className="muted">Motoristas e operadores de bomba, com CNH e cursos.</span>
+          <h1>{colab ? 'Colaboradores' : 'Motoristas'}</h1>
+          <span className="muted">
+            {colab ? 'Todas as pessoas da equipe, com função e cargo. Motoristas e operadores aparecem também no módulo Frota.' : 'Motoristas e operadores de bomba, com CNH e cursos.'}
+          </span>
         </div>
         {!form && (
           <button className="btn btn-primario" type="button" onClick={() => setForm(VAZIO)}>
-            Novo motorista
+            {colab ? 'Novo colaborador' : 'Novo motorista'}
           </button>
         )}
       </div>
@@ -124,7 +137,7 @@ export function Motoristas() {
 
       {form && (
         <form className="card form" onSubmit={salvar}>
-          <h2>{form.id ? `Editar ${form.nome}` : 'Novo motorista'}</h2>
+          <h2>{form.id ? `Editar ${form.nome}` : colab ? 'Novo colaborador' : 'Novo motorista'}</h2>
           <div className="campos">
             <div className="campo">
               <label htmlFor="m-nome">Nome</label>
@@ -133,8 +146,8 @@ export function Motoristas() {
             <div className="campo">
               <label htmlFor="m-funcao">Função</label>
               <select id="m-funcao" value={form.funcao} onChange={(e) => setForm({ ...form, funcao: e.target.value as Dados['funcao'] })}>
-                {Object.entries(NOMES_FUNCAO).map(([k, r]) => (
-                  <option key={k} value={k}>{r}</option>
+                {funcoes.map((k) => (
+                  <option key={k} value={k}>{NOMES_FUNCAO[k]}</option>
                 ))}
               </select>
             </div>
@@ -142,6 +155,24 @@ export function Motoristas() {
               <label htmlFor="m-tel">Telefone</label>
               <input id="m-tel" inputMode="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />
             </div>
+            {colab && (
+              <div className="campo">
+                <label htmlFor="m-cargo">Cargo</label>
+                <input id="m-cargo" value={form.cargo} onChange={(e) => setForm({ ...form, cargo: e.target.value })} />
+              </div>
+            )}
+            {colab && (
+              <div className="campo">
+                <label htmlFor="m-email">E-mail</label>
+                <input id="m-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+              </div>
+            )}
+            {colab && (
+              <div className="campo">
+                <label htmlFor="m-adm">Data de admissão</label>
+                <input id="m-adm" type="date" value={form.dataAdmissao} onChange={(e) => setForm({ ...form, dataAdmissao: e.target.value })} />
+              </div>
+            )}
             <div className="campo">
               <label htmlFor="m-cpf">CPF</label>
               <input id="m-cpf" className="mono" inputMode="numeric" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />
@@ -194,7 +225,7 @@ export function Motoristas() {
         {!lista ? (
           <p className="muted">Carregando…</p>
         ) : visiveis.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>Nenhum motorista cadastrado. Comece pelo botão Novo motorista.</p>
+          <p className="muted" style={{ margin: 0 }}>{colab ? 'Nenhum colaborador cadastrado.' : 'Nenhum motorista cadastrado. Comece pelo botão Novo motorista.'}</p>
         ) : (
           <table className="tabela">
             <thead>
@@ -216,7 +247,10 @@ export function Motoristas() {
                       {m.nome}
                       {m.cursos.length > 0 && <div className="small muted">{m.cursos.join(' · ')}</div>}
                     </td>
-                    <td>{NOMES_FUNCAO[m.funcao]}</td>
+                    <td>
+                      {NOMES_FUNCAO[m.funcao]}
+                      {m.cargo && <div className="small muted">{m.cargo}</div>}
+                    </td>
                     <td className="mono">{m.cnhCategoria ?? '—'}</td>
                     <td>
                       <span className="mono small">{formatarData(m.cnhVencimento)}</span>{' '}
