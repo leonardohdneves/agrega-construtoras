@@ -1,0 +1,1098 @@
+import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import {
+  api,
+  formatarChave,
+  formatarData,
+  formatarDataHoraCurta,
+  formatarDocumento,
+  formatarMoeda,
+  formatarNumero,
+  hojeLocal,
+  lerNumero,
+  moedaCampo,
+  NOMES_FORMA,
+  NOMES_ITEM_OS,
+  NOMES_MODELO,
+  SELO_NOTA,
+  TEXTO_SUGESTAO,
+  type FormaPagamento,
+  type ItemNota,
+  type ModeloNota,
+  type NotaFiscal,
+  type TipoLanc,
+} from '../api';
+import { OpcoesCategoria, useCadastros, type Cadastros } from './Lancamento';
+
+const soma = (xs: number[]) => Math.round(xs.reduce((s, x) => s + x, 0) * 100) / 100;
+
+// ======================= Nota lançada à mão =======================
+type ItemForm = { chave: number; descricao: string; quantidade: string; unidade: string; valor: string; planoContaId: string; centroCustoId: string; veiculoId: string };
+let seq = 0;
+const itemVazio = (): ItemForm => ({ chave: ++seq, descricao: '', quantidade: '1', unidade: '', valor: '', planoContaId: '', centroCustoId: '', veiculoId: '' });
+
+function NovaNota({ cadastros }: { cadastros: Cadastros }) {
+  const navegar = useNavigate();
+  const [params] = useSearchParams();
+  const [direcao, setDirecao] = useState<'entrada' | 'saida'>(params.get('direcao') === 'saida' ? 'saida' : 'entrada');
+  const tipo: TipoLanc = direcao === 'saida' ? 'receita' : 'despesa';
+  const [f, setF] = useState({ modelo: 'nfe' as ModeloNota, numero: '', serie: '', chaveAcesso: '', dataEmissao: hojeLocal(), pessoaId: '', frete: '', desconto: '', outras: '', observacoes: '' });
+  const [itens, setItens] = useState<ItemForm[]>([itemVazio()]);
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+
+  const pessoas = direcao === 'entrada' ? cadastros.fornecedores.filter((x) => x.ativo) : cadastros.clientes.filter((x) => x.ativo);
+  const produtos = soma(itens.map((i) => lerNumero(i.valor) ?? 0));
+  const total = Math.round((produtos + (lerNumero(f.frete) ?? 0) + (lerNumero(f.outras) ?? 0) - (lerNumero(f.desconto) ?? 0)) * 100) / 100;
+  const mudarItem = (chave: number, p: Partial<ItemForm>) => setItens((xs) => xs.map((x) => (x.chave === chave ? { ...x, ...p } : x)));
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    setOcupado(true);
+    try {
+      const r = await api<{ nota: NotaFiscal }>('/fin/notas', {
+        corpo: {
+          direcao,
+          modelo: f.modelo,
+          numero: f.numero,
+          serie: f.serie,
+          chaveAcesso: f.chaveAcesso || null,
+          dataEmissao: f.dataEmissao,
+          fornecedorId: direcao === 'entrada' ? f.pessoaId || null : null,
+          clienteId: direcao === 'saida' ? f.pessoaId || null : null,
+          frete: f.frete,
+          desconto: f.desconto,
+          outras: f.outras,
+          observacoes: f.observacoes,
+          itens: itens.map(({ chave: _c, ...i }) => i),
+        },
+      });
+      navegar(`/fin/notas/${r.nota.id}`, { replace: true, state: { aviso: 'Nota salva para conferência. Confira as categorias e confirme para lançar.' } });
+    } catch (err) {
+      setErro((err as Error).message);
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={salvar}>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <div className="campos">
+        <div className="campo">
+          <span className="rotulo" id="n-dir">Tipo de nota</span>
+          <div className="segmentado" role="group" aria-labelledby="n-dir">
+            <button type="button" aria-pressed={direcao === 'entrada'} className={direcao === 'entrada' ? 'ativo' : ''} onClick={() => { setDirecao('entrada'); setF({ ...f, pessoaId: '' }); }}>
+              Compra
+            </button>
+            <button type="button" aria-pressed={direcao === 'saida'} className={direcao === 'saida' ? 'ativo' : ''} onClick={() => { setDirecao('saida'); setF({ ...f, pessoaId: '' }); }}>
+              Venda
+            </button>
+          </div>
+        </div>
+        <div className="campo">
+          <label htmlFor="n-modelo">Documento</label>
+          <select id="n-modelo" value={f.modelo} onChange={(e) => setF({ ...f, modelo: e.target.value as ModeloNota })}>
+            {(Object.keys(NOMES_MODELO) as ModeloNota[]).map((m) => (
+              <option key={m} value={m}>{NOMES_MODELO[m]}</option>
+            ))}
+          </select>
+        </div>
+        <div className="campo">
+          <label htmlFor="n-num">Número</label>
+          <input id="n-num" className="mono" value={f.numero} onChange={(e) => setF({ ...f, numero: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="n-serie">Série</label>
+          <input id="n-serie" className="mono" value={f.serie} onChange={(e) => setF({ ...f, serie: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="n-emissao">Emissão</label>
+          <input id="n-emissao" type="date" value={f.dataEmissao} onChange={(e) => setF({ ...f, dataEmissao: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="n-pessoa">{direcao === 'entrada' ? 'Fornecedor' : 'Cliente'}</label>
+          <select id="n-pessoa" value={f.pessoaId} onChange={(e) => setF({ ...f, pessoaId: e.target.value })}>
+            <option value="">Escolha</option>
+            {pessoas.map((p) => (
+              <option key={p.id} value={p.id}>{p.nomeFantasia || p.razaoSocial}</option>
+            ))}
+          </select>
+          <span className="small muted">
+            Não está na lista? <Link to={direcao === 'entrada' ? '/adm/fornecedores' : '/adm/clientes'}>Cadastre em Administrativo</Link>.
+          </span>
+        </div>
+      </div>
+      {(f.modelo === 'nfe' || f.modelo === 'nfce') && (
+        <div className="campo">
+          <label htmlFor="n-chave">Chave de acesso (opcional, 44 números)</label>
+          <input id="n-chave" className="mono" inputMode="numeric" value={f.chaveAcesso} onChange={(e) => setF({ ...f, chaveAcesso: e.target.value })} />
+          <span className="ajuda">Com a chave, o sistema impede lançar a mesma nota duas vezes. Se tiver o XML, prefira importar.</span>
+        </div>
+      )}
+
+      <h2 style={{ margin: '8px 0 0' }}>Itens</h2>
+      {itens.map((i, k) => (
+        <div key={i.chave} className="item-nota-form">
+          <div className="campos">
+            <div className="campo" style={{ gridColumn: 'span 2' }}>
+              <label htmlFor={`i-desc-${i.chave}`}>Item {k + 1}</label>
+              <input id={`i-desc-${i.chave}`} value={i.descricao} placeholder="Ex.: Óleo diesel S10" onChange={(e) => mudarItem(i.chave, { descricao: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor={`i-qtd-${i.chave}`}>Quantidade</label>
+              <input id={`i-qtd-${i.chave}`} className="mono" inputMode="decimal" value={i.quantidade} onChange={(e) => mudarItem(i.chave, { quantidade: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor={`i-un-${i.chave}`}>Unidade</label>
+              <input id={`i-un-${i.chave}`} value={i.unidade} placeholder="L, un, t…" onChange={(e) => mudarItem(i.chave, { unidade: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor={`i-valor-${i.chave}`}>Valor total do item (R$)</label>
+              <input id={`i-valor-${i.chave}`} className="mono" inputMode="decimal" placeholder="0,00" value={i.valor} onChange={(e) => mudarItem(i.chave, { valor: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor={`i-cat-${i.chave}`}>Categoria</label>
+              <select id={`i-cat-${i.chave}`} value={i.planoContaId} onChange={(e) => mudarItem(i.chave, { planoContaId: e.target.value })}>
+                <OpcoesCategoria plano={cadastros.plano} tipo={tipo} atual={i.planoContaId} />
+              </select>
+            </div>
+            <div className="campo">
+              <label htmlFor={`i-cc-${i.chave}`}>Centro de custo</label>
+              <select id={`i-cc-${i.chave}`} value={i.centroCustoId} onChange={(e) => mudarItem(i.chave, { centroCustoId: e.target.value })}>
+                <option value="">—</option>
+                {cadastros.centros.filter((c) => c.ativo).map((c) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+            {direcao === 'entrada' && (
+              <div className="campo">
+                <label htmlFor={`i-v-${i.chave}`}>Veículo</label>
+                <select id={`i-v-${i.chave}`} value={i.veiculoId} onChange={(e) => mudarItem(i.chave, { veiculoId: e.target.value })}>
+                  <option value="">—</option>
+                  {cadastros.veiculos.map((v) => (
+                    <option key={v.id} value={v.id}>{v.codigo}</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+          {itens.length > 1 && (
+            <button className="btn btn-link" type="button" onClick={() => setItens((xs) => xs.filter((x) => x.chave !== i.chave))}>
+              Remover item {k + 1}
+            </button>
+          )}
+        </div>
+      ))}
+      <div className="acoes">
+        <button className="btn btn-secundario" type="button" onClick={() => setItens((xs) => [...xs, itemVazio()])}>
+          + Item
+        </button>
+        <span className="small muted">Sem categoria, o sistema sugere uma pela descrição; você confere antes de lançar.</span>
+      </div>
+
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="n-frete">Frete (R$)</label>
+          <input id="n-frete" className="mono" inputMode="decimal" placeholder="0,00" value={f.frete} onChange={(e) => setF({ ...f, frete: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="n-outras">Outras despesas (R$)</label>
+          <input id="n-outras" className="mono" inputMode="decimal" placeholder="0,00" value={f.outras} onChange={(e) => setF({ ...f, outras: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="n-desc">Desconto (R$)</label>
+          <input id="n-desc" className="mono" inputMode="decimal" placeholder="0,00" value={f.desconto} onChange={(e) => setF({ ...f, desconto: e.target.value })} />
+        </div>
+        <div className="campo">
+          <span className="rotulo">Total da nota</span>
+          <strong className="mono" style={{ fontSize: 22, lineHeight: '48px' }}>{formatarMoeda(total)}</strong>
+        </div>
+      </div>
+      <div className="campo">
+        <label htmlFor="n-obs">Observações</label>
+        <input id="n-obs" value={f.observacoes} onChange={(e) => setF({ ...f, observacoes: e.target.value })} />
+      </div>
+      <div className="acoes">
+        <button className="btn btn-primario" type="submit" disabled={ocupado}>
+          {ocupado ? 'Salvando…' : 'Salvar e conferir'}
+        </button>
+        <Link className="btn btn-secundario" to="/fin/notas">Cancelar</Link>
+        <span className="small muted">Os vencimentos e o pagamento você informa na próxima tela, ao confirmar.</span>
+      </div>
+    </form>
+  );
+}
+
+// ======================= Vínculos com abastecimentos e OS =======================
+type Candidatos = {
+  item: { id: string; descricao: string; quantidade: number; unidade: string | null; valorCusto: number };
+  abastecimentos: { id: string; dataHora: string; litros: number; valor: number | null; veiculoCodigo: string; posto: string | null; mesmoFornecedor: boolean; vinculado: boolean; emOutraNota: string | null }[];
+  osItens: { id: string; tipo: keyof typeof NOMES_ITEM_OS; descricao: string; quantidade: number; total: number; osNumero: number; abertura: string; osStatus: string; veiculoCodigo: string; oficina: string | null; mesmoFornecedor: boolean; vinculado: boolean; emOutraNota: string | null }[];
+};
+
+function Vinculos({ item, aoSalvar, aoFechar }: { item: ItemNota; aoSalvar: (n: NotaFiscal) => void; aoFechar: () => void }) {
+  const [c, setC] = useState<Candidatos | null>(null);
+  const [selA, setSelA] = useState<Set<string>>(new Set());
+  const [selO, setSelO] = useState<Set<string>>(new Set());
+  const [aba, setAba] = useState<'abast' | 'os'>(item.os ? 'os' : 'abast');
+  const [todos, setTodos] = useState(false);
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    api<Candidatos>(`/fin/notas/itens/${item.id}/candidatos`)
+      .then((r) => {
+        setC(r);
+        setSelA(new Set(r.abastecimentos.filter((a) => a.vinculado).map((a) => a.id)));
+        setSelO(new Set(r.osItens.filter((o) => o.vinculado).map((o) => o.id)));
+        if (!item.abastecimentos && !item.os && !/diesel|s10|s500|combust/i.test(item.descricao) && r.osItens.some((o) => o.mesmoFornecedor)) setAba('os');
+      })
+      .catch((e) => setErro((e as Error).message));
+  }, [item]);
+
+  const alternar = (s: Set<string>, set: (x: Set<string>) => void, id: string) => {
+    const n = new Set(s);
+    if (n.has(id)) n.delete(id);
+    else n.add(id);
+    set(n);
+  };
+
+  const abast = (c?.abastecimentos ?? []).filter((a) => todos || a.mesmoFornecedor || a.vinculado);
+  const os = (c?.osItens ?? []).filter((o) => todos || o.mesmoFornecedor || o.vinculado);
+  const escolhidosA = (c?.abastecimentos ?? []).filter((a) => selA.has(a.id));
+  const litros = soma(escolhidosA.map((a) => a.litros));
+  const valorA = soma(escolhidosA.map((a) => a.valor ?? 0));
+  const valorO = soma((c?.osItens ?? []).filter((o) => selO.has(o.id)).map((o) => o.total));
+
+  async function salvar() {
+    setErro('');
+    setOcupado(true);
+    try {
+      const r = await api<{ nota: NotaFiscal }>(`/fin/notas/itens/${item.id}/vinculos`, { metodo: 'PUT', corpo: { abastecimentoIds: [...selA], osItemIds: [...selO] } });
+      aoSalvar(r.nota);
+    } catch (e) {
+      setErro((e as Error).message);
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="painel-vinculo">
+      <p className="small" style={{ margin: 0 }}>
+        Ligue este item aos registros da frota que ele paga. Assim o diesel e as peças não contam duas vezes, e o custo é dividido entre os veículos certos.
+      </p>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <div className="abas" role="tablist">
+        <button type="button" role="tab" aria-selected={aba === 'abast'} className={aba === 'abast' ? 'ativa' : ''} onClick={() => setAba('abast')}>
+          Abastecimentos {selA.size ? `(${selA.size})` : ''}
+        </button>
+        <button type="button" role="tab" aria-selected={aba === 'os'} className={aba === 'os' ? 'ativa' : ''} onClick={() => setAba('os')}>
+          Ordens de serviço {selO.size ? `(${selO.size})` : ''}
+        </button>
+      </div>
+      {!c ? (
+        <p className="muted">Carregando…</p>
+      ) : aba === 'abast' ? (
+        <>
+          <div className="acoes small">
+            <label className="marcar" style={{ minHeight: 0 }}>
+              <input type="checkbox" checked={todos} onChange={(e) => setTodos(e.target.checked)} />
+              <span>Mostrar de outros postos</span>
+            </label>
+            {abast.length > 0 && (
+              <button
+                className="btn btn-link"
+                type="button"
+                onClick={() => setSelA(new Set([...selA, ...abast.filter((a) => !a.emOutraNota).map((a) => a.id)]))}
+              >
+                Marcar todos os sem nota
+              </button>
+            )}
+            {selA.size > 0 && <button className="btn btn-link" type="button" onClick={() => setSelA(new Set())}>Desmarcar</button>}
+          </div>
+          {abast.length === 0 ? (
+            <p className="small muted">Nenhum abastecimento deste posto nos 60 dias antes da emissão. Marque "Mostrar de outros postos" se o posto não foi informado no abastecimento.</p>
+          ) : (
+            <div className="lista-vinculo">
+              {abast.map((a) => (
+                <label key={a.id} className={`marcar ${a.emOutraNota ? 'desabilitado' : ''}`}>
+                  <input type="checkbox" disabled={!!a.emOutraNota} checked={selA.has(a.id)} onChange={() => alternar(selA, setSelA, a.id)} />
+                  <span className="mono small">{formatarDataHoraCurta(a.dataHora)}</span>
+                  <span className="mono" style={{ fontWeight: 600 }}>{a.veiculoCodigo}</span>
+                  <span className="mono small">{formatarNumero(a.litros, 1)} L</span>
+                  <span className="mono small">{formatarMoeda(a.valor)}</span>
+                  <span className="small muted">{a.emOutraNota ? `já na nota: ${a.emOutraNota}` : a.posto ?? ''}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="small" style={{ margin: 0 }}>
+            Escolhidos: <strong className="mono">{formatarNumero(litros, 1)} L</strong> · <strong className="mono">{formatarMoeda(valorA)}</strong>
+            {' '}— no item da nota: <span className="mono">{formatarNumero(item.quantidade, 1)} {item.unidade ?? ''}</span> · <span className="mono">{formatarMoeda(item.valorCusto)}</span>
+            {item.unidade && /^l/i.test(item.unidade) && selA.size > 0 && Math.abs(litros - item.quantidade) > 0.5 && (
+              <span style={{ color: 'var(--status-warn-ink)' }}> · diferença de {formatarNumero(Math.abs(litros - item.quantidade), 1)} L</span>
+            )}
+          </p>
+        </>
+      ) : (
+        <>
+          <label className="marcar small" style={{ minHeight: 0 }}>
+            <input type="checkbox" checked={todos} onChange={(e) => setTodos(e.target.checked)} />
+            <span>Mostrar OS de outras oficinas</span>
+          </label>
+          {os.length === 0 ? (
+            <p className="small muted">Nenhuma OS desta oficina nos 4 meses antes da emissão.</p>
+          ) : (
+            <div className="lista-vinculo">
+              {os.map((o) => (
+                <label key={o.id} className={`marcar ${o.emOutraNota ? 'desabilitado' : ''}`}>
+                  <input type="checkbox" disabled={!!o.emOutraNota} checked={selO.has(o.id)} onChange={() => alternar(selO, setSelO, o.id)} />
+                  <span className="mono" style={{ fontWeight: 600 }}>OS #{o.osNumero}</span>
+                  <span className="mono">{o.veiculoCodigo}</span>
+                  <span className="small">{NOMES_ITEM_OS[o.tipo]}: {o.descricao}</span>
+                  <span className="mono small">{formatarMoeda(o.total)}</span>
+                  <span className="small muted">{o.emOutraNota ? `já na nota: ${o.emOutraNota}` : o.oficina ?? 'oficina própria'}</span>
+                </label>
+              ))}
+            </div>
+          )}
+          <p className="small" style={{ margin: 0 }}>
+            Escolhidos: <strong className="mono">{formatarMoeda(valorO)}</strong> — no item da nota: <span className="mono">{formatarMoeda(item.valorCusto)}</span>
+          </p>
+        </>
+      )}
+      <div className="acoes">
+        <button className="btn btn-primario" type="button" disabled={ocupado || !c} onClick={salvar}>
+          Salvar vínculo
+        </button>
+        <button className="btn btn-secundario" type="button" onClick={aoFechar}>
+          Fechar
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// ======================= Item da nota (linha) =======================
+function LinhaItem({
+  item,
+  nota,
+  cadastros,
+  editavel,
+  aoMudar,
+  aoErro,
+}: {
+  item: ItemNota;
+  nota: NotaFiscal;
+  cadastros: Cadastros;
+  editavel: boolean;
+  aoMudar: (n: NotaFiscal) => void;
+  aoErro: (m: string) => void;
+}) {
+  const [vinculo, setVinculo] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  const [desc, setDesc] = useState({ descricao: item.descricao, quantidade: formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0), valor: moedaCampo(item.valorProduto) });
+  const manual = nota.origem === 'manual';
+
+  async function salvar(corpo: Record<string, unknown>) {
+    aoErro('');
+    setSalvando(true);
+    try {
+      aoMudar((await api<{ nota: NotaFiscal }>(`/fin/notas/itens/${item.id}`, { metodo: 'PATCH', corpo })).nota);
+    } catch (e) {
+      aoErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+  async function remover() {
+    aoErro('');
+    try {
+      aoMudar((await api<{ nota: NotaFiscal }>(`/fin/notas/itens/${item.id}`, { metodo: 'DELETE' })).nota);
+    } catch (e) {
+      aoErro((e as Error).message);
+    }
+  }
+
+  return (
+    <Fragment>
+      <tr className={salvando ? 'salvando' : undefined}>
+        <td className="mono small">{item.numeroItem}</td>
+        <td style={{ minWidth: 220 }}>
+          {editavel && manual ? (
+            <input
+              aria-label="Descrição do item"
+              className="campo-tabela"
+              value={desc.descricao}
+              onChange={(e) => setDesc({ ...desc, descricao: e.target.value })}
+              onBlur={() => desc.descricao.trim() !== item.descricao && salvar({ descricao: desc.descricao })}
+            />
+          ) : (
+            <span style={{ fontWeight: 500 }}>{item.descricao}</span>
+          )}
+          <div className="small muted">
+            {editavel && manual ? (
+              <>
+                <input
+                  aria-label="Quantidade"
+                  className="campo-tabela mono curto"
+                  inputMode="decimal"
+                  value={desc.quantidade}
+                  onChange={(e) => setDesc({ ...desc, quantidade: e.target.value })}
+                  onBlur={() => lerNumero(desc.quantidade) !== item.quantidade && salvar({ quantidade: desc.quantidade })}
+                />{' '}
+                {item.unidade ?? 'un'}
+              </>
+            ) : (
+              <>
+                {formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0)} {item.unidade ?? ''}
+                {item.ncm ? ` · NCM ${item.ncm}` : ''}
+              </>
+            )}
+          </div>
+          {item.abastecimentos && (
+            <div className="small" style={{ color: 'var(--status-ok-ink)' }}>
+              Ligado a {item.abastecimentos.quantidade} abastecimento(s) · {formatarNumero(item.abastecimentos.litros, 1)} L · {item.abastecimentos.veiculos}
+            </div>
+          )}
+          {item.os && (
+            <div className="small" style={{ color: 'var(--status-ok-ink)' }}>
+              Ligado a {item.os.quantidade} item(ns) de OS · {item.os.ordens}
+            </div>
+          )}
+        </td>
+        <td style={{ minWidth: 220 }}>
+          {editavel ? (
+            <select
+              aria-label="Categoria"
+              className={`campo-tabela ${item.planoContaId ? '' : 'pendente'}`}
+              value={item.planoContaId ?? ''}
+              onChange={(e) => salvar({ planoContaId: e.target.value || null })}
+            >
+              <OpcoesCategoria plano={cadastros.plano} tipo={nota.tipo} atual={item.planoContaId ?? ''} />
+            </select>
+          ) : (
+            <span className="small">{item.planoCodigo} {item.planoNome}</span>
+          )}
+          {editavel && item.sugestao && <div className="small muted">{TEXTO_SUGESTAO[item.sugestao]}</div>}
+        </td>
+        <td>
+          {editavel ? (
+            <select aria-label="Centro de custo" className="campo-tabela" value={item.centroCustoId ?? ''} onChange={(e) => salvar({ centroCustoId: e.target.value || null })}>
+              <option value="">—</option>
+              {cadastros.centros.filter((c) => c.ativo || c.id === item.centroCustoId).map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+          ) : (
+            <span className="small">{item.centroNome ?? '—'}</span>
+          )}
+        </td>
+        {nota.direcao === 'entrada' && (
+          <td>
+            {item.abastecimentos || (item.os && item.os.ordens?.includes(',')) ? (
+              <span className="small muted">rateado</span>
+            ) : editavel ? (
+              <select aria-label="Veículo" className="campo-tabela mono" value={item.veiculoId ?? ''} onChange={(e) => salvar({ veiculoId: e.target.value || null })}>
+                <option value="">—</option>
+                {cadastros.veiculos.map((v) => (
+                  <option key={v.id} value={v.id}>{v.codigo}</option>
+                ))}
+              </select>
+            ) : (
+              <span className="mono small">{item.veiculoCodigo ?? '—'}</span>
+            )}
+          </td>
+        )}
+        <td className="mono" style={{ textAlign: 'right' }}>
+          {editavel && manual ? (
+            <input
+              aria-label="Valor do item"
+              className="campo-tabela mono"
+              style={{ textAlign: 'right', width: 120 }}
+              inputMode="decimal"
+              value={desc.valor}
+              onChange={(e) => setDesc({ ...desc, valor: e.target.value })}
+              onBlur={() => lerNumero(desc.valor) !== item.valorProduto && salvar({ valor: desc.valor })}
+            />
+          ) : (
+            formatarMoeda(item.valorCusto)
+          )}
+          {item.valorCusto !== item.valorProduto && <div className="small muted">produto {formatarMoeda(item.valorProduto)}</div>}
+        </td>
+        <td>
+          <div className="acoes" style={{ flexWrap: 'nowrap', gap: 4 }}>
+            {editavel && nota.direcao === 'entrada' && (
+              <button className="btn btn-link" type="button" onClick={() => setVinculo(!vinculo)}>
+                {vinculo ? 'Fechar' : 'Vincular'}
+              </button>
+            )}
+            {editavel && manual && nota.itens.length > 1 && (
+              <button className="btn btn-link" type="button" onClick={remover}>
+                Remover
+              </button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {vinculo && (
+        <tr className="linha-form">
+          <td colSpan={nota.direcao === 'entrada' ? 7 : 6}>
+            <Vinculos
+              item={item}
+              aoFechar={() => setVinculo(false)}
+              aoSalvar={(n) => {
+                setVinculo(false);
+                aoMudar(n);
+              }}
+            />
+          </td>
+        </tr>
+      )}
+    </Fragment>
+  );
+}
+
+// ======================= Detalhe e conferência =======================
+type Dup = { chave: number; vencimento: string; valor: string; numero: string | null };
+
+function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
+  const local = useLocation();
+  const navegar = useNavigate();
+  const [nota, setNota] = useState<NotaFiscal | null>(null);
+  const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState(() => (local.state as { aviso?: string } | null)?.aviso ?? '');
+  const [ocupado, setOcupado] = useState(false);
+  const [dups, setDups] = useState<Dup[] | null>(null);
+  const [lote, setLote] = useState({ planoContaId: '', centroCustoId: '' });
+  const [conf, setConf] = useState({ vencimento: '', paga: false, contaId: '', data: hojeLocal(), forma: '' as FormaPagamento | '', aprender: true });
+  const [acao, setAcao] = useState<'reabrir' | 'cancelar' | 'excluir' | null>(null);
+
+  const carregar = useCallback(async () => {
+    try {
+      const n = (await api<{ nota: NotaFiscal }>(`/fin/notas/${id}`)).nota;
+      setNota(n);
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }, [id]);
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+  useEffect(() => {
+    if (!nota) return;
+    setConf((c) => ({
+      ...c,
+      vencimento: c.vencimento || nota.dataEmissao,
+      contaId: c.contaId || cadastros.contas.find((x) => x.ativo && x.tipo === 'banco')?.id || cadastros.contas.find((x) => x.ativo)?.id || '',
+      forma: c.forma || nota.formaPagamento || '',
+    }));
+  }, [nota, cadastros.contas]);
+
+  const editavel = nota?.status === 'rascunho' || nota?.status === 'aguardando_conferencia';
+  const semCategoria = useMemo(() => (nota?.itens ?? []).filter((i) => !i.planoContaId).length, [nota]);
+
+  async function executar(fn: () => Promise<{ nota: NotaFiscal }>, msg: string) {
+    setErro('');
+    setAviso('');
+    setOcupado(true);
+    try {
+      setNota((await fn()).nota);
+      setAviso(msg);
+      return true;
+    } catch (e) {
+      setErro((e as Error).message);
+      return false;
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function alterar(corpo: Record<string, unknown>, msg = '') {
+    await executar(() => api(`/fin/notas/${id}`, { metodo: 'PATCH', corpo }), msg);
+  }
+
+  async function salvarDups() {
+    if (!dups) return;
+    const ok = await executar(
+      () => api(`/fin/notas/${id}`, { metodo: 'PATCH', corpo: { duplicatas: dups.map((d) => ({ numero: d.numero, vencimento: d.vencimento, valor: d.valor })) } }),
+      'Vencimentos salvos.',
+    );
+    if (ok) setDups(null);
+  }
+
+  async function confirmar(e: FormEvent) {
+    e.preventDefault();
+    if (!nota) return;
+    const ok = await executar(
+      () =>
+        api(`/fin/notas/${id}/confirmar`, {
+          corpo: {
+            vencimento: nota.duplicatas.length ? undefined : conf.vencimento,
+            baixa: conf.paga ? { data: conf.data, contaId: conf.contaId, forma: conf.forma || null } : null,
+            aprender: conf.aprender,
+          },
+        }),
+      nota.tipo === 'despesa' ? 'Nota lançada. As parcelas já estão em Contas a pagar.' : 'Nota lançada. As parcelas já estão em Contas a receber.',
+    );
+    if (ok) window.scrollTo({ top: 0 });
+  }
+
+  async function executarAcao() {
+    if (acao === 'excluir') {
+      setOcupado(true);
+      try {
+        await api(`/fin/notas/${id}`, { metodo: 'DELETE' });
+        navegar('/fin/notas', { replace: true });
+      } catch (e) {
+        setErro((e as Error).message);
+        setOcupado(false);
+      }
+      return;
+    }
+    const ok = await executar(
+      () => api(`/fin/notas/${id}/${acao}`, { metodo: 'POST' }),
+      acao === 'reabrir' ? 'Nota reaberta. O lançamento anterior foi cancelado; confira e confirme de novo.' : 'Nota cancelada.',
+    );
+    if (ok) setAcao(null);
+  }
+
+  if (!nota) return erro ? <div className="alerta alerta-erro" role="alert">{erro}</div> : <p className="muted">Carregando…</p>;
+  const pessoas = nota.direcao === 'entrada' ? cadastros.fornecedores : cadastros.clientes;
+  const somaDups = dups ? soma(dups.map((d) => lerNumero(d.valor) ?? 0)) : 0;
+
+  return (
+    <>
+      <div className="cabecalho">
+        <div className="titulo">
+          <Link to="/fin/notas" className="small">← Notas fiscais</Link>
+          <h1>
+            {NOMES_MODELO[nota.modelo]} {nota.numero ?? 's/n'}
+            {nota.serie ? <span className="muted" style={{ fontWeight: 500 }}> · série {nota.serie}</span> : null}
+          </h1>
+          <span className="muted">
+            {nota.direcao === 'entrada' ? 'Compra' : 'Venda'} · emitida em {formatarData(nota.dataEmissao)} · {nota.origem === 'xml' ? 'importada do XML' : 'digitada'}
+            {nota.naturezaOperacao ? ` · ${nota.naturezaOperacao}` : ''}
+          </span>
+        </div>
+        <span className={`selo ${SELO_NOTA[nota.status].classe}`}>{SELO_NOTA[nota.status].texto}</span>
+      </div>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      {nota.avisos.map((a) => (
+        <div key={a} className="alerta alerta-aviso">{a}</div>
+      ))}
+
+      <div className="card">
+        <div className="campos">
+          <div className="campo">
+            <label htmlFor="nt-pessoa">{nota.direcao === 'entrada' ? 'Fornecedor' : 'Cliente'}</label>
+            {editavel ? (
+              <select
+                id="nt-pessoa"
+                value={(nota.direcao === 'entrada' ? nota.fornecedorId : nota.clienteId) ?? ''}
+                onChange={(e) => alterar(nota.direcao === 'entrada' ? { fornecedorId: e.target.value || null } : { clienteId: e.target.value || null }, 'Dados da nota salvos.')}
+              >
+                <option value="">Escolha</option>
+                {pessoas.filter((p) => p.ativo || p.id === nota.fornecedorId || p.id === nota.clienteId).map((p) => (
+                  <option key={p.id} value={p.id}>{p.nomeFantasia || p.razaoSocial}</option>
+                ))}
+              </select>
+            ) : (
+              <strong>{nota.fornecedorNome ?? nota.clienteNome ?? '—'}</strong>
+            )}
+            {nota.emitenteDocumento && (
+              <span className="small muted">
+                Emitente: {nota.emitenteNome} · {formatarDocumento(nota.emitenteDocumento)}
+                {nota.fornecedorNovo && editavel ? ' · cadastrado agora a partir do XML' : ''}
+              </span>
+            )}
+          </div>
+          <div className="campo">
+            <label htmlFor="nt-comp">Competência</label>
+            {editavel ? (
+              <input id="nt-comp" type="date" value={nota.competencia} onChange={(e) => e.target.value && alterar({ competencia: e.target.value }, 'Competência salva.')} />
+            ) : (
+              <strong className="mono">{formatarData(nota.competencia)}</strong>
+            )}
+            <span className="ajuda">Data que vale na DRE por competência. Normalmente, a emissão.</span>
+          </div>
+          <div className="campo">
+            <span className="rotulo">Total da nota</span>
+            <strong className="mono" style={{ fontSize: 24 }}>{formatarMoeda(nota.totais.total)}</strong>
+            <span className="small muted">
+              Produtos {formatarMoeda(nota.totais.produtos)}
+              {nota.totais.frete ? ` · frete ${formatarMoeda(nota.totais.frete)}` : ''}
+              {nota.totais.outras ? ` · outras ${formatarMoeda(nota.totais.outras)}` : ''}
+              {nota.totais.ipi ? ` · IPI ${formatarMoeda(nota.totais.ipi)}` : ''}
+              {nota.totais.icmsSt ? ` · ICMS ST ${formatarMoeda(nota.totais.icmsSt)}` : ''}
+              {nota.totais.desconto ? ` · desconto ${formatarMoeda(nota.totais.desconto)}` : ''}
+            </span>
+          </div>
+        </div>
+        {nota.chaveAcesso && (
+          <p className="small muted" style={{ margin: '12px 0 0' }}>
+            Chave de acesso: <span className="mono">{formatarChave(nota.chaveAcesso)}</span>
+            {nota.temXml && (
+              <>
+                {' · '}
+                <a href={`/api/fin/notas/${nota.id}/xml`}>baixar XML</a>
+              </>
+            )}
+          </p>
+        )}
+        {nota.informacoes && <p className="small muted" style={{ margin: '6px 0 0' }}>Informações da nota: {nota.informacoes}</p>}
+      </div>
+
+      <div className="card tabela-caixa">
+        <div className="cabecalho" style={{ marginBottom: 8 }}>
+          <h2>Itens e apropriação</h2>
+          <span className="small muted">{nota.itens.length} {nota.itens.length === 1 ? 'item' : 'itens'}</span>
+        </div>
+        {editavel && nota.itens.length > 1 && (
+          <div className="barra-lote">
+            <span className="small">{semCategoria ? `Aplicar aos ${semCategoria} itens sem categoria:` : 'Aplicar a todos os itens:'}</span>
+            <select aria-label="Categoria para vários itens" value={lote.planoContaId} onChange={(e) => setLote({ ...lote, planoContaId: e.target.value })}>
+              <OpcoesCategoria plano={cadastros.plano} tipo={nota.tipo} atual={lote.planoContaId} />
+            </select>
+            <select aria-label="Centro de custo para vários itens" value={lote.centroCustoId} onChange={(e) => setLote({ ...lote, centroCustoId: e.target.value })}>
+              <option value="">Centro de custo —</option>
+              {cadastros.centros.filter((c) => c.ativo).map((c) => (
+                <option key={c.id} value={c.id}>{c.nome}</option>
+              ))}
+            </select>
+            <button
+              className="btn btn-secundario"
+              type="button"
+              disabled={!lote.planoContaId || ocupado}
+              onClick={() =>
+                executar(
+                  () => api(`/fin/notas/${id}/apropriar`, { corpo: { ...lote, centroCustoId: lote.centroCustoId || null, somenteSemCategoria: semCategoria > 0 } }),
+                  'Categoria aplicada.',
+                )
+              }
+            >
+              Aplicar
+            </button>
+          </div>
+        )}
+        <table className="tabela tabela-nota">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Item</th>
+              <th>Categoria</th>
+              <th>Centro de custo</th>
+              {nota.direcao === 'entrada' && <th>Veículo</th>}
+              <th style={{ textAlign: 'right' }}>Custo</th>
+              <th><span style={{ position: 'absolute', left: -9999 }}>Ações</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {nota.itens.map((i) => (
+              <LinhaItem key={`${i.id}-${i.valorProduto}-${i.quantidade}`} item={i} nota={nota} cadastros={cadastros} editavel={!!editavel} aoMudar={setNota} aoErro={setErro} />
+            ))}
+          </tbody>
+          <tfoot>
+            <tr>
+              <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">Soma dos itens</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>{formatarMoeda(soma(nota.itens.map((i) => i.valorCusto)))}</td>
+              <td />
+            </tr>
+          </tfoot>
+        </table>
+        {editavel && nota.origem === 'manual' && <NovoItemManual nota={nota} cadastros={cadastros} aoMudar={setNota} aoErro={setErro} />}
+      </div>
+
+      <div className="card">
+        <div className="cabecalho" style={{ marginBottom: 8 }}>
+          <h2>{nota.tipo === 'despesa' ? 'Vencimentos (a pagar)' : 'Vencimentos (a receber)'}</h2>
+          {editavel && !dups && (
+            <button
+              className="btn btn-link"
+              type="button"
+              onClick={() =>
+                setDups(
+                  nota.duplicatas.length
+                    ? nota.duplicatas.map((d) => ({ chave: ++seq, numero: d.numero, vencimento: d.vencimento, valor: moedaCampo(d.valor) }))
+                    : [{ chave: ++seq, numero: null, vencimento: nota.dataEmissao, valor: moedaCampo(nota.totais.total) }],
+                )
+              }
+            >
+              {nota.duplicatas.length ? 'Alterar vencimentos' : 'Parcelar'}
+            </button>
+          )}
+        </div>
+        {dups ? (
+          <div className="form">
+            {dups.map((d, k) => (
+              <div key={d.chave} className="acoes">
+                <span className="mono small" style={{ width: 28 }}>{k + 1}</span>
+                <input type="date" aria-label={`Vencimento ${k + 1}`} value={d.vencimento} onChange={(e) => setDups(dups.map((x) => (x.chave === d.chave ? { ...x, vencimento: e.target.value } : x)))} />
+                <input
+                  className="mono"
+                  aria-label={`Valor ${k + 1}`}
+                  inputMode="decimal"
+                  style={{ width: 140 }}
+                  value={d.valor}
+                  onChange={(e) => setDups(dups.map((x) => (x.chave === d.chave ? { ...x, valor: e.target.value } : x)))}
+                />
+                {dups.length > 1 && (
+                  <button className="btn btn-link" type="button" onClick={() => setDups(dups.filter((x) => x.chave !== d.chave))}>
+                    Remover
+                  </button>
+                )}
+              </div>
+            ))}
+            <p className="small" style={{ margin: 0, color: Math.abs(somaDups - nota.totais.total) > 0.004 ? 'var(--status-danger-ink)' : undefined }}>
+              Soma {formatarMoeda(somaDups)} de {formatarMoeda(nota.totais.total)}
+            </p>
+            <div className="acoes">
+              <button
+                className="btn btn-secundario"
+                type="button"
+                onClick={() => {
+                  const ult = dups[dups.length - 1];
+                  const resto = Math.round((nota.totais.total - somaDups) * 100) / 100;
+                  const [a, m, dd] = ult.vencimento.split('-').map(Number);
+                  const prox = new Date(Date.UTC(a, m, Math.min(dd, 28))).toISOString().slice(0, 10);
+                  setDups([...dups, { chave: ++seq, numero: null, vencimento: prox, valor: moedaCampo(resto > 0 ? resto : 0) }]);
+                }}
+              >
+                + Parcela
+              </button>
+              <button className="btn btn-primario" type="button" disabled={ocupado} onClick={salvarDups}>
+                Salvar vencimentos
+              </button>
+              <button className="btn btn-link" type="button" onClick={() => setDups(null)}>
+                Cancelar
+              </button>
+              {nota.duplicatas.length > 0 && (
+                <button className="btn btn-link" type="button" onClick={() => executar(() => api(`/fin/notas/${id}`, { metodo: 'PATCH', corpo: { duplicatas: [] } }), 'Parcelas removidas: vencimento único.').then(() => setDups(null))}>
+                  Usar vencimento único
+                </button>
+              )}
+            </div>
+          </div>
+        ) : nota.duplicatas.length ? (
+          <ul className="lista-alertas compacta">
+            {nota.duplicatas.map((d, k) => (
+              <li key={d.id}>
+                <span className="mono small">
+                  {k + 1}/{nota.duplicatas.length} · {formatarData(d.vencimento)}
+                  {d.numero ? <span className="muted"> · dup. {d.numero}</span> : null}
+                </span>
+                <span className="mono">{formatarMoeda(d.valor)}</span>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small muted" style={{ margin: 0 }}>
+            {editavel ? 'Sem parcelas na nota: você informa o vencimento ao confirmar.' : 'Vencimento único.'}
+          </p>
+        )}
+      </div>
+
+      {editavel && (
+        <form className="card form" onSubmit={confirmar}>
+          <h2>Conferir e lançar</h2>
+          {nota.pendencias.length ? (
+            <div className="alerta alerta-aviso">
+              Falta resolver: {nota.pendencias.join(' ')}
+            </div>
+          ) : (
+            <p className="small muted" style={{ margin: 0 }}>
+              Ao confirmar, a nota vira {nota.tipo === 'despesa' ? 'despesa' : 'receita'} de {formatarMoeda(nota.totais.total)} na competência {formatarData(nota.competencia)}, com
+              {nota.duplicatas.length ? ` ${nota.duplicatas.length} parcela(s)` : ' uma parcela'} em {nota.tipo === 'despesa' ? 'Contas a pagar' : 'Contas a receber'}.
+            </p>
+          )}
+          <div className="campos">
+            {!nota.duplicatas.length && (
+              <div className="campo">
+                <label htmlFor="cf-venc">Vencimento</label>
+                <input id="cf-venc" type="date" value={conf.vencimento} onChange={(e) => setConf({ ...conf, vencimento: e.target.value })} />
+              </div>
+            )}
+          </div>
+          <label className="marcar">
+            <input type="checkbox" checked={conf.paga} onChange={(e) => setConf({ ...conf, paga: e.target.checked })} />
+            <span>{nota.tipo === 'despesa' ? 'Já foi paga (à vista)' : 'Já foi recebida (à vista)'}</span>
+          </label>
+          {conf.paga && (
+            <div className="campos">
+              <div className="campo">
+                <label htmlFor="cf-data">Data do {nota.tipo === 'despesa' ? 'pagamento' : 'recebimento'}</label>
+                <input id="cf-data" type="date" max={hojeLocal()} value={conf.data} onChange={(e) => setConf({ ...conf, data: e.target.value })} />
+              </div>
+              <div className="campo">
+                <label htmlFor="cf-conta">Conta</label>
+                <select id="cf-conta" value={conf.contaId} onChange={(e) => setConf({ ...conf, contaId: e.target.value })}>
+                  {cadastros.contas.filter((c) => c.ativo).map((c) => (
+                    <option key={c.id} value={c.id}>{c.nome}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="campo">
+                <label htmlFor="cf-forma">Forma</label>
+                <select id="cf-forma" value={conf.forma} onChange={(e) => setConf({ ...conf, forma: e.target.value as FormaPagamento })}>
+                  <option value="">—</option>
+                  {(Object.keys(NOMES_FORMA) as FormaPagamento[]).map((x) => (
+                    <option key={x} value={x}>{NOMES_FORMA[x]}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          )}
+          {nota.direcao === 'entrada' && (
+            <label className="marcar">
+              <input type="checkbox" checked={conf.aprender} onChange={(e) => setConf({ ...conf, aprender: e.target.checked })} />
+              <span>Lembrar estas categorias para as próximas notas deste fornecedor</span>
+            </label>
+          )}
+          <div className="acoes">
+            <button className="btn btn-primario" type="submit" disabled={ocupado || nota.pendencias.length > 0}>
+              Confirmar e lançar
+            </button>
+            {!acao && (
+              <button className="btn btn-link" type="button" onClick={() => setAcao('excluir')}>
+                Excluir esta nota
+              </button>
+            )}
+          </div>
+        </form>
+      )}
+
+      {nota.status === 'confirmada' && (
+        <div className="card">
+          <h2>Lançamento</h2>
+          {nota.lancamento && (
+            <p style={{ marginTop: 0 }}>
+              <Link to={`/fin/lancamentos/${nota.lancamento.id}`} style={{ fontWeight: 600 }}>
+                Ver o lançamento e as parcelas ›
+              </Link>
+              <span className="small muted">
+                {' '}· {nota.lancamento.parcelas} parcela(s), {nota.lancamento.pagas} {nota.tipo === 'despesa' ? 'paga(s)' : 'recebida(s)'}
+              </span>
+            </p>
+          )}
+          {!acao && (
+            <div className="acoes">
+              <button className="btn btn-secundario" type="button" onClick={() => setAcao('reabrir')}>
+                Reabrir para corrigir
+              </button>
+              <button className="btn btn-link" type="button" onClick={() => setAcao('cancelar')}>
+                A nota foi cancelada pelo emitente
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {acao && (
+        <div className="card">
+          <h2>{acao === 'reabrir' ? 'Reabrir a nota?' : acao === 'cancelar' ? 'Cancelar a nota?' : 'Excluir esta nota?'}</h2>
+          <p className="muted">
+            {acao === 'reabrir' && 'O lançamento e as parcelas em aberto são cancelados, e a nota volta para conferência. Se alguma parcela já foi paga, estorne antes.'}
+            {acao === 'cancelar' && 'Use quando o fornecedor cancelou a nota. Ela fica no histórico sem valor, o lançamento é cancelado e os abastecimentos e OS ligados ficam livres.'}
+            {acao === 'excluir' && 'A nota sai da lista e os vínculos com abastecimentos e OS são desfeitos. Se foi importada, você pode importar o XML de novo.'}
+          </p>
+          <div className="acoes">
+            <button className="btn btn-perigo" type="button" disabled={ocupado} onClick={executarAcao}>
+              {acao === 'reabrir' ? 'Reabrir' : acao === 'cancelar' ? 'Cancelar a nota' : 'Excluir'}
+            </button>
+            <button className="btn btn-secundario" type="button" onClick={() => setAcao(null)}>
+              Voltar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {editavel && (
+        <div className="card">
+          <label htmlFor="nt-obs" className="rotulo small">Observações internas</label>
+          <input
+            id="nt-obs"
+            className="campo-tabela"
+            style={{ width: '100%' }}
+            defaultValue={nota.observacoes ?? ''}
+            onBlur={(e) => e.target.value !== (nota.observacoes ?? '') && alterar({ observacoes: e.target.value }, 'Observação salva.')}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+function NovoItemManual({ nota, cadastros, aoMudar, aoErro }: { nota: NotaFiscal; cadastros: Cadastros; aoMudar: (n: NotaFiscal) => void; aoErro: (m: string) => void }) {
+  const [i, setI] = useState({ descricao: '', quantidade: '1', valor: '', planoContaId: '' });
+  const [ocupado, setOcupado] = useState(false);
+  async function incluir(e: FormEvent) {
+    e.preventDefault();
+    aoErro('');
+    setOcupado(true);
+    try {
+      aoMudar((await api<{ nota: NotaFiscal }>(`/fin/notas/${nota.id}/itens`, { corpo: { ...i, planoContaId: i.planoContaId || null } })).nota);
+      setI({ descricao: '', quantidade: '1', valor: '', planoContaId: '' });
+    } catch (err) {
+      aoErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+  return (
+    <form className="campos linha-item-nota" onSubmit={incluir} style={{ marginTop: 12 }}>
+      <div className="campo">
+        <label htmlFor="ni-desc">Novo item</label>
+        <input id="ni-desc" value={i.descricao} onChange={(e) => setI({ ...i, descricao: e.target.value })} />
+      </div>
+      <div className="campo">
+        <label htmlFor="ni-qtd">Quantidade</label>
+        <input id="ni-qtd" className="mono" inputMode="decimal" value={i.quantidade} onChange={(e) => setI({ ...i, quantidade: e.target.value })} />
+      </div>
+      <div className="campo">
+        <label htmlFor="ni-valor">Valor (R$)</label>
+        <input id="ni-valor" className="mono" inputMode="decimal" value={i.valor} onChange={(e) => setI({ ...i, valor: e.target.value })} />
+      </div>
+      <div className="campo">
+        <label htmlFor="ni-cat">Categoria</label>
+        <select id="ni-cat" value={i.planoContaId} onChange={(e) => setI({ ...i, planoContaId: e.target.value })}>
+          <OpcoesCategoria plano={cadastros.plano} tipo={nota.tipo} atual={i.planoContaId} />
+        </select>
+      </div>
+      <div className="campo" style={{ justifyContent: 'flex-end' }}>
+        <button className="btn btn-secundario" type="submit" disabled={ocupado || !i.descricao.trim() || !i.valor}>
+          Incluir item
+        </button>
+      </div>
+    </form>
+  );
+}
+
+export function Nota() {
+  const { id } = useParams();
+  const { cadastros, erro } = useCadastros();
+  const nova = !id || id === 'nova';
+  return (
+    <>
+      {nova && (
+        <div className="cabecalho">
+          <div className="titulo">
+            <Link to="/fin/notas" className="small">← Notas fiscais</Link>
+            <h1>Lançar nota à mão</h1>
+            <span className="muted">Para notas sem XML: NFS-e, cupom, recibo ou NF-e em papel. Se tiver o XML, prefira importar.</span>
+          </div>
+        </div>
+      )}
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {!cadastros ? (
+        !erro && <p className="muted">Carregando…</p>
+      ) : nova ? (
+        <NovaNota cadastros={cadastros} />
+      ) : (
+        <DetalheNota key={id} id={id!} cadastros={cadastros} />
+      )}
+    </>
+  );
+}

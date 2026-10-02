@@ -38,7 +38,7 @@ export function Lancamentos() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Lançamentos</h1>
-          <span className="muted">Receitas e despesas pela data de competência. Notas fiscais e importação de XML chegam na Etapa 5.</span>
+          <span className="muted">Receitas e despesas pela data de competência. Compras e vendas com nota entram por <Link to="/fin/notas">Notas fiscais</Link>.</span>
         </div>
         <div className="acoes">
           <Link className="btn btn-secundario" to="/fin/lancamentos/novo?tipo=receita">

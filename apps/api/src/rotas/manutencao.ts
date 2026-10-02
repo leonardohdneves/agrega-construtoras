@@ -415,6 +415,7 @@ export function rotasManutencao(banco: Banco) {
         ).rows[0];
         if (!i) throw naoEncontrado('Item');
         if (i.status === 'concluida' || i.status === 'cancelada') throw new ErroHttp(400, 'Esta ordem de serviço já foi encerrada.');
+        if (i.nota_item_id) throw new ErroHttp(400, 'Este item está ligado a uma nota fiscal. Desfaça o vínculo na nota antes de remover.');
         await c.query('UPDATE os_itens SET excluido_em = now() WHERE id = $1', [i.id]);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'os_itens', entidadeId: i.id, antes: i });
         return i.os_id;

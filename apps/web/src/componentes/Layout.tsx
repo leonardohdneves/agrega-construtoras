@@ -53,7 +53,7 @@ export const MODULOS: Modulo[] = [
     itens: [
       { rotulo: 'Contas a pagar e receber', para: '/fin/pagar-receber' },
       { rotulo: 'Lançamentos', para: '/fin/lancamentos' },
-      { rotulo: 'Notas fiscais e XML', etapa: 5 },
+      { rotulo: 'Notas fiscais e XML', para: '/fin/notas' },
       { rotulo: 'Bancos e conciliação', para: '/fin/contas' },
       { rotulo: 'Plano de contas', para: '/fin/plano-contas' },
     ],

@@ -2,9 +2,11 @@
 
 export class ErroApi extends Error {
   status: number;
-  constructor(status: number, mensagem: string) {
+  dados: Record<string, any>;
+  constructor(status: number, mensagem: string, dados: Record<string, any> = {}) {
     super(mensagem);
     this.status = status;
+    this.dados = dados;
   }
 }
 
@@ -21,7 +23,7 @@ export async function api<T = any>(caminho: string, opcoes: { metodo?: string; c
     throw new ErroApi(0, 'Sem conexão com o servidor. Verifique a internet e tente de novo.');
   }
   const dados = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new ErroApi(resp.status, dados?.erro ?? 'Não foi possível concluir. Tente de novo.');
+  if (!resp.ok) throw new ErroApi(resp.status, dados?.erro ?? 'Não foi possível concluir. Tente de novo.', dados ?? {});
   return dados as T;
 }
 
@@ -449,6 +451,7 @@ export type Lancamento = {
   fornecedorId: string | null;
   fornecedorNome: string | null;
   origem: string;
+  notaId: string | null;
   status: 'rascunho' | 'aguardando_conferencia' | 'confirmado' | 'cancelado';
   recorrencia: 'nenhuma' | 'semanal' | 'mensal' | 'anual';
   recorrenciaOrdem: number | null;
@@ -542,4 +545,94 @@ export function dividirParcelas(total: number, quantidade: number, primeiro: str
 export function moedaCampo(n: number | null | undefined): string {
   if (n === null || n === undefined) return '';
   return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// ---------- Notas fiscais ----------
+export type StatusNota = 'rascunho' | 'aguardando_conferencia' | 'confirmada' | 'cancelada';
+export type ModeloNota = 'nfe' | 'nfce' | 'nfse' | 'cte' | 'cupom' | 'recibo' | 'outro';
+export type ItemNota = {
+  id: string;
+  numeroItem: number;
+  codigoProduto: string | null;
+  descricao: string;
+  ncm: string | null;
+  cfop: string | null;
+  unidade: string | null;
+  quantidade: number;
+  valorProduto: number;
+  valorCusto: number;
+  planoContaId: string | null;
+  planoCodigo: string | null;
+  planoNome: string | null;
+  centroCustoId: string | null;
+  centroNome: string | null;
+  veiculoId: string | null;
+  veiculoCodigo: string | null;
+  sugestao: 'regra' | 'palavras' | 'fornecedor' | null;
+  abastecimentos: { quantidade: number; litros: number; valor: number; veiculos: string | null } | null;
+  os: { quantidade: number; valor: number; ordens: string | null } | null;
+};
+export type NotaFiscal = {
+  id: string;
+  direcao: 'entrada' | 'saida';
+  tipo: TipoLanc;
+  modelo: ModeloNota;
+  chaveAcesso: string | null;
+  numero: string | null;
+  serie: string | null;
+  dataEmissao: string;
+  competencia: string;
+  fornecedorId: string | null;
+  fornecedorNome: string | null;
+  fornecedorNovo: boolean;
+  clienteId: string | null;
+  clienteNome: string | null;
+  emitenteNome: string | null;
+  emitenteDocumento: string | null;
+  naturezaOperacao: string | null;
+  totais: { produtos: number; frete: number; seguro: number; desconto: number; outras: number; ipi: number; icmsSt: number; total: number };
+  formaPagamento: FormaPagamento | null;
+  informacoes: string | null;
+  observacoes: string | null;
+  avisos: string[];
+  origem: 'manual' | 'xml' | 'ia_whatsapp';
+  status: StatusNota;
+  temXml: boolean;
+  conferidoEm: string | null;
+  lancamento: { id: string; status: string; parcelas: number; pagas: number } | null;
+  pendencias: string[];
+  itens: ItemNota[];
+  duplicatas: { id: string; numero: string | null; vencimento: string; valor: number }[];
+};
+export type NotaResumo = {
+  id: string;
+  direcao: 'entrada' | 'saida';
+  modelo: ModeloNota;
+  numero: string | null;
+  serie: string | null;
+  dataEmissao: string;
+  competencia: string;
+  total: number;
+  status: StatusNota;
+  origem: NotaFiscal['origem'];
+  lancamentoId: string | null;
+  pessoa: string | null;
+  itens: number;
+  semCategoria: number;
+  categorias: string | null;
+};
+export const NOMES_MODELO: Record<ModeloNota, string> = { nfe: 'NF-e', nfce: 'NFC-e', nfse: 'NFS-e', cte: 'CT-e', cupom: 'Cupom fiscal', recibo: 'Recibo', outro: 'Outro documento' };
+export const SELO_NOTA: Record<StatusNota, { texto: string; classe: string }> = {
+  rascunho: { texto: 'Para conferir', classe: 'selo-aviso' },
+  aguardando_conferencia: { texto: 'Para conferir', classe: 'selo-aviso' },
+  confirmada: { texto: 'Lançada', classe: 'selo-ok' },
+  cancelada: { texto: 'Cancelada', classe: 'selo-neutro' },
+};
+export const TEXTO_SUGESTAO: Record<NonNullable<ItemNota['sugestao']>, string> = {
+  regra: 'sugerida: já usada antes com este fornecedor',
+  palavras: 'sugerida pela descrição do item',
+  fornecedor: 'sugerida: categoria habitual do fornecedor',
+};
+export function formatarChave(c: string | null): string {
+  return c ? c.replace(/(\d{4})(?=\d)/g, '$1 ') : '—';
 }

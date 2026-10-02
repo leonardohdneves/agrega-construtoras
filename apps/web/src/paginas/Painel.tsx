@@ -22,7 +22,7 @@ const ETAPAS = [
   { n: 2, nome: 'Abastecimento pelo celular, km/L e L/h', pronta: true },
   { n: 3, nome: 'Manutenção preventiva e ordens de serviço', pronta: true },
   { n: 4, nome: 'Financeiro: contas, plano de contas, a pagar e a receber', pronta: true },
-  { n: 5, nome: 'Nota fiscal: lançamento manual e importação de XML' },
+  { n: 5, nome: 'Nota fiscal: lançamento manual e importação de XML', pronta: true },
   { n: 6, nome: 'Conciliação bancária com OFX' },
   { n: 7, nome: 'Relatórios: DRE, fluxo de caixa e custo por veículo' },
 ];
@@ -37,6 +37,7 @@ type ResumoFin = {
   pagar: { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
   receber: { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
   configurado: { planoContas: boolean; contas: boolean };
+  notasParaConferir: number;
 };
 
 function LinhaFin({ rotulo, b, para, perigo }: { rotulo: string; b: Bloco; para: string; perigo?: boolean }) {
@@ -77,6 +78,11 @@ function CardFinanceiro() {
         </p>
       ) : (
         <>
+          {r.notasParaConferir > 0 && (
+            <Link to="/fin/notas?situacao=rascunho" className="alerta alerta-aviso" style={{ display: 'block', textDecoration: 'none', marginTop: 0 }}>
+              {r.notasParaConferir === 1 ? '1 nota fiscal esperando conferência ›' : `${r.notasParaConferir} notas fiscais esperando conferência ›`}
+            </Link>
+          )}
           <Link to="/fin/contas" className="bloco-saldo">
             <span className="small">Saldo em bancos e caixa</span>
             <strong className="mono" style={{ color: r.saldoTotal < 0 ? 'var(--status-danger-ink)' : undefined }}>{formatarMoeda(r.saldoTotal)}</strong>

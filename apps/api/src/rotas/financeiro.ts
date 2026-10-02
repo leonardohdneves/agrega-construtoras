@@ -19,7 +19,7 @@ import {
 import { empresaDo, exigir } from '../sessao.ts';
 
 // ---------- Esquemas ----------
-function numeroBr(v: unknown): unknown {
+export function numeroBr(v: unknown): unknown {
   if (v === '' || v === null || v === undefined) return null;
   if (typeof v === 'number') return v;
   const s = String(v).trim().replace(/\s/g, '').replace(/^R\$/i, '');
@@ -30,7 +30,7 @@ function numeroBr(v: unknown): unknown {
   return Number.isFinite(x) ? x : v;
 }
 /** Valor em reais (aceita "1.234,56") convertido para centavos inteiros. */
-const dinheiro = (campo: string, { positivo = true } = {}) =>
+export const dinheiro = (campo: string, { positivo = true } = {}) =>
   z.preprocess(
     // Campo vazio: obrigatório vira "Informe…"; opcional (juros, desconto) vira zero.
     (v) => numeroBr(v) ?? (positivo ? undefined : 0),
@@ -93,7 +93,7 @@ const esquemaParcela = z.object({
   vencimento: dataObrig('Vencimento de parcela inválido.'),
   valor: dinheiro('o valor da parcela'),
 });
-const esquemaBaixa = z.object({
+export const esquemaBaixa = z.object({
   data: dataObrig('Data do pagamento inválida.'),
   contaId: z.string({ required_error: 'Escolha a conta.' }).uuid('Escolha a conta.'),
   forma: formaOpc,
@@ -249,6 +249,7 @@ function lancamentoPublico({ l, ap, pa }: Awaited<ReturnType<typeof carregarLanc
     fornecedorId: l.fornecedor_id,
     fornecedorNome: l.fornecedor_nome,
     origem: l.origem,
+    notaId: l.nota_id,
     status: l.status,
     recorrencia: l.recorrencia,
     recorrenciaOrdem: l.recorrencia_ordem,
@@ -343,7 +344,7 @@ async function inserirApropriacoesEParcelas(
   return ids;
 }
 
-async function baixarParcela(
+export async function baixarParcela(
   c: Cliente,
   empresaId: string,
   usuarioId: string,
@@ -739,6 +740,7 @@ export function rotasFinanceiro(banco: Banco) {
         const antes = (await c.query('SELECT * FROM lancamentos WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])).rows[0];
         if (!antes) throw naoEncontrado('Lançamento');
         if (antes.status === 'cancelado') throw new ErroHttp(409, 'Lançamento cancelado não pode ser alterado.');
+        if (antes.nota_id) throw new ErroHttp(409, 'Este lançamento veio de uma nota fiscal. Para mudar, reabra a nota em Notas fiscais.');
         if (antes.tipo !== d.tipo) throw new ErroHttp(400, 'Não dá para trocar entre receita e despesa. Cancele e lance de novo.');
         await validarReferencias(c, empresaId, d);
         const parcelasAntes = (await c.query('SELECT * FROM parcelas WHERE lancamento_id = $1 ORDER BY numero FOR UPDATE', [antes.id])).rows;
@@ -774,6 +776,7 @@ export function rotasFinanceiro(banco: Banco) {
         const l = (await c.query('SELECT * FROM lancamentos WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])).rows[0];
         if (!l) throw naoEncontrado('Lançamento');
         if (l.status === 'cancelado') throw new ErroHttp(409, 'Este lançamento já está cancelado.');
+        if (l.nota_id) throw new ErroHttp(409, 'Este lançamento veio de uma nota fiscal. Cancele ou reabra a nota em Notas fiscais.');
         let alvos = [l];
         if (d.seguintes && l.recorrencia_pai_id) {
           alvos = (
@@ -931,12 +934,16 @@ export function rotasFinanceiro(banco: Banco) {
         };
       };
       const temPlano = (await banco.query('SELECT 1 FROM plano_contas WHERE empresa_id = $1 LIMIT 1', [empresaId])).rowCount! > 0;
+      const notasParaConferir = (
+        await banco.query("SELECT count(*)::int AS n FROM notas_fiscais WHERE empresa_id = $1 AND excluido_em IS NULL AND status IN ('rascunho', 'aguardando_conferencia')", [empresaId])
+      ).rows[0].n;
       return {
         saldoTotal: Math.round(contas.reduce((s, c) => s + (c.saldo ?? 0), 0) * 100) / 100,
         contas,
         pagar: bloco('despesa'),
         receber: bloco('receita'),
         configurado: { planoContas: temPlano, contas: contas.length > 0 },
+        notasParaConferir,
       };
     });
   };

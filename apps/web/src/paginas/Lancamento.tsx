@@ -26,14 +26,14 @@ import {
 type Ap = { planoContaId: string; centroCustoId: string; veiculoId: string; valor: string };
 type Pa = { chave: string; vencimento: string; valor: string; paga?: Parcela };
 type Condicao = 'pago' | 'vencimento' | 'parcelado';
-type Cadastros = { plano: PlanoConta[]; centros: CentroCusto[]; veiculos: Veiculo[]; contas: ContaFinanceira[]; fornecedores: Fornecedor[]; clientes: Fornecedor[] };
+export type Cadastros = { plano: PlanoConta[]; centros: CentroCusto[]; veiculos: Veiculo[]; contas: ContaFinanceira[]; fornecedores: Fornecedor[]; clientes: Fornecedor[] };
 
 const AP_VAZIA: Ap = { planoContaId: '', centroCustoId: '', veiculoId: '', valor: '' };
 let seq = 0;
 const chave = () => `p${++seq}`;
 const soma = (xs: string[]) => Math.round(xs.reduce((s, x) => s + (lerNumero(x) ?? 0), 0) * 100) / 100;
 
-function useCadastros() {
+export function useCadastros() {
   const [c, setC] = useState<Cadastros | null>(null);
   const [erro, setErro] = useState('');
   const carregar = useCallback(async () => {
@@ -58,7 +58,7 @@ function useCadastros() {
 }
 
 /** Categorias lançáveis do tipo, agrupadas pelo grupo raiz. */
-function OpcoesCategoria({ plano, tipo, atual }: { plano: PlanoConta[]; tipo: TipoLanc; atual: string }) {
+export function OpcoesCategoria({ plano, tipo, atual }: { plano: PlanoConta[]; tipo: TipoLanc; atual: string }) {
   const grupos = plano.filter((p) => !p.paiId);
   const lancaveis = plano.filter((p) => p.aceitaLancamento && p.tipo === tipo && (p.ativo || p.id === atual));
   const raiz = (p: PlanoConta): string => {
@@ -640,6 +640,27 @@ export function Lancamento() {
         </div>
       ) : (
         <>
+          {lanc?.notaId ? (
+            <div className="card">
+              <div className="alerta alerta-info" style={{ marginTop: 0 }}>
+                Este lançamento veio de uma nota fiscal. Categorias, valores e vencimentos se alteram pela nota.{' '}
+                <Link to={`/fin/notas/${lanc.notaId}`} style={{ fontWeight: 600 }}>Ver a nota</Link>
+              </div>
+              <ul className="lista-alertas">
+                {lanc.apropriacoes.map((a) => (
+                  <li key={a.id}>
+                    <span style={{ minWidth: 0 }}>
+                      {a.planoCodigo} {a.planoNome}
+                      <div className="small muted">
+                        {[a.descricao, a.centroNome, a.veiculoCodigo].filter(Boolean).join(' · ')}
+                      </div>
+                    </span>
+                    <span className="mono">{formatarMoeda(a.valor)}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
           <FormLancamento
             key={`${id}-${versao}`}
             tipo={tipo}
@@ -659,6 +680,7 @@ export function Lancamento() {
               }
             }}
           />
+          )}
 
           {lanc && (
             <div className="card tabela-caixa">
@@ -726,7 +748,7 @@ export function Lancamento() {
             </div>
           )}
 
-          {lanc && !cancelar && (
+          {lanc && !lanc.notaId && !cancelar && (
             <div className="acoes">
               <button className="btn btn-secundario" type="button" onClick={() => setCancelar(true)}>
                 Cancelar lançamento

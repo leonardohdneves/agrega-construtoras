@@ -483,7 +483,7 @@ function DetalheOS({ id }: { id: string }) {
               <button className="btn btn-secundario" type="submit" disabled={ocupado || !item.descricao.trim()}>
                 Adicionar item
               </button>
-              <span className="small muted">Quando a nota fiscal da oficina for lançada (Etapa 5), os itens serão ligados a ela sem contar o custo duas vezes.</span>
+              <span className="small muted">Ao lançar a nota da oficina em Notas fiscais, use “Vincular” no item para ligar esta OS. Assim o custo não conta duas vezes.</span>
             </div>
           </form>
         )}
