@@ -2,6 +2,7 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda, formatarNumero } from '../api';
 import { ATALHOS, type Periodo } from './Periodo';
+import { CabecalhoDocumento, textoPeriodo } from './Documento';
 
 export type Formato = 'moeda' | 'numero' | 'decimal' | 'pct' | 'texto' | 'data' | 'litros' | 'km' | 'horas' | 'dias';
 
@@ -158,32 +159,34 @@ export function TabelaRelatorio<T>({
 
 /** Cabeçalho comum das páginas de relatório: título, abas de relatório e imprimir. */
 export function CabecalhoRelatorio({
+  modulo,
   titulo,
   sub,
   abas,
   aba,
   aoMudar,
   extra,
+  periodo,
 }: {
+  modulo: string;
   titulo: string;
   sub: string;
   abas: { id: string; texto: string }[];
   aba: string;
   aoMudar: (id: string) => void;
   extra?: ReactNode;
+  periodo?: Periodo | null;
 }) {
+  const atual = abas.find((a) => a.id === aba);
   return (
     <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>{titulo}</h1>
-          <span className="muted">{sub}</span>
-        </div>
-        <button className="btn btn-secundario nao-imprimir" type="button" onClick={() => window.print()}>
-          Imprimir
-        </button>
-      </div>
-      {extra}
+      <CabecalhoDocumento
+        modulo={modulo}
+        titulo={`${titulo}${atual ? ` · ${atual.texto}` : ''}`}
+        descricao={sub}
+        periodo={periodo ? textoPeriodo(periodo.de, periodo.ate) : undefined}
+      />
+      {extra && <div className="nao-imprimir">{extra}</div>}
       <div className="abas nao-imprimir" role="tablist">
         {abas.map((a) => (
           <button key={a.id} type="button" role="tab" aria-selected={aba === a.id} className={aba === a.id ? 'ativa' : ''} onClick={() => aoMudar(a.id)}>

@@ -16,7 +16,7 @@ import {
   type ItemManutencao,
 } from '../api';
 import { useSessao } from '../sessao';
-import { fmtIndicador, Sparkline, tendencia, type RespIndicadores } from '../componentes/Indicadores';
+import { fmtIndicador, type IndicadorDados, type RespIndicadores } from '../componentes/Indicadores';
 import { mesCurto } from '../componentes/Periodo';
 
 const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
@@ -418,12 +418,22 @@ function AbaFinanceiro({ d }: { d: Dados }) {
 }
 
 // ---------- Aba Indicadores (só o dono) ----------
+const RETRATO = ['disponibilidade', 'cobertura_caixa', 'inadimplencia', 'revisoes_em_dia', 'notas_pendentes'];
 const GRUPOS_IND: { titulo: string; ids: string[] }[] = [
   { titulo: 'Resultado', ids: ['receita_bruta', 'margem_bruta', 'margem_liquida', 'frota_sobre_receita'] },
-  { titulo: 'Caixa e prazos', ids: ['cobertura_caixa', 'inadimplencia', 'pmr', 'pmp'] },
-  { titulo: 'Frota', ids: ['disponibilidade', 'consumo_bet', 'consumo_bomba', 'custo_km', 'custo_hora_bomba', 'preco_diesel', 'revisoes_em_dia', 'dias_parado_os', 'custo_manutencao'] },
-  { titulo: 'Controle', ids: ['abastecimentos_com_nota', 'notas_pendentes'] },
+  { titulo: 'Prazos', ids: ['pmr', 'pmp'] },
+  { titulo: 'Frota', ids: ['consumo_bet', 'consumo_bomba', 'preco_diesel', 'custo_km', 'custo_hora_bomba', 'dias_parado_os', 'custo_manutencao'] },
+  { titulo: 'Controle', ids: ['abastecimentos_com_nota'] },
 ];
+
+/** Compara o último mês fechado com o valor dos 6 meses: melhor, pior ou dentro da média (±5%). */
+function situacao(ind: IndicadorDados, anterior: number | null): { texto: string; classe: string } | null {
+  if (anterior === null || ind.valor === null || !ind.valor || ind.melhor === 'neutro') return null;
+  const dif = (anterior - ind.valor) / Math.abs(ind.valor);
+  if (Math.abs(dif) <= 0.05) return { texto: 'Na média', classe: 'selo-neutro' };
+  const melhor = ind.melhor === 'maior' ? dif > 0 : dif < 0;
+  return melhor ? { texto: 'Melhor que a média', classe: 'selo-ok' } : { texto: 'Pior que a média', classe: 'selo-perigo' };
+}
 
 function AbaIndicadores() {
   const [r, setR] = useState<RespIndicadores | null>(null);
@@ -433,44 +443,74 @@ function AbaIndicadores() {
   }, []);
   if (erro) return <div className="alerta alerta-erro">{erro}</div>;
   if (!r) return carregando;
-  const ultimo = r.meses[r.meses.length - 1];
+  const atual = r.meses[r.meses.length - 1];
+  const anterior = r.meses[r.meses.length - 2];
+  const porId = new Map(r.indicadores.map((i) => [i.id, i]));
   return (
     <>
-      <p className="small muted" style={{ margin: 0 }}>
-        Valores de {mesCurto(ultimo)} (mês em andamento) comparados com o mês anterior; a linha mostra os últimos 6 meses. Indicadores marcados "hoje" são a situação atual.{' '}
-        <Link to="/ger/indicadores">Conferir fórmulas e valores</Link>.
-      </p>
+      <section className="ind-bloco">
+        <div className="ind-bloco-topo">
+          <h2>Situação hoje</h2>
+          <Link to="/ger/indicadores" className="small cartao-link">Conferir fórmulas ›</Link>
+        </div>
+        <div className="ind-hoje">
+          {RETRATO.map((id) => {
+            const i = porId.get(id);
+            if (!i) return null;
+            return (
+              <div key={id} className="ind-hoje-item">
+                <span className="ind-hoje-valor">{fmtIndicador(i.valor, i.unidade)}</span>
+                <span className="ind-hoje-nome">{i.nome}</span>
+                <span className="ind-hoje-leitura">{i.leitura}</span>
+              </div>
+            );
+          })}
+        </div>
+      </section>
+
       {GRUPOS_IND.map((g) => (
-        <section key={g.titulo}>
-          <h2 className="titulo-grupo">{g.titulo}</h2>
-          <div className="kpis kpis-ind">
-            {g.ids.map((id) => {
-              const ind = r.indicadores.find((i) => i.id === id);
-              if (!ind) return null;
-              const atual = ind.retrato ? ind.valor : ind.valores?.[ultimo] ?? null;
-              const t = tendencia(ind, r.meses);
-              return (
-                <div key={id} className={`kpi kpi-ind ${t.tom === 'perigo' ? 'kpi-perigo' : t.tom === 'ok' ? 'kpi-ok' : ''}`} title={ind.formula}>
-                  <span className="kpi-rotulo">{ind.nome}</span>
-                  <span className="kpi-valor">{fmtIndicador(atual, ind.unidade)}</span>
-                  <span className="kpi-detalhe">
-                    {ind.retrato
-                      ? 'hoje'
-                      : t.delta !== null
-                        ? `${t.delta > 0 ? '▲' : '▼'} ${Math.abs(t.delta * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% sobre o mês anterior`
-                        : `6 meses: ${fmtIndicador(ind.valor, ind.unidade)}`}
-                  </span>
-                  {!ind.retrato && (
-                    <span className={`ind-linha ${t.tom ? `tom-${t.tom}` : ''}`}>
-                      <Sparkline valores={ind.valores} meses={r.meses} />
-                    </span>
-                  )}
-                </div>
-              );
-            })}
+        <section key={g.titulo} className="ind-bloco">
+          <div className="ind-bloco-topo">
+            <h2>{g.titulo}</h2>
+          </div>
+          <div className="tabela-caixa">
+            <table className="tabela ind-tabela">
+              <thead>
+                <tr>
+                  <th>Indicador</th>
+                  <th style={{ textAlign: 'right' }}>{mesCurto(anterior)}</th>
+                  <th style={{ textAlign: 'right' }}>6 meses</th>
+                  <th style={{ textAlign: 'right' }}>{mesCurto(atual)} <span className="muted">(até hoje)</span></th>
+                  <th>Último mês fechado</th>
+                </tr>
+              </thead>
+              <tbody>
+                {g.ids.map((id) => {
+                  const i = porId.get(id);
+                  if (!i) return null;
+                  const vAnt = i.valores?.[anterior] ?? null;
+                  const s = situacao(i, vAnt);
+                  return (
+                    <tr key={id}>
+                      <td>
+                        <span className="ind-nome">{i.nome}</span>
+                        <span className="ind-leitura">{i.leitura}</span>
+                      </td>
+                      <td className="mono num forte">{fmtIndicador(vAnt, i.unidade)}</td>
+                      <td className="mono num">{fmtIndicador(i.valor, i.unidade)}</td>
+                      <td className="mono num muted">{fmtIndicador(i.valores?.[atual] ?? null, i.unidade)}</td>
+                      <td>{s ? <span className={`selo ${s.classe}`}>{s.texto}</span> : <span className="muted small">—</span>}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </div>
         </section>
       ))}
+      <p className="small muted">
+        A coluna "6 meses" junta os seis meses antes de calcular. O mês atual ainda está em andamento, por isso a comparação usa o último mês fechado.
+      </p>
     </>
   );
 }

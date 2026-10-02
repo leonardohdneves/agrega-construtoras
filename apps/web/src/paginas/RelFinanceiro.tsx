@@ -42,6 +42,8 @@ export function RelFinanceiro() {
   return (
     <>
       <CabecalhoRelatorio
+        modulo="Financeiro"
+        periodo={aba !== 'aging' ? periodo : null}
         titulo="Relatórios financeiros"
         sub="Para onde vai e de onde vem o dinheiro: categorias, centros de custo, fornecedores, clientes e prazos."
         abas={ABAS}

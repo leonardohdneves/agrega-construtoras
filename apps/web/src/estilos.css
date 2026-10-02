@@ -366,11 +366,6 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .tabela-dre tr.dre-categoria .col-fixa { padding-left: 34px; }
 .dre-abrir { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; display: inline-flex; gap: 6px; align-items: baseline; }
 .dre-abrir:hover { color: var(--action); }
-.col-barra { width: 22%; min-width: 90px; }
-.barra-saldo { display: block; height: 8px; border-radius: 4px; background: var(--surface-sunken); overflow: hidden; }
-.barra-saldo span { display: block; height: 100%; border-radius: 4px; background: var(--status-ok-ink); opacity: .7; }
-.barra-saldo span.negativa { background: var(--status-danger-ink); }
-@media (max-width: 640px) { .col-barra { display: none; } }
 
 /* ---------- Relatórios e indicadores ---------- */
 .tabela td.tom-perigo { color: var(--status-danger-ink); font-weight: 600; }
@@ -380,18 +375,78 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .tabela-indicadores .col-fixa { position: sticky; left: 0; background: var(--surface-card); z-index: 1; min-width: 300px; max-width: 420px; white-space: normal; }
 .ind-formula { font-size: 13px; margin: 4px 0 2px; color: var(--ink); }
 .titulo-grupo { font: 700 16px/1.2 var(--font-display); margin: 8px 0 10px; color: var(--ink-muted); }
-.kpis-ind { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
-.kpi-ind { gap: 2px; }
-.ind-linha { display: block; margin-top: 6px; color: var(--cement); }
-.ind-linha.tom-ok { color: var(--status-ok-ink); }
-.ind-linha.tom-perigo { color: var(--status-danger-ink); }
-.sparkline { display: block; overflow: visible; }
+
+/* ---------- Documento: padrão de todo relatório (tela e impressão) ---------- */
+.doc-cabecalho { background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-lg); overflow: hidden; }
+.doc-faixa { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 18px; background: var(--surface-header); color: var(--on-header); border-bottom: 3px solid var(--brand-orange); }
+.doc-marca { display: inline-flex; align-items: center; gap: 8px; font: 800 18px/1 var(--font-display); letter-spacing: -0.03em; }
+.doc-modulo { font: 600 12px/1 var(--font-sans); text-transform: uppercase; letter-spacing: .08em; color: var(--on-header-muted); }
+.doc-corpo { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 24px; padding: 16px 18px 12px; }
+.doc-titulo h1 { font: 800 26px/1.15 var(--font-display); letter-spacing: -0.02em; margin: 0; }
+.doc-descricao { margin: 6px 0 0; color: var(--ink-muted); font-size: 15px; max-width: 75ch; }
+.doc-filtros { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 0; }
+.doc-filtros span { background: var(--surface-sunken); border-radius: 6px; padding: 3px 9px; font-size: 13px; color: var(--ink); }
+.doc-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 13px; color: var(--ink-muted); text-align: right; }
+.doc-meta strong { color: var(--ink); font-size: 14px; }
+.doc-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
+@media (max-width: 760px) { .doc-corpo { grid-template-columns: 1fr; } .doc-meta { align-items: flex-start; text-align: left; } .doc-titulo h1 { font-size: 22px; } }
+.relatorio h2 { border-left: 4px solid var(--brand-orange); padding-left: 10px; }
+.relatorio .tabela thead th { background: var(--surface-sunken); color: var(--ink); text-transform: uppercase; font-size: 12px; letter-spacing: .04em; }
+.relatorio .tabela tbody tr:nth-child(even) td { background: color-mix(in srgb, var(--surface-sunken) 40%, transparent); }
+.relatorio .tabela tfoot td { border-top: 2px solid var(--ink); font-weight: 700; }
+.painel-impressao h2 { margin-bottom: 4px; }
+.opcoes-impressao { display: grid; gap: 2px; margin-bottom: 12px; }
+
+/* ---------- Aba Indicadores do dono ---------- */
+.ind-bloco { background: var(--surface-card); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 18px 20px; min-width: 0; }
+.ind-bloco-topo { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; margin-bottom: 12px; }
+.ind-bloco-topo h2 { margin: 0; border-left: 4px solid var(--brand-orange); padding-left: 10px; }
+.ind-hoje { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 16px 0; }
+.ind-hoje-item { display: flex; flex-direction: column; gap: 2px; padding: 2px 16px; border-left: 1px solid var(--divider); min-width: 0; }
+.ind-hoje-valor { font: 600 26px/1.15 var(--font-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ind-hoje-nome { font-weight: 600; font-size: 14px; }
+.ind-hoje-leitura { font-size: 12px; color: var(--ink-muted); }
+.ind-tabela td { vertical-align: middle; }
+.ind-nome { display: block; font-weight: 600; }
+.ind-leitura { display: block; font-size: 13px; color: var(--ink-muted); max-width: 52ch; }
+
+/* ---------- Impressão: padrão Agrega ---------- */
+@page {
+  size: A4 landscape;
+  margin: 12mm 12mm 16mm;
+  @bottom-left { content: "agrega · ERP para concreteiras"; font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
+  @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
+}
 @media print {
-  .lateral, .nav-celular, .topo-celular, .nao-imprimir, .gaveta-fundo, .filtros .chip { display: none !important; }
-  body, .conteudo { background: #fff !important; padding: 0 !important; }
-  .card { border: 0 !important; padding: 0 !important; break-inside: avoid; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  html, body { background: #fff !important; font-size: 10pt; }
+  .lateral, .nav-celular, .topo-celular, .gaveta-fundo, .nao-imprimir, .filtros, .abas, .segmentado, .periodo-manual, .barra-lote, .btn,
+  .alerta-erro, .alerta-ok, .doc-acoes, .cartao-link { display: none !important; }
+  .app { display: block !important; }
+  .conteudo { padding: 0 !important; gap: 5mm !important; display: block !important; max-width: none !important; }
+  .conteudo > * + * { margin-top: 5mm; }
+  .doc-cabecalho { border: 0; border-radius: 0; }
+  .doc-faixa { padding: 3mm 4mm; }
+  .doc-corpo { padding: 4mm 0 2mm; }
+  .doc-titulo h1 { font-size: 17pt; }
+  .card, .ind-bloco { border: 0 !important; padding: 0 !important; border-radius: 0 !important; background: transparent !important; }
+  .relatorio h2, .ind-bloco-topo h2 { font-size: 12pt; margin: 0 0 2mm; }
   .tabela-caixa { overflow: visible !important; }
-  .tabela-dre .col-fixa, .tabela-indicadores .col-fixa { position: static; }
+  .tabela { width: 100%; font-size: 9pt; }
+  .tabela thead { display: table-header-group; }
+  .tabela tr { break-inside: avoid; }
+  .tabela th, .tabela td { padding: 1.6mm 2mm !important; }
+  .tabela thead th, .relatorio .tabela thead th { background: #1F2328 !important; color: #fff !important; font-size: 8pt; }
+  .tabela tbody tr:nth-child(even) td { background: #F4F3F0; }
+  .tabela tfoot td { border-top: 1.5pt solid #1F2328; }
+  .tabela-dre .col-fixa, .tabela-indicadores .col-fixa { position: static; background: transparent; }
+  .tabela-dre tr.dre-resultado td { background: #1F2328 !important; color: #fff !important; }
+  .tabela-dre tr.dre-subtotal td { background: #ECEAE6 !important; }
+  .kpis { display: grid !important; grid-template-columns: repeat(4, 1fr) !important; gap: 3mm !important; }
+  .kpi { border: 0.6pt solid #DEDBD5 !important; border-left-width: 3pt !important; padding: 2.5mm 3mm !important; }
+  .kpi-valor { font-size: 13pt !important; }
+  a { color: inherit !important; text-decoration: none !important; }
+  .selo { border: 0.5pt solid currentColor; }
 }
 
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

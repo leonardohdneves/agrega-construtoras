@@ -4,6 +4,7 @@ import { api } from '../api';
 import { fmtIndicador, type RespIndicadores } from '../componentes/Indicadores';
 import { ATALHOS, mesCurto, SeletorPeriodo, type Periodo } from '../componentes/Periodo';
 import { baixarCsv } from '../componentes/Relatorio';
+import { CabecalhoDocumento, textoPeriodo } from '../componentes/Documento';
 
 const MODULOS = ['Gerencial', 'Financeiro', 'Frota', 'Administrativo'] as const;
 
@@ -31,21 +32,18 @@ export function Indicadores() {
 
   return (
     <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>Indicadores</h1>
-          <span className="muted">Todos os indicadores usados no Agrega, com a fórmula, de onde vêm os dados e o valor de cada mês, para conferir.</span>
-        </div>
-        <div className="acoes nao-imprimir">
+      <CabecalhoDocumento
+        modulo="Gerencial"
+        titulo="Indicadores · conferência"
+        descricao="Todos os indicadores usados no Agrega, com a fórmula, de onde vêm os dados e o valor de cada mês."
+        periodo={textoPeriodo(periodo.de, periodo.ate)}
+        acoes={
           <button className="btn btn-link" type="button" onClick={exportar} disabled={!r}>
             Baixar planilha
           </button>
-          <button className="btn btn-secundario" type="button" onClick={() => window.print()}>
-            Imprimir
-          </button>
-        </div>
-      </div>
-      <SeletorPeriodo valor={periodo} aoMudar={(p) => setParams({ de: p.de, ate: p.ate }, { replace: true })} />
+        }
+      />
+      <div className="nao-imprimir"><SeletorPeriodo valor={periodo} aoMudar={(p) => setParams({ de: p.de, ate: p.ate }, { replace: true })} /></div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {!r ? (
         !erro && <p className="muted">Carregando…</p>

@@ -32,6 +32,8 @@ export function RelFrota() {
   return (
     <>
       <CabecalhoRelatorio
+        modulo="Frota"
+        periodo={aba !== 'vencimentos' ? periodo : null}
         titulo="Relatórios da frota"
         sub="Consumo, manutenção, motoristas e vencimentos, pelos registros da frota."
         abas={ABAS}

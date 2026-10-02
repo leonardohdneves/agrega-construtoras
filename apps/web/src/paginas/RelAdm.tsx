@@ -21,6 +21,8 @@ export function RelAdm() {
   return (
     <>
       <CabecalhoRelatorio
+        modulo="Administrativo"
+        periodo={periodo}
         titulo="Relatórios administrativos"
         sub="Cadastros com o movimento de cada um: compras por fornecedor, vendas e saldo por cliente e situação dos colaboradores."
         abas={ABAS}

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda } from '../api';
 import { ATALHOS, mesCurto, SeletorPeriodo, type Periodo } from '../componentes/Periodo';
+import { CabecalhoDocumento, textoPeriodo } from '../componentes/Documento';
 
 type Valores = Record<string, number>;
 type LinhaDre = {
@@ -22,6 +23,8 @@ function valorCelula(v: number) {
   return <span className={v < 0 ? 'negativo' : undefined}>{formatarMoeda(v)}</span>;
 }
 
+type OpcoesImpressao = { detalhar: boolean; percentual: boolean; fora: boolean; somenteTotais: boolean; meses: 'todos' | 'total' };
+
 export function Dre() {
   const [params, setParams] = useSearchParams();
   const padrao = ATALHOS.find((a) => a.id === '6m')!.periodo();
@@ -31,6 +34,9 @@ export function Dre() {
   const [dre, setDre] = useState<RespDre | null>(null);
   const [abertas, setAbertas] = useState<Set<string>>(new Set());
   const [erro, setErro] = useState('');
+  const [painelImpressao, setPainelImpressao] = useState(false);
+  const [opcoes, setOpcoes] = useState<OpcoesImpressao>({ detalhar: false, percentual: true, fora: true, somenteTotais: false, meses: 'todos' });
+  const [imprimindo, setImprimindo] = useState<OpcoesImpressao | null>(null);
 
   const ir = (p: Record<string, string>) => setParams({ de: periodo.de, ate: periodo.ate, visao, impostos, ...p }, { replace: true });
 
@@ -47,6 +53,18 @@ export function Dre() {
     carregar();
   }, [carregar]);
 
+  // Impressão: aplica as opções escolhidas, imprime e volta à tela normal.
+  useEffect(() => {
+    if (!imprimindo) return;
+    const voltar = () => setImprimindo(null);
+    window.addEventListener('afterprint', voltar, { once: true });
+    const t = setTimeout(() => window.print(), 80);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener('afterprint', voltar);
+    };
+  }, [imprimindo]);
+
   const alternar = (chave: string) => {
     const n = new Set(abertas);
     if (n.has(chave)) n.delete(chave);
@@ -55,28 +73,87 @@ export function Dre() {
   };
 
   const receita = dre?.linhas.find((l) => l.chave === 'receita_bruta');
-  const av = (v: number, mes?: string) => {
-    const base = mes ? receita?.valores[mes] ?? 0 : receita?.total ?? 0;
+  const av = (v: number) => {
+    const base = receita?.total ?? 0;
     if (!base) return '';
     return `${((v / base) * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%`;
   };
-  const varios = (dre?.meses.length ?? 0) > 1;
+  const op = imprimindo;
+  const mostrarMeses = (dre?.meses.length ?? 0) > 1 && (!op || op.meses === 'todos');
+  const mostrarPct = !op || op.percentual;
+  const estaAberta = (chave: string) => (op ? op.detalhar && !op.somenteTotais : abertas.has(chave));
+  const filtros = [
+    `Visão: ${visao === 'competencia' ? 'competência' : 'caixa'}`,
+    `Impostos: ${impostos === 'lancados' ? 'lançados' : 'estimados pelo regime'}`,
+    op?.detalhar ? 'Com categorias' : '',
+    op?.somenteTotais ? 'Só totais' : '',
+  ];
 
   return (
     <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>DRE gerencial</h1>
-          <span className="muted">
-            {visao === 'competencia'
-              ? 'Por competência: receitas e despesas na data do fato (venda, compra, serviço), pagas ou não.'
-              : 'Por caixa: o que entrou e saiu de fato, na data do pagamento ou recebimento.'}
-          </span>
-        </div>
-      </div>
+      <CabecalhoDocumento
+        modulo="Gerencial · Financeiro"
+        titulo="DRE gerencial"
+        descricao={
+          visao === 'competencia'
+            ? 'Por competência: receitas e despesas na data do fato (venda, compra, serviço), pagas ou não.'
+            : 'Por caixa: o que entrou e saiu de fato, na data do pagamento ou recebimento.'
+        }
+        periodo={textoPeriodo(periodo.de, periodo.ate)}
+        filtros={filtros}
+        aoImprimir={() => setPainelImpressao(!painelImpressao)}
+      />
 
-      <SeletorPeriodo valor={periodo} aoMudar={(p) => ir({ de: p.de, ate: p.ate })} />
-      <div className="acoes">
+      {painelImpressao && (
+        <div className="card nao-imprimir painel-impressao">
+          <h2>Imprimir a DRE</h2>
+          <p className="small muted" style={{ marginTop: 0 }}>
+            Sai o período, a visão e os impostos escolhidos acima, com a identidade do Agrega. Escolha o que entra na folha:
+          </p>
+          <div className="opcoes-impressao">
+            <label className="marcar">
+              <input type="checkbox" checked={opcoes.detalhar} disabled={opcoes.somenteTotais} onChange={(e) => setOpcoes({ ...opcoes, detalhar: e.target.checked })} />
+              <span>Detalhar as categorias de cada linha</span>
+            </label>
+            <label className="marcar">
+              <input type="checkbox" checked={opcoes.somenteTotais} onChange={(e) => setOpcoes({ ...opcoes, somenteTotais: e.target.checked })} />
+              <span>Só os totais (receita líquida, lucro bruto, resultados)</span>
+            </label>
+            <label className="marcar">
+              <input type="checkbox" checked={opcoes.percentual} onChange={(e) => setOpcoes({ ...opcoes, percentual: e.target.checked })} />
+              <span>Coluna % da receita</span>
+            </label>
+            <label className="marcar">
+              <input type="checkbox" checked={opcoes.fora} onChange={(e) => setOpcoes({ ...opcoes, fora: e.target.checked })} />
+              <span>Quadro "Fora da DRE"</span>
+            </label>
+            {(dre?.meses.length ?? 0) > 1 && (
+              <div className="segmentado" role="group" aria-label="Colunas" style={{ maxWidth: 360 }}>
+                <button type="button" aria-pressed={opcoes.meses === 'todos'} className={opcoes.meses === 'todos' ? 'ativo' : ''} onClick={() => setOpcoes({ ...opcoes, meses: 'todos' })}>
+                  Mês a mês e total
+                </button>
+                <button type="button" aria-pressed={opcoes.meses === 'total'} className={opcoes.meses === 'total' ? 'ativo' : ''} onClick={() => setOpcoes({ ...opcoes, meses: 'total' })}>
+                  Só o total do período
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="acoes">
+            <button className="btn btn-primario" type="button" disabled={!dre} onClick={() => setImprimindo({ ...opcoes })}>
+              Imprimir
+            </button>
+            <button className="btn btn-link" type="button" onClick={() => setPainelImpressao(false)}>
+              Fechar
+            </button>
+            <span className="small muted">Para salvar em PDF, escolha "Salvar como PDF" na janela de impressão.</span>
+          </div>
+        </div>
+      )}
+
+      <div className="nao-imprimir">
+        <SeletorPeriodo valor={periodo} aoMudar={(p) => ir({ de: p.de, ate: p.ate })} />
+      </div>
+      <div className="acoes nao-imprimir">
         <div className="segmentado" role="group" aria-label="Visão" style={{ minWidth: 260 }}>
           <button type="button" aria-pressed={visao === 'competencia'} className={visao === 'competencia' ? 'ativo' : ''} onClick={() => ir({ visao: 'competencia' })}>
             Competência
@@ -110,29 +187,30 @@ export function Dre() {
       )}
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
 
-      <div className="card tabela-caixa">
+      <section className="card tabela-caixa relatorio">
         {!dre ? (
           !erro && <p className="muted">Carregando…</p>
         ) : (
           <table className="tabela tabela-dre">
             <thead>
               <tr>
-                <th className="col-fixa">Linha</th>
-                {varios && dre.meses.map((m) => <th key={m} style={{ textAlign: 'right' }}>{mesCurto(m)}</th>)}
-                <th style={{ textAlign: 'right' }}>{varios ? 'Total' : mesCurto(dre.meses[0])}</th>
-                <th style={{ textAlign: 'right' }} title="Percentual da receita bruta">% receita</th>
+                <th className="col-fixa">Demonstração do resultado</th>
+                {mostrarMeses && dre.meses.map((m) => <th key={m} style={{ textAlign: 'right' }}>{mesCurto(m)}</th>)}
+                <th style={{ textAlign: 'right' }}>{dre.meses.length > 1 ? 'Total' : mesCurto(dre.meses[0])}</th>
+                {mostrarPct && <th style={{ textAlign: 'right' }} title="Percentual da receita bruta">% receita</th>}
               </tr>
             </thead>
             <tbody>
               {dre.linhas.map((l) => {
-                const aberta = abertas.has(l.chave);
+                const aberta = estaAberta(l.chave);
                 const expandivel = l.tipo === 'grupo' && l.categorias.length > 0;
                 if (l.tipo === 'grupo' && !l.total && !Object.values(l.valores).some(Boolean) && !['receita_bruta', 'deducoes'].includes(l.chave)) return null;
+                if (op?.somenteTotais && l.tipo === 'grupo' && l.chave !== 'receita_bruta') return null;
                 return (
                   <Fragment key={l.chave}>
                     <tr className={`dre-${l.tipo}`}>
                       <td className="col-fixa">
-                        {expandivel ? (
+                        {expandivel && !op ? (
                           <button type="button" className="dre-abrir" aria-expanded={aberta} onClick={() => alternar(l.chave)}>
                             <span aria-hidden="true">{aberta ? '▾' : '▸'}</span> {l.nome}
                           </button>
@@ -141,9 +219,9 @@ export function Dre() {
                         )}
                         {l.estimado && <span className="selo selo-neutro" style={{ marginLeft: 8 }}>estimado</span>}
                       </td>
-                      {varios && dre.meses.map((m) => <td key={m} className="mono num">{valorCelula(l.valores[m])}</td>)}
+                      {mostrarMeses && dre.meses.map((m) => <td key={m} className="mono num">{valorCelula(l.valores[m])}</td>)}
                       <td className="mono num forte">{valorCelula(l.total)}</td>
-                      <td className="mono num muted">{av(l.total)}</td>
+                      {mostrarPct && <td className="mono num muted">{av(l.total)}</td>}
                     </tr>
                     {aberta &&
                       l.categorias.map((c) => (
@@ -151,9 +229,9 @@ export function Dre() {
                           <td className="col-fixa">
                             <span className="mono muted">{c.codigo}</span> {c.nome}
                           </td>
-                          {varios && dre.meses.map((m) => <td key={m} className="mono num">{valorCelula(c.valores[m])}</td>)}
+                          {mostrarMeses && dre.meses.map((m) => <td key={m} className="mono num">{valorCelula(c.valores[m])}</td>)}
                           <td className="mono num">{valorCelula(c.total)}</td>
-                          <td className="mono num muted">{av(c.total)}</td>
+                          {mostrarPct && <td className="mono num muted">{av(c.total)}</td>}
                         </tr>
                       ))}
                   </Fragment>
@@ -162,10 +240,10 @@ export function Dre() {
             </tbody>
           </table>
         )}
-      </div>
+      </section>
 
-      {dre && (dre.fora.total !== 0 || dre.fora.categorias.length > 0) && (
-        <div className="card tabela-caixa">
+      {dre && (dre.fora.total !== 0 || dre.fora.categorias.length > 0) && (!op || op.fora) && (
+        <section className="card tabela-caixa relatorio">
           <h2>Fora da DRE</h2>
           <p className="small muted" style={{ marginTop: 0 }}>
             Compra de veículos, obras, empréstimos e retiradas dos sócios mexem no caixa, mas não são receita nem despesa do período.
@@ -177,17 +255,18 @@ export function Dre() {
                   <td className="col-fixa">
                     <span className="mono muted">{c.codigo}</span> {c.nome}
                   </td>
-                  {varios && dre.meses.map((m) => <td key={m} className="mono num">{valorCelula(c.valores[m])}</td>)}
+                  {mostrarMeses && dre.meses.map((m) => <td key={m} className="mono num">{valorCelula(c.valores[m])}</td>)}
                   <td className="mono num forte">{valorCelula(c.total)}</td>
                 </tr>
               ))}
             </tbody>
           </table>
-        </div>
+        </section>
       )}
-      <p className="small muted">
-        Clique numa linha com ▸ para ver as categorias. Só entra o que está confirmado: notas em conferência e lançamentos cancelados ficam de fora.
+      <p className="small muted doc-rodape-nota">
+        Só entra o que está confirmado: notas em conferência e lançamentos cancelados ficam de fora.
         {visao === 'caixa' && ' Na visão de caixa, juros e descontos das baixas aparecem no resultado financeiro.'}
+        <span className="nao-imprimir"> Clique numa linha com ▸ para ver as categorias.</span>
       </p>
     </>
   );

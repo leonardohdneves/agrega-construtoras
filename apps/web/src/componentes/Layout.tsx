@@ -16,7 +16,7 @@ import {
   IconeEmpresa,
 } from './Icones';
 
-type Item = { rotulo: string; para?: string; etapa?: number; perfis?: Perfil[] };
+type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[] };
 type Modulo = { id: string; numero?: number; titulo: string; icone: ReactNode; perfis?: Perfil[]; itens: Item[] };
 
 const GESTAO: Perfil[] = ['dono', 'gestor'];
@@ -85,6 +85,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Usuários', para: '/usuarios', perfis: GESTAO },
       { rotulo: 'Minha conta', para: '/conta' },
       { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
+      { rotulo: 'Manual de operação (PDF)', arquivo: '/manual/agrega-manual-de-operacao.pdf' },
     ],
   },
   {
@@ -144,7 +145,11 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
             <div className="sub" id={`sub-${m.id}`}>
               <div className="sub-dentro">
                 {m.itens.map((it) =>
-                  it.para ? (
+                  it.arquivo ? (
+                    <a key={it.rotulo} href={it.arquivo} download onClick={aoNavegar}>
+                      {it.rotulo}
+                    </a>
+                  ) : it.para ? (
                     <NavLink key={it.rotulo} to={it.para} className={({ isActive }) => (isActive ? 'ativo' : undefined)} onClick={aoNavegar}>
                       {it.rotulo}
                     </NavLink>

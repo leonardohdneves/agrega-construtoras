@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda, formatarNumero, NOMES_TIPO_VEICULO, type TipoVeiculo } from '../api';
 import { ATALHOS, SeletorPeriodo, type Periodo } from '../componentes/Periodo';
+import { CabecalhoDocumento, textoPeriodo } from '../componentes/Documento';
 
 type Linha = {
   veiculoId: string;
@@ -49,17 +50,18 @@ export function CustoVeiculo() {
   const somaCustoBomba = bombas.reduce((s, v) => s + v.total, 0);
   const semNota = veics.reduce((s, v) => s + v.semNota.diesel + v.semNota.manutencao, 0);
   const semVeiculo = (r?.semVeiculo ?? []).reduce((s, x) => s + x.valor, 0);
-  const maior = Math.max(...veics.map((v) => v.total), 1);
 
   return (
     <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>Custo por veículo</h1>
-          <span className="muted">Diesel, manutenção, pneus, documentos e seguros de cada caminhão e bomba, com o custo por km ou por hora.</span>
-        </div>
+      <CabecalhoDocumento
+        modulo="Gerencial · Frota"
+        titulo="Custo por veículo"
+        descricao="Diesel, manutenção, pneus, documentos e seguros de cada caminhão e bomba, com o custo por km ou por hora."
+        periodo={textoPeriodo(periodo.de, periodo.ate)}
+      />
+      <div className="nao-imprimir">
+        <SeletorPeriodo valor={periodo} aoMudar={(p) => setParams({ de: p.de, ate: p.ate }, { replace: true })} />
       </div>
-      <SeletorPeriodo valor={periodo} aoMudar={(p) => setParams({ de: p.de, ate: p.ate }, { replace: true })} />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {!r ? (
         !erro && <p className="muted">Carregando…</p>
@@ -88,7 +90,7 @@ export function CustoVeiculo() {
             </Link>
           </div>
 
-          <div className="card tabela-caixa">
+          <section className="card tabela-caixa relatorio">
             {veics.length === 0 ? (
               <p className="muted" style={{ margin: 0 }}>Nenhum custo de veículo no período.</p>
             ) : (
@@ -101,7 +103,6 @@ export function CustoVeiculo() {
                     <th style={{ textAlign: 'right' }}>Total</th>
                     <th style={{ textAlign: 'right' }}>Uso</th>
                     <th style={{ textAlign: 'right' }}>Custo por uso</th>
-                    <th className="col-barra"><span style={{ position: 'absolute', left: -9999 }}>Gráfico</span></th>
                   </tr>
                 </thead>
                 <tbody>
@@ -125,15 +126,10 @@ export function CustoVeiculo() {
                           <td className="mono num">
                             {bomba ? (v.custoHora !== null ? `${formatarMoeda(v.custoHora)}/h` : '—') : v.custoKm !== null ? `${formatarMoeda(v.custoKm)}/km` : '—'}
                           </td>
-                          <td className="col-barra">
-                            <span className="barra-saldo" aria-hidden="true">
-                              <span style={{ width: `${(v.total / maior) * 100}%` }} />
-                            </span>
-                          </td>
                         </tr>
                         {abrir && (
                           <tr className="linha-form">
-                            <td colSpan={7}>
+                            <td colSpan={6}>
                               <ul className="linhas">
                                 {v.categorias.map((c) => (
                                   <li key={c.codigo}>
@@ -183,7 +179,7 @@ export function CustoVeiculo() {
                 </tbody>
               </table>
             )}
-          </div>
+          </section>
 
           {r.semVeiculo.length > 0 && (
             <div className="card">

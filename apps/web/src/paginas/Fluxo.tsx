@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda } from '../api';
 import { ATALHOS, mesCurto, SeletorPeriodo, type Periodo } from '../componentes/Periodo';
+import { CabecalhoDocumento, textoPeriodo } from '../componentes/Documento';
 
 type Resp = {
   hoje: string;
@@ -14,14 +15,6 @@ type Resp = {
 
 const dm = (d: string) => formatarData(d).slice(0, 5);
 
-function Barra({ valor, maximo }: { valor: number; maximo: number }) {
-  const largura = maximo > 0 ? Math.min(100, (Math.abs(valor) / maximo) * 100) : 0;
-  return (
-    <span className="barra-saldo" aria-hidden="true">
-      <span className={valor < 0 ? 'negativa' : ''} style={{ width: `${largura}%` }} />
-    </span>
-  );
-}
 
 export function Fluxo() {
   const [params, setParams] = useSearchParams();
@@ -43,17 +36,14 @@ export function Fluxo() {
     carregar();
   }, [carregar]);
 
-  const maxSaldo = r ? Math.max(...r.projecao.map((p) => Math.abs(p.saldo)), Math.abs(r.saldoAtual), 1) : 1;
-  const maxReal = r ? Math.max(...r.realizado.map((p) => Math.abs(p.saldoFinal)), 1) : 1;
-
   return (
     <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>Fluxo de caixa</h1>
-          <span className="muted">O que vai entrar e sair nas próximas semanas, e o que entrou e saiu em cada mês.</span>
-        </div>
-      </div>
+      <CabecalhoDocumento
+        modulo="Gerencial"
+        titulo="Fluxo de caixa"
+        descricao="O que vai entrar e sair nas próximas semanas, e o que entrou e saiu em cada mês."
+        periodo={`realizado: ${textoPeriodo(periodo.de, periodo.ate)} · projeção: ${semanas === 26 ? '6 meses' : '12 semanas'}`}
+      />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {!r ? (
         !erro && <p className="muted">Carregando…</p>
@@ -80,7 +70,7 @@ export function Fluxo() {
             </Link>
           </div>
 
-          <div className="card tabela-caixa">
+          <section className="card tabela-caixa relatorio">
             <div className="cartao-topo">
               <h2>Próximas semanas</h2>
               <div className="segmentado" role="group" aria-label="Horizonte" style={{ minWidth: 220 }}>
@@ -102,7 +92,6 @@ export function Fluxo() {
                   <th style={{ textAlign: 'right' }}>Entradas</th>
                   <th style={{ textAlign: 'right' }}>Saídas</th>
                   <th style={{ textAlign: 'right' }}>Saldo previsto</th>
-                  <th className="col-barra"><span style={{ position: 'absolute', left: -9999 }}>Gráfico</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -112,7 +101,6 @@ export function Fluxo() {
                     <td className="mono num">{r.atrasadas.receber ? formatarMoeda(r.atrasadas.receber) : '—'}</td>
                     <td className="mono num negativo">{r.atrasadas.pagar ? formatarMoeda(-r.atrasadas.pagar) : '—'}</td>
                     <td className="mono num muted">{formatarMoeda(r.saldoAtual + r.atrasadas.receber - r.atrasadas.pagar)}</td>
-                    <td className="col-barra" />
                   </tr>
                 )}
                 {r.projecao.map((p) => (
@@ -123,16 +111,13 @@ export function Fluxo() {
                     <td className="mono num">{p.receber ? formatarMoeda(p.receber) : <span className="muted">—</span>}</td>
                     <td className="mono num negativo">{p.pagar ? formatarMoeda(-p.pagar) : <span className="muted">—</span>}</td>
                     <td className={`mono num forte ${p.saldo < 0 ? 'negativo' : ''}`}>{formatarMoeda(p.saldo)}</td>
-                    <td className="col-barra">
-                      <Barra valor={p.saldo} maximo={maxSaldo} />
-                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
-          </div>
+          </section>
 
-          <div className="card tabela-caixa">
+          <section className="card tabela-caixa relatorio">
             <div className="cartao-topo">
               <h2>Realizado por mês</h2>
             </div>
@@ -146,7 +131,6 @@ export function Fluxo() {
                   <th style={{ textAlign: 'right' }} title="Empréstimos recebidos, aportes, compra de veículos, amortizações, retiradas">Fora da DRE</th>
                   <th style={{ textAlign: 'right' }}>Variação</th>
                   <th style={{ textAlign: 'right' }}>Saldo no fim</th>
-                  <th className="col-barra"><span style={{ position: 'absolute', left: -9999 }}>Gráfico</span></th>
                 </tr>
               </thead>
               <tbody>
@@ -160,9 +144,6 @@ export function Fluxo() {
                       <td className={`mono num ${fora < 0 ? 'negativo' : ''}`}>{fora ? formatarMoeda(fora) : <span className="muted">—</span>}</td>
                       <td className={`mono num ${m.liquido < 0 ? 'negativo' : ''}`}>{formatarMoeda(m.liquido)}</td>
                       <td className={`mono num forte ${m.saldoFinal < 0 ? 'negativo' : ''}`}>{formatarMoeda(m.saldoFinal)}</td>
-                      <td className="col-barra">
-                        <Barra valor={m.saldoFinal} maximo={maxReal} />
-                      </td>
                     </tr>
                   );
                 })}
@@ -171,7 +152,7 @@ export function Fluxo() {
             <p className="small muted" style={{ margin: '8px 0 0' }}>
               O saldo no fim de cada mês é calculado a partir do saldo de hoje, descontando o que entrou e saiu depois. Transferências entre contas não aparecem porque não mudam o total.
             </p>
-          </div>
+          </section>
         </>
       )}
     </>

@@ -30,6 +30,8 @@ export function RelConfig() {
   return (
     <>
       <CabecalhoRelatorio
+        modulo="Configurações"
+        periodo={periodo}
         titulo="Relatórios de uso"
         sub="Quem usa o sistema e o que foi alterado. Toda alteração fica registrada com usuário e data."
         abas={ABAS}

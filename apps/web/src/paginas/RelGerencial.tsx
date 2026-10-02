@@ -23,6 +23,8 @@ export function RelGerencial() {
   return (
     <>
       <CabecalhoRelatorio
+        modulo="Gerencial"
+        periodo={periodo}
         titulo="Relatórios gerais"
         sub="Cruzam frota, financeiro e notas fiscais mês a mês. Para DRE, fluxo de caixa e custo por veículo, use os itens do módulo Gerencial."
         abas={ABAS}
