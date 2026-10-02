@@ -51,3 +51,13 @@ test('Piora de consumo acima de 15%', () => {
   assert.equal(pioraDeConsumo({ kmRodados: 300, horas: null, kmPorLitro: 2.0, litrosPorHora: null }, media), null);
   assert.equal(pioraDeConsumo({ kmRodados: null, horas: 10, kmPorLitro: null, litrosPorHora: 14.4 }, media), 0.2);
 });
+
+test('Bomba: consumo médio só por hora quando não há km/L', () => {
+  const m = consumoMedio([
+    { litros: 70, consumo: { kmRodados: 40, horas: 10, kmPorLitro: null, litrosPorHora: 7 } },
+    { litros: 66, consumo: { kmRodados: 35, horas: 11, kmPorLitro: null, litrosPorHora: 6 } },
+  ]);
+  assert.equal(m.kmPorLitro, null);
+  assert.equal(m.litrosPorHora, 6.48);
+  assert.equal(pioraDeConsumo({ kmRodados: 40, horas: 10, kmPorLitro: null, litrosPorHora: 6.9 }, m), null);
+});

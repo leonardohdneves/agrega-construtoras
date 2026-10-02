@@ -30,6 +30,8 @@ function abastecimentoPublico(r: Linha) {
   const litros = Number(r.litros);
   const atual = { km: num(r.km), horimetro: num(r.horimetro), litros };
   const consumo = consumoDoAbastecimento(atual, r.id_ant ? { km: num(r.km_ant), horimetro: num(r.hor_ant) } : null);
+  // Bomba trabalha parada: o consumo que importa é por hora (L/h), não por km.
+  if (String(r.tipo ?? '').startsWith('bomba')) consumo.kmPorLitro = null;
   const valor = r.valor_total_centavos === null ? null : Number(r.valor_total_centavos) / 100;
   return {
     id: r.id,
@@ -143,7 +145,7 @@ export function rotasAbastecimento(banco: Banco) {
       if (motorista && !meuMotorista) return { abastecimentos: [] };
       const r = await banco.query(
         `${CTE}
-         SELECT b.*, v.codigo, m.nome AS motorista_nome
+         SELECT b.*, v.codigo, v.tipo, m.nome AS motorista_nome
            FROM base b
            JOIN veiculos v ON v.id = b.veiculo_id
            LEFT JOIN motoristas m ON m.id = b.motorista_id
@@ -226,7 +228,7 @@ export function rotasAbastecimento(banco: Banco) {
         return a;
       });
       const r = await banco.query(
-        `${CTE} SELECT b.*, v.codigo, m.nome AS motorista_nome FROM base b JOIN veiculos v ON v.id = b.veiculo_id LEFT JOIN motoristas m ON m.id = b.motorista_id WHERE b.id = $2`,
+        `${CTE} SELECT b.*, v.codigo, v.tipo, m.nome AS motorista_nome FROM base b JOIN veiculos v ON v.id = b.veiculo_id LEFT JOIN motoristas m ON m.id = b.motorista_id WHERE b.id = $2`,
         [empresaId, novo.id],
       );
       reply.code(201);
@@ -277,7 +279,7 @@ export function rotasAbastecimento(banco: Banco) {
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'abastecimentos', entidadeId: antes.id, antes, depois });
       });
       const r = await banco.query(
-        `${CTE} SELECT b.*, v.codigo, m.nome AS motorista_nome FROM base b JOIN veiculos v ON v.id = b.veiculo_id LEFT JOIN motoristas m ON m.id = b.motorista_id WHERE b.id = $2`,
+        `${CTE} SELECT b.*, v.codigo, v.tipo, m.nome AS motorista_nome FROM base b JOIN veiculos v ON v.id = b.veiculo_id LEFT JOIN motoristas m ON m.id = b.motorista_id WHERE b.id = $2`,
         [empresaId, req.params.id],
       );
       return { abastecimento: abastecimentoPublico(r.rows[0]) };
