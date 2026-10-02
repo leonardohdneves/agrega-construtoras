@@ -1,5 +1,8 @@
 import pg from 'pg';
 
+// Datas (tipo DATE) chegam como texto 'AAAA-MM-DD', sem conversão de fuso horário.
+pg.types.setTypeParser(1082, (v: string) => v);
+
 export type Banco = pg.Pool;
 export type Cliente = pg.PoolClient | pg.Pool;
 

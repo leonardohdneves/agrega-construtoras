@@ -189,4 +189,32 @@ table.tabela { border-collapse: collapse; width: 100%; }
 
 .carregando { min-height: 100%; display: grid; place-items: center; color: var(--ink-muted); }
 
+/* ---------- Frota ---------- */
+.filtros { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip {
+  display: inline-flex; align-items: center; gap: 8px; min-height: 40px; padding: 0 14px;
+  border-radius: 999px; border: 1px solid var(--border); background: var(--surface-card); color: var(--ink);
+  font: 500 14px/1 var(--font-sans); cursor: pointer;
+}
+.chip .mono { color: var(--cement); font-size: 13px; }
+.chip-ativo { background: var(--ink); color: var(--surface-card); border-color: var(--ink); }
+.chip-ativo .mono { color: inherit; opacity: .75; }
+.busca {
+  margin-left: auto; height: 40px; min-width: 0; width: 260px; max-width: 100%;
+  border: 1px solid var(--border); border-radius: 999px; background: var(--surface-card); color: var(--ink);
+  padding: 0 16px; font: inherit; font-size: 14px;
+}
+@media (max-width: 640px) { .busca { margin-left: 0; width: 100%; } }
+.indicadores { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.indicador { display: flex; flex-direction: column; gap: 4px; padding: 16px 18px; }
+.rotulo-ind { font-size: 13px; font-weight: 600; color: var(--cement); }
+.valor-ind { font-size: 22px; }
+.lista-alertas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.lista-alertas li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--divider); }
+.lista-alertas li:last-child { border-bottom: 0; }
+.tres { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.bloco-status { border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; text-decoration: none; }
+.bloco-status strong { font: 800 26px/1.1 var(--font-display); }
+.bloco-status span { font-size: 13px; font-weight: 600; }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
