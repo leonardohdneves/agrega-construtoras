@@ -86,7 +86,7 @@ export function ContasFinanceiras() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Bancos e caixa</h1>
-          <span className="muted">O saldo vem do saldo inicial mais tudo o que foi pago, recebido e transferido. A conciliação com o extrato OFX chega na Etapa 6.</span>
+          <span className="muted">O saldo vem do saldo inicial mais tudo o que foi pago, recebido e transferido. A conciliação com o extrato OFX virá em breve.</span>
         </div>
         <div className="acoes">
           {ativas.length >= 2 && !nova && (

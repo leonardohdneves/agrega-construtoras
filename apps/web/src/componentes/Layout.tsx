@@ -54,7 +54,8 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Contas a pagar e receber', para: '/fin/pagar-receber' },
       { rotulo: 'Lançamentos', para: '/fin/lancamentos' },
       { rotulo: 'Notas fiscais e XML', para: '/fin/notas' },
-      { rotulo: 'Bancos e conciliação', para: '/fin/contas' },
+      { rotulo: 'Bancos e caixa', para: '/fin/contas' },
+      { rotulo: 'Conciliação OFX', etapa: 6 },
       { rotulo: 'Plano de contas', para: '/fin/plano-contas' },
     ],
   },
@@ -65,9 +66,9 @@ export const MODULOS: Modulo[] = [
     icone: <IconeGrafico />,
     perfis: GESTAO,
     itens: [
-      { rotulo: 'DRE gerencial', etapa: 7 },
-      { rotulo: 'Fluxo de caixa', etapa: 7 },
-      { rotulo: 'Custo por veículo', etapa: 7 },
+      { rotulo: 'DRE gerencial', para: '/ger/dre' },
+      { rotulo: 'Fluxo de caixa', para: '/ger/fluxo' },
+      { rotulo: 'Custo por veículo', para: '/ger/custo-veiculo' },
     ],
   },
   {
@@ -142,9 +143,9 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
                       {it.rotulo}
                     </NavLink>
                   ) : (
-                    <span key={it.rotulo} className="item-off" title={`Disponível na Etapa ${it.etapa}`}>
+                    <span key={it.rotulo} className="item-off" title="Em breve">
                       {it.rotulo}
-                      <span className="etapa">E{it.etapa}</span>
+                      <span className="etapa">em breve</span>
                     </span>
                   ),
                 )}

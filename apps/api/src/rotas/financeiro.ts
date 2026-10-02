@@ -196,7 +196,7 @@ function parcelaPublica(r: Record<string, any>, hoje: string) {
 }
 
 // ---------- Consultas ----------
-const SQL_SALDO = `
+export const SQL_SALDO = `
   c.saldo_inicial_centavos
   + coalesce((SELECT sum(CASE WHEN l.tipo = 'receita' THEN p.valor_pago_centavos ELSE -p.valor_pago_centavos END)
                 FROM parcelas p JOIN lancamentos l ON l.id = p.lancamento_id

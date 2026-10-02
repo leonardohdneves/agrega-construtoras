@@ -17,15 +17,15 @@ import {
 } from '../api';
 import { useSessao } from '../sessao';
 
-const ETAPAS = [
+const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
   { n: 1, nome: 'Cadastros da frota: veículos, motoristas e documentos', pronta: true },
   { n: 2, nome: 'Abastecimento pelo celular, km/L e L/h', pronta: true },
   { n: 3, nome: 'Manutenção preventiva e ordens de serviço', pronta: true },
   { n: 4, nome: 'Financeiro: contas, plano de contas, a pagar e a receber', pronta: true },
   { n: 5, nome: 'Nota fiscal: lançamento manual e importação de XML', pronta: true },
-  { n: 6, nome: 'Conciliação bancária com OFX' },
-  { n: 7, nome: 'Relatórios: DRE, fluxo de caixa e custo por veículo' },
+  { n: 6, nome: 'Conciliação bancária com OFX', adiada: true },
+  { n: 7, nome: 'Relatórios: DRE, fluxo de caixa e custo por veículo', pronta: true },
 ];
 
 type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: { kmPorLitro: number | null; litrosPorHora: number | null }; media90: { kmPorLitro: number | null; litrosPorHora: number | null } };
@@ -347,7 +347,7 @@ function AbaFrota({ d }: { d: Dados }) {
               </table>
             </div>
           )}
-          <p className="small muted" style={{ margin: '8px 0 0' }}>Pelos registros da frota. O custo completo, com notas e rateios, vem no relatório da Etapa 7.</p>
+          <p className="small muted" style={{ margin: '8px 0 0' }}>Pelos registros da frota. O custo completo, com notas e rateios, está em <Link to="/ger/custo-veiculo">Custo por veículo</Link>.</p>
         </Cartao>
       </div>
     </>

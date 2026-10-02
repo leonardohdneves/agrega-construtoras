@@ -29,6 +29,9 @@ import { PlanoContas } from './paginas/PlanoContas';
 import { Notas } from './paginas/Notas';
 import { Nota } from './paginas/Nota';
 import { Regras } from './paginas/Regras';
+import { Dre } from './paginas/Dre';
+import { Fluxo } from './paginas/Fluxo';
+import { CustoVeiculo } from './paginas/CustoVeiculo';
 
 registerSW({ immediate: true });
 
@@ -81,6 +84,9 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="fin/contas" element={<Protegido perfis={['dono', 'gestor']}><ContasFinanceiras /></Protegido>} />
             <Route path="fin/notas" element={<Protegido perfis={['dono', 'gestor']}><Notas /></Protegido>} />
             <Route path="fin/notas/:id" element={<Protegido perfis={['dono', 'gestor']}><Nota /></Protegido>} />
+            <Route path="ger/dre" element={<Protegido perfis={['dono', 'gestor']}><Dre /></Protegido>} />
+            <Route path="ger/fluxo" element={<Protegido perfis={['dono', 'gestor']}><Fluxo /></Protegido>} />
+            <Route path="ger/custo-veiculo" element={<Protegido perfis={['dono', 'gestor']}><CustoVeiculo /></Protegido>} />
             <Route path="fin/regras" element={<Protegido perfis={['dono', 'gestor']}><Regras /></Protegido>} />
             <Route path="fin/plano-contas" element={<Protegido perfis={['dono', 'gestor']}><PlanoContas /></Protegido>} />
             <Route path="adm/clientes" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores key="clientes" categoria="cliente" /></Protegido>} />

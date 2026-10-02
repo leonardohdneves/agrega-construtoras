@@ -81,7 +81,7 @@ export function Lancamentos() {
         <div className="card indicador">
           <span className="rotulo-ind">Diferença no mês</span>
           <span className="valor-ind mono" style={{ color: receitas - despesas < 0 ? 'var(--status-danger-ink)' : undefined }}>{lista ? formatarMoeda(receitas - despesas) : '—'}</span>
-          <span className="small muted">Inclui investimentos e empréstimos; a DRE separa na Etapa 7.</span>
+          <span className="small muted">Inclui investimentos e empréstimos; a <Link to="/ger/dre">DRE gerencial</Link> separa o que é resultado.</span>
         </div>
       </div>
 

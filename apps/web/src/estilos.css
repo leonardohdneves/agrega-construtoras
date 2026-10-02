@@ -347,4 +347,29 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .implantacao[open] summary::after { content: '▴'; }
 .implantacao[open] summary { margin-bottom: 8px; }
 
+/* ---------- Relatórios gerenciais ---------- */
+.periodo-manual { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.periodo-manual input { height: 40px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-card); color: var(--ink); padding: 0 8px; font: inherit; font-size: 14px; }
+.tabela .num { text-align: right; white-space: nowrap; }
+.tabela .forte { font-weight: 600; }
+.negativo { color: var(--status-danger-ink); }
+.tabela-dre { min-width: 560px; }
+.tabela-dre td, .tabela-dre th { padding-block: 9px; }
+.tabela-dre .col-fixa { position: sticky; left: 0; background: var(--surface-card); z-index: 1; min-width: 230px; max-width: 320px; }
+.tabela-dre tr.dre-subtotal td { background: var(--surface-sunken); font-weight: 600; }
+.tabela-dre tr.dre-subtotal .col-fixa { background: var(--surface-sunken); }
+.tabela-dre tr.dre-resultado td { background: var(--surface-header); color: var(--on-header); font-weight: 700; }
+.tabela-dre tr.dre-resultado .col-fixa { background: var(--surface-header); }
+.tabela-dre tr.dre-resultado .negativo { color: #fca5a5; }
+.tabela-dre tr.dre-resultado .muted { color: var(--on-header-muted); }
+.tabela-dre tr.dre-categoria td { font-size: 14px; color: var(--ink-muted); }
+.tabela-dre tr.dre-categoria .col-fixa { padding-left: 34px; }
+.dre-abrir { background: none; border: 0; padding: 0; font: inherit; color: inherit; cursor: pointer; text-align: left; display: inline-flex; gap: 6px; align-items: baseline; }
+.dre-abrir:hover { color: var(--action); }
+.col-barra { width: 22%; min-width: 90px; }
+.barra-saldo { display: block; height: 8px; border-radius: 4px; background: var(--surface-sunken); overflow: hidden; }
+.barra-saldo span { display: block; height: 100%; border-radius: 4px; background: var(--status-ok-ink); opacity: .7; }
+.barra-saldo span.negativa { background: var(--status-danger-ink); }
+@media (max-width: 640px) { .col-barra { display: none; } }
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

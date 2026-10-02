@@ -9,14 +9,16 @@ const CAMPOS_ALIQUOTA: Record<TEmpresa['regimeTributario'], { chave: string; rot
     { chave: 'cofins', rotulo: 'COFINS (%)' },
     { chave: 'iss', rotulo: 'ISS (%)' },
     { chave: 'icms', rotulo: 'ICMS (%)' },
-    { chave: 'irpj', rotulo: 'IRPJ (%)' },
-    { chave: 'csll', rotulo: 'CSLL (%)' },
+    { chave: 'irpj', rotulo: 'IRPJ efetivo sobre a receita (%)' },
+    { chave: 'csll', rotulo: 'CSLL efetiva sobre a receita (%)' },
   ],
   real: [
     { chave: 'pis', rotulo: 'PIS (%)' },
     { chave: 'cofins', rotulo: 'COFINS (%)' },
     { chave: 'iss', rotulo: 'ISS (%)' },
     { chave: 'icms', rotulo: 'ICMS (%)' },
+    { chave: 'irpj', rotulo: 'IRPJ sobre o lucro (%)' },
+    { chave: 'csll', rotulo: 'CSLL sobre o lucro (%)' },
   ],
 };
 
