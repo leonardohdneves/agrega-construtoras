@@ -179,6 +179,7 @@ table.tabela { border-collapse: collapse; width: 100%; }
 .tabela th { text-align: left; font-weight: 600; font-size: 13px; color: var(--cement); padding: 10px 12px; border-bottom: 1px solid var(--border); white-space: nowrap; }
 .tabela td { padding: 12px; border-bottom: 1px solid var(--divider); font-size: 15px; vertical-align: middle; }
 .tabela tr:last-child td { border-bottom: 0; }
+.tabela td.mono { white-space: nowrap; }
 
 .lista-etapas { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
 .lista-etapas li { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--divider); }

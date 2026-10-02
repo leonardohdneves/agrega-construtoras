@@ -32,7 +32,17 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
     }
     if (erro instanceof ErroHttp) return reply.code(erro.status).send({ erro: erro.message });
     const e = erro as FastifyError & { code?: string };
-    if (e.code === '23505') return reply.code(409).send({ erro: 'Já existe um cadastro com esses dados (e-mail ou CNPJ).' });
+    if (e.code === '23505') {
+      const restricao = String((e as { constraint?: string }).constraint ?? '');
+      const MSG: Record<string, string> = {
+        usuarios_email_unico: 'Já existe um usuário com este e-mail.',
+        empresas_cnpj_key: 'Já existe uma empresa com este CNPJ.',
+        veiculos_codigo_unico: 'Já existe um veículo com este código.',
+        veiculos_placa_unica: 'Já existe um veículo com esta placa.',
+        usuarios_motorista_unico: 'Este login já está ligado a outro motorista.',
+      };
+      return reply.code(409).send({ erro: MSG[restricao] ?? 'Já existe um cadastro com esses dados.' });
+    }
     if (e.statusCode === 429) return reply.code(429).send({ erro: 'Muitas tentativas. Aguarde um minuto e tente de novo.' });
     if (e.statusCode && e.statusCode < 500) return reply.code(e.statusCode).send({ erro: e.message });
     req.log.error(erro);
