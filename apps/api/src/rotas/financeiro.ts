@@ -123,6 +123,7 @@ const esquemaLancamento = z.object({
 const esquemaEditarLancamento = z.object({ ...camposLancamento, parcelas: z.array(esquemaParcela).max(120, 'No máximo 120 parcelas.') });
 
 // ---------- Formatos ----------
+const brl = (centavos: number) => (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const reais = (c: unknown) => (c === null || c === undefined ? null : Number(c) / 100);
 
 function contaPublica(r: Record<string, any>) {
@@ -302,9 +303,9 @@ function conferirSomas(d: { valorTotal: number; apropriacoes: { valor?: number }
   if (d.apropriacoes.length === 1 && d.apropriacoes[0].valor === undefined) d.apropriacoes[0].valor = d.valorTotal;
   if (d.apropriacoes.some((a) => a.valor === undefined)) throw new ErroHttp(400, 'Informe o valor de cada categoria.');
   const somaAp = d.apropriacoes.reduce((s, a) => s + (a.valor ?? 0), 0);
-  if (somaAp !== d.valorTotal) throw new ErroHttp(400, `A soma das categorias (R$ ${(somaAp / 100).toFixed(2).replace('.', ',')}) é diferente do valor total.`);
+  if (somaAp !== d.valorTotal) throw new ErroHttp(400, `A soma das categorias (${brl(somaAp)}) é diferente do valor total (${brl(d.valorTotal)}).`);
   const somaPa = d.parcelas.reduce((s, p) => s + p.valor, 0);
-  if (somaPa !== d.valorTotal) throw new ErroHttp(400, `A soma das parcelas (R$ ${(somaPa / 100).toFixed(2).replace('.', ',')}) é diferente do valor total.`);
+  if (somaPa !== d.valorTotal) throw new ErroHttp(400, `A soma das parcelas (${brl(somaPa)}) é diferente do valor total (${brl(d.valorTotal)}).`);
 }
 
 async function contaAtiva(c: Cliente, empresaId: string, contaId: string) {

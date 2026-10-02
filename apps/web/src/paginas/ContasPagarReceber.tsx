@@ -70,7 +70,7 @@ export function ContasPagarReceber() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Contas a pagar e a receber</h1>
-          <span className="muted">Cada parcela tem vencimento; ao pagar ou receber, ela sai do saldo da conta escolhida.</span>
+          <span className="muted">Cada parcela tem vencimento; ao dar baixa, o valor sai (pagamento) ou entra (recebimento) no saldo da conta escolhida.</span>
         </div>
         <Link className="btn btn-primario" to={`/fin/lancamentos/novo?tipo=${tipo}`}>
           {tipo === 'despesa' ? 'Nova despesa' : 'Nova receita'}
