@@ -13,6 +13,7 @@ import { rotasAuth } from './rotas/auth.ts';
 import { rotasFinanceiro } from './rotas/financeiro.ts';
 import { rotasNotas } from './rotas/notas.ts';
 import { rotasGerencial } from './rotas/gerencial.ts';
+import { rotasRelatorios } from './rotas/relatorios.ts';
 import { rotasEmpresa } from './rotas/empresa.ts';
 import { rotasUsuarios } from './rotas/usuarios.ts';
 import { rotasAdmin } from './rotas/admin.ts';
@@ -21,7 +22,7 @@ import { rotasAbastecimento } from './rotas/abastecimentos.ts';
 import { rotasManutencao } from './rotas/manutencao.ts';
 import { rotasAdministrativo } from './rotas/administrativo.ts';
 
-const VERSAO = '0.7.0';
+const VERSAO = '0.8.0';
 const PASTA_WEB = path.resolve(import.meta.dirname, '..', '..', 'web', 'dist');
 
 export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
@@ -77,6 +78,7 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(rotasFinanceiro(banco), { prefix: '/api/fin' });
   await app.register(rotasNotas(banco), { prefix: '/api/fin' });
   await app.register(rotasGerencial(banco), { prefix: '/api/ger' });
+  await app.register(rotasRelatorios(banco), { prefix: '/api/rel' });
 
   // Telas (app React já compilado). Qualquer rota que não seja /api cai no index.html.
   const temWeb = existsSync(path.join(PASTA_WEB, 'index.html'));

@@ -372,4 +372,26 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .barra-saldo span.negativa { background: var(--status-danger-ink); }
 @media (max-width: 640px) { .col-barra { display: none; } }
 
+/* ---------- Relatórios e indicadores ---------- */
+.tabela td.tom-perigo { color: var(--status-danger-ink); font-weight: 600; }
+.tabela td.tom-aviso { color: var(--status-warn-ink); font-weight: 600; }
+.tabela td.tom-ok { color: var(--status-ok-ink); }
+.relatorio .tabela-caixa { margin-inline: -4px; }
+.tabela-indicadores .col-fixa { position: sticky; left: 0; background: var(--surface-card); z-index: 1; min-width: 300px; max-width: 420px; white-space: normal; }
+.ind-formula { font-size: 13px; margin: 4px 0 2px; color: var(--ink); }
+.titulo-grupo { font: 700 16px/1.2 var(--font-display); margin: 8px 0 10px; color: var(--ink-muted); }
+.kpis-ind { grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); }
+.kpi-ind { gap: 2px; }
+.ind-linha { display: block; margin-top: 6px; color: var(--cement); }
+.ind-linha.tom-ok { color: var(--status-ok-ink); }
+.ind-linha.tom-perigo { color: var(--status-danger-ink); }
+.sparkline { display: block; overflow: visible; }
+@media print {
+  .lateral, .nav-celular, .topo-celular, .nao-imprimir, .gaveta-fundo, .filtros .chip { display: none !important; }
+  body, .conteudo { background: #fff !important; padding: 0 !important; }
+  .card { border: 0 !important; padding: 0 !important; break-inside: avoid; }
+  .tabela-caixa { overflow: visible !important; }
+  .tabela-dre .col-fixa, .tabela-indicadores .col-fixa { position: static; }
+}
+
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }

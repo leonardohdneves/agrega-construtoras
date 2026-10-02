@@ -10,7 +10,7 @@ import { SQL_SALDO } from './financeiro.ts';
 const MES = /^\d{4}-(0[1-9]|1[0-2])$/;
 const reais = (c: unknown) => Number(c ?? 0) / 100;
 
-function periodo(q: { de?: string; ate?: string }, padraoMeses = 6) {
+export function periodo(q: { de?: string; ate?: string }, padraoMeses = 6) {
   const hoje = hojeBrasil();
   const atual = hoje.slice(0, 7);
   let ate = MES.test(q.ate ?? '') ? q.ate! : atual;

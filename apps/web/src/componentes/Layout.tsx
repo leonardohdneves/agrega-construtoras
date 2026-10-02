@@ -42,6 +42,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Abastecimentos e consumo', para: '/frota/abastecimentos', perfis: GESTAO },
       { rotulo: 'Manutenção preventiva', para: '/frota/manutencao', perfis: GESTAO },
       { rotulo: 'Ordens de serviço', para: '/frota/os', perfis: GESTAO },
+      { rotulo: 'Relatórios', para: '/frota/relatorios', perfis: GESTAO },
     ],
   },
   {
@@ -57,6 +58,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Bancos e caixa', para: '/fin/contas' },
       { rotulo: 'Conciliação OFX', etapa: 6 },
       { rotulo: 'Plano de contas', para: '/fin/plano-contas' },
+      { rotulo: 'Relatórios', para: '/fin/relatorios' },
     ],
   },
   {
@@ -69,6 +71,8 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'DRE gerencial', para: '/ger/dre' },
       { rotulo: 'Fluxo de caixa', para: '/ger/fluxo' },
       { rotulo: 'Custo por veículo', para: '/ger/custo-veiculo' },
+      { rotulo: 'Relatórios gerais', para: '/ger/relatorios' },
+      { rotulo: 'Indicadores', para: '/ger/indicadores' },
     ],
   },
   {
@@ -80,6 +84,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Empresa', para: '/empresa', perfis: GESTAO },
       { rotulo: 'Usuários', para: '/usuarios', perfis: GESTAO },
       { rotulo: 'Minha conta', para: '/conta' },
+      { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
     ],
   },
   {
@@ -93,6 +98,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Fornecedores', para: '/adm/fornecedores' },
       { rotulo: 'Credores', para: '/adm/credores' },
       { rotulo: 'Colaboradores', para: '/adm/colaboradores' },
+      { rotulo: 'Relatórios', para: '/adm/relatorios' },
     ],
   },
 ];

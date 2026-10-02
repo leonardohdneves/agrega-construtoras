@@ -32,6 +32,12 @@ import { Regras } from './paginas/Regras';
 import { Dre } from './paginas/Dre';
 import { Fluxo } from './paginas/Fluxo';
 import { CustoVeiculo } from './paginas/CustoVeiculo';
+import { RelFrota } from './paginas/RelFrota';
+import { RelFinanceiro } from './paginas/RelFinanceiro';
+import { RelAdm } from './paginas/RelAdm';
+import { RelConfig } from './paginas/RelConfig';
+import { RelGerencial } from './paginas/RelGerencial';
+import { Indicadores } from './paginas/Indicadores';
 
 registerSW({ immediate: true });
 
@@ -84,6 +90,12 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="fin/contas" element={<Protegido perfis={['dono', 'gestor']}><ContasFinanceiras /></Protegido>} />
             <Route path="fin/notas" element={<Protegido perfis={['dono', 'gestor']}><Notas /></Protegido>} />
             <Route path="fin/notas/:id" element={<Protegido perfis={['dono', 'gestor']}><Nota /></Protegido>} />
+            <Route path="frota/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelFrota /></Protegido>} />
+            <Route path="fin/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelFinanceiro /></Protegido>} />
+            <Route path="adm/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelAdm /></Protegido>} />
+            <Route path="config/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelConfig /></Protegido>} />
+            <Route path="ger/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelGerencial /></Protegido>} />
+            <Route path="ger/indicadores" element={<Protegido perfis={['dono', 'gestor']}><Indicadores /></Protegido>} />
             <Route path="ger/dre" element={<Protegido perfis={['dono', 'gestor']}><Dre /></Protegido>} />
             <Route path="ger/fluxo" element={<Protegido perfis={['dono', 'gestor']}><Fluxo /></Protegido>} />
             <Route path="ger/custo-veiculo" element={<Protegido perfis={['dono', 'gestor']}><CustoVeiculo /></Protegido>} />

@@ -16,6 +16,8 @@ import {
   type ItemManutencao,
 } from '../api';
 import { useSessao } from '../sessao';
+import { fmtIndicador, Sparkline, tendencia, type RespIndicadores } from '../componentes/Indicadores';
+import { mesCurto } from '../componentes/Periodo';
 
 const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
@@ -36,11 +38,12 @@ type ResumoFin = { saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin
 type CustoManut = { veiculoId: string; codigo: string; ordens: number; total: number; pecas: number };
 type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: ConsumoVeiculo[]; manut: CustoManut[]; erro: string };
 
-type Aba = 'geral' | 'frota' | 'financeiro';
-const ABAS: { id: Aba; texto: string }[] = [
+type Aba = 'geral' | 'frota' | 'financeiro' | 'indicadores';
+const ABAS: { id: Aba; texto: string; soDono?: boolean }[] = [
   { id: 'geral', texto: 'Geral' },
   { id: 'frota', texto: 'Frota' },
   { id: 'financeiro', texto: 'Financeiro' },
+  { id: 'indicadores', texto: 'Indicadores', soDono: true },
 ];
 
 // ---------- Peças visuais ----------
@@ -413,10 +416,71 @@ function AbaFinanceiro({ d }: { d: Dados }) {
   );
 }
 
+// ---------- Aba Indicadores (só o dono) ----------
+const GRUPOS_IND: { titulo: string; ids: string[] }[] = [
+  { titulo: 'Resultado', ids: ['receita_bruta', 'margem_bruta', 'margem_liquida', 'frota_sobre_receita'] },
+  { titulo: 'Caixa e prazos', ids: ['cobertura_caixa', 'inadimplencia', 'pmr', 'pmp'] },
+  { titulo: 'Frota', ids: ['disponibilidade', 'consumo_bet', 'consumo_bomba', 'custo_km', 'custo_hora_bomba', 'preco_diesel', 'revisoes_em_dia', 'dias_parado_os', 'custo_manutencao'] },
+  { titulo: 'Controle', ids: ['abastecimentos_com_nota', 'notas_pendentes'] },
+];
+
+function AbaIndicadores() {
+  const [r, setR] = useState<RespIndicadores | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    api<RespIndicadores>('/rel/indicadores').then(setR).catch((e) => setErro((e as Error).message));
+  }, []);
+  if (erro) return <div className="alerta alerta-erro">{erro}</div>;
+  if (!r) return carregando;
+  const ultimo = r.meses[r.meses.length - 1];
+  return (
+    <>
+      <p className="small muted" style={{ margin: 0 }}>
+        Valores de {mesCurto(ultimo)} (mês em andamento) comparados com o mês anterior; a linha mostra os últimos 6 meses. Indicadores marcados "hoje" são a situação atual.{' '}
+        <Link to="/ger/indicadores">Conferir fórmulas e valores</Link>.
+      </p>
+      {GRUPOS_IND.map((g) => (
+        <section key={g.titulo}>
+          <h2 className="titulo-grupo">{g.titulo}</h2>
+          <div className="kpis kpis-ind">
+            {g.ids.map((id) => {
+              const ind = r.indicadores.find((i) => i.id === id);
+              if (!ind) return null;
+              const atual = ind.retrato ? ind.valor : ind.valores?.[ultimo] ?? null;
+              const t = tendencia(ind, r.meses);
+              return (
+                <div key={id} className={`kpi kpi-ind ${t.tom === 'perigo' ? 'kpi-perigo' : t.tom === 'ok' ? 'kpi-ok' : ''}`} title={ind.formula}>
+                  <span className="kpi-rotulo">{ind.nome}</span>
+                  <span className="kpi-valor">{fmtIndicador(atual, ind.unidade)}</span>
+                  <span className="kpi-detalhe">
+                    {ind.retrato
+                      ? 'hoje'
+                      : t.delta !== null
+                        ? `${t.delta > 0 ? '▲' : '▼'} ${Math.abs(t.delta * 100).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}% sobre o mês anterior`
+                        : `6 meses: ${fmtIndicador(ind.valor, ind.unidade)}`}
+                  </span>
+                  {!ind.retrato && (
+                    <span className={`ind-linha ${t.tom ? `tom-${t.tom}` : ''}`}>
+                      <Sparkline valores={ind.valores} meses={r.meses} />
+                    </span>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </section>
+      ))}
+    </>
+  );
+}
+
 // ---------- Painel do dono e do gestor ----------
 function PainelGestao() {
   const [params, setParams] = useSearchParams();
-  const aba = (ABAS.some((a) => a.id === params.get('aba')) ? params.get('aba') : 'geral') as Aba;
+  const { usuario } = useSessao();
+  const dono = usuario?.perfil === 'dono';
+  const abas = ABAS.filter((a) => !a.soDono || dono);
+  const aba = (abas.some((a) => a.id === params.get('aba')) ? params.get('aba') : 'geral') as Aba;
   const [d, setD] = useState<Dados>({ frota: null, fin: null, consumo: [], manut: [], erro: '' });
 
   const carregar = useCallback(async () => {
@@ -436,7 +500,7 @@ function PainelGestao() {
   return (
     <>
       <div className="abas" role="tablist" aria-label="Painel">
-        {ABAS.map((a) => (
+        {abas.map((a) => (
           <button
             key={a.id}
             type="button"
@@ -453,6 +517,7 @@ function PainelGestao() {
       {aba === 'geral' && <AbaGeral d={d} />}
       {aba === 'frota' && <AbaFrota d={d} />}
       {aba === 'financeiro' && <AbaFinanceiro d={d} />}
+      {aba === 'indicadores' && dono && <AbaIndicadores />}
     </>
   );
 }
