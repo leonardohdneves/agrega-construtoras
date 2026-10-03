@@ -2,7 +2,7 @@ import { Fragment, useCallback, useEffect, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda } from '../api';
 import { ATALHOS, mesCurto, SeletorPeriodo, type Periodo } from '../componentes/Periodo';
-import { CabecalhoDocumento, textoPeriodo } from '../componentes/Documento';
+import { CabecalhoDocumento, imprimirPagina, OpcoesPagina, textoPeriodo, usePaginaImpressao } from '../componentes/Documento';
 
 type Valores = Record<string, number>;
 type LinhaDre = {
@@ -37,6 +37,7 @@ export function Dre() {
   const [painelImpressao, setPainelImpressao] = useState(false);
   const [opcoes, setOpcoes] = useState<OpcoesImpressao>({ detalhar: false, percentual: true, fora: true, somenteTotais: false, meses: 'todos' });
   const [imprimindo, setImprimindo] = useState<OpcoesImpressao | null>(null);
+  const [pagina, setPagina] = usePaginaImpressao();
 
   const ir = (p: Record<string, string>) => setParams({ de: periodo.de, ate: periodo.ate, visao, impostos, ...p }, { replace: true });
 
@@ -58,7 +59,7 @@ export function Dre() {
     if (!imprimindo) return;
     const voltar = () => setImprimindo(null);
     window.addEventListener('afterprint', voltar, { once: true });
-    const t = setTimeout(() => window.print(), 80);
+    const t = setTimeout(() => imprimirPagina(pagina), 20);
     return () => {
       clearTimeout(t);
       window.removeEventListener('afterprint', voltar);
@@ -138,6 +139,7 @@ export function Dre() {
               </div>
             )}
           </div>
+          <OpcoesPagina valor={pagina} aoMudar={setPagina} />
           <div className="acoes">
             <button className="btn btn-primario" type="button" disabled={!dre} onClick={() => setImprimindo({ ...opcoes })}>
               Imprimir

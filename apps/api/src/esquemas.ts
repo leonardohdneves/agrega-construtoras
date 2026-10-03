@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { MODULOS } from './lib/modulos.ts';
 import { cnpjValido, limparCnpj } from './lib/cnpj.ts';
 import { SENHA_MINIMA } from './lib/senha.ts';
 
@@ -72,6 +73,8 @@ export const esquemaNovoUsuario = z.object({
   perfil: z.enum(['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista'], { message: 'Escolha o perfil.' }),
   senha: esquemaSenha,
   telefoneWhatsapp: opcional,
+  administrador: z.boolean().optional().default(false),
+  modulos: z.array(z.enum(MODULOS)).max(8).nullable().optional(),
 });
 
 export const esquemaAlterarUsuario = z
@@ -81,6 +84,8 @@ export const esquemaAlterarUsuario = z
     ativo: z.boolean().optional(),
     telefoneWhatsapp: opcional,
     senha: esquemaSenha.optional(),
+    administrador: z.boolean().optional(),
+    modulos: z.array(z.enum(MODULOS)).max(8).nullable().optional(),
   })
   .strict();
 

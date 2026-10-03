@@ -9,7 +9,7 @@ import { registrarEntradasNota, saldosEm } from './estoque.ts';
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v4';
+export const VERSAO_DEMO = 'modelo-2026-10-v5';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -202,6 +202,8 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   for (const [p, nome] of [['dono@', 'Roberto Almeida'], ['gestor@', 'Juliana Freitas'], ['motorista@', 'Carlos Pereira'], ['operador@', 'Sérgio Nunes'], ['laboratorio@', 'Fábio Ramos']]) {
     await q('UPDATE usuarios SET nome = $3 WHERE empresa_id = $1 AND email LIKE $2', [e, `${p}%`, nome]);
   }
+  // Acessos de exemplo: a gestora é administradora; o dono é sempre administrador.
+  await q(`UPDATE usuarios SET administrador = (perfil = 'dono' OR email LIKE 'gestor@%'), modulos = NULL WHERE empresa_id = $1`, [e]);
 
   // ----- plano de contas e centros de custo
   const { aplicarPlanoPadrao } = await import('../rotas/financeiro.ts');

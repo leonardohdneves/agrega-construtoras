@@ -388,6 +388,8 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .doc-filtros span { background: var(--surface-sunken); border-radius: 6px; padding: 3px 9px; font-size: 13px; color: var(--ink); }
 .doc-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 13px; color: var(--ink-muted); text-align: right; }
 .doc-meta strong { color: var(--ink); font-size: 14px; }
+.doc-logo { max-height: 44px; max-width: 160px; object-fit: contain; margin-bottom: 4px; }
+.logo-previa { max-height: 72px; max-width: 220px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
 .doc-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
 @media (max-width: 760px) { .doc-corpo { grid-template-columns: 1fr; } .doc-meta { align-items: flex-start; text-align: left; } .doc-titulo h1 { font-size: 22px; } }
 .relatorio h2 { border-left: 4px solid var(--brand-orange); padding-left: 10px; }
@@ -438,6 +440,7 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .doc-faixa { padding: 3mm 4mm; }
   .doc-corpo { padding: 4mm 0 2mm; }
   .doc-titulo h1 { font-size: 17pt; }
+  .doc-logo { max-height: 14mm; max-width: 45mm; }
   .card, .ind-bloco { border: 0 !important; padding: 0 !important; border-radius: 0 !important; background: transparent !important; }
   .relatorio h2, .ind-bloco-topo h2 { font-size: 12pt; margin: 0 0 2mm; }
   .tabela-caixa { overflow: visible !important; }

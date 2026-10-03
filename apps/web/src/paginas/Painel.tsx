@@ -17,6 +17,7 @@ import {
   type ItemManutencao,
 } from '../api';
 import { useSessao } from '../sessao';
+import { temModulo } from '../acesso';
 import { fmtIndicador, type IndicadorDados, type RespIndicadores } from '../componentes/Indicadores';
 import { mesCurto } from '../componentes/Periodo';
 import { MinhaEscala } from './ProdMotoristas';
@@ -529,20 +530,22 @@ function PainelGestao() {
   const [params, setParams] = useSearchParams();
   const { usuario } = useSessao();
   const dono = usuario?.perfil === 'dono';
-  const abas = ABAS.filter((a) => !a.soDono || dono);
+  const frotaOk = temModulo(usuario, 'frota');
+  const finOk = temModulo(usuario, 'financeiro');
+  const abas = ABAS.filter((a) => (!a.soDono || dono) && (a.id !== 'frota' || frotaOk) && (a.id !== 'financeiro' || finOk));
   const aba = (abas.some((a) => a.id === params.get('aba')) ? params.get('aba') : 'geral') as Aba;
   const [d, setD] = useState<Dados>({ frota: null, fin: null, consumo: [], manut: [], erro: '' });
 
   const carregar = useCallback(async () => {
     const erros: string[] = [];
     const [frota, fin, consumo, manut] = await Promise.all([
-      api<ResumoFrota>('/frota/alertas').catch((e) => (erros.push(e.message), null)),
-      api<ResumoFin>('/fin/resumo').catch((e) => (erros.push(e.message), null)),
-      api<{ veiculos: ConsumoVeiculo[] }>('/frota/consumo?dias=30').then((r) => r.veiculos).catch(() => []),
-      api<{ veiculos: CustoManut[] }>('/frota/custo-manutencao?dias=30').then((r) => r.veiculos).catch(() => []),
+      frotaOk ? api<ResumoFrota>('/frota/alertas').catch((e) => (erros.push(e.message), null)) : null,
+      finOk ? api<ResumoFin>('/fin/resumo').catch((e) => (erros.push(e.message), null)) : null,
+      frotaOk ? api<{ veiculos: ConsumoVeiculo[] }>('/frota/consumo?dias=30').then((r) => r.veiculos).catch(() => []) : [],
+      frotaOk ? api<{ veiculos: CustoManut[] }>('/frota/custo-manutencao?dias=30').then((r) => r.veiculos).catch(() => []) : [],
     ]);
     setD({ frota, fin, consumo, manut, erro: [...new Set(erros)].join(' ') });
-  }, []);
+  }, [frotaOk, finOk]);
   useEffect(() => {
     carregar();
   }, [carregar]);

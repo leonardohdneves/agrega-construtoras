@@ -17,12 +17,12 @@ export function acessaFinanceiro(perfil: Perfil): boolean {
   return perfil === 'dono' || perfil === 'gestor';
 }
 
-/** Pode criar ou alterar um usuário com o perfil `alvo`? */
+/** Um administrador pode criar ou alterar um usuário com o perfil `alvo`? (quem chama já é administrador) */
 export function podeGerenciarPerfil(quem: Perfil, alvo: Perfil): boolean {
   if (alvo === 'admin_sistema') return false;
   if (quem === 'dono') return true;
-  if (quem === 'gestor') return alvo === 'motorista' || alvo === 'operador_usina' || alvo === 'laboratorista';
-  return false;
+  // Os demais administradores cuidam de todos, menos dos donos.
+  return alvo !== 'dono';
 }
 
 /** Pode alterar os dados cadastrais e fiscais da empresa? */

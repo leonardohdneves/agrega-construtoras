@@ -45,9 +45,10 @@ test('Perfis: quem gerencia quem e quem vê o financeiro', () => {
   assert.equal(podeGerenciarPerfil('dono', 'gestor'), true);
   assert.equal(podeGerenciarPerfil('dono', 'dono'), true);
   assert.equal(podeGerenciarPerfil('gestor', 'motorista'), true);
-  assert.equal(podeGerenciarPerfil('gestor', 'gestor'), false);
+  // Administradores que não são donos cuidam de todos, menos dos donos.
+  assert.equal(podeGerenciarPerfil('gestor', 'gestor'), true);
   assert.equal(podeGerenciarPerfil('gestor', 'dono'), false);
-  assert.equal(podeGerenciarPerfil('motorista', 'motorista'), false);
+  assert.equal(podeGerenciarPerfil('motorista', 'motorista'), true);
   assert.equal(podeGerenciarPerfil('dono', 'admin_sistema'), false);
   assert.equal(acessaFinanceiro('dono'), true);
   assert.equal(acessaFinanceiro('gestor'), true);

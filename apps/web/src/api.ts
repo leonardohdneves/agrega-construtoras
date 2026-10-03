@@ -38,7 +38,19 @@ export type Usuario = {
   telefoneWhatsapp: string | null;
   ativo: boolean;
   ultimoAcesso: string | null;
+  administrador: boolean;
+  /** null = segue o padrão do perfil */
+  modulos: Modulo[] | null;
+  modulosEfetivos: Modulo[];
 };
+
+export const MODULOS = ['frota', 'producao', 'qualidade', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'] as const;
+export type Modulo = (typeof MODULOS)[number];
+export const NOMES_MODULO: Record<Modulo, string> = {
+  frota: 'Frota', producao: 'Produção', qualidade: 'Qualidade', suprimentos: 'Suprimentos', financeiro: 'Financeiro',
+  gerencial: 'Gerencial', administrativo: 'Administrativo', configuracoes: 'Configurações',
+};
+export type Impressao = { orientacao: 'retrato' | 'paisagem'; papel: 'A4' | 'Carta' | 'Oficio' };
 
 export type Empresa = {
   id: string;
@@ -54,6 +66,9 @@ export type Empresa = {
   plano: string;
   ativo: boolean;
   totalUsuarios?: number;
+  temLogo?: boolean;
+  logoVersao?: number | null;
+  impressao?: Impressao;
 };
 
 export const NOMES_PERFIL: Record<Perfil, string> = {

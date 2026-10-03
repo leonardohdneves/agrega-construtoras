@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
-import { NOMES_PERFIL, type Perfil } from '../api';
+import { NOMES_PERFIL, type Modulo as ModuloApp, type Perfil } from '../api';
+import { podeAcessar, temModulo } from '../acesso';
 import { useSessao } from '../sessao';
 import { Logo } from './Logo';
 import {
@@ -18,7 +19,7 @@ import {
   IconeEmpresa,
 } from './Icones';
 
-type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[]; soDemo?: boolean };
+type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[]; soDemo?: boolean; soAdmin?: boolean; livre?: boolean };
 type Modulo = { id: string; numero?: number; titulo: string; icone: ReactNode; perfis?: Perfil[]; itens: Item[] };
 
 const GESTAO: Perfil[] = ['dono', 'gestor'];
@@ -35,7 +36,6 @@ export const MODULOS: Modulo[] = [
   },
   {
     id: 'frota',
-    numero: 1,
     titulo: 'Frota',
     icone: <IconeCaminhao />,
     perfis: ['dono', 'gestor', 'motorista'],
@@ -85,7 +85,6 @@ export const MODULOS: Modulo[] = [
   },
   {
     id: 'financeiro',
-    numero: 2,
     titulo: 'Financeiro',
     icone: <IconeDinheiro />,
     perfis: GESTAO,
@@ -101,7 +100,6 @@ export const MODULOS: Modulo[] = [
   },
   {
     id: 'gerencial',
-    numero: 3,
     titulo: 'Gerencial',
     icone: <IconeGrafico />,
     perfis: GESTAO,
@@ -114,23 +112,7 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
-    id: 'configuracoes',
-    numero: 4,
-    titulo: 'Configurações',
-    icone: <IconeEngrenagem />,
-    itens: [
-      { rotulo: 'Empresa', para: '/empresa', perfis: GESTAO },
-      { rotulo: 'Usuários', para: '/usuarios', perfis: GESTAO },
-      { rotulo: 'Minha conta', para: '/conta' },
-      { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
-      { rotulo: 'Manual de operação (PDF)', arquivo: '/manual/agrega-manual-de-operacao.pdf' },
-      { rotulo: 'Extrato OFX de demonstração', arquivo: '/api/demo/extrato.ofx', perfis: GESTAO, soDemo: true },
-      { rotulo: 'NF-e de demonstração (XML)', arquivo: '/api/demo/nfe-posto.xml', perfis: GESTAO, soDemo: true },
-    ],
-  },
-  {
     id: 'administrativo',
-    numero: 5,
     titulo: 'Administrativo',
     icone: <IconePasta />,
     perfis: GESTAO,
@@ -142,6 +124,20 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Relatórios', para: '/adm/relatorios' },
     ],
   },
+  {
+    id: 'configuracoes',
+    titulo: 'Configurações',
+    icone: <IconeEngrenagem />,
+    itens: [
+      { rotulo: 'Empresa', para: '/empresa', perfis: GESTAO },
+      { rotulo: 'Usuários e acessos', para: '/usuarios', soAdmin: true },
+      { rotulo: 'Minha conta', para: '/conta', livre: true },
+      { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
+      { rotulo: 'Manual de operação (PDF)', arquivo: '/manual/agrega-manual-de-operacao.pdf', livre: true },
+      { rotulo: 'Extrato OFX de demonstração', arquivo: '/api/demo/extrato.ofx', perfis: GESTAO, soDemo: true },
+      { rotulo: 'NF-e de demonstração (XML)', arquivo: '/api/demo/nfe-posto.xml', perfis: GESTAO, soDemo: true },
+    ],
+  },
 ];
 
 function permitido(perfis: Perfil[] | undefined, perfil: Perfil) {
@@ -149,11 +145,20 @@ function permitido(perfis: Perfil[] | undefined, perfil: Perfil) {
 }
 
 function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: string; aoNavegar?: () => void }) {
-  const demo = useSessao().empresa?.plano === 'demonstracao';
+  const { empresa, usuario } = useSessao();
+  const demo = empresa?.plano === 'demonstracao';
   // Toque (celular/tablet) abre e fecha; no computador o módulo abre ao passar o mouse.
   const [aberto, setAberto] = useState<string | null>(null);
-  const modulos = MODULOS.filter((m) => permitido(m.perfis, perfil))
-    .map((m) => ({ ...m, itens: m.itens.filter((i) => permitido(i.perfis, perfil) && (!i.soDemo || demo)) }))
+  // Módulos liberados para o usuário; dentro deles, as telas do perfil (ou todas, se o módulo foi dado a mais).
+  const itemOk = (m: Modulo, i: Item) => {
+    if (i.soDemo && !demo) return false;
+    if (i.livre) return true;
+    if (i.soAdmin) return !!usuario?.administrador;
+    if (i.arquivo) return permitido(i.perfis, perfil) && temModulo(usuario, 'configuracoes');
+    return podeAcessar(usuario, i.perfis ?? m.perfis, i.para ?? '');
+  };
+  const modulos = MODULOS.filter((m) => (m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || temModulo(usuario, m.id as ModuloApp)))
+    .map((m) => ({ ...m, itens: m.itens.filter((i) => itemOk(m, i)) }))
     .filter((m) => m.itens.length);
 
   return (
@@ -221,6 +226,8 @@ export function Layout() {
   if (!usuario) return null;
   const perfil = usuario.perfil;
   const gestao = perfil === 'dono' || perfil === 'gestor';
+  // Quem tem módulos a mais (ou é administrador) usa o menu completo no celular.
+  const menuCompleto = gestao || !!usuario.administrador || !!usuario.modulos;
 
   async function aoSair() {
     await sair();
@@ -322,7 +329,7 @@ export function Layout() {
             Frota
           </NavLink>
         )}
-        {gestao ? (
+        {menuCompleto ? (
           <button type="button" className="nav-botao" onClick={() => setGaveta(true)} aria-label="Abrir o menu com todos os módulos">
             <IconeMenu />
             Menu

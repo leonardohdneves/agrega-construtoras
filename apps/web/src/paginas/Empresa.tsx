@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, formatarCnpj, type Empresa as TEmpresa } from '../api';
+import { api, formatarCnpj, type Empresa as TEmpresa, type Impressao } from '../api';
+import { NOMES_PAPEL } from '../componentes/Documento';
 import { useSessao } from '../sessao';
 
 const CAMPOS_ALIQUOTA: Record<TEmpresa['regimeTributario'], { chave: string; rotulo: string }[]> = {
@@ -55,10 +56,11 @@ export function Empresa() {
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [empresa, setEmpresa] = useState<TEmpresa | null>(null);
 
   useEffect(() => {
     api<{ empresa: TEmpresa }>('/empresa')
-      .then((r) => setF(paraFormulario(r.empresa)))
+      .then((r) => { setF(paraFormulario(r.empresa)); setEmpresa(r.empresa); })
       .catch((e) => setErro(e.message));
   }, []);
 
@@ -176,6 +178,104 @@ export function Empresa() {
           </div>
         )}
       </form>
+      {empresa && (
+        <LogoEImpressao
+          empresa={empresa}
+          podeEditar={!!usuario?.administrador}
+          aoMudar={async (e) => { setEmpresa(e); await recarregar(); }}
+        />
+      )}
     </>
+  );
+}
+
+function lerComoDataUrl(arquivo: File): Promise<string> {
+  return new Promise((ok, falha) => {
+    const leitor = new FileReader();
+    leitor.onload = () => ok(String(leitor.result));
+    leitor.onerror = () => falha(new Error('Não foi possível ler o arquivo.'));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+function LogoEImpressao({ empresa, podeEditar, aoMudar }: { empresa: TEmpresa; podeEditar: boolean; aoMudar: (e: TEmpresa) => Promise<void> }) {
+  const [erro, setErro] = useState('');
+  const [ok, setOk] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [imp, setImp] = useState<Impressao>(empresa.impressao ?? { orientacao: 'paisagem', papel: 'A4' });
+
+  async function executar(acao: () => Promise<{ empresa: TEmpresa }>, mensagem: string) {
+    setErro('');
+    setOk('');
+    setEnviando(true);
+    try {
+      const r = await acao();
+      await aoMudar(r.empresa);
+      setOk(mensagem);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setEnviando(false);
+    }
+  }
+
+  async function escolherArquivo(arquivo: File | undefined) {
+    if (!arquivo) return;
+    if (arquivo.size > 500 * 1024) { setErro('A imagem passa de 500 KB. Reduza o tamanho e tente de novo.'); return; }
+    if (!/^image\/(png|jpeg|svg\+xml|webp)$/.test(arquivo.type)) { setErro('Use uma imagem PNG, JPG, WEBP ou SVG.'); return; }
+    const imagem = await lerComoDataUrl(arquivo);
+    await executar(() => api('/empresa/logo', { metodo: 'PUT', corpo: { imagem } }), 'Logo atualizada. Ela já aparece nos relatórios.');
+  }
+
+  return (
+    <div className="card form" style={{ marginTop: 16 }}>
+      <h2>Relatórios: logo e impressão</h2>
+      <span className="small muted">
+        {podeEditar ? 'A logo aparece no cabeçalho de todos os relatórios. O padrão de impressão vale para todos os usuários, que ainda podem mudar na hora de imprimir.' : 'Somente administradores alteram a logo e o padrão de impressão.'}
+      </span>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {ok && <div className="alerta alerta-ok" role="status">{ok}</div>}
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="emp-logo">Logo da concreteira</label>
+          {empresa.temLogo
+            ? <img className="logo-previa" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt="Logo atual" />
+            : <span className="small muted">Nenhuma logo enviada.</span>}
+          {podeEditar && (
+            <>
+              <input id="emp-logo" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" disabled={enviando} onChange={(e) => { void escolherArquivo(e.target.files?.[0]); e.target.value = ''; }} />
+              <span className="small muted">PNG, JPG, WEBP ou SVG, até 500 KB. Prefira fundo transparente.</span>
+              {empresa.temLogo && (
+                <button className="btn btn-link" type="button" disabled={enviando} style={{ alignSelf: 'flex-start' }}
+                  onClick={() => void executar(() => api('/empresa/logo', { metodo: 'DELETE' }), 'Logo removida.')}>
+                  Remover logo
+                </button>
+              )}
+            </>
+          )}
+        </div>
+        <div className="campo">
+          <label htmlFor="emp-orientacao">Orientação padrão</label>
+          <select id="emp-orientacao" disabled={!podeEditar} value={imp.orientacao} onChange={(e) => setImp({ ...imp, orientacao: e.target.value as Impressao['orientacao'] })}>
+            <option value="paisagem">Paisagem</option>
+            <option value="retrato">Retrato</option>
+          </select>
+        </div>
+        <div className="campo">
+          <label htmlFor="emp-papel">Tipo de página</label>
+          <select id="emp-papel" disabled={!podeEditar} value={imp.papel} onChange={(e) => setImp({ ...imp, papel: e.target.value as Impressao['papel'] })}>
+            {(Object.keys(NOMES_PAPEL) as Impressao['papel'][]).map((p) => <option key={p} value={p}>{NOMES_PAPEL[p]}</option>)}
+          </select>
+        </div>
+      </div>
+      {podeEditar && (
+        <div className="acoes">
+          <button className="btn btn-secundario" type="button" disabled={enviando}
+            onClick={() => void executar(() => api('/empresa/impressao', { metodo: 'PUT', corpo: imp }), 'Padrão de impressão salvo.')}>
+            Salvar padrão de impressão
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

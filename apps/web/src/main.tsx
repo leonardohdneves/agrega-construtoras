@@ -5,6 +5,7 @@ import { registerSW } from 'virtual:pwa-register';
 import './estilos.css';
 import type { Perfil } from './api';
 import { ProvedorSessao, useSessao } from './sessao';
+import { podeAcessar } from './acesso';
 import { Layout } from './componentes/Layout';
 import { Entrar } from './paginas/Entrar';
 import { Painel } from './paginas/Painel';
@@ -55,7 +56,7 @@ function Protegido({ children, perfis }: { children: ReactNode; perfis?: Perfil[
   const local = useLocation();
   if (carregando) return <div className="carregando">Carregando…</div>;
   if (!usuario) return <Navigate to="/entrar" replace state={{ de: local.pathname }} />;
-  if (perfis && !perfis.includes(usuario.perfil)) return <Navigate to="/" replace />;
+  if (!podeAcessar(usuario, perfis, local.pathname)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 

@@ -4,6 +4,7 @@ import { config } from './config.ts';
 import type { Banco } from './db.ts';
 import { naoAutenticado, semPermissao, ErroHttp } from './lib/erros.ts';
 import { lerToken, criarToken, type DadosSessao, type Perfil } from './lib/token.ts';
+import { acessoPermitido, listaDoUsuario, modulosEfetivos, type Modulo } from './lib/modulos.ts';
 
 export const COOKIE_SESSAO = 'agrega_sessao';
 const VALIDADE = 60 * 60 * 12; // 12 horas
@@ -14,6 +15,8 @@ export type UsuarioSessao = {
   email: string;
   perfil: Perfil;
   empresaId: string | null;
+  administrador: boolean;
+  modulos: Modulo[];
 };
 
 declare module 'fastify' {
@@ -31,7 +34,7 @@ export function instalarSessao(app: FastifyInstance): void {
   });
 }
 
-export function gravarSessao(reply: FastifyReply, u: UsuarioSessao): void {
+export function gravarSessao(reply: FastifyReply, u: Pick<UsuarioSessao, 'id' | 'empresaId' | 'perfil'>): void {
   const token = criarToken({ sub: u.id, emp: u.empresaId, per: u.perfil }, config.jwtSecret, VALIDADE);
   reply.setCookie(COOKIE_SESSAO, token, {
     path: '/',
@@ -51,7 +54,7 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
   return async function (req: FastifyRequest): Promise<void> {
     if (!req.sessao) throw naoAutenticado();
     const r = await banco.query(
-      `SELECT u.id, u.nome, u.email, u.perfil, u.empresa_id, u.ativo, e.ativo AS empresa_ativa
+      `SELECT u.id, u.nome, u.email, u.perfil, u.empresa_id, u.ativo, u.administrador, u.modulos, e.ativo AS empresa_ativa
          FROM usuarios u LEFT JOIN empresas e ON e.id = u.empresa_id
         WHERE u.id = $1 AND u.excluido_em IS NULL`,
       [req.sessao.sub],
@@ -59,8 +62,10 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
     const u = r.rows[0];
     if (!u || !u.ativo) throw naoAutenticado();
     if (u.empresa_id && !u.empresa_ativa) throw new ErroHttp(403, 'O acesso desta empresa está suspenso.');
-    req.usuario = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id };
-    if (perfis.length && !perfis.includes(u.perfil)) throw semPermissao();
+    const administrador = u.perfil === 'dono' || !!u.administrador;
+    const lista = listaDoUsuario(u.perfil, u.modulos, administrador);
+    req.usuario = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id, administrador, modulos: modulosEfetivos(u.perfil, lista) };
+    if (!acessoPermitido({ perfil: u.perfil, modulos: lista, perfisRota: perfis, url: req.url, metodo: req.method })) throw semPermissao();
   };
 }
 
