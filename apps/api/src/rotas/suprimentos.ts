@@ -1170,7 +1170,21 @@ export function rotasSuprimentos(banco: Banco) {
           WHERE p.empresa_id = $1 AND p.status = 'aguardando_aprovacao' ORDER BY p.enviado_aprovacao_em`,
         [empresaId],
       );
-      const itens = r.rows.map((p) => ({
+      const meds = await banco.query(
+        `SELECT m.id, m.numero, m.sequencia, m.valor_centavos, m.enviado_aprovacao_em, k.numero AS contrato, k.objeto, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, uc.nome AS criado_por
+           FROM medicoes m JOIN contratos k ON k.id = m.contrato_id JOIN fornecedores f ON f.id = k.fornecedor_id LEFT JOIN usuarios uc ON uc.id = m.criado_por_id
+          WHERE m.empresa_id = $1 AND m.status = 'aguardando_aprovacao' ORDER BY m.enviado_aprovacao_em`,
+        [empresaId],
+      );
+      const auts = await banco.query(
+        `SELECT a.id, a.numero, a.tipo, a.bruto_centavos, a.liquido_centavos, a.enviado_aprovacao_em, k.numero AS contrato, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor,
+                uc.nome AS criado_por, m.sequencia
+           FROM autorizacoes_pagamento a JOIN contratos k ON k.id = a.contrato_id JOIN fornecedores f ON f.id = k.fornecedor_id
+           LEFT JOIN usuarios uc ON uc.id = a.criado_por_id LEFT JOIN medicoes m ON m.id = a.medicao_id
+          WHERE a.empresa_id = $1 AND a.status = 'aguardando_aprovacao' ORDER BY a.enviado_aprovacao_em`,
+        [empresaId],
+      );
+      const itens: { tipo: 'pedido' | 'medicao' | 'autorizacao'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string; criadoPor: string | null; link: string; podeAprovar: boolean }[] = r.rows.map((p) => ({
         tipo: 'pedido' as const,
         id: p.id as string,
         numero: p.numero as number,
@@ -1183,6 +1197,18 @@ export function rotasSuprimentos(banco: Banco) {
         link: `/sup/pedidos/${p.id}`,
         podeAprovar: podeAprovar(u, Number(p.total_centavos), regras),
       }));
+      for (const m of meds.rows)
+        itens.push({
+          tipo: 'medicao', id: m.id, numero: m.numero, titulo: `Medição ${m.sequencia} · contrato nº ${String(m.contrato).padStart(4, '0')}`, pessoa: m.fornecedor, resumo: m.objeto,
+          valor: reais(m.valor_centavos)!, enviadoEm: m.enviado_aprovacao_em, criadoPor: m.criado_por, link: `/sup/medicoes/${m.id}`, podeAprovar: podeAprovar(u, Number(m.valor_centavos), regras),
+        });
+      for (const a of auts.rows)
+        itens.push({
+          tipo: 'autorizacao', id: a.id, numero: a.numero, titulo: `Autorização de pagamento nº ${String(a.numero).padStart(4, '0')}`, pessoa: a.fornecedor,
+          resumo: a.tipo === 'caucao' ? `Liberação da caução · contrato nº ${String(a.contrato).padStart(4, '0')}` : `Medição ${a.sequencia} · contrato nº ${String(a.contrato).padStart(4, '0')} · líquido ${(Number(a.liquido_centavos) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+          valor: reais(a.bruto_centavos)!, enviadoEm: a.enviado_aprovacao_em, criadoPor: a.criado_por, link: `/sup/autorizacoes/${a.id}`, podeAprovar: podeAprovar(u, Number(a.bruto_centavos), regras),
+        });
+      itens.sort((x, y) => String(x.enviadoEm).localeCompare(String(y.enviadoEm)));
       return { itens, regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
     });
 

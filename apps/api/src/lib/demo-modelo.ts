@@ -5,11 +5,12 @@ import type pg from 'pg';
 import { somarDias, somarMeses } from './financeiro.ts';
 import { normalizar } from './sugestoes.ts';
 import { registrarEntradasNota, saldosEm } from './estoque.ts';
+import { gerarContasAPagar } from '../rotas/contratos.ts';
 
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v6';
+export const VERSAO_DEMO = 'modelo-2026-10-v7';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -169,7 +170,7 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
   await c.query('UPDATE notas_fiscais SET lancamento_id = NULL, pedido_id = NULL WHERE empresa_id = $1', [empresaId]);
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
   for (const t of [
-    'pedidos_itens', 'pedidos_compra', 'cotacoes_precos', 'cotacoes_itens', 'cotacoes_fornecedores', 'cotacoes', 'solicitacoes_itens', 'solicitacoes_compra',
+    'autorizacoes_pagamento', 'medicoes_itens', 'medicoes', 'contratos_itens', 'contratos', 'pedidos_itens', 'pedidos_compra', 'cotacoes_precos', 'cotacoes_itens', 'cotacoes_fornecedores', 'cotacoes', 'solicitacoes_itens', 'solicitacoes_compra',
     'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'insumos_produtos',
     'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
     'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
@@ -997,6 +998,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
 
   // ----- suprimentos: pedidos das compras de insumos recentes (recebidos pela nota), uma cotação concluída, pendências de aprovação e solicitações
   await popularSuprimentos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, forn, insumo, cnpjDe, centro });
+  await popularContratos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, cnpjDe, centro, banco });
 
   // ----- saldo inicial do banco: o menor saldo diário do período fica acima de R$ 60 mil
   const mov = (
@@ -1157,4 +1159,111 @@ async function popularSuprimentos(
   const cfAzul = (await um(`INSERT INTO cotacoes_fornecedores (empresa_id, cotacao_id, fornecedor_id, prazo_entrega_dias, condicao_pagamento) VALUES ($1,$2,$3,2,'21 dias boleto') RETURNING id`, [e, cot2, x.forn.brita])).id;
   await q('INSERT INTO cotacoes_fornecedores (empresa_id, cotacao_id, fornecedor_id) VALUES ($1,$2,$3)', [e, cot2, lajeado]);
   await q('INSERT INTO cotacoes_precos (empresa_id, cotacao_fornecedor_id, cotacao_item_id, preco_unitario_centavos) VALUES ($1,$2,$3,4.46)', [e, cfAzul, ciBrita]);
+}
+
+// ---------------------------------------------------------------- contratos
+
+async function popularContratos(
+  c: C,
+  e: string,
+  hoje: string,
+  x: { dono: string; gestor: string; cnpjDe: (raiz: string) => string; centro: Record<string, string>; banco: string },
+): Promise<void> {
+  const q = (sql: string, p: unknown[] = []) => c.query(sql, p);
+  const um = async (sql: string, p: unknown[] = []) => (await q(sql, p)).rows[0];
+  const plano = async (codigo: string) => (await um('SELECT id FROM plano_contas WHERE empresa_id = $1 AND codigo = $2', [e, codigo])).id as string;
+  const forn = async (raiz: string, razao: string, fantasia: string, ramo: string, pix: string) =>
+    (await um(
+      `INSERT INTO fornecedores (empresa_id, categoria, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, cidade, uf, chave_pix)
+       VALUES ($1,'fornecedor','PJ',$2,$3,$4,$5,'Palmas','TO',$6) RETURNING id`,
+      [e, x.cnpjDe(raiz), razao, fantasia, ramo, pix],
+    )).id as string;
+  const eletromec = await forn('72839405', 'Eletromec Manutenção Industrial Ltda', 'Eletromec', 'Manutenção industrial', 'financeiro@eletromec.test');
+  const guardiao = await forn('83940516', 'Guardião Serviços de Portaria Ltda', 'Guardião Portaria', 'Portaria e vigilância', '83.940.516/0001-00');
+  const inicio = `${somarMeses(hoje, -3).slice(0, 7)}-01`;
+  const fimMes = (d: string) => somarDias(somarMeses(`${d.slice(0, 7)}-01`, 1), -1);
+  let nMed = 0;
+  let nAut = 0;
+
+  // Contrato por itens, com caução e impostos retidos.
+  const k1 = (await um(
+    `INSERT INTO contratos (empresa_id, numero, fornecedor_id, objeto, tipo, data_assinatura, inicio, fim, plano_conta_id, centro_custo_id, prazo_pagamento_dias, forma_pagamento,
+                            caucao_pct, iss_pct, inss_pct, status, observacao, criado_por_id, criado_em)
+     VALUES ($1,1,$2,'Manutenção preventiva e corretiva da central dosadora','itens',$3,$3,$4,$5,$6,15,'pix',5,3,11,'vigente',
+             'Atendimento em até 4 h para parada da central. Peças por conta da contratante.',$7,$3::date + time '09:00') RETURNING *`,
+    [e, eletromec, inicio, somarDias(somarMeses(inicio, 12), -1), await plano('3.6'), x.centro['Usina'] ?? null, x.gestor],
+  ));
+  const itens: { id: string; preco: number; mensal: number[] }[] = [];
+  for (const [ordem, desc, un, quantidade, preco, mensal] of [
+    [1, 'Visita preventiva mensal (checklist da central)', 'un', 12, 1850, [1, 1, 1]],
+    [2, 'Hora técnica corretiva (mecânico/eletricista)', 'h', 120, 145, [6, 14, 9]],
+    [3, 'Recuperação de palhetas do misturador', 'vb', 2, 6800, [0, 1, 0]],
+  ] as [number, string, string, number, number, number[]][]) {
+    const it = await um('INSERT INTO contratos_itens (empresa_id, contrato_id, ordem, descricao, unidade, quantidade, preco_unitario_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id', [e, k1.id, ordem, desc, un, quantidade, preco * 100]);
+    itens.push({ id: it.id, preco: preco * 100, mensal });
+  }
+  for (let m = 0; m < 3; m++) {
+    const ini = `${somarMeses(inicio, m).slice(0, 7)}-01`;
+    const fim = fimMes(ini);
+    if (fim >= hoje) break;
+    const aprovada = m < 2;
+    const med = await um(
+      `INSERT INTO medicoes (empresa_id, numero, contrato_id, sequencia, periodo_inicio, periodo_fim, data, status, enviado_aprovacao_em, aprovado_por_id, aprovado_em, criado_por_id, criado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$7::date + time '10:00',$9,$10,$11,$7::date + time '09:30') RETURNING id`,
+      [e, ++nMed, k1.id, m + 1, ini, fim, somarDias(fim, 2), aprovada ? 'aprovada' : 'aguardando_aprovacao', aprovada ? x.dono : null, aprovada ? `${somarDias(fim, 3)} 08:40` : null, x.gestor],
+    );
+    let total = 0;
+    for (const it of itens) {
+      const qq = it.mensal[m];
+      if (!qq) continue;
+      const v = Math.round(qq * it.preco);
+      total += v;
+      await q('INSERT INTO medicoes_itens (empresa_id, medicao_id, contrato_item_id, quantidade, valor_centavos) VALUES ($1,$2,$3,$4,$5)', [e, med.id, it.id, qq, v]);
+    }
+    await q('UPDATE medicoes SET valor_centavos = $2 WHERE id = $1', [med.id, total]);
+    if (!aprovada) continue;
+    const r = (p: number) => Math.round((total * p) / 100);
+    const ret = { caucao: r(5), iss: r(3), inss: r(11) };
+    const liquido = total - ret.caucao - ret.iss - ret.inss;
+    const dAut = somarDias(fim, 4);
+    const aut = await um(
+      `INSERT INTO autorizacoes_pagamento (empresa_id, numero, tipo, contrato_id, medicao_id, data, vencimento, bruto_centavos, caucao_centavos, iss_centavos, inss_centavos, liquido_centavos,
+                                           documento, forma_pagamento, status, enviado_aprovacao_em, aprovado_por_id, aprovado_em, criado_por_id, criado_em)
+       VALUES ($1,$2,'medicao',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'pix','aprovada',$5::date + time '09:00',$13,$5::date + time '11:20',$14,$5::date + time '09:00') RETURNING id`,
+      [e, ++nAut, k1.id, med.id, dAut, somarDias(dAut, 15), total, ret.caucao, ret.iss, ret.inss, liquido, `NFS-e ${2210 + m}`, x.dono, x.gestor],
+    );
+    await gerarContasAPagar(c, e, aut.id, x.dono);
+    // O que já venceu foi pago (prestador e impostos).
+    {
+      await q(
+        `UPDATE parcelas p SET status = 'paga', data_pagamento = a.vencimento, valor_pago_centavos = p.valor_centavos, conta_financeira_id = $2, forma_pagamento = 'pix', baixado_por_id = $3
+           FROM autorizacoes_pagamento a WHERE a.id = $1 AND p.lancamento_id IN (a.lancamento_id, a.lancamento_impostos_id) AND p.vencimento < $4`,
+        [aut.id, x.banco, x.gestor, hoje],
+      );
+    }
+  }
+
+  // Contrato global (portaria): uma medição aprovada com a autorização aguardando o dono.
+  const k2 = (await um(
+    `INSERT INTO contratos (empresa_id, numero, fornecedor_id, objeto, tipo, data_assinatura, inicio, fim, valor_global_centavos, plano_conta_id, centro_custo_id, prazo_pagamento_dias,
+                            forma_pagamento, iss_pct, status, criado_por_id, criado_em)
+     VALUES ($1,2,$2,'Portaria e vigilância noturna da usina (12 meses)','global',$3,$3,$4,$5,$6,$7,10,'boleto',5,'vigente',$8,$3::date + time '09:00') RETURNING *`,
+    [e, guardiao, `${somarMeses(hoje, -1).slice(0, 7)}-01`, somarDias(somarMeses(`${somarMeses(hoje, -1).slice(0, 7)}-01`, 12), -1), 9_840_000, await plano('6.8'), x.centro['Administrativo'] ?? null, x.gestor],
+  ));
+  const iniG = k2.inicio as string;
+  const fimG = fimMes(iniG);
+  if (fimG < hoje) {
+    const med = await um(
+      `INSERT INTO medicoes (empresa_id, numero, contrato_id, sequencia, periodo_inicio, periodo_fim, data, valor_centavos, status, enviado_aprovacao_em, aprovado_por_id, aprovado_em, criado_por_id)
+       VALUES ($1,$2,$3,1,$4,$5,$6,820000,'aprovada',$6::date + time '10:00',$7,$6::date + time '15:00',$8) RETURNING id`,
+      [e, ++nMed, k2.id, iniG, fimG, somarDias(fimG, 1), x.dono, x.gestor],
+    );
+    await q('INSERT INTO medicoes_itens (empresa_id, medicao_id, contrato_item_id, quantidade, valor_centavos) VALUES ($1,$2,NULL,0,820000)', [e, med.id]);
+    await q(
+      `INSERT INTO autorizacoes_pagamento (empresa_id, numero, tipo, contrato_id, medicao_id, data, vencimento, bruto_centavos, iss_centavos, liquido_centavos, documento, forma_pagamento,
+                                           status, enviado_aprovacao_em, criado_por_id)
+       VALUES ($1,$2,'medicao',$3,$4,$5,$6,820000,41000,779000,'NFS-e 587','boleto','aguardando_aprovacao',$7,$8)`,
+      [e, ++nAut, k2.id, med.id, somarDias(hoje, -1), somarDias(hoje, 9), `${somarDias(hoje, -1)} 16:10`, x.gestor],
+    );
+  }
 }

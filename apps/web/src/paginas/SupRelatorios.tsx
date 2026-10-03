@@ -1,8 +1,9 @@
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { formatarData, formatarMoeda } from '../api';
-import { SeletorPeriodo } from '../componentes/Periodo';
+import { api, formatarData, formatarMoeda } from '../api';
+import { SeletorPeriodo, type Periodo } from '../componentes/Periodo';
 import { CabecalhoRelatorio, TabelaRelatorio, useRelatorio } from '../componentes/Relatorio';
-import { numeroDoc, pct, precoUn, qtd, SELO_PEDIDO, SELO_SOLICITACAO, type StatusPedido, type StatusSolicitacao } from '../componentes/Suprimentos';
+import { numeroDoc, pct, precoUn, qtd, SELO_AUTORIZACAO, SELO_CONTRATO, SELO_MEDICAO, SELO_PEDIDO, SELO_SOLICITACAO, type StatusAutorizacao, type StatusContrato, type StatusMedicao, type StatusPedido, type StatusSolicitacao } from '../componentes/Suprimentos';
 
 type Resp = {
   de: string;
@@ -26,7 +27,96 @@ const ABAS = [
   { id: 'economia', texto: 'Economia' },
   { id: 'divergencias', texto: 'Divergências' },
   { id: 'pendentes', texto: 'Solicitações' },
+  { id: 'contratos', texto: 'Contratos' },
+  { id: 'medicoes', texto: 'Medições' },
+  { id: 'pagamentos', texto: 'Pagamentos' },
 ];
+const ABAS_CONTRATO = ['contratos', 'medicoes', 'pagamentos'];
+
+type RespContratos = {
+  de: string;
+  ate: string;
+  posicao: { id: string; numero: number; fornecedor: string; objeto: string; status: StatusContrato; inicio: string; fim: string | null; valor: number; medido: number; percentual: number; saldo: number; pago: number; caucaoRetida: number; impostos: number }[];
+  medicoes: { id: string; numero: number; sequencia: number; contrato: number; fornecedor: string; periodoInicio: string; periodoFim: string; valor: number; status: StatusMedicao; aprovadoPor: string | null }[];
+  pagamentos: { id: string; numero: number; tipo: 'medicao' | 'caucao'; data: string; vencimento: string; contrato: number; fornecedor: string; status: StatusAutorizacao; aprovadoPor: string | null; pago: boolean; bruto: number; caucao: number; iss: number; inss: number; ir: number; pcc: number; liquido: number }[];
+};
+
+function RelContratos({ aba, periodo }: { aba: string; periodo: Periodo }) {
+  const [r, setR] = useState<RespContratos | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    setR(null);
+    setErro('');
+    api<RespContratos>(`/sup/relatorios/contratos?de=${periodo.de}&ate=${periodo.ate}`).then(setR).catch((e) => setErro((e as Error).message));
+  }, [periodo.de, periodo.ate]);
+  if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
+  if (!r) return <p className="muted">Carregando…</p>;
+  const sufixo = `${periodo.de}_${periodo.ate}`;
+  if (aba === 'contratos')
+    return (
+      <TabelaRelatorio
+        titulo="Posição dos contratos"
+        descricao="Contratos vigentes e os encerrados no período: valor, medido (aprovado), saldo, pago ao prestador e o que está retido."
+        arquivo={`contratos_${sufixo}`}
+        linhas={r.posicao}
+        colunas={[
+          { titulo: 'Contrato', valor: (l) => numeroDoc(l.numero), render: (l) => <Link to={`/sup/contratos/${l.id}`}>{numeroDoc(l.numero)}</Link> },
+          { titulo: 'Prestador', valor: (l) => l.fornecedor },
+          { titulo: 'Objeto', valor: (l) => l.objeto },
+          { titulo: 'Situação', valor: (l) => SELO_CONTRATO[l.status].texto },
+          { titulo: 'Valor', valor: (l) => l.valor, formato: 'moeda', total: true },
+          { titulo: 'Medido', valor: (l) => l.medido, formato: 'moeda', total: true },
+          { titulo: '% medido', valor: (l) => l.percentual, formato: 'pct' },
+          { titulo: 'Saldo', valor: (l) => l.saldo, formato: 'moeda', total: true },
+          { titulo: 'Pago', valor: (l) => l.pago, formato: 'moeda', total: true },
+          { titulo: 'Caução retida', valor: (l) => l.caucaoRetida, formato: 'moeda', total: true },
+          { titulo: 'Impostos retidos', valor: (l) => l.impostos, formato: 'moeda', total: true },
+        ]}
+      />
+    );
+  if (aba === 'medicoes')
+    return (
+      <TabelaRelatorio
+        titulo="Medições do período"
+        descricao={`Medições com fim do período entre ${formatarData(r.de)} e ${formatarData(r.ate)}.`}
+        arquivo={`medicoes_${sufixo}`}
+        linhas={r.medicoes}
+        colunas={[
+          { titulo: 'Nº', valor: (l) => numeroDoc(l.numero), render: (l) => <Link to={`/sup/medicoes/${l.id}`}>{numeroDoc(l.numero)}</Link> },
+          { titulo: 'Contrato', valor: (l) => numeroDoc(l.contrato) },
+          { titulo: 'Prestador', valor: (l) => l.fornecedor },
+          { titulo: 'Medição', valor: (l) => `${l.sequencia}ª` },
+          { titulo: 'Início', valor: (l) => l.periodoInicio, formato: 'data' },
+          { titulo: 'Fim', valor: (l) => l.periodoFim, formato: 'data' },
+          { titulo: 'Situação', valor: (l) => SELO_MEDICAO[l.status].texto, destaque: (l) => (l.status === 'aguardando_aprovacao' ? 'aviso' : l.status === 'reprovada' ? 'perigo' : undefined) },
+          { titulo: 'Aprovado por', valor: (l) => l.aprovadoPor },
+          { titulo: 'Valor', valor: (l) => l.valor, formato: 'moeda', total: true },
+        ]}
+      />
+    );
+  return (
+    <TabelaRelatorio
+      titulo="Autorizações de pagamento"
+      descricao={`Emitidas de ${formatarData(r.de)} a ${formatarData(r.ate)}, com as retenções de cada uma (base para recolher os impostos retidos).`}
+      arquivo={`autorizacoes_${sufixo}`}
+      linhas={r.pagamentos}
+      colunas={[
+        { titulo: 'Nº', valor: (l) => numeroDoc(l.numero), render: (l) => <Link to={`/sup/autorizacoes/${l.id}`}>{numeroDoc(l.numero)}</Link> },
+        { titulo: 'Emissão', valor: (l) => l.data, formato: 'data' },
+        { titulo: 'Prestador', valor: (l) => l.fornecedor },
+        { titulo: 'Ref.', valor: (l) => (l.tipo === 'caucao' ? 'Caução' : `Contrato ${numeroDoc(l.contrato)}`) },
+        { titulo: 'Situação', valor: (l) => (l.pago ? 'Paga' : SELO_AUTORIZACAO[l.status].texto) },
+        { titulo: 'Bruto', valor: (l) => l.bruto, formato: 'moeda', total: true },
+        { titulo: 'Caução', valor: (l) => l.caucao, formato: 'moeda', total: true },
+        { titulo: 'ISS', valor: (l) => l.iss, formato: 'moeda', total: true },
+        { titulo: 'INSS', valor: (l) => l.inss, formato: 'moeda', total: true },
+        { titulo: 'IR', valor: (l) => l.ir, formato: 'moeda', total: true },
+        { titulo: 'PIS/COF/CSLL', valor: (l) => l.pcc, formato: 'moeda', total: true },
+        { titulo: 'Líquido', valor: (l) => l.liquido, formato: 'moeda', total: true },
+      ]}
+    />
+  );
+}
 
 export function SupRelatorios() {
   const { periodo, aba, dados: r, erro, mudar } = useRelatorio<Resp>('/sup/relatorios', 'fornecedor', '3m');
@@ -36,15 +126,15 @@ export function SupRelatorios() {
       <CabecalhoRelatorio
         modulo="Suprimentos"
         periodo={periodo}
-        titulo="Relatórios de compras"
-        sub="Pedidos aprovados no período, o que falta receber, quanto as cotações economizaram e onde a nota veio diferente do pedido."
+        titulo="Relatórios de suprimentos"
+        sub={ABAS_CONTRATO.includes(aba) ? 'Contratos com prestadores: posição de cada contrato, medições e autorizações de pagamento com as retenções.' : 'Pedidos aprovados no período, o que falta receber, quanto as cotações economizaram e onde a nota veio diferente do pedido.'}
         abas={ABAS}
         aba={aba}
         aoMudar={(id) => mudar({ aba: id })}
         extra={<SeletorPeriodo valor={periodo} aoMudar={(p) => mudar(p)} />}
       />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      {r && (
+      {r && !ABAS_CONTRATO.includes(aba) && (
         <div className="grade">
           <div className="card indicador">
             <span className="rotulo-ind">Comprado no período</span>
@@ -68,7 +158,9 @@ export function SupRelatorios() {
           </div>
         </div>
       )}
-      {!r ? (
+      {ABAS_CONTRATO.includes(aba) ? (
+        <RelContratos aba={aba} periodo={periodo} />
+      ) : !r ? (
         !erro && <p className="muted">Carregando…</p>
       ) : aba === 'fornecedor' ? (
         <TabelaRelatorio

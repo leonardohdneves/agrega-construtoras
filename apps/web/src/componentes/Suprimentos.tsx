@@ -250,3 +250,121 @@ export function Assinatura({ nome, papel, detalhe }: { nome: string; papel: stri
     </div>
   );
 }
+
+// ---------- Contratos, medições e autorizações ----------
+export type StatusContrato = 'rascunho' | 'vigente' | 'encerrado' | 'cancelado';
+export type StatusMedicao = 'rascunho' | 'aguardando_aprovacao' | 'aprovada' | 'reprovada' | 'cancelada';
+export type StatusAutorizacao = 'aguardando_aprovacao' | 'aprovada' | 'reprovada' | 'cancelada';
+export type Retencoes = { caucao: number; iss: number; inss: number; ir: number; pcc: number };
+export type FornecedorDoc = { nome: string; razaoSocial: string; documento: string | null; telefone: string | null; email: string | null; cidade: string | null; chavePix?: string | null };
+
+export type Contrato = {
+  id: string; numero: number; status: StatusContrato; fornecedorId: string; fornecedor: FornecedorDoc; objeto: string; tipo: 'itens' | 'global';
+  dataAssinatura: string | null; inicio: string; fim: string | null; vencido: boolean; valorGlobal: number | null; planoContaId: string; planoConta: string;
+  centroCustoId: string | null; centroCusto: string | null; prazoPagamentoDias: number; formaPagamento: string | null; retencoes: Retencoes; observacao: string | null;
+  encerradoEm: string | null; criadoPor: string | null;
+  itens: { id: string; descricao: string; unidade: string; quantidade: number; precoUnitario: number; total: number; medido: number; pendente: number; saldo: number; valorMedido: number }[];
+  medicoes: { id: string; numero: number; sequencia: number; periodoInicio: string; periodoFim: string; data: string; valor: number; status: StatusMedicao; autorizacao: { id: string; numero: number; status: StatusAutorizacao } | null }[];
+  autorizacoes: { id: string; numero: number; tipo: 'medicao' | 'caucao'; data: string; vencimento: string; bruto: number; caucao: number; impostos: number; liquido: number; pago: number; status: StatusAutorizacao; medicaoSequencia: number | null }[];
+  resumo: {
+    valorContrato: number; medido: number; pendente: number; saldo: number; percentualMedido: number; autorizado: number; liquidoAutorizado: number; pago: number;
+    impostosRetidos: number; caucaoRetida: number; caucaoLiberada: number; caucaoALiberar: number; medicoesPendentes: number; medicoesSemAutorizacao: number;
+  };
+};
+export type ContratoResumo = {
+  id: string; numero: number; status: StatusContrato; fornecedor: string; objeto: string; tipo: 'itens' | 'global'; inicio: string; fim: string | null; vencido: boolean;
+  valor: number; medido: number; saldo: number; percentualMedido: number; pago: number; medicoesPendentes: number; medicoesSemAutorizacao: number; caucaoALiberar: number;
+};
+export type Medicao = {
+  id: string; numero: number; sequencia: number; contratoId: string;
+  contrato: { numero: number; objeto: string; tipo: 'itens' | 'global'; fornecedor: FornecedorDoc; retencoes: Retencoes; valor: number; status: StatusContrato; prazoPagamentoDias: number; formaPagamento: string | null };
+  periodoInicio: string; periodoFim: string; data: string; valor: number; observacao: string | null; status: StatusMedicao; criadoPor: string | null;
+  enviadoAprovacaoEm: string | null; aprovadoPor: string | null; aprovadoEm: string | null; aprovacaoAutomatica: boolean; motivoReprovacao: string | null;
+  itens: { contratoItemId: string; descricao: string; unidade: string; quantidadeContrato: number; precoUnitario: number; totalContrato: number; anterior: number; atual: number; acumulado: number; saldo: number; valorAnterior: number; valorAtual: number; percentualAcumulado: number }[];
+  totais: { contrato: number; anterior: number; atual: number; acumulado: number; saldo: number; percentualAcumulado: number };
+  retencoesPrevistas: Retencoes & { liquido: number };
+  autorizacao: { id: string; numero: number; status: StatusAutorizacao } | null;
+  podeAprovar: boolean; regrasAprovacao: string;
+};
+export type MedicaoResumo = {
+  id: string; numero: number; sequencia: number; periodoInicio: string; periodoFim: string; data: string; valor: number; status: StatusMedicao; contratoNumero: number;
+  objeto: string; fornecedor: string; autorizacao: { id: string; numero: number; status: StatusAutorizacao } | null;
+};
+export type ParcelaAut = { numero: number; vencimento: string; valor: number; status: string; pagoEm: string | null; observacao: string | null };
+export type Autorizacao = {
+  id: string; numero: number; tipo: 'medicao' | 'caucao'; contratoId: string;
+  contrato: { numero: number; objeto: string; fornecedor: FornecedorDoc; planoConta: string; centroCusto: string | null; retencoes: Retencoes };
+  medicao: { id: string; numero: number; sequencia: number; periodoInicio: string; periodoFim: string } | null;
+  data: string; vencimento: string; bruto: number; caucao: number; iss: number; inss: number; ir: number; pcc: number; impostos: number; liquido: number;
+  documento: string | null; formaPagamento: string | null; observacao: string | null; status: StatusAutorizacao; criadoPor: string | null; enviadoAprovacaoEm: string;
+  aprovadoPor: string | null; aprovadoEm: string | null; aprovacaoAutomatica: boolean; motivoReprovacao: string | null; lancamentoId: string | null;
+  lancamentoImpostosId: string | null; parcelas: ParcelaAut[]; parcelasImpostos: ParcelaAut[]; pago: boolean; podeAprovar: boolean; regrasAprovacao: string;
+};
+export type AutorizacaoResumo = {
+  id: string; numero: number; tipo: 'medicao' | 'caucao'; data: string; vencimento: string; bruto: number; liquido: number; status: StatusAutorizacao; contratoNumero: number;
+  objeto: string; fornecedor: string; medicaoSequencia: number | null; pago: boolean;
+};
+
+export const SELO_CONTRATO: Record<StatusContrato, { texto: string; classe: string }> = {
+  rascunho: { texto: 'Rascunho', classe: 'selo-neutro' },
+  vigente: { texto: 'Vigente', classe: 'selo-ok' },
+  encerrado: { texto: 'Encerrado', classe: 'selo-neutro' },
+  cancelado: { texto: 'Cancelado', classe: 'selo-neutro' },
+};
+export const SELO_MEDICAO: Record<StatusMedicao, { texto: string; classe: string }> = {
+  rascunho: { texto: 'Rascunho', classe: 'selo-neutro' },
+  aguardando_aprovacao: { texto: 'Aguardando aprovação', classe: 'selo-aviso' },
+  aprovada: { texto: 'Aprovada', classe: 'selo-ok' },
+  reprovada: { texto: 'Reprovada', classe: 'selo-perigo' },
+  cancelada: { texto: 'Cancelada', classe: 'selo-neutro' },
+};
+export const SELO_AUTORIZACAO: Record<StatusAutorizacao, { texto: string; classe: string }> = {
+  aguardando_aprovacao: { texto: 'Aguardando aprovação', classe: 'selo-aviso' },
+  aprovada: { texto: 'Aprovada', classe: 'selo-ok' },
+  reprovada: { texto: 'Reprovada', classe: 'selo-perigo' },
+  cancelada: { texto: 'Cancelada', classe: 'selo-neutro' },
+};
+export const NOMES_RETENCAO: Record<keyof Retencoes, string> = { caucao: 'Caução', iss: 'ISS', inss: 'INSS', ir: 'IR', pcc: 'PIS/COFINS/CSLL' };
+export const textoRetencoes = (r: Retencoes) =>
+  (Object.keys(NOMES_RETENCAO) as (keyof Retencoes)[]).filter((k) => r[k] > 0).map((k) => `${NOMES_RETENCAO[k]} ${r[k].toLocaleString('pt-BR')}%`).join(' · ') || 'Sem retenções';
+
+// ---------- Valor por extenso (recibos) ----------
+const UNID = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+const DEZ = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+const CEM = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+function ate999(n: number): string {
+  if (n === 0) return '';
+  if (n === 100) return 'cem';
+  const c = Math.floor(n / 100), r = n % 100;
+  const partes: string[] = [];
+  if (c) partes.push(CEM[c]);
+  if (r < 20) { if (r) partes.push(UNID[r]); }
+  else { partes.push(DEZ[Math.floor(r / 10)] + (r % 10 ? ` e ${UNID[r % 10]}` : '')); }
+  return partes.join(' e ');
+}
+function inteiroPorExtenso(n: number): string {
+  if (n === 0) return 'zero';
+  const grupos: number[] = [];
+  while (n > 0) { grupos.push(n % 1000); n = Math.floor(n / 1000); }
+  const nomes = [['', ''], ['mil', 'mil'], ['milhão', 'milhões'], ['bilhão', 'bilhões']];
+  const partes: { txt: string; valor: number }[] = [];
+  for (let i = grupos.length - 1; i >= 0; i--) {
+    const g = grupos[i];
+    if (!g) continue;
+    const txt = i === 1 && g === 1 ? 'mil' : `${ate999(g)}${i ? ` ${g === 1 ? nomes[i][0] : nomes[i][1]}` : ''}`;
+    partes.push({ txt, valor: g });
+  }
+  // "e" antes do último grupo quando ele é menor que 100 ou centena redonda.
+  return partes.map((p, i) => (i > 0 && i === partes.length - 1 && (p.valor < 100 || p.valor % 100 === 0) ? `e ${p.txt}` : p.txt)).join(' ');
+}
+export function porExtenso(valor: number): string {
+  const centavos = Math.round(Math.abs(valor) * 100);
+  const reais = Math.floor(centavos / 100), cents = centavos % 100;
+  const partes: string[] = [];
+  if (reais) {
+    const milhoesRedondos = reais >= 1_000_000 && reais % 1_000_000 === 0;
+    partes.push(`${inteiroPorExtenso(reais)}${milhoesRedondos ? ' de' : ''} ${reais === 1 ? 'real' : 'reais'}`);
+  }
+  if (cents) partes.push(`${inteiroPorExtenso(cents)} ${cents === 1 ? 'centavo' : 'centavos'}`);
+  return partes.join(' e ') || 'zero real';
+}
