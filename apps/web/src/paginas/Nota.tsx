@@ -766,6 +766,11 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
                 {nota.fornecedorNovo && editavel ? ' · cadastrado agora a partir do XML' : ''}
               </span>
             )}
+            {nota.pedido && (
+              <span className="small">
+                Recebimento do <Link to={`/sup/pedidos/${nota.pedido.id}`}>pedido de compra nº {String(nota.pedido.numero).padStart(4, '0')}</Link>
+              </span>
+            )}
           </div>
           <div className="campo">
             <label htmlFor="nt-comp">Competência</label>

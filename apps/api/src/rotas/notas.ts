@@ -11,6 +11,7 @@ import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
 import { ErroNfe, fecharCentavos, formaDoTPag, lerNfe, type NotaNfe } from '../lib/nfe.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
+import { atualizarStatusRecebimento } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { fatorPadrao, registrarEntradasNota, removerEntradasNota, sugerirInsumo } from '../lib/estoque.ts';
 import { baixarParcela, dinheiro, esquemaBaixa, numeroBr } from './financeiro.ts';
@@ -106,7 +107,8 @@ async function carregarNota(c: Cliente, empresaId: string, id: string, travar = 
   const n = (
     await c.query(
       `SELECT n.*, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor_nome, f.criado_automaticamente AS fornecedor_novo,
-              coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome
+              coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome,
+              (SELECT numero FROM pedidos_compra pc WHERE pc.id = n.pedido_id) AS pedido_numero
          FROM notas_fiscais n LEFT JOIN fornecedores f ON f.id = n.fornecedor_id LEFT JOIN clientes cl ON cl.id = n.cliente_id
         WHERE n.id = $1 AND n.empresa_id = $2 AND n.excluido_em IS NULL ${travar ? 'FOR UPDATE OF n' : ''}`,
       [id, empresaId],
@@ -177,6 +179,7 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
     fornecedorId: n.fornecedor_id,
     fornecedorNome: n.fornecedor_nome ?? null,
     fornecedorNovo: n.fornecedor_novo ?? false,
+    pedido: n.pedido_id ? { id: n.pedido_id as string, numero: n.pedido_numero as number } : null,
     clienteId: n.cliente_id,
     clienteNome: n.cliente_nome ?? null,
     emitenteNome: n.emitente_nome,
@@ -942,6 +945,7 @@ export function rotasNotas(banco: Banco) {
         await c.query('UPDATE abastecimentos SET nota_item_id = NULL WHERE nota_item_id IN (SELECT id FROM notas_itens WHERE nota_id = $1)', [n.id]);
         await c.query('UPDATE os_itens SET nota_item_id = NULL WHERE nota_item_id IN (SELECT id FROM notas_itens WHERE nota_id = $1)', [n.id]);
         await c.query("UPDATE notas_fiscais SET status = 'cancelada', lancamento_id = NULL, atualizado_em = now() WHERE id = $1", [n.id]);
+        if (n.pedido_id) await atualizarStatusRecebimento(c, n.pedido_id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'notas_fiscais', entidadeId: n.id, antes: { status: n.status }, depois: { status: 'cancelada' } });
       });
       return { nota: await detalharNota(banco, empresaId, req.params.id) };
@@ -954,7 +958,11 @@ export function rotasNotas(banco: Banco) {
         const n = await exigirRascunho(c, empresaId, req.params.id);
         await c.query('UPDATE abastecimentos SET nota_item_id = NULL WHERE nota_item_id IN (SELECT id FROM notas_itens WHERE nota_id = $1)', [n.id]);
         await c.query('UPDATE os_itens SET nota_item_id = NULL WHERE nota_item_id IN (SELECT id FROM notas_itens WHERE nota_id = $1)', [n.id]);
-        await c.query('UPDATE notas_fiscais SET excluido_em = now(), atualizado_em = now() WHERE id = $1', [n.id]);
+        await c.query('UPDATE notas_fiscais SET excluido_em = now(), pedido_id = NULL, atualizado_em = now() WHERE id = $1', [n.id]);
+        if (n.pedido_id) {
+          await c.query('UPDATE notas_itens SET pedido_item_id = NULL, quantidade_pedido = NULL WHERE nota_id = $1', [n.id]);
+          await atualizarStatusRecebimento(c, n.pedido_id);
+        }
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'notas_fiscais', entidadeId: n.id, antes: { ...n, xml: undefined } });
       });
       return { ok: true };

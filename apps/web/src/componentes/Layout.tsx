@@ -6,6 +6,7 @@ import { useSessao } from '../sessao';
 import { Logo } from './Logo';
 import {
   IconeBetoneira,
+  IconeCarrinho,
   IconeFrasco,
   IconeBomba,
   IconeCaminhao,
@@ -81,6 +82,19 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Equipamentos e calibração', para: '/qual/equipamentos' },
       { rotulo: 'Traços', para: '/prod/tracos', perfis: ['laboratorista'] },
       { rotulo: 'Configurações da qualidade', para: '/qual/config' },
+    ],
+  },
+  {
+    id: 'suprimentos',
+    titulo: 'Suprimentos',
+    icone: <IconeCarrinho />,
+    perfis: GESTAO,
+    itens: [
+      { rotulo: 'Solicitações de compra', para: '/sup/solicitacoes' },
+      { rotulo: 'Cotações e mapa', para: '/sup/cotacoes' },
+      { rotulo: 'Pedidos de compra', para: '/sup/pedidos' },
+      { rotulo: 'Aprovações', para: '/sup/aprovacoes' },
+      { rotulo: 'Relatórios', para: '/sup/relatorios' },
     ],
   },
   {

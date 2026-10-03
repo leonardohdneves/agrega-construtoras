@@ -606,6 +606,7 @@ export type NotaFiscal = {
   fornecedorId: string | null;
   fornecedorNome: string | null;
   fornecedorNovo: boolean;
+  pedido?: { id: string; numero: number } | null;
   clienteId: string | null;
   clienteNome: string | null;
   emitenteNome: string | null;

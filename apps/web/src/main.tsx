@@ -37,6 +37,11 @@ import { Estoque } from './paginas/ProdEstoque';
 import { RelProducao } from './paginas/RelProducao';
 import { Amostras, CpsARomper, Laudo, Resistencia } from './paginas/Qualidade';
 import { ConfigQualidade, EnsaiosInsumos, Equipamentos } from './paginas/QualCadastros';
+import { NovaSolicitacao, SolicitacaoDetalhe, SupSolicitacoes } from './paginas/SupSolicitacoes';
+import { CotacaoDetalhe, NovaCotacao, SupCotacoes } from './paginas/SupCotacoes';
+import { NovoPedido, PedidoDetalhe, SupPedidos } from './paginas/SupPedidos';
+import { SupAprovacoes } from './paginas/SupAprovacoes';
+import { SupRelatorios } from './paginas/SupRelatorios';
 import { Regras } from './paginas/Regras';
 import { Dre } from './paginas/Dre';
 import { Fluxo } from './paginas/Fluxo';
@@ -126,6 +131,17 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="qual/insumos" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><EnsaiosInsumos /></Protegido>} />
             <Route path="qual/equipamentos" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Equipamentos /></Protegido>} />
             <Route path="qual/config" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><ConfigQualidade /></Protegido>} />
+            <Route path="sup/solicitacoes" element={<Protegido perfis={['dono', 'gestor']}><SupSolicitacoes /></Protegido>} />
+            <Route path="sup/solicitacoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaSolicitacao /></Protegido>} />
+            <Route path="sup/solicitacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><SolicitacaoDetalhe /></Protegido>} />
+            <Route path="sup/cotacoes" element={<Protegido perfis={['dono', 'gestor']}><SupCotacoes /></Protegido>} />
+            <Route path="sup/cotacoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaCotacao /></Protegido>} />
+            <Route path="sup/cotacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><CotacaoDetalhe /></Protegido>} />
+            <Route path="sup/pedidos" element={<Protegido perfis={['dono', 'gestor']}><SupPedidos /></Protegido>} />
+            <Route path="sup/pedidos/novo" element={<Protegido perfis={['dono', 'gestor']}><NovoPedido /></Protegido>} />
+            <Route path="sup/pedidos/:id" element={<Protegido perfis={['dono', 'gestor']}><PedidoDetalhe /></Protegido>} />
+            <Route path="sup/aprovacoes" element={<Protegido perfis={['dono', 'gestor']}><SupAprovacoes /></Protegido>} />
+            <Route path="sup/relatorios" element={<Protegido perfis={['dono', 'gestor']}><SupRelatorios /></Protegido>} />
             <Route path="prod/insumos" element={<Protegido perfis={['dono', 'gestor']}><Insumos /></Protegido>} />
             <Route path="prod/motoristas" element={<Protegido perfis={['dono', 'gestor']}><ProducaoMotoristas /></Protegido>} />
             <Route path="prod/estoque" element={<Protegido perfis={['dono', 'gestor']}><Estoque /></Protegido>} />

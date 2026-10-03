@@ -22,6 +22,7 @@ import { fmtIndicador, type IndicadorDados, type RespIndicadores } from '../comp
 import { mesCurto } from '../componentes/Periodo';
 import { MinhaEscala } from './ProdMotoristas';
 import { InicioLaboratorio } from './Qualidade';
+import { CardAprovacoes } from './SupAprovacoes';
 
 const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
@@ -567,6 +568,7 @@ function PainelGestao() {
         ))}
       </div>
       {d.erro && <div className="alerta alerta-erro" role="alert">{d.erro}</div>}
+      {aba === 'geral' && (dono || usuario?.administrador) && temModulo(usuario, 'suprimentos') && <CardAprovacoes />}
       {aba === 'geral' && <AbaGeral d={d} />}
       {aba === 'frota' && <AbaFrota d={d} />}
       {aba === 'financeiro' && <AbaFinanceiro d={d} />}
