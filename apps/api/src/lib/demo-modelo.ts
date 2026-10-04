@@ -10,7 +10,7 @@ import { gerarContasAPagar } from '../rotas/contratos.ts';
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v7';
+export const VERSAO_DEMO = 'modelo-2026-10-v8';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -170,7 +170,7 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
   await c.query('UPDATE notas_fiscais SET lancamento_id = NULL, pedido_id = NULL WHERE empresa_id = $1', [empresaId]);
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
   for (const t of [
-    'autorizacoes_pagamento', 'medicoes_itens', 'medicoes', 'contratos_itens', 'contratos', 'pedidos_itens', 'pedidos_compra', 'cotacoes_precos', 'cotacoes_itens', 'cotacoes_fornecedores', 'cotacoes', 'solicitacoes_itens', 'solicitacoes_compra',
+    'autorizacoes_pagamento', 'medicoes_itens', 'medicoes', 'contratos_itens', 'contratos', 'pedidos_itens', 'pedidos_compra', 'cotacoes_precos', 'cotacoes_itens', 'cotacoes_fornecedores', 'cotacoes', 'solicitacoes_itens', 'solicitacoes_compra', 'catalogo_itens',
     'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'insumos_produtos',
     'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
     'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
@@ -999,6 +999,8 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   // ----- suprimentos: pedidos das compras de insumos recentes (recebidos pela nota), uma cotação concluída, pendências de aprovação e solicitações
   await popularSuprimentos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, forn, insumo, cnpjDe, centro });
   await popularContratos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, cnpjDe, centro, banco });
+  await popularCatalogo(c, e);
+  await q("UPDATE contratos SET enviado_aprovacao_em = criado_em, aprovado_por_id = $2, aprovado_em = criado_em + interval '3 hours' WHERE empresa_id = $1 AND status = 'vigente'", [e, usuario('dono@') ?? gestor]);
 
   // ----- saldo inicial do banco: o menor saldo diário do período fica acima de R$ 60 mil
   const mov = (
@@ -1266,4 +1268,44 @@ async function popularContratos(
       [e, ++nAut, k2.id, med.id, somarDias(hoje, -1), somarDias(hoje, 9), `${somarDias(hoje, -1)} 16:10`, x.gestor],
     );
   }
+}
+
+// ---------------------------------------------------------------- catálogo de materiais e serviços
+
+async function popularCatalogo(c: C, e: string): Promise<void> {
+  const q = (sql: string, p: unknown[] = []) => c.query(sql, p);
+  const plano = async (codigo: string) => (await q('SELECT id FROM plano_contas WHERE empresa_id = $1 AND codigo = $2', [e, codigo])).rows[0]?.id ?? null;
+  const ITENS: ['material' | 'servico', string, string, string, string][] = [
+    ['material', 'M-0001', 'Óleo lubrificante 15W40 (balde 20 L)', 'un', '4.4'],
+    ['material', 'M-0002', 'Graxa de chassi (balde 20 kg)', 'un', '4.4'],
+    ['material', 'M-0003', 'Lona plástica preta 4×50 m', 'un', '3.6'],
+    ['material', 'M-0004', 'Desmoldante para formas (bombona 50 L)', 'un', '3.6'],
+    ['material', 'M-0005', 'Filtro de ar do motor (betoneira)', 'un', '4.2'],
+    ['material', 'M-0006', 'Mangueira de bomba 4" (3 m)', 'un', '4.2'],
+    ['material', 'M-0007', 'Molde cilíndrico para corpo de prova 10×20 cm', 'un', '3.7'],
+    ['servico', 'S-0001', 'Visita preventiva mensal (checklist da central)', 'un', '3.6'],
+    ['servico', 'S-0002', 'Hora técnica corretiva (mecânico/eletricista)', 'h', '3.6'],
+    ['servico', 'S-0003', 'Recuperação de palhetas do misturador', 'vb', '3.6'],
+    ['servico', 'S-0004', 'Portaria e vigilância (mês)', 'mês', '6.8'],
+    ['servico', 'S-0005', 'Hora de pá carregadeira com operador', 'h', '4.8'],
+  ];
+  for (const [tipo, codigo, descricao, unidade, pc] of ITENS)
+    await q('INSERT INTO catalogo_itens (empresa_id, tipo, codigo, descricao, unidade, plano_conta_id) VALUES ($1,$2,$3,$4,$5,$6)', [e, tipo, codigo, descricao, unidade, await plano(pc)]);
+  // Liga o que já foi solicitado, cotado, pedido e contratado aos itens do catálogo, pela descrição.
+  for (const t of ['solicitacoes_itens', 'cotacoes_itens', 'pedidos_itens', 'contratos_itens'])
+    await q(`UPDATE ${t} x SET catalogo_id = ct.id FROM catalogo_itens ct WHERE x.empresa_id = $1 AND ct.empresa_id = $1 AND lower(ct.descricao) = lower(x.descricao)${t === 'contratos_itens' ? '' : ' AND x.insumo_id IS NULL'}`, [e]);
+  await q(
+    `UPDATE catalogo_itens ct SET ultimo_preco_centavos = u.preco, ultimo_preco_em = u.data, ultimo_fornecedor_id = u.fornecedor
+       FROM (SELECT * FROM (SELECT DISTINCT ON (pi.catalogo_id) pi.catalogo_id, pi.preco_unitario_centavos AS preco, p.data, p.fornecedor_id AS fornecedor
+                              FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id
+                             WHERE p.empresa_id = $1 AND pi.catalogo_id IS NOT NULL AND p.status IN ('aprovado', 'enviado', 'parcial', 'recebido', 'encerrado')
+                             ORDER BY pi.catalogo_id, p.data DESC) a
+             UNION ALL
+             SELECT * FROM (SELECT DISTINCT ON (ci.catalogo_id) ci.catalogo_id, ci.preco_unitario_centavos, coalesce(k.data_assinatura, k.inicio) AS data, k.fornecedor_id
+                              FROM contratos_itens ci JOIN contratos k ON k.id = ci.contrato_id
+                             WHERE k.empresa_id = $1 AND ci.catalogo_id IS NOT NULL AND k.status = 'vigente'
+                             ORDER BY ci.catalogo_id, 3 DESC) b) u
+      WHERE ct.id = u.catalogo_id`,
+    [e],
+  );
 }

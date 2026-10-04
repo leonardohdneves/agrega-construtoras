@@ -4,13 +4,13 @@ import { api, formatarDataHora, formatarMoeda, lerNumero, moedaCampo } from '../
 import type { Aprovacao, RegrasAprovacao } from '../componentes/Suprimentos';
 import { useSessao } from '../sessao';
 
-const CAMINHO_ACAO: Record<Aprovacao['tipo'], string> = { pedido: '/sup/pedidos', medicao: '/sup/medicoes', autorizacao: '/sup/autorizacoes' };
+const CAMINHO_ACAO: Record<Aprovacao['tipo'], string> = { pedido: '/sup/pedidos', contrato: '/sup/contratos', medicao: '/sup/medicoes', autorizacao: '/sup/autorizacoes' };
 
 function useAprovacoes() {
   const [dados, setDados] = useState<{ itens: Aprovacao[]; regras: RegrasAprovacao } | null>(null);
   const [erro, setErro] = useState('');
   const carregar = useCallback(() => {
-    api<{ itens: Aprovacao[]; regras: RegrasAprovacao }>('/sup/aprovacoes').then(setDados).catch((e) => setErro((e as Error).message));
+    api<{ itens: Aprovacao[]; regras: RegrasAprovacao }>('/ger/aprovacoes').then(setDados).catch((e) => setErro((e as Error).message));
   }, []);
   useEffect(carregar, [carregar]);
   return { dados, erro, carregar, setErro };
@@ -92,7 +92,7 @@ export function CardAprovacoes() {
           Aprovações
           {minhas.length > 0 && <span className="selo selo-aviso" style={{ marginLeft: 8 }}>{minhas.length}</span>}
         </h2>
-        <Link to="/sup/aprovacoes" className="small">Ver todas</Link>
+        <Link to="/ger/aprovacoes" className="small">Ver todas</Link>
       </div>
       {minhas.length > 0 && <p className="small muted" style={{ marginTop: 0 }}>{formatarMoeda(total)} esperando sua decisão.</p>}
       <ListaAprovacoes itens={minhas.slice(0, 5)} aoMudar={carregar} compacta />
@@ -118,7 +118,7 @@ export function SupAprovacoes() {
     setMsg('');
     setErroRegras('');
     try {
-      await api('/sup/config', { metodo: 'PUT', corpo: { adminAte: regras.adminAte.trim() ? lerNumero(regras.adminAte) : null, dispensaAte: regras.dispensaAte.trim() ? lerNumero(regras.dispensaAte) : null } });
+      await api('/ger/config', { metodo: 'PUT', corpo: { adminAte: regras.adminAte.trim() ? lerNumero(regras.adminAte) : null, dispensaAte: regras.dispensaAte.trim() ? lerNumero(regras.dispensaAte) : null } });
       setMsg('Regras salvas.');
       carregar();
     } catch (err) {
@@ -131,7 +131,7 @@ export function SupAprovacoes() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Aprovações</h1>
-          <span className="muted">{dados?.regras.texto ?? 'Pedidos de compra, medições e pagamentos que esperam aprovação.'}</span>
+          <span className="muted">{dados?.regras.texto ?? 'Pedidos de compra, contratos, medições e pagamentos que esperam aprovação.'}</span>
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
@@ -142,7 +142,7 @@ export function SupAprovacoes() {
       <form className="card form" onSubmit={salvarRegras}>
         <h2>Regras de aprovação</h2>
         <span className="small muted">
-          Padrão: o dono aprova tudo. Você pode deixar administradores aprovarem até um valor e dispensar a aprovação de valores pequenos. Quem pode aprovar já aprova ao enviar.
+          Padrão: o dono aprova tudo. Você pode deixar administradores aprovarem até um valor e dispensar a aprovação de valores pequenos. Todo pedido, contrato, medição e autorização enviado entra nesta fila, mesmo quando quem envia é o aprovador.
           {!dono && ' Só o dono muda estas regras.'}
         </span>
         {erroRegras && <div className="alerta alerta-erro" role="alert">{erroRegras}</div>}

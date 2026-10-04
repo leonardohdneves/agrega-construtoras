@@ -96,7 +96,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Contratos', para: '/sup/contratos' },
       { rotulo: 'Medições', para: '/sup/medicoes' },
       { rotulo: 'Autorizações de pagamento', para: '/sup/autorizacoes' },
-      { rotulo: 'Aprovações', para: '/sup/aprovacoes' },
+      { rotulo: 'Catálogo de materiais e serviços', para: '/sup/catalogo' },
       { rotulo: 'Relatórios', para: '/sup/relatorios' },
     ],
   },
@@ -126,6 +126,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Custo por veículo', para: '/ger/custo-veiculo' },
       { rotulo: 'Relatórios gerais', para: '/ger/relatorios' },
       { rotulo: 'Indicadores', para: '/ger/indicadores' },
+      { rotulo: 'Aprovações', para: '/ger/aprovacoes' },
     ],
   },
   {

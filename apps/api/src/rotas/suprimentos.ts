@@ -57,13 +57,14 @@ function periodo(q: Record<string, string | undefined>, padraoDias = 90) {
 
 const esquemaItem = z.object({
   insumoId: uuidOpc,
+  catalogoId: uuidOpc,
   descricao: texto(200),
   unidade: z.string().trim().max(10).optional().nullable().transform((v) => v || null),
   quantidade: positivo('A quantidade deve ser maior que zero.'),
   observacao: texto(200),
 });
 type ItemEntrada = z.infer<typeof esquemaItem>;
-type ItemResolvido = { insumoId: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null };
+type ItemResolvido = { insumoId: string | null; catalogoId: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null };
 
 async function resolverItens(c: Cliente, empresaId: string, itens: ItemEntrada[]): Promise<ItemResolvido[]> {
   if (!itens.length) throw new ErroHttp(400, 'Inclua pelo menos um item.');
@@ -73,15 +74,26 @@ async function resolverItens(c: Cliente, empresaId: string, itens: ItemEntrada[]
     const r = await c.query('SELECT id, nome, unidade FROM insumos WHERE empresa_id = $1 AND id = ANY($2::uuid[]) AND excluido_em IS NULL', [empresaId, ids]);
     for (const x of r.rows) insumos.set(x.id, { nome: x.nome, unidade: x.unidade });
   }
+  const cids = [...new Set(itens.map((i) => i.catalogoId).filter(Boolean))] as string[];
+  const catalogo = new Map<string, { descricao: string; unidade: string }>();
+  if (cids.length) {
+    const r = await c.query('SELECT id, descricao, unidade FROM catalogo_itens WHERE empresa_id = $1 AND id = ANY($2::uuid[])', [empresaId, cids]);
+    for (const x of r.rows) catalogo.set(x.id, { descricao: x.descricao, unidade: x.unidade });
+  }
   return itens.map((i, n) => {
+    if (i.catalogoId && !i.insumoId) {
+      const it = catalogo.get(i.catalogoId);
+      if (!it) throw new ErroHttp(400, `Item ${n + 1}: item do catálogo não encontrado.`);
+      return { insumoId: null, catalogoId: i.catalogoId, descricao: it.descricao, unidade: it.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
+    }
     if (i.insumoId) {
       const ins = insumos.get(i.insumoId);
       if (!ins) throw new ErroHttp(400, `Item ${n + 1}: insumo não encontrado.`);
-      return { insumoId: i.insumoId, descricao: i.descricao ?? ins.nome, unidade: i.unidade ?? ins.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
+      return { insumoId: i.insumoId, catalogoId: null, descricao: i.descricao ?? ins.nome, unidade: i.unidade ?? ins.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
     }
     if (!i.descricao) throw new ErroHttp(400, `Item ${n + 1}: escolha o insumo ou escreva a descrição.`);
     if (!i.unidade) throw new ErroHttp(400, `Item ${n + 1}: informe a unidade.`);
-    return { insumoId: null, descricao: i.descricao, unidade: i.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
+    return { insumoId: null, catalogoId: null, descricao: i.descricao, unidade: i.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
   });
 }
 
@@ -136,7 +148,7 @@ async function detalharSolicitacao(c: Cliente, empresaId: string, id: string) {
     solicitante: s.solicitante,
     cotacoes: s.cotacoes ?? [],
     pedidos: s.pedidos ?? [],
-    itens: itens.map((i) => ({ id: i.id, insumoId: i.insumo_id, tipo: i.tipo, descricao: i.descricao, unidade: i.unidade, quantidade: Number(i.quantidade), observacao: i.observacao })),
+    itens: itens.map((i) => ({ id: i.id, insumoId: i.insumo_id, catalogoId: i.catalogo_id, tipo: i.tipo, descricao: i.descricao, unidade: i.unidade, quantidade: Number(i.quantidade), observacao: i.observacao })),
   };
 }
 
@@ -144,8 +156,8 @@ async function gravarItensSolicitacao(c: Cliente, empresaId: string, solicitacao
   await c.query('DELETE FROM solicitacoes_itens WHERE solicitacao_id = $1', [solicitacaoId]);
   for (const i of itens)
     await c.query(
-      'INSERT INTO solicitacoes_itens (empresa_id, solicitacao_id, insumo_id, descricao, unidade, quantidade, observacao) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-      [empresaId, solicitacaoId, i.insumoId, i.descricao, i.unidade, i.quantidade, i.observacao],
+      'INSERT INTO solicitacoes_itens (empresa_id, solicitacao_id, insumo_id, catalogo_id, descricao, unidade, quantidade, observacao) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+      [empresaId, solicitacaoId, i.insumoId, i.catalogoId, i.descricao, i.unidade, i.quantidade, i.observacao],
     );
 }
 
@@ -242,6 +254,7 @@ async function detalharCotacao(c: Cliente, empresaId: string, id: string) {
     return {
       id: i.id as string,
       insumoId: i.insumo_id as string | null,
+      catalogoId: i.catalogo_id as string | null,
       descricao: i.descricao as string,
       unidade: i.unidade as string,
       quantidade: q,
@@ -345,7 +358,7 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
     )
   ).rows[0] as LinhaPedido | undefined;
   if (!p) throw naoEncontrado('Pedido');
-  const itens = (await c.query('SELECT pi.*, i.tipo FROM pedidos_itens pi LEFT JOIN insumos i ON i.id = pi.insumo_id WHERE pi.pedido_id = $1 ORDER BY pi.descricao', [id])).rows;
+  const itens = (await c.query('SELECT pi.*, i.tipo, ct.codigo FROM pedidos_itens pi LEFT JOIN insumos i ON i.id = pi.insumo_id LEFT JOIN catalogo_itens ct ON ct.id = pi.catalogo_id WHERE pi.pedido_id = $1 ORDER BY pi.descricao', [id])).rows;
   const recebidos = await recebidosDoPedido(c, id);
   const notas = (
     await c.query(
@@ -367,6 +380,8 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
     return {
       id: i.id as string,
       insumoId: i.insumo_id as string | null,
+      catalogoId: i.catalogo_id as string | null,
+      codigo: i.codigo as string | null,
       tipo: i.tipo as string | null,
       descricao: i.descricao as string,
       unidade: i.unidade as string,
@@ -458,14 +473,24 @@ async function gravarItensPedido(c: Cliente, empresaId: string, pedidoId: string
     const pu = centPreco(i.precoUnitario);
     total += Math.round(pu * i.quantidade);
     await c.query(
-      `INSERT INTO pedidos_itens (empresa_id, pedido_id, cotacao_item_id, insumo_id, descricao, unidade, quantidade, preco_unitario_centavos)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-      [empresaId, pedidoId, i.cotacaoItemId ?? null, i.insumoId, i.descricao, i.unidade, i.quantidade, pu],
+      `INSERT INTO pedidos_itens (empresa_id, pedido_id, cotacao_item_id, insumo_id, catalogo_id, descricao, unidade, quantidade, preco_unitario_centavos)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [empresaId, pedidoId, i.cotacaoItemId ?? null, i.insumoId, i.catalogoId ?? null, i.descricao, i.unidade, i.quantidade, pu],
     );
   }
   total += freteCentavos;
   await c.query('UPDATE pedidos_compra SET total_centavos = $2, atualizado_em = now() WHERE id = $1', [pedidoId, total]);
   return total;
+}
+
+/** Último preço pago dos itens do catálogo, na aprovação do pedido. */
+export async function atualizarUltimoPrecoPedido(c: Cliente, pedidoId: string) {
+  await c.query(
+    `UPDATE catalogo_itens ct SET ultimo_preco_centavos = pi.preco_unitario_centavos, ultimo_preco_em = p.data, ultimo_fornecedor_id = p.fornecedor_id, atualizado_em = now()
+       FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id
+      WHERE pi.pedido_id = $1 AND ct.id = pi.catalogo_id AND (ct.ultimo_preco_em IS NULL OR ct.ultimo_preco_em <= p.data)`,
+    [pedidoId],
+  );
 }
 
 /** Situação do pedido pelo que já foi recebido. */
@@ -657,7 +682,7 @@ export function rotasSuprimentos(banco: Banco) {
           if (!s) throw new ErroHttp(400, 'Solicitação não encontrada.');
           if (!['aberta', 'em_cotacao'].includes(s.status)) throw new ErroHttp(409, 'Esta solicitação já foi atendida ou cancelada.');
           const r = await c.query('SELECT * FROM solicitacoes_itens WHERE solicitacao_id = $1', [d.solicitacaoId]);
-          itens = r.rows.map((x) => ({ insumoId: x.insumo_id, descricao: x.descricao, unidade: x.unidade, quantidade: Number(x.quantidade), observacao: x.observacao, solicitacaoItemId: x.id }));
+          itens = r.rows.map((x) => ({ insumoId: x.insumo_id, catalogoId: x.catalogo_id, descricao: x.descricao, unidade: x.unidade, quantidade: Number(x.quantidade), observacao: x.observacao, solicitacaoItemId: x.id }));
           await c.query("UPDATE solicitacoes_compra SET status = 'em_cotacao', atualizado_em = now() WHERE id = $1", [d.solicitacaoId]);
         } else {
           itens = (await resolverItens(c, empresaId, d.itens)).map((i) => ({ ...i, solicitacaoItemId: null }));
@@ -672,8 +697,8 @@ export function rotasSuprimentos(banco: Banco) {
         ).rows[0];
         for (const i of itens)
           await c.query(
-            'INSERT INTO cotacoes_itens (empresa_id, cotacao_id, solicitacao_item_id, insumo_id, descricao, unidade, quantidade) VALUES ($1, $2, $3, $4, $5, $6, $7)',
-            [empresaId, ct.id, i.solicitacaoItemId, i.insumoId, i.descricao, i.unidade, i.quantidade],
+            'INSERT INTO cotacoes_itens (empresa_id, cotacao_id, solicitacao_item_id, insumo_id, catalogo_id, descricao, unidade, quantidade) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
+            [empresaId, ct.id, i.solicitacaoItemId, i.insumoId, i.catalogoId, i.descricao, i.unidade, i.quantidade],
           );
         for (const f of [...new Set(d.fornecedorIds)]) {
           await validarFornecedor(c, empresaId, f);
@@ -807,6 +832,7 @@ export function rotasSuprimentos(banco: Banco) {
             .filter((i) => i.vencedorId === f.id)
             .map((i) => ({
               insumoId: i.insumoId,
+              catalogoId: i.catalogoId,
               descricao: i.descricao,
               unidade: i.unidade,
               quantidade: i.quantidade,
@@ -976,13 +1002,9 @@ export function rotasSuprimentos(banco: Banco) {
             "UPDATE pedidos_compra SET status = 'aprovado', enviado_aprovacao_em = now(), aprovado_em = now(), aprovado_por_id = NULL, aprovacao_automatica = true, motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1",
             [p.id],
           );
-        } else if (podeAprovar(u, valor, regras)) {
-          // Quem pode aprovar e envia o pedido já o aprova.
-          await c.query(
-            "UPDATE pedidos_compra SET status = 'aprovado', enviado_aprovacao_em = now(), aprovado_em = now(), aprovado_por_id = $2, aprovacao_automatica = false, motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1",
-            [p.id, u.id],
-          );
+          await atualizarUltimoPrecoPedido(c, p.id);
         } else {
+          // Sempre passa pela fila de aprovações (inclusive quando quem envia é o próprio aprovador).
           await c.query("UPDATE pedidos_compra SET status = 'aguardando_aprovacao', enviado_aprovacao_em = now(), motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1", [p.id]);
         }
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { acao: 'enviar para aprovação', valor: reais(valor) } });
@@ -998,6 +1020,7 @@ export function rotasSuprimentos(banco: Banco) {
         if (p.status !== 'aguardando_aprovacao') throw new ErroHttp(409, 'Este pedido não está aguardando aprovação.');
         if (!podeAprovar(u, Number(p.total_centavos), await lerRegras(c, empresaId))) throw new ErroHttp(403, 'Você não tem alçada para aprovar este valor.');
         await c.query("UPDATE pedidos_compra SET status = 'aprovado', aprovado_em = now(), aprovado_por_id = $2, aprovacao_automatica = false, atualizado_em = now() WHERE id = $1", [p.id, u.id]);
+        await atualizarUltimoPrecoPedido(c, p.id);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'confirmar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { acao: 'aprovar', valor: reais(p.total_centavos) } });
       });
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
@@ -1132,6 +1155,14 @@ export function rotasSuprimentos(banco: Banco) {
           if (i.pedidoItemId && !itensPedido.has(i.pedidoItemId)) throw new ErroHttp(400, 'Item não pertence ao pedido.');
           if (i.pedidoItemId && i.quantidade === null) throw new ErroHttp(400, 'Informe a quantidade recebida na unidade do pedido.');
           await c.query('UPDATE notas_itens SET pedido_item_id = $2, quantidade_pedido = $3 WHERE id = $1', [i.notaItemId, i.pedidoItemId, i.pedidoItemId ? r3(i.quantidade!) : null]);
+          // Item do catálogo com categoria: a nota (ainda sem categoria) herda para a conta a pagar.
+          if (i.pedidoItemId)
+            await c.query(
+              `UPDATE notas_itens ni SET plano_conta_id = ct.plano_conta_id, centro_custo_id = coalesce(ni.centro_custo_id, p.centro_custo_id)
+                 FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id JOIN catalogo_itens ct ON ct.id = pi.catalogo_id
+                WHERE ni.id = $1 AND pi.id = $2 AND ni.plano_conta_id IS NULL AND ct.plano_conta_id IS NOT NULL`,
+              [i.notaItemId, i.pedidoItemId],
+            );
           if (i.pedidoItemId) ligados++;
         }
         if (!ligados) throw new ErroHttp(400, 'Ligue pelo menos um item da nota a um item do pedido.');
@@ -1158,80 +1189,6 @@ export function rotasSuprimentos(banco: Banco) {
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
     });
 
-    // ----- Aprovações pendentes e regras
-    app.get('/aprovacoes', async (req) => {
-      const empresaId = empresaDo(req);
-      const u = usuarioDe(req);
-      const regras = await lerRegras(banco, empresaId);
-      const r = await banco.query(
-        `SELECT p.id, p.numero, p.data, p.total_centavos, p.enviado_aprovacao_em, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, uc.nome AS criado_por,
-                (SELECT string_agg(pi.descricao, ', ' ORDER BY pi.descricao) FROM pedidos_itens pi WHERE pi.pedido_id = p.id) AS resumo
-           FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id LEFT JOIN usuarios uc ON uc.id = p.criado_por_id
-          WHERE p.empresa_id = $1 AND p.status = 'aguardando_aprovacao' ORDER BY p.enviado_aprovacao_em`,
-        [empresaId],
-      );
-      const meds = await banco.query(
-        `SELECT m.id, m.numero, m.sequencia, m.valor_centavos, m.enviado_aprovacao_em, k.numero AS contrato, k.objeto, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, uc.nome AS criado_por
-           FROM medicoes m JOIN contratos k ON k.id = m.contrato_id JOIN fornecedores f ON f.id = k.fornecedor_id LEFT JOIN usuarios uc ON uc.id = m.criado_por_id
-          WHERE m.empresa_id = $1 AND m.status = 'aguardando_aprovacao' ORDER BY m.enviado_aprovacao_em`,
-        [empresaId],
-      );
-      const auts = await banco.query(
-        `SELECT a.id, a.numero, a.tipo, a.bruto_centavos, a.liquido_centavos, a.enviado_aprovacao_em, k.numero AS contrato, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor,
-                uc.nome AS criado_por, m.sequencia
-           FROM autorizacoes_pagamento a JOIN contratos k ON k.id = a.contrato_id JOIN fornecedores f ON f.id = k.fornecedor_id
-           LEFT JOIN usuarios uc ON uc.id = a.criado_por_id LEFT JOIN medicoes m ON m.id = a.medicao_id
-          WHERE a.empresa_id = $1 AND a.status = 'aguardando_aprovacao' ORDER BY a.enviado_aprovacao_em`,
-        [empresaId],
-      );
-      const itens: { tipo: 'pedido' | 'medicao' | 'autorizacao'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string; criadoPor: string | null; link: string; podeAprovar: boolean }[] = r.rows.map((p) => ({
-        tipo: 'pedido' as const,
-        id: p.id as string,
-        numero: p.numero as number,
-        titulo: `Pedido de compra nº ${p.numero}`,
-        pessoa: p.fornecedor as string,
-        resumo: p.resumo as string | null,
-        valor: reais(p.total_centavos)!,
-        enviadoEm: p.enviado_aprovacao_em as string,
-        criadoPor: p.criado_por as string | null,
-        link: `/sup/pedidos/${p.id}`,
-        podeAprovar: podeAprovar(u, Number(p.total_centavos), regras),
-      }));
-      for (const m of meds.rows)
-        itens.push({
-          tipo: 'medicao', id: m.id, numero: m.numero, titulo: `Medição ${m.sequencia} · contrato nº ${String(m.contrato).padStart(4, '0')}`, pessoa: m.fornecedor, resumo: m.objeto,
-          valor: reais(m.valor_centavos)!, enviadoEm: m.enviado_aprovacao_em, criadoPor: m.criado_por, link: `/sup/medicoes/${m.id}`, podeAprovar: podeAprovar(u, Number(m.valor_centavos), regras),
-        });
-      for (const a of auts.rows)
-        itens.push({
-          tipo: 'autorizacao', id: a.id, numero: a.numero, titulo: `Autorização de pagamento nº ${String(a.numero).padStart(4, '0')}`, pessoa: a.fornecedor,
-          resumo: a.tipo === 'caucao' ? `Liberação da caução · contrato nº ${String(a.contrato).padStart(4, '0')}` : `Medição ${a.sequencia} · contrato nº ${String(a.contrato).padStart(4, '0')} · líquido ${(Number(a.liquido_centavos) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
-          valor: reais(a.bruto_centavos)!, enviadoEm: a.enviado_aprovacao_em, criadoPor: a.criado_por, link: `/sup/autorizacoes/${a.id}`, podeAprovar: podeAprovar(u, Number(a.bruto_centavos), regras),
-        });
-      itens.sort((x, y) => String(x.enviadoEm).localeCompare(String(y.enviadoEm)));
-      return { itens, regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
-    });
-
-    app.get('/config', async (req) => {
-      const regras = await lerRegras(banco, empresaDo(req));
-      return { regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
-    });
-
-    app.put('/config', async (req) => {
-      const u = usuarioDe(req);
-      if (u.perfil !== 'dono') throw new ErroHttp(403, 'Só o dono muda as regras de aprovação.');
-      const d = z
-        .object({ adminAte: z.union([naoNegativo('Valor inválido.'), z.null()]), dispensaAte: z.union([naoNegativo('Valor inválido.'), z.null()]) })
-        .parse(req.body);
-      const empresaId = empresaDo(req);
-      const regras: RegrasAprovacao = lerRegrasDe({ adminAte: d.adminAte === null ? null : cent(d.adminAte), dispensaAte: d.dispensaAte === null ? null : cent(d.dispensaAte) });
-      await emTransacao(banco, async (c) => {
-        await c.query('UPDATE empresas SET aprovacao = $2, atualizado_em = now() WHERE id = $1', [empresaId, JSON.stringify(regras)]);
-        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'empresas', entidadeId: empresaId, depois: { aprovacao: d } });
-      });
-      return { regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
-    });
-
     // ----- Relatórios de compras
     app.get<{ Querystring: Record<string, string | undefined> }>('/relatorios', async (req) => {
       const empresaId = empresaDo(req);
@@ -1252,9 +1209,9 @@ export function rotasSuprimentos(banco: Banco) {
 
       const porItem = (
         await banco.query(
-          `SELECT pi.descricao, pi.unidade, sum(pi.quantidade) AS quantidade, sum(pi.quantidade * pi.preco_unitario_centavos) AS valor,
+          `SELECT pi.descricao, pi.unidade, max(ct.codigo) AS codigo, sum(pi.quantidade) AS quantidade, sum(pi.quantidade * pi.preco_unitario_centavos) AS valor,
                   min(pi.preco_unitario_centavos) AS menor, max(pi.preco_unitario_centavos) AS maior, count(DISTINCT p.fornecedor_id)::int AS fornecedores
-             FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id
+             FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id LEFT JOIN catalogo_itens ct ON ct.id = pi.catalogo_id
             WHERE p.empresa_id = $1 AND p.data BETWEEN $2 AND $3 AND ${VALIDOS}
             GROUP BY pi.descricao, pi.unidade ORDER BY sum(pi.quantidade * pi.preco_unitario_centavos) DESC`,
           [empresaId, de, ate],
@@ -1263,6 +1220,7 @@ export function rotasSuprimentos(banco: Banco) {
         const q = Number(x.quantidade);
         return {
           descricao: x.descricao,
+          codigo: x.codigo as string | null,
           unidade: x.unidade,
           quantidade: r3(q),
           valor: Math.round(Number(x.valor)) / 100,
@@ -1387,5 +1345,102 @@ export function rotasSuprimentos(banco: Banco) {
         pendentes,
       };
     });
+  };
+}
+
+// ---------------------------------------------------------------- aprovações (módulo Gerencial)
+// Fila única do que espera decisão: pedidos de compra, contratos, medições e autorizações de pagamento.
+export function rotasAprovacoes(banco: Banco) {
+  return async function (app: FastifyInstance) {
+    app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
+
+    // ----- Aprovações pendentes e regras
+    app.get('/aprovacoes', async (req) => {
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      const regras = await lerRegras(banco, empresaId);
+      const r = await banco.query(
+        `SELECT p.id, p.numero, p.data, p.total_centavos, p.enviado_aprovacao_em, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, uc.nome AS criado_por,
+                (SELECT string_agg(pi.descricao, ', ' ORDER BY pi.descricao) FROM pedidos_itens pi WHERE pi.pedido_id = p.id) AS resumo
+           FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id LEFT JOIN usuarios uc ON uc.id = p.criado_por_id
+          WHERE p.empresa_id = $1 AND p.status = 'aguardando_aprovacao' ORDER BY p.enviado_aprovacao_em`,
+        [empresaId],
+      );
+      const meds = await banco.query(
+        `SELECT m.id, m.numero, m.sequencia, m.valor_centavos, m.enviado_aprovacao_em, k.numero AS contrato, k.objeto, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, uc.nome AS criado_por
+           FROM medicoes m JOIN contratos k ON k.id = m.contrato_id JOIN fornecedores f ON f.id = k.fornecedor_id LEFT JOIN usuarios uc ON uc.id = m.criado_por_id
+          WHERE m.empresa_id = $1 AND m.status = 'aguardando_aprovacao' ORDER BY m.enviado_aprovacao_em`,
+        [empresaId],
+      );
+      const auts = await banco.query(
+        `SELECT a.id, a.numero, a.tipo, a.bruto_centavos, a.liquido_centavos, a.enviado_aprovacao_em, k.numero AS contrato, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor,
+                uc.nome AS criado_por, m.sequencia
+           FROM autorizacoes_pagamento a JOIN contratos k ON k.id = a.contrato_id JOIN fornecedores f ON f.id = k.fornecedor_id
+           LEFT JOIN usuarios uc ON uc.id = a.criado_por_id LEFT JOIN medicoes m ON m.id = a.medicao_id
+          WHERE a.empresa_id = $1 AND a.status = 'aguardando_aprovacao' ORDER BY a.enviado_aprovacao_em`,
+        [empresaId],
+      );
+      const itens: { tipo: 'pedido' | 'contrato' | 'medicao' | 'autorizacao'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string; criadoPor: string | null; link: string; podeAprovar: boolean }[] = r.rows.map((p) => ({
+        tipo: 'pedido' as const,
+        id: p.id as string,
+        numero: p.numero as number,
+        titulo: `Pedido de compra nº ${p.numero}`,
+        pessoa: p.fornecedor as string,
+        resumo: p.resumo as string | null,
+        valor: reais(p.total_centavos)!,
+        enviadoEm: p.enviado_aprovacao_em as string,
+        criadoPor: p.criado_por as string | null,
+        link: `/sup/pedidos/${p.id}`,
+        podeAprovar: podeAprovar(u, Number(p.total_centavos), regras),
+      }));
+      for (const m of meds.rows)
+        itens.push({
+          tipo: 'medicao', id: m.id, numero: m.numero, titulo: `Medição ${m.sequencia} · contrato nº ${String(m.contrato).padStart(4, '0')}`, pessoa: m.fornecedor, resumo: m.objeto,
+          valor: reais(m.valor_centavos)!, enviadoEm: m.enviado_aprovacao_em, criadoPor: m.criado_por, link: `/sup/medicoes/${m.id}`, podeAprovar: podeAprovar(u, Number(m.valor_centavos), regras),
+        });
+      for (const a of auts.rows)
+        itens.push({
+          tipo: 'autorizacao', id: a.id, numero: a.numero, titulo: `Autorização de pagamento nº ${String(a.numero).padStart(4, '0')}`, pessoa: a.fornecedor,
+          resumo: a.tipo === 'caucao' ? `Liberação da caução · contrato nº ${String(a.contrato).padStart(4, '0')}` : `Medição ${a.sequencia} · contrato nº ${String(a.contrato).padStart(4, '0')} · líquido ${(Number(a.liquido_centavos) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}`,
+          valor: reais(a.bruto_centavos)!, enviadoEm: a.enviado_aprovacao_em, criadoPor: a.criado_por, link: `/sup/autorizacoes/${a.id}`, podeAprovar: podeAprovar(u, Number(a.bruto_centavos), regras),
+        });
+      const cts = await banco.query(
+        `SELECT k.id, k.numero, k.objeto, k.tipo, k.valor_global_centavos, k.enviado_aprovacao_em, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, uc.nome AS criado_por,
+                coalesce((SELECT sum(round(ci.quantidade * ci.preco_unitario_centavos)) FROM contratos_itens ci WHERE ci.contrato_id = k.id), 0) AS valor_itens
+           FROM contratos k JOIN fornecedores f ON f.id = k.fornecedor_id LEFT JOIN usuarios uc ON uc.id = k.criado_por_id
+          WHERE k.empresa_id = $1 AND k.status = 'aguardando_aprovacao' ORDER BY k.enviado_aprovacao_em`,
+        [empresaId],
+      );
+      for (const k of cts.rows) {
+        const valor = k.tipo === 'global' ? Number(k.valor_global_centavos) : Number(k.valor_itens);
+        itens.push({
+          tipo: 'contrato', id: k.id, numero: k.numero, titulo: `Contrato nº ${String(k.numero).padStart(4, '0')}`, pessoa: k.fornecedor, resumo: k.objeto,
+          valor: reais(valor)!, enviadoEm: k.enviado_aprovacao_em, criadoPor: k.criado_por, link: `/sup/contratos/${k.id}`, podeAprovar: podeAprovar(u, valor, regras),
+        });
+      }
+      itens.sort((x, y) => new Date(x.enviadoEm).getTime() - new Date(y.enviadoEm).getTime());
+      return { itens, regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
+    });
+
+    app.get('/config', async (req) => {
+      const regras = await lerRegras(banco, empresaDo(req));
+      return { regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
+    });
+
+    app.put('/config', async (req) => {
+      const u = usuarioDe(req);
+      if (u.perfil !== 'dono') throw new ErroHttp(403, 'Só o dono muda as regras de aprovação.');
+      const d = z
+        .object({ adminAte: z.union([naoNegativo('Valor inválido.'), z.null()]), dispensaAte: z.union([naoNegativo('Valor inválido.'), z.null()]) })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const regras: RegrasAprovacao = lerRegrasDe({ adminAte: d.adminAte === null ? null : cent(d.adminAte), dispensaAte: d.dispensaAte === null ? null : cent(d.dispensaAte) });
+      await emTransacao(banco, async (c) => {
+        await c.query('UPDATE empresas SET aprovacao = $2, atualizado_em = now() WHERE id = $1', [empresaId, JSON.stringify(regras)]);
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'empresas', entidadeId: empresaId, depois: { aprovacao: d } });
+      });
+      return { regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
+    });
+
   };
 }

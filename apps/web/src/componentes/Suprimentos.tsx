@@ -7,7 +7,7 @@ export type StatusSolicitacao = 'aberta' | 'em_cotacao' | 'atendida' | 'cancelad
 export type StatusCotacao = 'aberta' | 'concluida' | 'cancelada';
 export type StatusPedido = 'rascunho' | 'aguardando_aprovacao' | 'aprovado' | 'reprovado' | 'enviado' | 'parcial' | 'recebido' | 'encerrado' | 'cancelado';
 
-export type ItemSolicitacao = { id: string; insumoId: string | null; tipo: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null };
+export type ItemSolicitacao = { id: string; insumoId: string | null; catalogoId: string | null; tipo: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null };
 export type Solicitacao = {
   id: string; numero: number; data: string; necessidade: string | null; origem: 'manual' | 'estoque_minimo'; centroCustoId: string | null; centroCusto: string | null;
   observacao: string | null; status: StatusSolicitacao; solicitante: string | null; cotacoes: { id: string; numero: number; status: StatusCotacao }[];
@@ -21,7 +21,7 @@ export type SugestaoEstoque = { insumoId: string; nome: string; tipo: string; un
 
 export type OfertaCotacao = { cotacaoFornecedorId: string; precoUnitario: number; total: number };
 export type ItemCotacao = {
-  id: string; insumoId: string | null; descricao: string; unidade: string; quantidade: number; ofertas: OfertaCotacao[]; menorPrecoId: string | null; vencedorId: string | null;
+  id: string; insumoId: string | null; catalogoId: string | null; descricao: string; unidade: string; quantidade: number; ofertas: OfertaCotacao[]; menorPrecoId: string | null; vencedorId: string | null;
   justificativa: string | null; foraDoMenor: boolean; totalVencedor: number | null; economiaMaior: number | null; economiaMedia: number | null;
 };
 export type FornecedorCotacao = {
@@ -44,7 +44,7 @@ export type CotacaoResumo = {
 };
 
 export type ItemPedido = {
-  id: string; insumoId: string | null; tipo: string | null; descricao: string; unidade: string; quantidade: number; precoUnitario: number; total: number; recebido: number;
+  id: string; insumoId: string | null; catalogoId: string | null; codigo: string | null; tipo: string | null; descricao: string; unidade: string; quantidade: number; precoUnitario: number; total: number; recebido: number;
   saldo: number; precoNota: number | null; diferencaPreco: number | null; diferencaQuantidade: number | null;
 };
 export type Pedido = {
@@ -62,7 +62,7 @@ export type PedidoResumo = {
   cotacaoNumero: number | null; aprovadoPor: string | null; aprovacaoAutomatica: boolean; resumo: string | null; notas: number;
 };
 export type Aprovacao = {
-  tipo: 'pedido' | 'medicao' | 'autorizacao'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string;
+  tipo: 'pedido' | 'contrato' | 'medicao' | 'autorizacao'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string;
   criadoPor: string | null; link: string; podeAprovar: boolean;
 };
 export type RegrasAprovacao = { adminAte: number | null; dispensaAte: number | null; texto: string };
@@ -109,62 +109,96 @@ export const nomeFornecedor = (f: Pick<Fornecedor, 'nomeFantasia' | 'razaoSocial
 export const campoNumero = (n: number | null | undefined, casas = 3) =>
   n === null || n === undefined ? '' : n.toLocaleString('pt-BR', { maximumFractionDigits: casas, useGrouping: false });
 
+// ---------- Catálogo de materiais e serviços ----------
+export type CatalogoItem = {
+  id: string; tipo: 'material' | 'servico'; codigo: string; descricao: string; unidade: string; planoContaId: string | null; planoConta: string | null;
+  observacao: string | null; ativo: boolean; ultimoPreco: number | null; ultimoPrecoEm: string | null; ultimoFornecedor: string | null; usos: number;
+};
+export const rotuloCatalogo = (c: Pick<CatalogoItem, 'codigo' | 'descricao'>) => `${c.codigo} · ${c.descricao}`;
+
 // ---------- Cadastros usados nas telas ----------
 export function useCadastrosCompra() {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [centros, setCentros] = useState<CentroCusto[]>([]);
+  const [catalogo, setCatalogo] = useState<CatalogoItem[]>([]);
   useEffect(() => {
     api<{ insumos: Insumo[] }>('/prod/insumos').then((r) => setInsumos(r.insumos.filter((i) => i.ativo))).catch(() => {});
     api<{ fornecedores: Fornecedor[] }>('/adm/fornecedores?categoria=fornecedor').then((r) => setFornecedores(r.fornecedores.filter((f) => f.ativo))).catch(() => {});
     api<{ centros: CentroCusto[] }>('/fin/centros-custo').then((r) => setCentros(r.centros.filter((c) => c.ativo))).catch(() => {});
+    api<{ itens: CatalogoItem[] }>('/sup/catalogo').then((r) => setCatalogo(r.itens)).catch(() => {});
   }, []);
-  return { insumos, fornecedores, centros };
+  return { insumos, fornecedores, centros, catalogo };
 }
 
 // ---------- Editor de itens (solicitação, cotação e pedido) ----------
-export type LinhaEditor = { chave: string; insumoId: string; descricao: string; unidade: string; quantidade: string; preco: string; observacao: string };
+export type LinhaEditor = { chave: string; insumoId: string; catalogoId: string; descricao: string; unidade: string; quantidade: string; preco: string; observacao: string };
 let contador = 0;
-export const novaLinha = (p: Partial<LinhaEditor> = {}): LinhaEditor => ({ chave: `l${++contador}`, insumoId: '', descricao: '', unidade: 'un', quantidade: '', preco: '', observacao: '', ...p });
+export const novaLinha = (p: Partial<LinhaEditor> = {}): LinhaEditor => ({ chave: `l${++contador}`, insumoId: '', catalogoId: '', descricao: '', unidade: 'un', quantidade: '', preco: '', observacao: '', ...p });
 export const UNIDADES = ['kg', 't', 'L', 'm3', 'un', 'cx', 'pç', 'm', 'm2', 'h', 'sc', 'vb'];
+/** Valor do seletor de item: "i:<insumo>", "c:<catálogo>" ou "" (descrever). */
+const valorItem = (l: Pick<LinhaEditor, 'insumoId' | 'catalogoId'>) => (l.insumoId ? `i:${l.insumoId}` : l.catalogoId ? `c:${l.catalogoId}` : '');
 
 export function EditorItens({
   linhas,
   aoMudar,
   insumos,
+  catalogo = [],
   comPreco = false,
   comObservacao = false,
 }: {
   linhas: LinhaEditor[];
   aoMudar: (l: LinhaEditor[]) => void;
   insumos: Insumo[];
+  catalogo?: CatalogoItem[];
   comPreco?: boolean;
   comObservacao?: boolean;
 }) {
   const mudar = (chave: string, p: Partial<LinhaEditor>) => aoMudar(linhas.map((l) => (l.chave === chave ? { ...l, ...p } : l)));
   const total = linhas.reduce((s, l) => s + (lerNumero(l.quantidade) ?? 0) * (lerNumero(l.preco) ?? 0), 0);
+  const ativos = catalogo.filter((c) => c.ativo || linhas.some((l) => l.catalogoId === c.id));
+  const materiais = ativos.filter((c) => c.tipo === 'material');
+  const servicos = ativos.filter((c) => c.tipo === 'servico');
   return (
     <div className="editor-itens">
       {linhas.map((l, n) => {
-        const avulso = !l.insumoId;
+        const avulso = !l.insumoId && !l.catalogoId;
         const subtotal = (lerNumero(l.quantidade) ?? 0) * (lerNumero(l.preco) ?? 0);
+        const cat = l.catalogoId ? catalogo.find((c) => c.id === l.catalogoId) : null;
         return (
           <div key={l.chave} className={`campos editor-linha ${comPreco ? 'com-preco' : ''}`}>
             <div className="campo">
               <label htmlFor={`it-ins-${l.chave}`}>Item {n + 1}</label>
               <select
                 id={`it-ins-${l.chave}`}
-                value={l.insumoId}
+                value={valorItem(l)}
                 onChange={(e) => {
-                  const ins = insumos.find((i) => i.id === e.target.value);
-                  mudar(l.chave, ins ? { insumoId: ins.id, descricao: ins.nome, unidade: ins.unidade } : { insumoId: '', descricao: '', unidade: 'un' });
+                  const [tipo, id] = e.target.value.split(':');
+                  const ins = tipo === 'i' ? insumos.find((i) => i.id === id) : null;
+                  const c = tipo === 'c' ? catalogo.find((x) => x.id === id) : null;
+                  if (ins) mudar(l.chave, { insumoId: ins.id, catalogoId: '', descricao: ins.nome, unidade: ins.unidade, preco: l.preco || (comPreco && ins.custoUnitario ? campoNumero(ins.custoUnitario, 4) : '') });
+                  else if (c) mudar(l.chave, { insumoId: '', catalogoId: c.id, descricao: c.descricao, unidade: c.unidade, preco: l.preco || (comPreco && c.ultimoPreco ? campoNumero(c.ultimoPreco, 4) : '') });
+                  else mudar(l.chave, { insumoId: '', catalogoId: '', descricao: '', unidade: 'un' });
                 }}
               >
                 <option value="">Outro item (descrever)</option>
-                {insumos.map((i) => (
-                  <option key={i.id} value={i.id}>{i.nome}</option>
-                ))}
+                {insumos.length > 0 && (
+                  <optgroup label="Insumos da usina">
+                    {insumos.map((i) => <option key={i.id} value={`i:${i.id}`}>{i.nome}</option>)}
+                  </optgroup>
+                )}
+                {materiais.length > 0 && (
+                  <optgroup label="Materiais do catálogo">
+                    {materiais.map((c) => <option key={c.id} value={`c:${c.id}`}>{rotuloCatalogo(c)}</option>)}
+                  </optgroup>
+                )}
+                {servicos.length > 0 && (
+                  <optgroup label="Serviços do catálogo">
+                    {servicos.map((c) => <option key={c.id} value={`c:${c.id}`}>{rotuloCatalogo(c)}</option>)}
+                  </optgroup>
+                )}
               </select>
+              {cat?.ultimoPreco != null && <span className="small muted">último preço {precoUn(cat.ultimoPreco)}{cat.ultimoFornecedor ? ` · ${cat.ultimoFornecedor}` : ''}</span>}
             </div>
             {avulso ? (
               <div className="campo">
@@ -222,16 +256,18 @@ export function EditorItens({
 /** Converte as linhas do editor no corpo da API, com mensagens claras. */
 export function itensParaApi(linhas: LinhaEditor[], comPreco = false) {
   return linhas
-    .filter((l) => l.insumoId || l.descricao.trim() || l.quantidade.trim())
+    .filter((l) => l.insumoId || l.catalogoId || l.descricao.trim() || l.quantidade.trim())
     .map((l, n) => {
       const q = lerNumero(l.quantidade);
       if (!q || q <= 0) throw new Error(`Item ${n + 1}: informe a quantidade.`);
       const p = comPreco ? lerNumero(l.preco) : null;
       if (comPreco && (p === null || p < 0)) throw new Error(`Item ${n + 1}: informe o preço unitário.`);
+      const cadastrado = !!(l.insumoId || l.catalogoId);
       return {
         insumoId: l.insumoId || null,
-        descricao: l.insumoId ? null : l.descricao.trim() || null,
-        unidade: l.insumoId ? null : l.unidade,
+        catalogoId: l.insumoId ? null : l.catalogoId || null,
+        descricao: cadastrado ? null : l.descricao.trim() || null,
+        unidade: cadastrado ? null : l.unidade,
         quantidade: q,
         observacao: l.observacao.trim() || null,
         ...(comPreco ? { precoUnitario: p } : {}),
@@ -252,18 +288,19 @@ export function Assinatura({ nome, papel, detalhe }: { nome: string; papel: stri
 }
 
 // ---------- Contratos, medições e autorizações ----------
-export type StatusContrato = 'rascunho' | 'vigente' | 'encerrado' | 'cancelado';
+export type StatusContrato = 'rascunho' | 'aguardando_aprovacao' | 'reprovado' | 'vigente' | 'encerrado' | 'cancelado';
 export type StatusMedicao = 'rascunho' | 'aguardando_aprovacao' | 'aprovada' | 'reprovada' | 'cancelada';
 export type StatusAutorizacao = 'aguardando_aprovacao' | 'aprovada' | 'reprovada' | 'cancelada';
 export type Retencoes = { caucao: number; iss: number; inss: number; ir: number; pcc: number };
 export type FornecedorDoc = { nome: string; razaoSocial: string; documento: string | null; telefone: string | null; email: string | null; cidade: string | null; chavePix?: string | null };
 
 export type Contrato = {
-  id: string; numero: number; status: StatusContrato; fornecedorId: string; fornecedor: FornecedorDoc; objeto: string; tipo: 'itens' | 'global';
+  id: string; numero: number; status: StatusContrato; enviadoAprovacaoEm: string | null; aprovadoPor: string | null; aprovadoEm: string | null; aprovacaoAutomatica: boolean;
+  motivoReprovacao: string | null; podeAprovar: boolean; regrasAprovacao: string; fornecedorId: string; fornecedor: FornecedorDoc; objeto: string; tipo: 'itens' | 'global';
   dataAssinatura: string | null; inicio: string; fim: string | null; vencido: boolean; valorGlobal: number | null; planoContaId: string; planoConta: string;
   centroCustoId: string | null; centroCusto: string | null; prazoPagamentoDias: number; formaPagamento: string | null; retencoes: Retencoes; observacao: string | null;
   encerradoEm: string | null; criadoPor: string | null;
-  itens: { id: string; descricao: string; unidade: string; quantidade: number; precoUnitario: number; total: number; medido: number; pendente: number; saldo: number; valorMedido: number }[];
+  itens: { id: string; catalogoId: string | null; codigo: string | null; descricao: string; unidade: string; quantidade: number; precoUnitario: number; total: number; medido: number; pendente: number; saldo: number; valorMedido: number }[];
   medicoes: { id: string; numero: number; sequencia: number; periodoInicio: string; periodoFim: string; data: string; valor: number; status: StatusMedicao; autorizacao: { id: string; numero: number; status: StatusAutorizacao } | null }[];
   autorizacoes: { id: string; numero: number; tipo: 'medicao' | 'caucao'; data: string; vencimento: string; bruto: number; caucao: number; impostos: number; liquido: number; pago: number; status: StatusAutorizacao; medicaoSequencia: number | null }[];
   resumo: {
@@ -307,6 +344,8 @@ export type AutorizacaoResumo = {
 
 export const SELO_CONTRATO: Record<StatusContrato, { texto: string; classe: string }> = {
   rascunho: { texto: 'Rascunho', classe: 'selo-neutro' },
+  aguardando_aprovacao: { texto: 'Aguardando aprovação', classe: 'selo-aviso' },
+  reprovado: { texto: 'Reprovado', classe: 'selo-perigo' },
   vigente: { texto: 'Vigente', classe: 'selo-ok' },
   encerrado: { texto: 'Encerrado', classe: 'selo-neutro' },
   cancelado: { texto: 'Cancelado', classe: 'selo-neutro' },

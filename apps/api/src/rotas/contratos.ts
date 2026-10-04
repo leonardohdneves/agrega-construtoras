@@ -57,13 +57,13 @@ function calcularRetencoes(k: LinhaContrato, bruto: number) {
   return { ...r, liquido: bruto - r.caucao - r.iss - r.inss - r.ir - r.pcc };
 }
 
-async function detalharContrato(c: Cliente, empresaId: string, id: string) {
+async function detalharContrato(c: Cliente, empresaId: string, id: string, usuario?: { perfil: string; administrador: boolean }) {
   const k = (
     await c.query(
       `SELECT k.*, f.razao_social, f.nome_fantasia, f.cnpj_cpf, f.telefone, f.email, f.cidade, f.uf, f.chave_pix,
-              pc.codigo AS plano_codigo, pc.nome AS plano_nome, cc.nome AS centro_custo, u.nome AS criado_por
+              pc.codigo AS plano_codigo, pc.nome AS plano_nome, cc.nome AS centro_custo, u.nome AS criado_por, ua.nome AS aprovado_por
          FROM contratos k JOIN fornecedores f ON f.id = k.fornecedor_id JOIN plano_contas pc ON pc.id = k.plano_conta_id
-         LEFT JOIN centros_custo cc ON cc.id = k.centro_custo_id LEFT JOIN usuarios u ON u.id = k.criado_por_id
+         LEFT JOIN centros_custo cc ON cc.id = k.centro_custo_id LEFT JOIN usuarios u ON u.id = k.criado_por_id LEFT JOIN usuarios ua ON ua.id = k.aprovado_por_id
         WHERE k.id = $1 AND k.empresa_id = $2`,
       [UUID.test(id) ? id : '00000000-0000-0000-0000-000000000000', empresaId],
     )
@@ -71,7 +71,7 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string) {
   if (!k) throw naoEncontrado('Contrato');
   const itens = (
     await c.query(
-      `SELECT ci.*,
+      `SELECT ci.*, (SELECT codigo FROM catalogo_itens ct WHERE ct.id = ci.catalogo_id) AS codigo,
               coalesce((SELECT sum(mi.quantidade) FROM medicoes_itens mi JOIN medicoes m ON m.id = mi.medicao_id WHERE mi.contrato_item_id = ci.id AND m.status = 'aprovada'), 0) AS medido,
               coalesce((SELECT sum(mi.quantidade) FROM medicoes_itens mi JOIN medicoes m ON m.id = mi.medicao_id WHERE mi.contrato_item_id = ci.id AND m.status IN ('rascunho', 'aguardando_aprovacao')), 0) AS pendente
          FROM contratos_itens ci WHERE ci.contrato_id = $1 ORDER BY ci.ordem, ci.descricao`,
@@ -103,6 +103,8 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string) {
     const medido = Number(i.medido);
     return {
       id: i.id as string,
+      catalogoId: i.catalogo_id as string | null,
+      codigo: i.codigo as string | null,
       descricao: i.descricao as string,
       unidade: i.unidade as string,
       quantidade: q,
@@ -123,10 +125,18 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string) {
   const caucaoLiberada = autAprov.filter((a) => a.tipo === 'caucao').reduce((s, a) => s + Number(a.bruto_centavos), 0);
   const caucaoEmLiberacao = autorizacoes.filter((a) => a.tipo === 'caucao' && a.status === 'aguardando_aprovacao').reduce((s, a) => s + Number(a.bruto_centavos), 0);
   const hoje = hojeBrasil();
+  const regras = await lerRegras(c, empresaId);
   return {
     id: k.id as string,
     numero: k.numero as number,
-    status: k.status as 'rascunho' | 'vigente' | 'encerrado' | 'cancelado',
+    status: k.status as 'rascunho' | 'aguardando_aprovacao' | 'reprovado' | 'vigente' | 'encerrado' | 'cancelado',
+    enviadoAprovacaoEm: k.enviado_aprovacao_em as string | null,
+    aprovadoPor: k.aprovado_por as string | null,
+    aprovadoEm: k.aprovado_em as string | null,
+    aprovacaoAutomatica: !!k.aprovacao_automatica,
+    motivoReprovacao: k.motivo_reprovacao as string | null,
+    podeAprovar: usuario ? podeAprovar(usuario, valorContrato, regras) : false,
+    regrasAprovacao: textoRegras(regras),
     fornecedorId: k.fornecedor_id as string,
     fornecedor: {
       nome: (k.nome_fantasia || k.razao_social) as string,
@@ -226,6 +236,7 @@ const esquemaContrato = z.object({
     .array(
       z.object({
         id: uuidOpc,
+        catalogoId: uuidOpc,
         descricao: z.string().trim().min(1, 'Descreva cada item.').max(200),
         unidade: z.string().trim().min(1).max(10),
         quantidade: positivo('Quantidade inválida.'),
@@ -270,10 +281,23 @@ async function gravarItensContrato(c: Cliente, empresaId: string, contratoId: st
   await c.query('DELETE FROM contratos_itens WHERE contrato_id = $1 AND NOT (id = ANY($2::uuid[]))', [contratoId, [...manter]]);
   for (const [n, i] of itens.entries()) {
     if (i.id && atuais.some((a) => a.id === i.id))
-      await c.query('UPDATE contratos_itens SET ordem = $2, descricao = $3, unidade = $4, quantidade = $5, preco_unitario_centavos = $6 WHERE id = $1', [i.id, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario)]);
+      await c.query('UPDATE contratos_itens SET ordem = $2, descricao = $3, unidade = $4, quantidade = $5, preco_unitario_centavos = $6, catalogo_id = $7 WHERE id = $1', [i.id, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario), i.catalogoId]);
     else
-      await c.query('INSERT INTO contratos_itens (empresa_id, contrato_id, ordem, descricao, unidade, quantidade, preco_unitario_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7)', [empresaId, contratoId, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario)]);
+      await c.query('INSERT INTO contratos_itens (empresa_id, contrato_id, ordem, descricao, unidade, quantidade, preco_unitario_centavos, catalogo_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [empresaId, contratoId, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario), i.catalogoId]);
   }
+  const cats = [...new Set(itens.map((i) => i.catalogoId).filter(Boolean))] as string[];
+  if (cats.length && (await c.query('SELECT count(*)::int AS n FROM catalogo_itens WHERE empresa_id = $1 AND id = ANY($2::uuid[])', [empresaId, cats])).rows[0].n !== cats.length)
+    throw new ErroHttp(400, 'Item do catálogo não encontrado.');
+}
+
+/** Último preço contratado dos serviços do catálogo (contrato vigente). */
+async function atualizarUltimoPrecoContrato(c: Cliente, contratoId: string) {
+  await c.query(
+    `UPDATE catalogo_itens ct SET ultimo_preco_centavos = ci.preco_unitario_centavos, ultimo_preco_em = coalesce(k.data_assinatura, k.inicio), ultimo_fornecedor_id = k.fornecedor_id, atualizado_em = now()
+       FROM contratos_itens ci JOIN contratos k ON k.id = ci.contrato_id
+      WHERE ci.contrato_id = $1 AND k.status = 'vigente' AND ct.id = ci.catalogo_id AND (ct.ultimo_preco_em IS NULL OR ct.ultimo_preco_em <= coalesce(k.data_assinatura, k.inicio))`,
+    [contratoId],
+  );
 }
 
 // ---------------------------------------------------------------- medição
@@ -540,8 +564,8 @@ export function rotasContratos(banco: Banco) {
       const status = ['rascunho', 'vigente', 'encerrado', 'cancelado'].includes(req.query.status ?? '') ? req.query.status! : null;
       const ids = (
         await banco.query(
-          `SELECT id FROM contratos WHERE empresa_id = $1 AND ($2::text IS NULL OR status = $2) AND ($2::text IS NOT NULL OR status IN ('rascunho', 'vigente'))
-            ORDER BY (status = 'vigente') DESC, numero DESC LIMIT 300`,
+          `SELECT id FROM contratos WHERE empresa_id = $1 AND ($2::text IS NULL OR status = $2) AND ($2::text IS NOT NULL OR status IN ('rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente'))
+            ORDER BY array_position(ARRAY['aguardando_aprovacao','reprovado','rascunho','vigente','encerrado','cancelado'], status), numero DESC LIMIT 300`,
           [empresaId, status],
         )
       ).rows;
@@ -557,7 +581,7 @@ export function rotasContratos(banco: Banco) {
       return { contratos };
     });
 
-    app.get<{ Params: { id: string } }>('/contratos/:id', async (req) => ({ contrato: await detalharContrato(banco, empresaDo(req), req.params.id) }));
+    app.get<{ Params: { id: string } }>('/contratos/:id', async (req) => ({ contrato: await detalharContrato(banco, empresaDo(req), req.params.id, usuarioDe(req)) }));
 
     app.post('/contratos', async (req, reply) => {
       const d = esquemaContrato.parse(req.body);
@@ -580,7 +604,7 @@ export function rotasContratos(banco: Banco) {
         return k.id as string;
       });
       reply.code(201);
-      return { contrato: await detalharContrato(banco, empresaId, id) };
+      return { contrato: await detalharContrato(banco, empresaId, id, u) };
     });
 
     app.put<{ Params: { id: string } }>('/contratos/:id', async (req) => {
@@ -589,7 +613,7 @@ export function rotasContratos(banco: Banco) {
       const u = usuarioDe(req);
       await emTransacao(banco, async (c) => {
         const k = await carregarContrato(c, empresaId, req.params.id, true);
-        if (!['rascunho', 'vigente'].includes(k.status)) throw new ErroHttp(409, 'Contrato encerrado ou cancelado não muda.');
+        if (!['rascunho', 'reprovado', 'vigente'].includes(k.status)) throw new ErroHttp(409, k.status === 'aguardando_aprovacao' ? 'Contrato aguardando aprovação não muda. Aguarde a decisão.' : 'Contrato encerrado ou cancelado não muda.');
         const temMedicao = (await c.query(`SELECT 1 FROM medicoes WHERE contrato_id = $1 AND status IN ${MEDICAO_CONTA}`, [k.id])).rowCount;
         if (temMedicao && (d.tipo !== k.tipo || d.fornecedorId !== k.fornecedor_id)) throw new ErroHttp(409, 'Com medição lançada, o prestador e o tipo do contrato não mudam.');
         await validarContrato(c, empresaId, d);
@@ -606,9 +630,11 @@ export function rotasContratos(banco: Banco) {
         );
         if (d.tipo === 'itens') await gravarItensContrato(c, empresaId, k.id, d.itens);
         else await c.query('DELETE FROM contratos_itens WHERE contrato_id = $1', [k.id]);
+        if (k.status === 'reprovado') await c.query("UPDATE contratos SET status = 'rascunho', motivo_reprovacao = NULL WHERE id = $1", [k.id]);
+        await atualizarUltimoPrecoContrato(c, k.id);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, antes: { status: k.status, objeto: k.objeto }, depois: { objeto: d.objeto, aditivo: k.status === 'vigente' } });
       });
-      return { contrato: await detalharContrato(banco, empresaId, req.params.id) };
+      return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
     });
 
     const mudarStatusContrato = (rota: string, de: string[], para: string, msg: string, extra?: (c: Cliente, k: LinhaContrato) => Promise<void>) =>
@@ -620,17 +646,69 @@ export function rotasContratos(banco: Banco) {
           if (!de.includes(k.status)) throw new ErroHttp(409, msg);
           if (extra) await extra(c, k);
           await c.query(`UPDATE contratos SET status = $2, encerrado_em = CASE WHEN $2 = 'encerrado' THEN $3::date ELSE encerrado_em END, atualizado_em = now() WHERE id = $1`, [k.id, para, hojeBrasil()]);
+          if (para === 'vigente') await atualizarUltimoPrecoContrato(c, k.id);
           await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, antes: { status: k.status }, depois: { status: para } });
         });
-        return { contrato: await detalharContrato(banco, empresaId, req.params.id) };
+        return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
       });
-    mudarStatusContrato('ativar', ['rascunho'], 'vigente', 'Só contrato em rascunho é ativado.');
+    // ----- Aprovação do contrato (padrão: o dono aprova). Aprovado, fica vigente e recebe medições.
+    const valorDoContrato = async (c: Cliente, k: LinhaContrato) =>
+      k.tipo === 'global'
+        ? Number(k.valor_global_centavos)
+        : Number((await c.query('SELECT coalesce(sum(round(quantidade * preco_unitario_centavos)), 0) AS v FROM contratos_itens WHERE contrato_id = $1', [k.id])).rows[0].v);
+
+    app.post<{ Params: { id: string } }>('/contratos/:id/enviar-aprovacao', async (req) => {
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      await emTransacao(banco, async (c) => {
+        const k = await carregarContrato(c, empresaId, req.params.id, true);
+        if (!['rascunho', 'reprovado'].includes(k.status)) throw new ErroHttp(409, 'Este contrato já foi enviado para aprovação.');
+        const valor = await valorDoContrato(c, k);
+        if (valor <= 0) throw new ErroHttp(400, 'O contrato não tem valor.');
+        if (dispensaAprovacao(valor, await lerRegras(c, empresaId))) {
+          await c.query("UPDATE contratos SET status = 'vigente', enviado_aprovacao_em = now(), aprovado_em = now(), aprovado_por_id = NULL, aprovacao_automatica = true, motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1", [k.id]);
+          await atualizarUltimoPrecoContrato(c, k.id);
+        } else await c.query("UPDATE contratos SET status = 'aguardando_aprovacao', enviado_aprovacao_em = now(), motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1", [k.id]);
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, depois: { acao: 'enviar para aprovação', valor: valor / 100 } });
+      });
+      return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
+    });
+
+    app.post<{ Params: { id: string } }>('/contratos/:id/aprovar', async (req) => {
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      await emTransacao(banco, async (c) => {
+        const k = await carregarContrato(c, empresaId, req.params.id, true);
+        if (k.status !== 'aguardando_aprovacao') throw new ErroHttp(409, 'Este contrato não está aguardando aprovação.');
+        const valor = await valorDoContrato(c, k);
+        if (!podeAprovar(u, valor, await lerRegras(c, empresaId))) throw new ErroHttp(403, 'Você não tem alçada para aprovar este valor.');
+        await c.query("UPDATE contratos SET status = 'vigente', aprovado_em = now(), aprovado_por_id = $2, aprovacao_automatica = false, atualizado_em = now() WHERE id = $1", [k.id, u.id]);
+        await atualizarUltimoPrecoContrato(c, k.id);
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'confirmar', entidade: 'contratos', entidadeId: k.id, depois: { acao: 'aprovar', valor: valor / 100 } });
+      });
+      return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
+    });
+
+    app.post<{ Params: { id: string } }>('/contratos/:id/reprovar', async (req) => {
+      const d = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) }).parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      await emTransacao(banco, async (c) => {
+        const k = await carregarContrato(c, empresaId, req.params.id, true);
+        if (k.status !== 'aguardando_aprovacao') throw new ErroHttp(409, 'Este contrato não está aguardando aprovação.');
+        if (!podeAprovar(u, await valorDoContrato(c, k), await lerRegras(c, empresaId))) throw new ErroHttp(403, 'Você não tem alçada para reprovar este valor.');
+        await c.query("UPDATE contratos SET status = 'reprovado', motivo_reprovacao = $2, aprovado_por_id = $3, aprovado_em = now(), atualizado_em = now() WHERE id = $1", [k.id, d.motivo, u.id]);
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, depois: { acao: 'reprovar', motivo: d.motivo } });
+      });
+      return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
+    });
+
     mudarStatusContrato('encerrar', ['vigente'], 'encerrado', 'Só contrato vigente é encerrado.', async (c, k) => {
       if ((await c.query("SELECT 1 FROM medicoes WHERE contrato_id = $1 AND status IN ('rascunho', 'aguardando_aprovacao')", [k.id])).rowCount)
         throw new ErroHttp(409, 'Há medição em rascunho ou aguardando aprovação. Conclua ou cancele antes de encerrar.');
     });
     mudarStatusContrato('reabrir', ['encerrado'], 'vigente', 'Só contrato encerrado é reaberto.');
-    mudarStatusContrato('cancelar', ['rascunho', 'vigente'], 'cancelado', 'Este contrato já foi encerrado ou cancelado.', async (c, k) => {
+    mudarStatusContrato('cancelar', ['rascunho', 'reprovado', 'aguardando_aprovacao', 'vigente'], 'cancelado', 'Este contrato já foi encerrado ou cancelado.', async (c, k) => {
       if ((await c.query(`SELECT 1 FROM medicoes WHERE contrato_id = $1 AND status IN ${MEDICAO_CONTA}`, [k.id])).rowCount)
         throw new ErroHttp(409, 'Contrato com medição não é cancelado: encerre-o.');
     });
@@ -672,7 +750,7 @@ export function rotasContratos(banco: Banco) {
       const u = usuarioDe(req);
       const id = await emTransacao(banco, async (c) => {
         const k = await carregarContrato(c, empresaId, d.contratoId, true);
-        if (k.status !== 'vigente') throw new ErroHttp(409, 'Só contrato vigente recebe medição. Ative o contrato antes.');
+        if (k.status !== 'vigente') throw new ErroHttp(409, 'Só contrato vigente (aprovado) recebe medição.');
         const numero = await proximoNumero(c, 'medicoes', empresaId);
         const seq = Number((await c.query('SELECT coalesce(max(sequencia), 0) + 1 AS n FROM medicoes WHERE contrato_id = $1', [k.id])).rows[0].n);
         const m = (
@@ -722,8 +800,6 @@ export function rotasContratos(banco: Banco) {
         const v = Number(m.valor_centavos);
         if (dispensaAprovacao(v, regras))
           await c.query("UPDATE medicoes SET status = 'aprovada', enviado_aprovacao_em = now(), aprovado_em = now(), aprovado_por_id = NULL, aprovacao_automatica = true, motivo_reprovacao = NULL WHERE id = $1", [m.id]);
-        else if (podeAprovar(u, v, regras))
-          await c.query("UPDATE medicoes SET status = 'aprovada', enviado_aprovacao_em = now(), aprovado_em = now(), aprovado_por_id = $2, aprovacao_automatica = false, motivo_reprovacao = NULL WHERE id = $1", [m.id, u.id]);
         else await c.query("UPDATE medicoes SET status = 'aguardando_aprovacao', enviado_aprovacao_em = now(), motivo_reprovacao = NULL WHERE id = $1", [m.id]);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'medicoes', entidadeId: m.id, depois: { acao: 'enviar para aprovação', valor: v / 100 } });
       });
@@ -860,11 +936,10 @@ export function rotasContratos(banco: Banco) {
               d.formaPagamento ?? k.forma_pagamento, d.observacao, u.id],
           )
         ).rows[0];
-        // Mesma regra dos pedidos: dispensa por valor, ou quem tem alçada já aprova ao emitir.
+        // Mesma regra dos pedidos: só a dispensa por valor aprova direto; o resto vai para a fila de aprovações.
         const regras = await lerRegras(c, empresaId);
-        if (dispensaAprovacao(bruto, regras) || podeAprovar(u, bruto, regras)) {
-          const auto = dispensaAprovacao(bruto, regras) && !podeAprovar(u, bruto, regras);
-          await c.query("UPDATE autorizacoes_pagamento SET status = 'aprovada', aprovado_em = now(), aprovado_por_id = $2, aprovacao_automatica = $3 WHERE id = $1", [a.id, auto ? null : u.id, auto]);
+        if (dispensaAprovacao(bruto, regras)) {
+          await c.query("UPDATE autorizacoes_pagamento SET status = 'aprovada', aprovado_em = now(), aprovado_por_id = NULL, aprovacao_automatica = true WHERE id = $1", [a.id]);
           await gerarContasAPagar(c, empresaId, a.id, u.id);
         }
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'autorizacoes_pagamento', entidadeId: a.id, depois: { numero, tipo: d.tipo, bruto: bruto / 100, liquido: ret.liquido / 100 } });

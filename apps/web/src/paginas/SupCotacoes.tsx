@@ -96,7 +96,7 @@ export function SupCotacoes() {
 // ---------- Nova cotação avulsa (sem solicitação) ----------
 export function NovaCotacao() {
   const navegar = useNavigate();
-  const { insumos, fornecedores } = useCadastrosCompra();
+  const { insumos, fornecedores, catalogo } = useCadastrosCompra();
   const [linhas, setLinhas] = useState<LinhaEditor[]>([novaLinha()]);
   const [sel, setSel] = useState<string[]>([]);
   const [prazo, setPrazo] = useState(somarDias(hojeLocal(), 3));
@@ -132,7 +132,7 @@ export function NovaCotacao() {
       <form className="card form" onSubmit={salvar}>
         {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
         <h2>Itens</h2>
-        <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} />
+        <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} catalogo={catalogo} />
         <h2>Fornecedores</h2>
         <div className="lista-marcar">
           {fornecedores.map((f) => (

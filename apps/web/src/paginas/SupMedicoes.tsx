@@ -485,8 +485,8 @@ export function MedicaoDetalhe() {
             <div className="acoes nao-imprimir">
               {editavel && (
                 <>
-                  <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => executar('enviar-aprovacao', m.podeAprovar ? 'Medição aprovada.' : 'Medição enviada para aprovação.')}>
-                    {m.podeAprovar ? 'Aprovar medição' : 'Enviar para aprovação'}
+                  <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => executar('enviar-aprovacao', 'Medição enviada para aprovação. Ela aparece em Gerencial › Aprovações e no painel do dono.')}>
+                    Enviar para aprovação
                   </button>
                   <button className="btn btn-secundario" type="button" onClick={() => setModo('editar')}>Editar</button>
                 </>

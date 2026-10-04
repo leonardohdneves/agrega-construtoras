@@ -108,7 +108,7 @@ export function SupPedidos() {
 type DadosForm = { fornecedorId: string; data: string; previsaoEntrega: string; condicaoPagamento: string; localEntrega: string; frete: string; centroCustoId: string; observacao: string };
 
 function FormPedido({ inicial, solicitacao, aoSalvar, aoCancelar }: { inicial?: Pedido; solicitacao?: Solicitacao | null; aoSalvar: (p: Pedido) => void; aoCancelar?: () => void }) {
-  const { insumos, fornecedores, centros } = useCadastrosCompra();
+  const { insumos, fornecedores, centros, catalogo } = useCadastrosCompra();
   const [f, setF] = useState<DadosForm>({
     fornecedorId: inicial?.fornecedorId ?? '',
     data: inicial?.data ?? hojeLocal(),
@@ -120,22 +120,22 @@ function FormPedido({ inicial, solicitacao, aoSalvar, aoCancelar }: { inicial?: 
     observacao: inicial?.observacao ?? '',
   });
   const [linhas, setLinhas] = useState<LinhaEditor[]>(() => {
-    if (inicial) return inicial.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), preco: campoNumero(i.precoUnitario, 4) }));
-    if (solicitacao) return solicitacao.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade) }));
+    if (inicial) return inicial.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', catalogoId: i.catalogoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), preco: campoNumero(i.precoUnitario, 4) }));
+    if (solicitacao) return solicitacao.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', catalogoId: i.catalogoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade) }));
     return [novaLinha()];
   });
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
-  // Preço de partida: último custo do insumo no cadastro (atualizado pelas notas).
+  // Preço de partida: último custo do insumo (pelas notas) ou último preço pago do item do catálogo.
   useEffect(() => {
-    if (inicial || !insumos.length) return;
+    if (inicial || (!insumos.length && !catalogo.length)) return;
     setLinhas((ls) => ls.map((l) => {
-      if (!l.insumoId || l.preco) return l;
-      const c = insumos.find((i) => i.id === l.insumoId)?.custoUnitario;
+      if (l.preco) return l;
+      const c = l.insumoId ? insumos.find((i) => i.id === l.insumoId)?.custoUnitario : l.catalogoId ? catalogo.find((x) => x.id === l.catalogoId)?.ultimoPreco : null;
       return c ? { ...l, preco: campoNumero(c, 4) } : l;
     }));
-  }, [insumos, inicial]);
+  }, [insumos, catalogo, inicial]);
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
@@ -194,7 +194,7 @@ function FormPedido({ inicial, solicitacao, aoSalvar, aoCancelar }: { inicial?: 
         </div>
       </div>
       <h2>Itens</h2>
-      <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} comPreco />
+      <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} catalogo={catalogo} comPreco />
       <div className="campos">
         <div className="campo">
           <label htmlFor="pd-frete">Frete (R$)</label>
@@ -481,7 +481,7 @@ export function PedidoDetalhe() {
                   return (
                     <tr key={i.id}>
                       <td className="mono">{n + 1}</td>
-                      <td>{i.descricao}</td>
+                      <td>{i.codigo && <span className="mono small muted">{i.codigo} · </span>}{i.descricao}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{qtd(i.quantidade, i.unidade)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{precoUn(i.precoUnitario)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(i.total)}</td>
@@ -576,8 +576,8 @@ export function PedidoDetalhe() {
             <div className="acoes nao-imprimir">
               {editavel && (
                 <>
-                  <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => executar(`${base}/enviar-aprovacao`, p.podeAprovar ? 'Pedido aprovado.' : 'Pedido enviado para aprovação.')}>
-                    {p.podeAprovar ? 'Aprovar pedido' : 'Enviar para aprovação'}
+                  <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => executar(`${base}/enviar-aprovacao`, 'Pedido enviado para aprovação. Ele aparece em Gerencial › Aprovações e no painel do dono.')}>
+                    Enviar para aprovação
                   </button>
                   <button className="btn btn-secundario" type="button" onClick={() => setModo('editar')}>Editar</button>
                 </>

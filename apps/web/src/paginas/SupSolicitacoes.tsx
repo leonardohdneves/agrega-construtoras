@@ -106,7 +106,7 @@ export function SupSolicitacoes() {
 function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao; aoSalvar: (s: Solicitacao) => void; aoCancelar?: () => void }) {
   const [params] = useSearchParams();
   const doEstoque = !inicial && params.get('estoque') === '1';
-  const { insumos, centros } = useCadastrosCompra();
+  const { insumos, centros, catalogo } = useCadastrosCompra();
   const [f, setF] = useState({
     data: inicial?.data ?? hojeLocal(),
     necessidade: inicial?.necessidade ?? somarDias(hojeLocal(), 7),
@@ -114,7 +114,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
     observacao: inicial?.observacao ?? '',
   });
   const [linhas, setLinhas] = useState<LinhaEditor[]>(
-    inicial?.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), observacao: i.observacao ?? '' })) ?? [novaLinha()],
+    inicial?.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', catalogoId: i.catalogoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), observacao: i.observacao ?? '' })) ?? [novaLinha()],
   );
   const [sugestao, setSugestao] = useState<SugestaoEstoque[] | null>(null);
   const [erro, setErro] = useState('');
@@ -192,7 +192,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
         </div>
       </div>
       <h2>Itens</h2>
-      <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} comObservacao />
+      <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} catalogo={catalogo} comObservacao />
       <div className="campo">
         <label htmlFor="sol-obs">Observação</label>
         <textarea id="sol-obs" rows={2} maxLength={500} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} placeholder="Onde será usado, marca preferida, urgência…" />

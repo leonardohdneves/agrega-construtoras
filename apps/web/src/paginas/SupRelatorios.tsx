@@ -13,7 +13,7 @@ type Resp = {
     cotacoes: number; divergencias: number; solicitacoesPendentes: number;
   };
   porFornecedor: { fornecedor: string; pedidos: number; total: number; concluidos: number; atrasados: number }[];
-  porItem: { descricao: string; unidade: string; quantidade: number; valor: number; precoMedio: number | null; menorPreco: number | null; maiorPreco: number | null; fornecedores: number }[];
+  porItem: { descricao: string; codigo: string | null; unidade: string; quantidade: number; valor: number; precoMedio: number | null; menorPreco: number | null; maiorPreco: number | null; fornecedores: number }[];
   emAberto: { id: string; numero: number; data: string; fornecedor: string; status: StatusPedido; previsaoEntrega: string | null; diasAtraso: number; total: number; saldo: number; itens: string }[];
   economia: { id: string; numero: number; data: string; itens: number; fornecedores: number; total: number; economiaMaior: number; economiaMedia: number; foraDoMenor: number; justificativa: string | null }[];
   divergencias: { pedido: number; fornecedor: string; nota: string | null; data: string; descricao: string; unidade: string; quantidadePedido: number; quantidadeNota: number; precoPedido: number | null; precoNota: number | null; diferencaPreco: number | null; valorDiferenca: number }[];
@@ -184,6 +184,7 @@ export function SupRelatorios() {
           arquivo={`compras_item_${sufixo}`}
           linhas={r.porItem}
           colunas={[
+            { titulo: 'Código', valor: (l) => l.codigo },
             { titulo: 'Item', valor: (l) => l.descricao },
             { titulo: 'Quantidade', valor: (l) => qtd(l.quantidade, l.unidade) },
             { titulo: 'Preço médio', valor: (l) => l.precoMedio, render: (l) => precoUn(l.precoMedio) },

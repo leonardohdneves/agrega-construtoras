@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, formatarData, formatarDocumento, formatarMoeda, hojeLocal, lerNumero, moedaCampo, NOMES_FORMA, type FormaPagamento, type PlanoConta } from '../api';
+import { api, formatarData, formatarDataHora, formatarDocumento, formatarMoeda, hojeLocal, lerNumero, moedaCampo, NOMES_FORMA, type FormaPagamento, type PlanoConta } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import {
   Assinatura,
@@ -13,6 +13,7 @@ import {
   SELO_AUTORIZACAO,
   SELO_CONTRATO,
   SELO_MEDICAO,
+  rotuloCatalogo,
   textoRetencoes,
   UNIDADES,
   useCadastrosCompra,
@@ -102,13 +103,13 @@ export function SupContratos() {
 }
 
 // ---------- Formulário ----------
-type LinhaItem = { chave: string; id: string | null; descricao: string; unidade: string; quantidade: string; preco: string; medido: number };
+type LinhaItem = { chave: string; id: string | null; catalogoId: string; descricao: string; unidade: string; quantidade: string; preco: string; medido: number };
 let seq = 0;
-const novaLinhaItem = (p: Partial<LinhaItem> = {}): LinhaItem => ({ chave: `c${++seq}`, id: null, descricao: '', unidade: 'h', quantidade: '', preco: '', medido: 0, ...p });
+const novaLinhaItem = (p: Partial<LinhaItem> = {}): LinhaItem => ({ chave: `c${++seq}`, id: null, catalogoId: '', descricao: '', unidade: 'h', quantidade: '', preco: '', medido: 0, ...p });
 const RET_VAZIA: Record<keyof Retencoes, string> = { caucao: '', iss: '', inss: '', ir: '', pcc: '' };
 
 function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; aoSalvar: (k: Contrato) => void; aoCancelar?: () => void }) {
-  const { fornecedores, centros } = useCadastrosCompra();
+  const { fornecedores, centros, catalogo } = useCadastrosCompra();
   const [planos, setPlanos] = useState<PlanoConta[]>([]);
   useEffect(() => {
     api<{ contas: PlanoConta[] }>('/fin/plano-contas').then((r) => setPlanos(r.contas.filter((p) => p.tipo === 'despesa' && p.aceitaLancamento && p.ativo))).catch(() => {});
@@ -133,7 +134,7 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
   );
   const [linhas, setLinhas] = useState<LinhaItem[]>(
     inicial?.itens.length
-      ? inicial.itens.map((i) => novaLinhaItem({ id: i.id, descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), preco: campoNumero(i.precoUnitario, 4), medido: i.medido + i.pendente }))
+      ? inicial.itens.map((i) => novaLinhaItem({ id: i.id, catalogoId: i.catalogoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), preco: campoNumero(i.precoUnitario, 4), medido: i.medido + i.pendente }))
       : [novaLinhaItem()],
   );
   const [erro, setErro] = useState('');
@@ -158,7 +159,7 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
                 if (!l.descricao.trim()) throw new Error(`Item ${n + 1}: descreva o serviço.`);
                 if (!q || q <= 0) throw new Error(`Item ${n + 1}: informe a quantidade.`);
                 if (p === null || p < 0) throw new Error(`Item ${n + 1}: informe o preço unitário.`);
-                return { id: l.id, descricao: l.descricao.trim(), unidade: l.unidade, quantidade: q, precoUnitario: p };
+                return { id: l.id, catalogoId: l.catalogoId || null, descricao: l.descricao.trim(), unidade: l.unidade, quantidade: q, precoUnitario: p };
               })
           : [];
       const retencoes = Object.fromEntries((Object.keys(RET_VAZIA) as (keyof Retencoes)[]).map((k) => [k, usaRet ? lerNumero(ret[k]) ?? 0 : 0]));
@@ -233,8 +234,30 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
           <div className="editor-itens">
             {linhas.map((l, n) => (
               <div key={l.chave} className="campos editor-linha">
-                <div className="campo" style={{ gridColumn: 'span 2' }}>
-                  <label htmlFor={`ci-d-${l.chave}`}>Serviço {n + 1}</label>
+                <div className="campo">
+                  <label htmlFor={`ci-c-${l.chave}`}>Serviço {n + 1}</label>
+                  <select
+                    id={`ci-c-${l.chave}`}
+                    value={l.catalogoId}
+                    onChange={(e) => {
+                      const c = catalogo.find((x) => x.id === e.target.value);
+                      mudarLinha(l.chave, c ? { catalogoId: c.id, descricao: c.descricao, unidade: c.unidade, preco: l.preco || (c.ultimoPreco ? campoNumero(c.ultimoPreco, 4) : '') } : { catalogoId: '' });
+                      if (c?.planoContaId && !f.planoContaId) setF({ ...f, planoContaId: c.planoContaId });
+                    }}
+                  >
+                    <option value="">Descrever (sem catálogo)</option>
+                    {(['servico', 'material'] as const).map((t) => {
+                      const lista = catalogo.filter((c) => c.tipo === t && (c.ativo || c.id === l.catalogoId));
+                      return lista.length ? (
+                        <optgroup key={t} label={t === 'servico' ? 'Serviços do catálogo' : 'Materiais do catálogo'}>
+                          {lista.map((c) => <option key={c.id} value={c.id}>{rotuloCatalogo(c)}</option>)}
+                        </optgroup>
+                      ) : null;
+                    })}
+                  </select>
+                </div>
+                <div className="campo">
+                  <label htmlFor={`ci-d-${l.chave}`}>Descrição no contrato</label>
                   <input id={`ci-d-${l.chave}`} maxLength={200} value={l.descricao} onChange={(e) => mudarLinha(l.chave, { descricao: e.target.value })} placeholder="Ex.: hora técnica de mecânico" />
                 </div>
                 <div className="campo">
@@ -339,7 +362,7 @@ export function NovoContrato() {
         <div className="titulo">
           <Link to="/sup/contratos" className="small">← Contratos</Link>
           <h1>Novo contrato</h1>
-          <span className="muted">Salvo como rascunho. Ative quando estiver assinado para começar a medir.</span>
+          <span className="muted">Salvo como rascunho. Envie para aprovação; aprovado, o contrato fica vigente e recebe medições.</span>
         </div>
       </div>
       <FormContrato aoSalvar={(k) => navegar(`/sup/contratos/${k.id}`, { replace: true })} />
@@ -356,20 +379,22 @@ export function ContratoDetalhe() {
   const [aviso, setAviso] = useState('');
   const [editar, setEditar] = useState(false);
   const [ocupado, setOcupado] = useState(false);
+  const [reprovar, setReprovar] = useState<string | null>(null);
 
   const carregar = useCallback(() => {
     api<{ contrato: Contrato }>(`/sup/contratos/${id}`).then((r) => setK(r.contrato)).catch((e) => setErro((e as Error).message));
   }, [id]);
   useEffect(carregar, [carregar]);
 
-  async function acao(rota: string, msg: string) {
+  async function acao(rota: string, msg: string, corpo?: unknown) {
     if (!k) return;
     setErro('');
     setAviso('');
     setOcupado(true);
     try {
-      setK((await api<{ contrato: Contrato }>(`/sup/contratos/${k.id}/${rota}`, { metodo: 'POST' })).contrato);
+      setK((await api<{ contrato: Contrato }>(`/sup/contratos/${k.id}/${rota}`, { metodo: 'POST', corpo })).contrato);
       setAviso(msg);
+      setReprovar(null);
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -409,6 +434,8 @@ export function ContratoDetalhe() {
       />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      {k.status === 'aguardando_aprovacao' && <div className="alerta alerta-info nao-imprimir">Aguardando aprovação desde {formatarDataHora(k.enviadoAprovacaoEm)}. {k.regrasAprovacao}</div>}
+      {k.status === 'reprovado' && k.motivoReprovacao && <div className="alerta alerta-erro nao-imprimir">Reprovado por {k.aprovadoPor ?? '—'}: {k.motivoReprovacao}. Ajuste e envie de novo.</div>}
       {k.vencido && <div className="alerta alerta-erro nao-imprimir">A vigência terminou em {formatarData(k.fim)}. Faça um aditivo de prazo ou encerre o contrato.</div>}
 
       {editar ? (
@@ -465,7 +492,7 @@ export function ContratoDetalhe() {
                 <tbody>
                   {k.itens.map((i) => (
                     <tr key={i.id}>
-                      <td>{i.descricao}</td>
+                      <td>{i.codigo && <span className="mono small muted">{i.codigo} · </span>}{i.descricao}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{qtd(i.quantidade, i.unidade)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{precoUn(i.precoUnitario)}</td>
                       <td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(i.total)}</td>
@@ -490,7 +517,7 @@ export function ContratoDetalhe() {
               {k.status === 'vigente' && <Link className="btn btn-primario nao-imprimir" to={`/sup/medicoes/nova?contrato=${k.id}`}>Nova medição</Link>}
             </div>
             {k.medicoes.length === 0 ? (
-              <p className="muted">{k.status === 'rascunho' ? 'Ative o contrato para lançar medições.' : 'Nenhuma medição ainda.'}</p>
+              <p className="muted">{k.status === 'vigente' ? 'Nenhuma medição ainda.' : 'As medições começam depois que o contrato é aprovado.'}</p>
             ) : (
               <table className="tabela tabela-compacta">
                 <thead><tr><th>Medição</th><th>Período</th><th style={{ textAlign: 'right' }}>Valor</th><th>Situação</th><th>Pagamento</th></tr></thead>
@@ -537,21 +564,38 @@ export function ContratoDetalhe() {
           {k.observacao && <p className="small"><b>Observação:</b> {k.observacao}</p>}
 
           <div className="acoes nao-imprimir">
-            {k.status === 'rascunho' && <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => acao('ativar', 'Contrato ativado. Já pode lançar medições.')}>Ativar contrato</button>}
-            {(k.status === 'rascunho' || k.status === 'vigente') && <button className="btn btn-secundario" type="button" onClick={() => setEditar(true)}>{k.status === 'vigente' ? 'Aditivo / editar' : 'Editar'}</button>}
+            {(k.status === 'rascunho' || k.status === 'reprovado') && (
+              <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => acao('enviar-aprovacao', 'Contrato enviado para aprovação. Ele aparece em Gerencial › Aprovações e no painel do dono.')}>
+                Enviar para aprovação
+              </button>
+            )}
+            {k.status === 'aguardando_aprovacao' && k.podeAprovar && reprovar === null && (
+              <>
+                <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => acao('aprovar', 'Contrato aprovado e vigente. Já pode lançar medições.')}>Aprovar contrato</button>
+                <button className="btn btn-secundario" type="button" onClick={() => setReprovar('')}>Reprovar</button>
+              </>
+            )}
+            {reprovar !== null && (
+              <form className="aprov-acoes" onSubmit={(e) => { e.preventDefault(); acao('reprovar', 'Contrato reprovado.', { motivo: reprovar }); }}>
+                <input aria-label="Motivo da reprovação" placeholder="Motivo da reprovação" required minLength={3} maxLength={500} value={reprovar} onChange={(e) => setReprovar(e.target.value)} />
+                <button className="btn btn-perigo" type="submit" disabled={ocupado}>Reprovar</button>
+                <button className="btn btn-link" type="button" onClick={() => setReprovar(null)}>Voltar</button>
+              </form>
+            )}
+            {(k.status === 'rascunho' || k.status === 'reprovado' || k.status === 'vigente') && <button className="btn btn-secundario" type="button" onClick={() => setEditar(true)}>{k.status === 'vigente' ? 'Aditivo / editar' : 'Editar'}</button>}
             {k.status === 'vigente' && <button className="btn btn-secundario" type="button" disabled={ocupado} onClick={() => acao('encerrar', 'Contrato encerrado.')}>Encerrar contrato</button>}
             {k.status === 'encerrado' && r.caucaoALiberar > 0 && (
               <button className="btn btn-primario" type="button" disabled={ocupado} onClick={liberarCaucao}>Liberar caução ({formatarMoeda(r.caucaoALiberar)})</button>
             )}
             {k.status === 'encerrado' && <button className="btn btn-link" type="button" disabled={ocupado} onClick={() => acao('reabrir', 'Contrato reaberto.')}>Reabrir</button>}
-            {(k.status === 'rascunho' || (k.status === 'vigente' && k.medicoes.every((m) => ['reprovada', 'cancelada'].includes(m.status)))) && (
+            {(['rascunho', 'reprovado', 'aguardando_aprovacao'].includes(k.status) || (k.status === 'vigente' && k.medicoes.every((m) => ['reprovada', 'cancelada'].includes(m.status)))) && (
               <button className="btn btn-link" type="button" disabled={ocupado} onClick={() => acao('cancelar', 'Contrato cancelado.')}>Cancelar contrato</button>
             )}
           </div>
 
           <div className="so-imprimir assinaturas">
             <Assinatura nome={k.fornecedor.razaoSocial} papel="Contratada" />
-            <Assinatura nome={k.criadoPor ?? ''} papel="Contratante" />
+            <Assinatura nome={k.aprovadoPor ?? k.criadoPor ?? ''} papel="Contratante" detalhe={k.aprovadoEm && k.status !== 'reprovado' ? `aprovado em ${formatarDataHora(k.aprovadoEm)}` : undefined} />
           </div>
         </>
       )}
