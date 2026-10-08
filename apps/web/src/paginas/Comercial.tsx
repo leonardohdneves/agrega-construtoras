@@ -835,13 +835,86 @@ export function ComRelatorios() {
 }
 
 // ---------------------------------------------------------------- início do vendedor
+/** Valor estimado a faturar: entregue menos devolvido × preço, mais a bomba (os adicionais entram na hora de finalizar). */
+const estimativa = (v: Venda) => Math.round(((v.entregue - v.devolvido) * v.precoM3 + (v.bombeamento ? (v.taxaBomba ?? 0) : 0)) * 100) / 100;
+
+/** Painel do vendedor: vendas com a carga final já registrada, para finalizar ali mesmo. */
+function EntregasParaFinalizar({ vendas, aoMudar }: { vendas: Venda[]; aoMudar: () => void }) {
+  const [aberta, setAberta] = useState<Detalhe | null>(null);
+  const [abrindo, setAbrindo] = useState<string | null>(null);
+  const [aviso, setAviso] = useState('');
+  const [erro, setErro] = useState('');
+  const lista = vendas.filter((v) => v.status === 'concluida' && !v.entregaFinalizadaEm && !v.lancamentoId).sort((a, b) => a.dataEntrega.localeCompare(b.dataEntrega));
+
+  async function abrir(v: Venda) {
+    setErro('');
+    setAviso('');
+    if (aberta?.venda.id === v.id) return setAberta(null);
+    setAbrindo(v.id);
+    try {
+      setAberta(await api<Detalhe>(`/com/vendas/${v.id}`));
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setAbrindo(null);
+  }
+
+  if (!lista.length && !aviso) return null;
+  return (
+    <section className="card">
+      <div className="cartao-topo">
+        <h2>
+          Entregas para finalizar {lista.length > 0 && <span className="selo selo-aviso" style={{ marginLeft: 6 }}>{lista.length}</span>}
+        </h2>
+      </div>
+      <p className="small muted" style={{ marginTop: 0 }}>A carga final já saiu. Confira o entregue, lance os adicionais do contrato e finalize: o valor vai para Contas a receber.</p>
+      {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <ul className="lista-finalizar">
+        {lista.map((v) => (
+          <li key={v.id}>
+            <div className="linha-finalizar">
+              <div style={{ minWidth: 0 }}>
+                <Link to={`/com/vendas/${v.id}`}><b>nº {String(v.numero).padStart(4, '0')} · {v.clienteNome}</b></Link>
+                <div className="small muted">
+                  {v.obra ? `${v.obra} · ` : ''}{m3(Math.round((v.entregue - v.devolvido) * 100) / 100)} entregues de {v.tracoCodigo} · entrega {diaCurto(v.dataEntrega)}
+                </div>
+              </div>
+              <span className="mono" style={{ textAlign: 'right' }}>
+                {formatarMoeda(estimativa(v))}
+                <div className="small muted" style={{ fontFamily: 'var(--font-sans)' }}>sem adicionais</div>
+              </span>
+              <button className={`btn ${aberta?.venda.id === v.id ? 'btn-secundario' : 'btn-primario'}`} type="button" disabled={abrindo === v.id} onClick={() => abrir(v)}>
+                {aberta?.venda.id === v.id ? 'Fechar' : abrindo === v.id ? 'Abrindo…' : 'Finalizar'}
+              </button>
+            </div>
+            {aberta?.venda.id === v.id && (
+              <div className="finalizar-inline">
+                <Faturamento
+                  r={aberta}
+                  aoMudar={(a) => {
+                    setAviso(`Venda nº ${String(v.numero).padStart(4, '0')}: ${a}`);
+                    setAberta(null);
+                    aoMudar();
+                  }}
+                />
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function InicioVendedor() {
   const [vendas, setVendas] = useState<Venda[] | null>(null);
   const [rel, setRel] = useState<RespRel | null>(null);
-  useEffect(() => {
+  const carregar = useCallback(() => {
     api<{ vendas: Venda[] }>('/com/vendas').then((r) => setVendas(r.vendas)).catch(() => setVendas([]));
     api<RespRel>('/com/relatorios').then(setRel).catch(() => {});
   }, []);
+  useEffect(carregar, [carregar]);
   const hoje = hojeLocal();
   const proximas = (vendas ?? []).filter((v) => v.status === 'aprovada' && v.dataEntrega >= hoje).sort((a, b) => `${a.dataEntrega} ${a.horaEntrega ?? ''}`.localeCompare(`${b.dataEntrega} ${b.horaEntrega ?? ''}`)).slice(0, 6);
   const pendentes = (vendas ?? []).filter((v) => ['aguardando_aprovacao', 'reprovada', 'rascunho'].includes(v.status));
@@ -852,6 +925,7 @@ export function InicioVendedor() {
         <p className="muted" style={{ margin: 0 }}>Lance a venda e envie para aprovação. Aprovada, ela entra na programação da usina.</p>
         <Link to="/com/vendas/nova" className="btn btn-primario btn-bloco">Nova venda</Link>
       </div>
+      {vendas && <EntregasParaFinalizar vendas={vendas} aoMudar={carregar} />}
       {rel && (
         <div className="grade">
           <div className="card indicador"><span className="rotulo-ind">Vendido no mês</span><span className="valor-ind mono">{formatarMoeda(rel.total.valor)}</span></div>

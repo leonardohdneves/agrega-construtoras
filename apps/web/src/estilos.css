@@ -617,3 +617,15 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .lista-aniversarios .dia { font-weight: 700; color: var(--brand-orange); min-width: 22px; }
 .lista-aniversarios li.hoje { font-weight: 600; }
 .relatorio-mural { margin-top: 24px; }
+
+/* ---------- Painel do vendedor: entregas para finalizar ---------- */
+.lista-finalizar { list-style: none; margin: 0; padding: 0; display: grid; }
+.lista-finalizar > li { padding: 12px 0; border-top: 1px solid var(--border); }
+.lista-finalizar > li:first-child { border-top: 0; padding-top: 0; }
+.linha-finalizar { display: grid; grid-template-columns: 1fr auto auto; gap: 12px; align-items: center; }
+.finalizar-inline { margin-top: 12px; }
+.finalizar-inline > .card { background: var(--surface-sunken); }
+@media (max-width: 640px) {
+  .linha-finalizar { grid-template-columns: 1fr auto; }
+  .linha-finalizar .btn { grid-column: 1 / -1; }
+}
