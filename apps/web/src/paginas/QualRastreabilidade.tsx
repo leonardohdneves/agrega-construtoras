@@ -30,6 +30,7 @@ export function QualDemandas() {
   const [aviso, setAviso] = useState('');
   const [aberta, setAberta] = useState<{ id: string; modo: 'confirmar' | 'nao'; slump: string; temperatura: string; moldadoPor: string; motivo: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [ultimaConfirmada, setUltimaConfirmada] = useState<string | null>(null);
 
   const carregar = useCallback(() => {
     api<{ itens: Demanda[] }>(`/qual/demandas?de=${somarDias(hojeLocal(), -3)}&ate=${hojeLocal()}`).then((r) => setItens(r.itens)).catch((e) => setErro((e as Error).message));
@@ -47,9 +48,11 @@ export function QualDemandas() {
           corpo: { slump: aberta.slump.trim() ? lerNumero(aberta.slump) : null, temperatura: aberta.temperatura.trim() ? lerNumero(aberta.temperatura) : null, moldadoPor: aberta.moldadoPor },
         });
         setAviso(`Carga nº ${d.numero}: moldagem confirmada, ${r.cps} corpos de prova gerados.`);
+        setUltimaConfirmada(d.cargaId);
       } else {
         await api(`/qual/amostras/${d.amostraId}/nao-amostrar`, { corpo: { motivo: aberta.motivo } });
         setAviso(`Carga nº ${d.numero} marcada como não amostrada.`);
+        setUltimaConfirmada(null);
       }
       setAberta(null);
       carregar();
@@ -60,6 +63,7 @@ export function QualDemandas() {
   }
 
   const pend = (itens ?? []).filter((i) => i.status === 'pendente');
+  const moldadasHoje = (itens ?? []).filter((i) => i.status === 'ativa' && agoraLocal(new Date(i.dataHora)).slice(0, 10) === hojeLocal());
   const feitas = (itens ?? []).filter((i) => i.status !== 'pendente');
   const linha = (d: Demanda) => (
     <li key={d.amostraId} className="demanda">
@@ -89,6 +93,7 @@ export function QualDemandas() {
               </button>
             </>
           )}
+          {d.status === 'ativa' && <Link className="btn btn-link" to={`/prod/etiquetas/imprimir?ids=${d.cargaId}`}>Etiquetas</Link>}
           <Link className="btn btn-link" to={`/qual/rastreabilidade/${d.cargaId}`}>Rastrear</Link>
         </div>
       </div>
@@ -134,7 +139,19 @@ export function QualDemandas() {
         <Link className="btn btn-secundario" to="/qual/rastreabilidade">Rastrear carga</Link>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      {aviso && (
+        <div className="alerta alerta-ok" role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1 }}>{aviso}</span>
+          {ultimaConfirmada && <Link className="btn btn-secundario" to={`/prod/etiquetas/imprimir?ids=${ultimaConfirmada}`}>Imprimir etiquetas</Link>}
+        </div>
+      )}
+      {moldadasHoje.length > 0 && (
+        <div className="filtros">
+          <Link className="btn btn-secundario" to={`/prod/etiquetas/imprimir?ids=${moldadasHoje.map((i) => i.cargaId).join(',')}`}>
+            Etiquetas das cargas moldadas hoje ({moldadasHoje.length})
+          </Link>
+        </div>
+      )}
       <section className="card">
         <h2>Aguardando o laboratório {pend.length > 0 && <span className="selo selo-aviso">{pend.length}</span>}</h2>
         {!itens ? <p className="muted">Carregando…</p> : pend.length === 0 ? <p className="muted" style={{ margin: 0 }}>Nenhuma carga esperando.</p> : <ul className="lista-demandas">{pend.map(linha)}</ul>}

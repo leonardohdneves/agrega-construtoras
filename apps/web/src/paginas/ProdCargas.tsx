@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   agoraLocal,
   api,
@@ -407,6 +407,7 @@ export function NovaCarga() {
   const [opcoes, setOpcoes] = useState<OpcoesCarga | null>(null);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
+  const [ultima, setUltima] = useState<Carga | null>(null);
   const navegar = useNavigate();
   useEffect(() => {
     api<OpcoesCarga>('/prod/cargas/opcoes').then(setOpcoes).catch((e) => setErro((e as Error).message));
@@ -421,7 +422,12 @@ export function NovaCarga() {
         <Link className="btn btn-secundario" to="/prod/cargas">Cargas do dia</Link>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      {aviso && (
+        <div className="alerta alerta-ok" role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1 }}>{aviso}</span>
+          {ultima && <Link className="btn btn-secundario" to={`/prod/romaneios/imprimir?ids=${ultima.id}`}>Imprimir romaneio</Link>}
+        </div>
+      )}
       {opcoes && opcoes.tracos.length === 0 && (
         <div className="alerta alerta-aviso">Nenhum traço cadastrado. O gestor precisa cadastrar os traços em Produção › Traços.</div>
       )}
@@ -433,8 +439,9 @@ export function NovaCarga() {
             aoCancelar={() => navegar('/prod/cargas')}
             aoSalvar={(c, outra) => {
               setAviso(`Carga nº ${c.numero} registrada: ${m3(c.volume)} de ${c.tracoCodigo} no ${c.betoneiraCodigo}.`);
+              setUltima(c);
               api<OpcoesCarga>('/prod/cargas/opcoes').then(setOpcoes).catch(() => {});
-              if (!outra) navegar('/prod/cargas', { state: { aviso: `Carga nº ${c.numero} registrada.` } });
+              if (!outra) navegar('/prod/cargas', { state: { aviso: `Carga nº ${c.numero} registrada.`, cargaId: c.id } });
             }}
           />
         </div>
@@ -449,6 +456,7 @@ type Resposta = { de: string; ate: string; cargas: Carga[]; resumo: { cargas: nu
 export function Cargas() {
   const { usuario } = useSessao();
   const params = useParams();
+  const estado = useLocation().state as { aviso?: string; cargaId?: string } | null;
   const gestao = usuario?.perfil === 'dono' || usuario?.perfil === 'gestor';
   const [dia, setDia] = useState(params.dia ?? hojeLocal());
   const [dados, setDados] = useState<Resposta | null>(null);
@@ -514,6 +522,12 @@ export function Cargas() {
         <Link className="btn btn-primario" to="/prod/cargas/nova">Registrar carga</Link>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {estado?.aviso && !aviso && (
+        <div className="alerta alerta-ok" role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+          <span style={{ flex: 1 }}>{estado.aviso}</span>
+          {estado.cargaId && <Link className="btn btn-secundario" to={`/prod/romaneios/imprimir?ids=${estado.cargaId}`}>Imprimir romaneio</Link>}
+        </div>
+      )}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
 
       <div className="filtros">
@@ -667,12 +681,15 @@ export function Cargas() {
                     {c.status === 'cancelada' ? (
                       <span className="selo selo-neutro" title={c.motivoCancelamento ?? ''}>Cancelada</span>
                     ) : (
-                      podeMexer && (
+                      <>
+                      <Link className="btn btn-link" to={`/prod/romaneios/imprimir?ids=${c.id}`}>Romaneio</Link>
+                      {podeMexer && (
                         <>
                           <button className="btn btn-link" type="button" onClick={() => setEditando(c)}>Corrigir</button>
                           <button className="btn btn-link" type="button" onClick={() => { setCancelando(c); setMotivo(''); }}>Cancelar</button>
                         </>
-                      )
+                      )}
+                      </>
                     )}
                   </td>
                 </tr>

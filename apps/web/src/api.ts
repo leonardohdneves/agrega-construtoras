@@ -684,7 +684,7 @@ export type Carga = {
   operadorBombaId: string | null; operadorBombaNome: string | null; volumeBombeado: number | null; devolvido: number; documento: string | null; observacoes: string | null;
   status: 'produzida' | 'cancelada'; motivoCancelamento: string | null; registradoPor: string | null; slump: number | null;
   vendaId: string | null; vendaNumero: number | null;
-  cargaFinal?: boolean; saidaEm?: string | null; chegadaEm?: string | null; descargaEm?: string | null; slumpEntrega?: number | null; obsMotorista?: string | null;
+  cargaFinal?: boolean; amostraStatus?: 'pendente' | 'ativa' | 'nao_amostrada' | 'cancelada' | null; saidaEm?: string | null; chegadaEm?: string | null; descargaEm?: string | null; slumpEntrega?: number | null; obsMotorista?: string | null;
 };
 export type OpcoesCarga = {
   tracos: { id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null }[];

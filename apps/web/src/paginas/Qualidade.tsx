@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   agoraLocal,
   api,
@@ -39,6 +39,8 @@ export function CpsARomper() {
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [busca] = useSearchParams();
+  const [codigo, setCodigo] = useState(busca.get('cp') ?? '');
 
   const carregar = useCallback(async () => {
     try {
@@ -58,8 +60,13 @@ export function CpsARomper() {
       const k = `${c.amostraId}|${c.idade}`;
       m.set(k, [...(m.get(k) ?? []), c]);
     }
-    return [...m.values()];
-  }, [dados]);
+    const todos = [...m.values()];
+    // Código da etiqueta: carga-idade-nº (ex.: 11024-28-1). Lido pelo QR ou digitado / bipado.
+    const c = codigo.trim().replace(/^.*cp=/, '');
+    const [carga, idade] = c.split('-').map(Number);
+    if (!c || !carga) return todos;
+    return todos.filter((g) => g[0].cargaNumero === carga && (!idade || g[0].idade === idade));
+  }, [dados, codigo]);
   const converter = (v: string) => {
     const n = lerNumero(v);
     if (n === null) return null;
@@ -104,6 +111,8 @@ export function CpsARomper() {
       {atrasados > 0 && <div className="alerta alerta-aviso">{atrasados} CP(s) passaram da data. Rompa o quanto antes: fora da idade, o resultado perde o valor de controle.</div>}
 
       <div className="filtros">
+        <input className="mono" style={{ maxWidth: 220 }} placeholder="Código do CP (etiqueta)" aria-label="Código do CP" value={codigo} onChange={(e) => setCodigo(e.target.value)} />
+        {codigo && <button className="btn btn-link" type="button" onClick={() => setCodigo('')}>Ver todos</button>}
         <div className="segmentado" role="group" aria-label="Unidade">
           <button type="button" aria-pressed={modo === 'mpa'} className={modo === 'mpa' ? 'ativo' : ''} onClick={() => setModo('mpa')}>Resistência (MPa)</button>
           <button type="button" aria-pressed={modo === 'kn'} className={modo === 'kn' ? 'ativo' : ''} onClick={() => setModo('kn')}>Carga da prensa (kN)</button>
@@ -118,7 +127,9 @@ export function CpsARomper() {
         {!dados ? (
           <p className="muted">Carregando…</p>
         ) : grupos.length === 0 ? (
-          <p className="muted" style={{ margin: 0 }}>Nenhum corpo de prova para romper hoje.</p>
+          <p className="muted" style={{ margin: 0 }}>
+            {codigo.trim() ? `O CP ${codigo.trim().replace(/^.*cp=/, '')} não está entre os que vencem até hoje. Confira a data em Amostras e resultados.` : 'Nenhum corpo de prova para romper hoje.'}
+          </p>
         ) : (
           <table className="tabela">
             <thead>

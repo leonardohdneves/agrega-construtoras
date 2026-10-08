@@ -162,6 +162,7 @@ function cargaPublica(r: Record<string, any>) {
     vendaId: r.venda_id ?? null,
     vendaNumero: r.venda_numero ?? null,
     cargaFinal: !!r.carga_final,
+    amostraStatus: r.amostra_status ?? null,
     saidaEm: r.saida_em ?? null,
     chegadaEm: r.chegada_em ?? null,
     descargaEm: r.descarga_em ?? null,
@@ -172,7 +173,7 @@ function cargaPublica(r: Record<string, any>) {
 
 const SELECT_CARGA = `
   SELECT c.*, ${DIA_LOCAL('c.data_hora')} AS dia, t.codigo AS traco_codigo, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome,
-         b.codigo AS betoneira_codigo, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por, am.slump_cm, vd.numero AS venda_numero
+         b.codigo AS betoneira_codigo, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por, am.slump_cm, am.status AS amostra_status, vd.numero AS venda_numero
     FROM cargas c JOIN tracos t ON t.id = c.traco_id JOIN veiculos b ON b.id = c.betoneira_id
     LEFT JOIN clientes cl ON cl.id = c.cliente_id LEFT JOIN motoristas m ON m.id = c.motorista_id
     LEFT JOIN veiculos bo ON bo.id = c.bomba_id LEFT JOIN motoristas o ON o.id = c.operador_bomba_id
@@ -655,6 +656,92 @@ export function rotasProducao(banco: Banco) {
       });
       const r = await banco.query(`${SELECT_CARGA} WHERE c.id = $1`, [req.params.id]);
       return { carga: cargaPublica(r.rows[0]) };
+    });
+
+    // ======================= Romaneios e etiquetas =======================
+    const impressao = exigir(banco, 'dono', 'gestor', 'operador_usina', 'laboratorista');
+    function idsDe(q: string | undefined): string[] {
+      const ids = (q ?? '').split(',').map((x) => x.trim()).filter((x) => UUID.test(x));
+      if (!ids.length) throw new ErroHttp(400, 'Escolha ao menos uma carga.');
+      if (ids.length > 200) throw new ErroHttp(400, 'Escolha até 200 cargas por vez.');
+      return [...new Set(ids)];
+    }
+
+    /** Dados do documento de entrega (NBR 7212) de cada carga: concreto, transporte, composição e água na central. */
+    app.get<{ Querystring: { ids?: string } }>('/romaneios', { preHandler: usina }, async (req) => {
+      const empresaId = empresaDo(req);
+      const ids = idsDe(req.query.ids);
+      const r = await banco.query(
+        `SELECT c.*, t.codigo AS traco_codigo, t.descricao AS traco_descricao, t.fck, t.slump AS traco_slump, t.brita AS traco_brita,
+                coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, cl.razao_social AS cliente_razao, cl.cnpj_cpf AS cliente_doc, cl.telefone AS cliente_telefone,
+                b.codigo AS betoneira_codigo, b.placa AS betoneira_placa, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por,
+                v.numero AS venda_numero, v.endereco, v.contato, v.observacoes AS obs_venda
+           FROM cargas c JOIN tracos t ON t.id = c.traco_id JOIN veiculos b ON b.id = c.betoneira_id LEFT JOIN clientes cl ON cl.id = c.cliente_id
+           LEFT JOIN motoristas m ON m.id = c.motorista_id LEFT JOIN veiculos bo ON bo.id = c.bomba_id LEFT JOIN motoristas o ON o.id = c.operador_bomba_id
+           LEFT JOIN usuarios u ON u.id = c.registrado_por_id LEFT JOIN vendas v ON v.id = c.venda_id
+          WHERE c.empresa_id = $1 AND c.id = ANY($2::uuid[]) ORDER BY c.data_hora, c.numero`,
+        [empresaId, ids],
+      );
+      const comp = await banco.query(
+        `SELECT cc.carga_id, i.nome, i.tipo, i.unidade, cc.quantidade FROM cargas_consumo cc JOIN insumos i ON i.id = cc.insumo_id
+          WHERE cc.carga_id = ANY($1::uuid[])
+          ORDER BY CASE i.tipo WHEN 'cimento' THEN 1 WHEN 'areia' THEN 2 WHEN 'brita' THEN 3 WHEN 'agua' THEN 4 WHEN 'aditivo' THEN 5 ELSE 6 END, i.nome`,
+        [ids],
+      );
+      // Consumo pelo traço quando a carga foi cancelada (o consumo é zerado ao cancelar).
+      const pelos = await banco.query(
+        `SELECT c.id AS carga_id, i.nome, i.tipo, i.unidade, round(ti.quantidade * c.volume_m3, 3) AS quantidade
+           FROM cargas c JOIN tracos_itens ti ON ti.traco_id = c.traco_id JOIN insumos i ON i.id = ti.insumo_id WHERE c.id = ANY($1::uuid[])`,
+        [ids],
+      );
+      const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : (v as string | null));
+      return {
+        romaneios: r.rows.map((x) => {
+          const itens = (comp.rows.some((k) => k.carga_id === x.id) ? comp.rows : pelos.rows)
+            .filter((k) => k.carga_id === x.id)
+            .map((k) => ({ nome: k.nome as string, tipo: k.tipo as string, unidade: k.unidade as string, quantidade: Number(k.quantidade) }));
+          return {
+            id: x.id, numero: x.numero, dataHora: iso(x.data_hora), status: x.status, motivoCancelamento: x.motivo_cancelamento, volume: Number(x.volume_m3),
+            documento: x.documento, observacoes: [x.obs_venda, x.observacoes].filter(Boolean).join(' · ') || null,
+            cliente: x.cliente_nome ? { nome: x.cliente_nome, razao: x.cliente_razao, documento: x.cliente_doc, telefone: x.cliente_telefone } : null,
+            obra: x.obra, endereco: x.endereco, contato: x.contato, vendaNumero: x.venda_numero, cargaFinal: !!x.carga_final,
+            traco: { codigo: x.traco_codigo, descricao: x.traco_descricao, fck: num(x.fck), slump: x.traco_slump, brita: x.traco_brita },
+            betoneira: x.betoneira_codigo, placa: x.betoneira_placa, motorista: x.motorista_nome, bomba: x.bomba_codigo, operadorBomba: x.operador_nome,
+            volumeBombeado: num(x.volume_bombeado_m3), registradoPor: x.registrado_por,
+            composicao: itens,
+            aguaCentral: Math.round(itens.filter((k) => k.tipo === 'agua').reduce((s, k) => s + k.quantidade, 0) * 10) / 10,
+            aditivos: itens.filter((k) => k.tipo === 'aditivo').map((k) => k.nome),
+          };
+        }),
+      };
+    });
+
+    /** Etiquetas dos corpos de prova das cargas (só amostras com a moldagem confirmada). */
+    app.get<{ Querystring: { ids?: string } }>('/etiquetas', { preHandler: impressao }, async (req) => {
+      const empresaId = empresaDo(req);
+      const ids = idsDe(req.query.ids);
+      const r = await banco.query(
+        `SELECT c.id AS carga_id, c.numero AS carga_numero, cp.id, cp.idade_dias, cp.numero, cp.data_prevista, a.data_moldagem, a.status AS amostra_status,
+                t.codigo AS traco_codigo, t.fck, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, c.obra
+           FROM cargas c JOIN amostras a ON a.carga_id = c.id JOIN corpos_prova cp ON cp.amostra_id = a.id JOIN tracos t ON t.id = c.traco_id
+           LEFT JOIN clientes cl ON cl.id = c.cliente_id
+          WHERE c.empresa_id = $1 AND c.id = ANY($2::uuid[]) AND a.status = 'ativa' AND cp.situacao <> 'descartado'
+          ORDER BY c.data_hora, c.numero, cp.idade_dias, cp.numero`,
+        [empresaId, ids],
+      );
+      const semCps = await banco.query(
+        `SELECT c.numero, coalesce(a.status, 'sem_amostra') AS status FROM cargas c LEFT JOIN amostras a ON a.carga_id = c.id
+          WHERE c.empresa_id = $1 AND c.id = ANY($2::uuid[]) AND (a.status IS NULL OR a.status <> 'ativa') ORDER BY c.numero`,
+        [empresaId, ids],
+      );
+      return {
+        etiquetas: r.rows.map((x) => ({
+          id: x.id, codigo: `${x.carga_numero}-${x.idade_dias}-${x.numero}`, cargaId: x.carga_id, cargaNumero: x.carga_numero, idade: x.idade_dias, cp: x.numero,
+          dataMoldagem: x.data_moldagem instanceof Date ? x.data_moldagem.toISOString() : x.data_moldagem, dataPrevista: x.data_prevista,
+          tracoCodigo: x.traco_codigo, fck: num(x.fck), clienteNome: x.cliente_nome, obra: x.obra,
+        })),
+        semEtiqueta: semCps.rows.map((x) => ({ numero: x.numero, status: x.status })),
+      };
     });
 
     // ======================= Estoque na hora da carga =======================

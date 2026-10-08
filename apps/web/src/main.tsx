@@ -63,6 +63,7 @@ import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
 import { PaginaMinhasCargas } from './paginas/MinhasCargas';
 import { QualDemandas, QualRastreabilidade } from './paginas/QualRastreabilidade';
 import { MuralAvisos } from './paginas/Mural';
+import { ImprimirEtiquetas, ImprimirRomaneios, ProdRomaneios } from './paginas/ProdRomaneios';
 
 registerSW({ immediate: true });
 
@@ -177,6 +178,9 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="prod/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelProducao /></Protegido>} />
             <Route path="prod/escala" element={<Protegido perfis={['dono', 'gestor']}><Escala /></Protegido>} />
             <Route path="minha-producao" element={<Protegido perfis={['motorista']}><MinhaProducao /></Protegido>} />
+            <Route path="prod/romaneios" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><ProdRomaneios /></Protegido>} />
+            <Route path="prod/romaneios/imprimir" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><ImprimirRomaneios /></Protegido>} />
+            <Route path="prod/etiquetas/imprimir" element={<Protegido perfis={['dono', 'gestor', 'operador_usina', 'laboratorista']}><ImprimirEtiquetas /></Protegido>} />
             <Route path="minhas-cargas" element={<Protegido perfis={['motorista']}><PaginaMinhasCargas /></Protegido>} />
             <Route path="qual/demandas" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualDemandas /></Protegido>} />
             <Route path="qual/rastreabilidade" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualRastreabilidade /></Protegido>} />

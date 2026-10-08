@@ -56,6 +56,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Programação de entregas', para: '/prod/programacao', perfis: USINA },
       { rotulo: 'Registrar carga', para: '/prod/cargas/nova', perfis: USINA },
       { rotulo: 'Cargas', para: '/prod/cargas', perfis: USINA },
+      { rotulo: 'Romaneios e etiquetas', para: '/prod/romaneios', perfis: USINA },
       { rotulo: 'Traços', para: '/prod/tracos', perfis: USINA },
       { rotulo: 'Insumos', para: '/prod/insumos', perfis: GESTAO },
       { rotulo: 'Produção dos motoristas', para: '/prod/motoristas', perfis: GESTAO },
