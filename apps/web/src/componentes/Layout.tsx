@@ -18,6 +18,7 @@ import {
   IconeMenu,
   IconePasta,
   IconeEmpresa,
+  IconeVenda,
 } from './Icones';
 
 type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[]; soDemo?: boolean; soAdmin?: boolean; livre?: boolean };
@@ -36,18 +37,14 @@ export const MODULOS: Modulo[] = [
     itens: [{ rotulo: 'Concreteiras clientes', para: '/admin/empresas' }],
   },
   {
-    id: 'frota',
-    titulo: 'Frota',
-    icone: <IconeCaminhao />,
-    perfis: ['dono', 'gestor', 'motorista'],
+    id: 'comercial',
+    titulo: 'Comercial',
+    icone: <IconeVenda />,
+    perfis: ['dono', 'gestor', 'vendedor'],
     itens: [
-      { rotulo: 'Registrar abastecimento', para: '/abastecer' },
-      { rotulo: 'Veículos', para: '/frota/veiculos', perfis: GESTAO },
-      { rotulo: 'Motoristas', para: '/frota/motoristas', perfis: GESTAO },
-      { rotulo: 'Abastecimentos e consumo', para: '/frota/abastecimentos', perfis: GESTAO },
-      { rotulo: 'Manutenção preventiva', para: '/frota/manutencao', perfis: GESTAO },
-      { rotulo: 'Ordens de serviço', para: '/frota/os', perfis: GESTAO },
-      { rotulo: 'Relatórios', para: '/frota/relatorios', perfis: GESTAO },
+      { rotulo: 'Nova venda', para: '/com/vendas/nova' },
+      { rotulo: 'Vendas', para: '/com/vendas' },
+      { rotulo: 'Relatórios', para: '/com/relatorios' },
     ],
   },
   {
@@ -56,6 +53,7 @@ export const MODULOS: Modulo[] = [
     icone: <IconeBetoneira />,
     perfis: ['dono', 'gestor', 'operador_usina', 'motorista'],
     itens: [
+      { rotulo: 'Programação de entregas', para: '/prod/programacao', perfis: USINA },
       { rotulo: 'Registrar carga', para: '/prod/cargas/nova', perfis: USINA },
       { rotulo: 'Cargas', para: '/prod/cargas', perfis: USINA },
       { rotulo: 'Traços', para: '/prod/tracos', perfis: USINA },
@@ -66,22 +64,6 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Relatórios', para: '/prod/relatorios', perfis: GESTAO },
       { rotulo: 'Minha produção', para: '/minha-producao', perfis: ['motorista'] },
       { rotulo: 'Minha escala', para: '/minha-escala', perfis: ['motorista'] },
-    ],
-  },
-  {
-    id: 'qualidade',
-    titulo: 'Qualidade',
-    icone: <IconeFrasco />,
-    perfis: LAB,
-    itens: [
-      { rotulo: 'CPs a romper', para: '/qual/cps' },
-      { rotulo: 'Amostras e resultados', para: '/qual/amostras' },
-      { rotulo: 'Resistência e fck estimado', para: '/qual/resistencia' },
-      { rotulo: 'Laudo para o cliente', para: '/qual/laudo' },
-      { rotulo: 'Ensaios de insumos', para: '/qual/insumos' },
-      { rotulo: 'Equipamentos e calibração', para: '/qual/equipamentos' },
-      { rotulo: 'Traços', para: '/prod/tracos', perfis: ['laboratorista'] },
-      { rotulo: 'Configurações da qualidade', para: '/qual/config' },
     ],
   },
   {
@@ -116,6 +98,37 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
+    id: 'qualidade',
+    titulo: 'Qualidade',
+    icone: <IconeFrasco />,
+    perfis: LAB,
+    itens: [
+      { rotulo: 'CPs a romper', para: '/qual/cps' },
+      { rotulo: 'Amostras e resultados', para: '/qual/amostras' },
+      { rotulo: 'Resistência e fck estimado', para: '/qual/resistencia' },
+      { rotulo: 'Laudo para o cliente', para: '/qual/laudo' },
+      { rotulo: 'Ensaios de insumos', para: '/qual/insumos' },
+      { rotulo: 'Equipamentos e calibração', para: '/qual/equipamentos' },
+      { rotulo: 'Traços', para: '/prod/tracos', perfis: ['laboratorista'] },
+      { rotulo: 'Configurações da qualidade', para: '/qual/config' },
+    ],
+  },
+  {
+    id: 'frota',
+    titulo: 'Frota',
+    icone: <IconeCaminhao />,
+    perfis: ['dono', 'gestor', 'motorista'],
+    itens: [
+      { rotulo: 'Registrar abastecimento', para: '/abastecer' },
+      { rotulo: 'Veículos', para: '/frota/veiculos', perfis: GESTAO },
+      { rotulo: 'Motoristas', para: '/frota/motoristas', perfis: GESTAO },
+      { rotulo: 'Abastecimentos e consumo', para: '/frota/abastecimentos', perfis: GESTAO },
+      { rotulo: 'Manutenção preventiva', para: '/frota/manutencao', perfis: GESTAO },
+      { rotulo: 'Ordens de serviço', para: '/frota/os', perfis: GESTAO },
+      { rotulo: 'Relatórios', para: '/frota/relatorios', perfis: GESTAO },
+    ],
+  },
+  {
     id: 'gerencial',
     titulo: 'Gerencial',
     icone: <IconeGrafico />,
@@ -127,6 +140,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Relatórios gerais', para: '/ger/relatorios' },
       { rotulo: 'Indicadores', para: '/ger/indicadores' },
       { rotulo: 'Aprovações', para: '/ger/aprovacoes' },
+      { rotulo: 'Produção da equipe', para: '/ger/producao-equipe' },
     ],
   },
   {
@@ -165,7 +179,7 @@ function permitido(perfis: Perfil[] | undefined, perfil: Perfil) {
 function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: string; aoNavegar?: () => void }) {
   const { empresa, usuario } = useSessao();
   const demo = empresa?.plano === 'demonstracao';
-  // Toque (celular/tablet) abre e fecha; no computador o módulo abre ao passar o mouse.
+  // Sanfona: um clique no módulo abre os itens; outro clique fecha. O módulo da tela atual abre sozinho.
   const [aberto, setAberto] = useState<string | null>(null);
   // Módulos liberados para o usuário; dentro deles, as telas do perfil (ou todas, se o módulo foi dado a mais).
   const itemOk = (m: Modulo, i: Item) => {
@@ -178,6 +192,11 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
   const modulos = MODULOS.filter((m) => (m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || temModulo(usuario, m.id as ModuloApp)))
     .map((m) => ({ ...m, itens: m.itens.filter((i) => itemOk(m, i)) }))
     .filter((m) => m.itens.length);
+  const ehAtual = (m: Modulo) => m.itens.some((i) => i.para && (caminho === i.para || caminho.startsWith(`${i.para}/`)));
+  const idAtual = modulos.find(ehAtual)?.id ?? null;
+  useEffect(() => {
+    if (idAtual) setAberto(idAtual);
+  }, [idAtual]);
 
   return (
     <>
@@ -186,13 +205,9 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
         <span>Painel</span>
       </NavLink>
       {modulos.map((m) => {
-        const atual = m.itens.some((i) => i.para && (caminho === i.para || caminho.startsWith(`${i.para}/`)));
+        const atual = m.id === idAtual;
         return (
-          <div
-            key={m.id}
-            className={`modulo ${aberto === m.id ? 'aberto' : ''} ${atual ? 'atual' : ''}`}
-            onMouseLeave={() => setAberto((a) => (a === m.id ? null : a))}
-          >
+          <div key={m.id} className={`modulo ${aberto === m.id ? 'aberto' : ''} ${atual ? 'atual' : ''}`}>
             <button
               type="button"
               className="modulo-topo"
@@ -245,7 +260,7 @@ export function Layout() {
   const perfil = usuario.perfil;
   const gestao = perfil === 'dono' || perfil === 'gestor';
   // Quem tem módulos a mais (ou é administrador) usa o menu completo no celular.
-  const menuCompleto = gestao || !!usuario.administrador || !!usuario.modulos;
+  const menuCompleto = gestao || !!usuario.administrador || !!usuario.modulos || ['financeiro', 'administrativo', 'vendedor'].includes(perfil);
 
   async function aoSair() {
     await sair();
@@ -317,10 +332,31 @@ export function Layout() {
             <IconeBetoneira />
             Carga
           </NavLink>
+        ) : perfil === 'vendedor' ? (
+          <NavLink to="/com/vendas/nova" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeVenda />
+            Venda
+          </NavLink>
+        ) : perfil === 'financeiro' ? (
+          <NavLink to="/fin/pagar-receber" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeDinheiro />
+            Contas
+          </NavLink>
+        ) : perfil === 'administrativo' ? (
+          <NavLink to="/sup/solicitacoes" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconeCarrinho />
+            Compras
+          </NavLink>
         ) : (
           <NavLink to="/abastecer" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconeBomba />
             Abastecer
+          </NavLink>
+        )}
+        {perfil === 'vendedor' && (
+          <NavLink to="/com/vendas" end className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
+            <IconePasta />
+            Vendas
           </NavLink>
         )}
         {perfil === 'operador_usina' && (

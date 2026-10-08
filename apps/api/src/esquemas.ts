@@ -1,3 +1,4 @@
+import { PERFIS_EMPRESA } from './lib/perfis.ts';
 import { z } from 'zod';
 import { MODULOS } from './lib/modulos.ts';
 import { cnpjValido, limparCnpj } from './lib/cnpj.ts';
@@ -70,7 +71,7 @@ export const esquemaEmpresa = z.object({
 export const esquemaNovoUsuario = z.object({
   nome: texto('o nome', 2),
   email: esquemaEmail,
-  perfil: z.enum(['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista'], { message: 'Escolha o perfil.' }),
+  perfil: z.enum(PERFIS_EMPRESA, { message: 'Escolha o perfil.' }),
   senha: esquemaSenha,
   telefoneWhatsapp: opcional,
   administrador: z.boolean().optional().default(false),
@@ -80,7 +81,7 @@ export const esquemaNovoUsuario = z.object({
 export const esquemaAlterarUsuario = z
   .object({
     nome: texto('o nome', 2).optional(),
-    perfil: z.enum(['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista']).optional(),
+    perfil: z.enum(PERFIS_EMPRESA).optional(),
     ativo: z.boolean().optional(),
     telefoneWhatsapp: opcional,
     senha: esquemaSenha.optional(),

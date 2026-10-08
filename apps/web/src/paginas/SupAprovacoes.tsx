@@ -4,7 +4,7 @@ import { api, formatarDataHora, formatarMoeda, lerNumero, moedaCampo } from '../
 import type { Aprovacao, RegrasAprovacao } from '../componentes/Suprimentos';
 import { useSessao } from '../sessao';
 
-const CAMINHO_ACAO: Record<Aprovacao['tipo'], string> = { pedido: '/sup/pedidos', contrato: '/sup/contratos', medicao: '/sup/medicoes', autorizacao: '/sup/autorizacoes' };
+const CAMINHO_ACAO: Record<Aprovacao['tipo'], string> = { pedido: '/sup/pedidos', contrato: '/sup/contratos', medicao: '/sup/medicoes', autorizacao: '/sup/autorizacoes', venda: '/com/vendas' };
 
 function useAprovacoes() {
   const [dados, setDados] = useState<{ itens: Aprovacao[]; regras: RegrasAprovacao } | null>(null);
@@ -131,7 +131,7 @@ export function SupAprovacoes() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Aprovações</h1>
-          <span className="muted">{dados?.regras.texto ?? 'Pedidos de compra, contratos, medições e pagamentos que esperam aprovação.'}</span>
+          <span className="muted">{dados?.regras.texto ?? 'Vendas, pedidos de compra, contratos, medições e pagamentos que esperam aprovação.'}</span>
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
@@ -142,7 +142,7 @@ export function SupAprovacoes() {
       <form className="card form" onSubmit={salvarRegras}>
         <h2>Regras de aprovação</h2>
         <span className="small muted">
-          Padrão: o dono aprova tudo. Você pode deixar administradores aprovarem até um valor e dispensar a aprovação de valores pequenos. Todo pedido, contrato, medição e autorização enviado entra nesta fila, mesmo quando quem envia é o aprovador.
+          Padrão: o dono aprova tudo. Você pode deixar administradores aprovarem até um valor e dispensar a aprovação de valores pequenos. Todo pedido, contrato, medição e autorização enviado entra nesta fila, mesmo quando quem envia é o aprovador. As vendas do Comercial são aprovadas pelo dono ou pelo gestor, sem limite de valor.
           {!dono && ' Só o dono muda estas regras.'}
         </span>
         {erroRegras && <div className="alerta alerta-erro" role="alert">{erroRegras}</div>}

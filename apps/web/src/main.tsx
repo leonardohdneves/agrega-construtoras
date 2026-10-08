@@ -57,8 +57,13 @@ import { RelConfig } from './paginas/RelConfig';
 import { RelGerencial } from './paginas/RelGerencial';
 import { Indicadores } from './paginas/Indicadores';
 import { Conciliacao } from './paginas/Conciliacao';
+import { ComRelatorios, ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from './paginas/Comercial';
+import { ProdProgramacao } from './paginas/ProdProgramacao';
+import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
 
 registerSW({ immediate: true });
+
+const COMERCIAL: Perfil[] = ['dono', 'gestor', 'vendedor'];
 
 function Protegido({ children, perfis }: { children: ReactNode; perfis?: Perfil[] }) {
   const { carregando, usuario } = useSessao();
@@ -156,6 +161,13 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/aprovacoes" element={<Navigate to="/ger/aprovacoes" replace />} />
             <Route path="sup/catalogo" element={<Protegido perfis={['dono', 'gestor']}><SupCatalogo /></Protegido>} />
             <Route path="sup/relatorios" element={<Protegido perfis={['dono', 'gestor']}><SupRelatorios /></Protegido>} />
+            <Route path="com/vendas" element={<Protegido perfis={COMERCIAL}><ComVendas /></Protegido>} />
+            <Route path="com/vendas/nova" element={<Protegido perfis={COMERCIAL}><NovaVenda /></Protegido>} />
+            <Route path="com/vendas/:id" element={<Protegido perfis={COMERCIAL}><VendaDetalhe /></Protegido>} />
+            <Route path="com/vendas/:id/editar" element={<Protegido perfis={COMERCIAL}><EditarVenda /></Protegido>} />
+            <Route path="com/relatorios" element={<Protegido perfis={COMERCIAL}><ComRelatorios /></Protegido>} />
+            <Route path="prod/programacao" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><ProdProgramacao /></Protegido>} />
+            <Route path="ger/producao-equipe" element={<Protegido perfis={['dono', 'gestor']}><GerProducaoEquipe /></Protegido>} />
             <Route path="prod/insumos" element={<Protegido perfis={['dono', 'gestor']}><Insumos /></Protegido>} />
             <Route path="prod/motoristas" element={<Protegido perfis={['dono', 'gestor']}><ProducaoMotoristas /></Protegido>} />
             <Route path="prod/estoque" element={<Protegido perfis={['dono', 'gestor']}><Estoque /></Protegido>} />

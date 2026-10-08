@@ -5,6 +5,7 @@ import { z } from 'zod';
 import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
+import { acessaFinanceiro } from '../lib/perfis.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import {
@@ -390,6 +391,8 @@ export function rotasFinanceiro(banco: Banco) {
           WHERE c.empresa_id = $1 AND c.excluido_em IS NULL ORDER BY c.ativo DESC, c.tipo, c.nome`,
         [empresaDo(req)],
       );
+      // Quem não é do financeiro vê as contas só pelo nome (para escolher em listas), sem saldo.
+      if (!acessaFinanceiro(req.usuario!.perfil)) return { contas: r.rows.map((x) => ({ ...contaPublica(x), saldoInicial: null, saldo: null })) };
       return { contas: r.rows.map(contaPublica) };
     });
 
@@ -972,13 +975,16 @@ export function rotasFinanceiro(banco: Banco) {
           [empresaId, hojeBrasil()],
         )
       ).rows[0];
+      const ve = acessaFinanceiro(req.usuario!.perfil);
       return {
         qualidade: { cpsAtrasados: qual.cps, calibracoesVencidas: qual.calib, abaixoFck: qual.abaixo },
         estoqueBaixo,
-        saldoTotal: Math.round(contas.reduce((s, c) => s + (c.saldo ?? 0), 0) * 100) / 100,
-        contas,
-        pagar: bloco('despesa'),
-        receber: bloco('receita'),
+        // Saldos e contas: só dono e perfil Financeiro.
+        financeiroVisivel: ve,
+        saldoTotal: ve ? Math.round(contas.reduce((s, c) => s + (c.saldo ?? 0), 0) * 100) / 100 : null,
+        contas: ve ? contas : [],
+        pagar: ve ? bloco('despesa') : null,
+        receber: ve ? bloco('receita') : null,
         configurado: { planoContas: temPlano, contas: contas.length > 0 },
         notasParaConferir,
         extratoPendente,

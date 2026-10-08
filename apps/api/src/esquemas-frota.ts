@@ -73,7 +73,7 @@ export const esquemaDocumento = z.object({
 });
 export const esquemaAlterarDocumento = esquemaDocumento.partial().strict();
 
-export const FUNCOES = ['motorista', 'operador_bomba', 'motorista_operador', 'operador_usina', 'mecanico', 'laboratorista', 'administrativo', 'vendedor', 'outro'] as const;
+export const FUNCOES = ['motorista', 'operador_bomba', 'motorista_operador', 'operador_usina', 'mecanico', 'laboratorista', 'administrativo', 'vendedor', 'gestor_patio', 'outro'] as const;
 export const FUNCOES_FROTA = ['motorista', 'operador_bomba', 'motorista_operador'] as const;
 const CATEGORIAS_CNH = ['A', 'B', 'C', 'D', 'E', 'AB', 'AC', 'AD', 'AE'] as const;
 

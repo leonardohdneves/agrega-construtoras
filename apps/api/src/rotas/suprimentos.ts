@@ -1380,7 +1380,7 @@ export function rotasAprovacoes(banco: Banco) {
           WHERE a.empresa_id = $1 AND a.status = 'aguardando_aprovacao' ORDER BY a.enviado_aprovacao_em`,
         [empresaId],
       );
-      const itens: { tipo: 'pedido' | 'contrato' | 'medicao' | 'autorizacao'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string; criadoPor: string | null; link: string; podeAprovar: boolean }[] = r.rows.map((p) => ({
+      const itens: { tipo: 'pedido' | 'contrato' | 'medicao' | 'autorizacao' | 'venda'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string; criadoPor: string | null; link: string; podeAprovar: boolean }[] = r.rows.map((p) => ({
         tipo: 'pedido' as const,
         id: p.id as string,
         numero: p.numero as number,
@@ -1416,6 +1416,23 @@ export function rotasAprovacoes(banco: Banco) {
         itens.push({
           tipo: 'contrato', id: k.id, numero: k.numero, titulo: `Contrato nº ${String(k.numero).padStart(4, '0')}`, pessoa: k.fornecedor, resumo: k.objeto,
           valor: reais(valor)!, enviadoEm: k.enviado_aprovacao_em, criadoPor: k.criado_por, link: `/sup/contratos/${k.id}`, podeAprovar: podeAprovar(u, valor, regras),
+        });
+      }
+      // Vendas do Comercial: só o dono ou o gestor aprova.
+      const vds = await banco.query(
+        `SELECT v.id, v.numero, v.volume_m3, v.preco_m3_centavos, v.taxa_bomba_centavos, v.data_entrega, v.enviado_aprovacao_em, v.bombeamento, v.condicao_pagamento,
+                coalesce(cl.nome_fantasia, cl.razao_social) AS cliente, t.codigo AS traco, uv.nome AS vendedor
+           FROM vendas v JOIN clientes cl ON cl.id = v.cliente_id JOIN tracos t ON t.id = v.traco_id JOIN usuarios uv ON uv.id = v.vendedor_id
+          WHERE v.empresa_id = $1 AND v.status = 'aguardando_aprovacao' ORDER BY v.enviado_aprovacao_em`,
+        [empresaId],
+      );
+      for (const v of vds.rows) {
+        const valor = Math.round(Number(v.volume_m3) * Number(v.preco_m3_centavos)) + Number(v.taxa_bomba_centavos ?? 0);
+        const dia = (v.data_entrega instanceof Date ? v.data_entrega.toISOString() : String(v.data_entrega)).slice(0, 10).split('-').reverse().join('/');
+        itens.push({
+          tipo: 'venda', id: v.id, numero: v.numero, titulo: `Venda nº ${String(v.numero).padStart(4, '0')}`, pessoa: v.cliente,
+          resumo: `${Number(v.volume_m3).toLocaleString('pt-BR')} m³ de ${v.traco} para ${dia}${v.bombeamento ? ' · com bombeamento' : ''}${v.condicao_pagamento ? ` · ${v.condicao_pagamento}` : ''} · vendedor ${v.vendedor}`,
+          valor: reais(valor)!, enviadoEm: v.enviado_aprovacao_em, criadoPor: v.vendedor, link: `/com/vendas/${v.id}`, podeAprovar: u.perfil === 'dono' || u.perfil === 'gestor',
         });
       }
       itens.sort((x, y) => new Date(x.enviadoEm).getTime() - new Date(y.enviadoEm).getTime());

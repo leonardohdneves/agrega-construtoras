@@ -16,6 +16,8 @@ import { rotasEstoque } from './rotas/estoque.ts';
 import { rotasQualidade } from './rotas/qualidade.ts';
 import { rotasAprovacoes, rotasSuprimentos } from './rotas/suprimentos.ts';
 import { rotasContratos } from './rotas/contratos.ts';
+import { rotasComercial } from './rotas/comercial.ts';
+import { rotasProducaoEquipe } from './rotas/producao-equipe.ts';
 import { rotasCatalogo } from './rotas/catalogo.ts';
 import { rotasFinanceiro } from './rotas/financeiro.ts';
 import { rotasNotas } from './rotas/notas.ts';
@@ -97,6 +99,8 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(rotasContratos(banco), { prefix: '/api/sup' });
   await app.register(rotasCatalogo(banco), { prefix: '/api/sup' });
   await app.register(rotasAprovacoes(banco), { prefix: '/api/ger' });
+  await app.register(rotasProducaoEquipe(banco), { prefix: '/api/ger' });
+  await app.register(rotasComercial(banco), { prefix: '/api/com' });
   if (config.seedDemo) await app.register(rotasDemo(banco), { prefix: '/api/demo' });
 
   // Telas (app React já compilado). Qualquer rota que não seja /api cai no index.html.

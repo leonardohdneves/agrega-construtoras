@@ -1,3 +1,4 @@
+import { InicioVendedor } from './Comercial';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -39,9 +40,9 @@ type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: {
 type ResumoFrota = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; manutencao: ItemManutencao[]; osAbertas: number; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
 type Bloco = { quantidade: number; valor: number };
 type LadoFin = { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
-type ResumoFin = { saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin; receber: LadoFin; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number; extratoPendente: number; estoqueBaixo?: number; qualidade?: { cpsAtrasados: number; calibracoesVencidas: number; abaixoFck: number } };
+type ResumoFin = { financeiroVisivel?: boolean; saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin; receber: LadoFin; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number; extratoPendente: number; estoqueBaixo?: number; qualidade?: { cpsAtrasados: number; calibracoesVencidas: number; abaixoFck: number } };
 type CustoManut = { veiculoId: string; codigo: string; ordens: number; total: number; pecas: number };
-type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: ConsumoVeiculo[]; manut: CustoManut[]; erro: string };
+type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: ConsumoVeiculo[]; manut: CustoManut[]; erro: string; carregado?: boolean };
 
 type Aba = 'geral' | 'frota' | 'financeiro' | 'indicadores';
 const ABAS: { id: Aba; texto: string; soDono?: boolean }[] = [
@@ -105,6 +106,8 @@ const carregando = <p className="muted">Carregando…</p>;
 // ---------- Aba Geral ----------
 function AbaGeral({ d }: { d: Dados }) {
   const { frota, fin } = d;
+  // Saldos e contas só para quem pode ver (dono e perfil Financeiro).
+  const fc = fin && fin.financeiroVisivel !== false ? fin : null;
   const f = frota?.frota;
   const ativos = f ? f.disponivel + f.manutencao + f.parado : 0;
   const diesel30 = d.consumo.reduce((s, c) => s + (c.valor ?? 0), 0);
@@ -117,15 +120,15 @@ function AbaGeral({ d }: { d: Dados }) {
 
   const atencao: { chave: string; para: string; titulo: string; sub?: string; valor: string; tom: 'perigo' | 'aviso' }[] = [];
   if (fin) {
-    if (fin.notasParaConferir) atencao.push({ chave: 'notas', para: '/fin/notas?situacao=rascunho', titulo: plural(fin.notasParaConferir, 'nota fiscal para conferir', 'notas fiscais para conferir'), valor: 'Conferir', tom: 'aviso' });
-    if (fin.pagar.vencidas.quantidade) atencao.push({ chave: 'pv', para: '/fin/pagar-receber?tipo=despesa&situacao=vencidas', titulo: plural(fin.pagar.vencidas.quantidade, 'conta a pagar vencida', 'contas a pagar vencidas'), valor: formatarMoeda(fin.pagar.vencidas.valor), tom: 'perigo' });
-    if (fin.pagar.hoje.quantidade) atencao.push({ chave: 'ph', para: '/fin/pagar-receber?tipo=despesa&situacao=hoje', titulo: plural(fin.pagar.hoje.quantidade, 'conta a pagar hoje', 'contas a pagar hoje'), valor: formatarMoeda(fin.pagar.hoje.valor), tom: 'aviso' });
+    if (fc?.notasParaConferir) atencao.push({ chave: 'notas', para: '/fin/notas?situacao=rascunho', titulo: plural(fin.notasParaConferir, 'nota fiscal para conferir', 'notas fiscais para conferir'), valor: 'Conferir', tom: 'aviso' });
+    if (fc?.pagar.vencidas.quantidade) atencao.push({ chave: 'pv', para: '/fin/pagar-receber?tipo=despesa&situacao=vencidas', titulo: plural(fc.pagar.vencidas.quantidade, 'conta a pagar vencida', 'contas a pagar vencidas'), valor: formatarMoeda(fc.pagar.vencidas.valor), tom: 'perigo' });
+    if (fc?.pagar.hoje.quantidade) atencao.push({ chave: 'ph', para: '/fin/pagar-receber?tipo=despesa&situacao=hoje', titulo: plural(fc.pagar.hoje.quantidade, 'conta a pagar hoje', 'contas a pagar hoje'), valor: formatarMoeda(fc.pagar.hoje.valor), tom: 'aviso' });
     if (fin.qualidade?.abaixoFck) atencao.push({ chave: 'fck', para: '/qual/amostras', titulo: plural(fin.qualidade.abaixoFck, 'resultado abaixo do fck (60 dias)', 'resultados abaixo do fck (60 dias)'), valor: 'Analisar', tom: 'perigo' });
     if (fin.qualidade?.cpsAtrasados) atencao.push({ chave: 'cps', para: '/qual/cps', titulo: plural(fin.qualidade.cpsAtrasados, 'corpo de prova atrasado', 'corpos de prova atrasados'), valor: 'Romper', tom: 'aviso' });
     if (fin.qualidade?.calibracoesVencidas) atencao.push({ chave: 'calib', para: '/qual/equipamentos', titulo: plural(fin.qualidade.calibracoesVencidas, 'calibração vencida', 'calibrações vencidas'), valor: 'Ver', tom: 'perigo' });
     if (fin.estoqueBaixo) atencao.push({ chave: 'estoque', para: '/prod/estoque', titulo: plural(fin.estoqueBaixo, 'insumo abaixo do estoque mínimo', 'insumos abaixo do estoque mínimo'), valor: 'Ver estoque', tom: 'perigo' });
-    if (fin.extratoPendente) atencao.push({ chave: 'ofx', para: '/fin/conciliacao', titulo: plural(fin.extratoPendente, 'linha do extrato para conciliar', 'linhas do extrato para conciliar'), valor: 'Conciliar', tom: 'aviso' });
-    if (fin.receber.vencidas.quantidade) atencao.push({ chave: 'rv', para: '/fin/pagar-receber?tipo=receita&situacao=vencidas', titulo: plural(fin.receber.vencidas.quantidade, 'recebimento atrasado', 'recebimentos atrasados'), valor: formatarMoeda(fin.receber.vencidas.valor), tom: 'perigo' });
+    if (fc?.extratoPendente) atencao.push({ chave: 'ofx', para: '/fin/conciliacao', titulo: plural(fin.extratoPendente, 'linha do extrato para conciliar', 'linhas do extrato para conciliar'), valor: 'Conciliar', tom: 'aviso' });
+    if (fc?.receber.vencidas.quantidade) atencao.push({ chave: 'rv', para: '/fin/pagar-receber?tipo=receita&situacao=vencidas', titulo: plural(fc.receber.vencidas.quantidade, 'recebimento atrasado', 'recebimentos atrasados'), valor: formatarMoeda(fc.receber.vencidas.valor), tom: 'perigo' });
   }
   if (frota) {
     if (revVencidas) atencao.push({ chave: 'rev', para: '/frota/manutencao', titulo: plural(revVencidas, 'revisão vencida', 'revisões vencidas'), sub: revProximas ? `e ${plural(revProximas, 'próxima', 'próximas')}` : undefined, valor: 'Ver', tom: 'perigo' });
@@ -134,11 +137,12 @@ function AbaGeral({ d }: { d: Dados }) {
     else if (docsVencendo) atencao.push({ chave: 'dvv', para: '/?aba=frota', titulo: plural(docsVencendo, 'documento vencendo em 30 dias', 'documentos vencendo em 30 dias'), valor: 'Ver', tom: 'aviso' });
     if (frota.consumoAlto.length) atencao.push({ chave: 'ca', para: '/frota/abastecimentos', titulo: plural(frota.consumoAlto.length, 'veículo com consumo acima da média', 'veículos com consumo acima da média'), sub: frota.consumoAlto.map((c) => c.codigo).join(', '), valor: 'Ver', tom: 'aviso' });
   }
-  const resultadoMes = fin ? fin.receber.realizadoMes - fin.pagar.realizadoMes : 0;
+  const resultadoMes = fc ? fc.receber.realizadoMes - fc.pagar.realizadoMes : 0;
 
   return (
     <>
       <div className="kpis">
+        {fc && (<>
         <Kpi
           rotulo="Saldo em bancos e caixa"
           valor={fin ? formatarMoeda(fin.saldoTotal) : '—'}
@@ -160,6 +164,8 @@ function AbaGeral({ d }: { d: Dados }) {
           para="/fin/pagar-receber?tipo=receita&situacao=semana"
           tom={fin?.receber.vencidas.quantidade ? 'aviso' : undefined}
         />
+        </>)}
+        {frota && (
         <Kpi
           rotulo="Frota disponível"
           valor={f ? `${f.disponivel} de ${ativos}` : '—'}
@@ -167,11 +173,12 @@ function AbaGeral({ d }: { d: Dados }) {
           para="/frota/veiculos"
           tom={f && ativos && f.disponivel / ativos < 0.8 ? 'aviso' : undefined}
         />
+        )}
       </div>
 
       <div className="grade-larga">
         <Cartao titulo="Precisa de atenção">
-          {!frota || !fin ? (
+          {!d.carregado ? (
             carregando
           ) : atencao.length === 0 ? (
             <p className="muted" style={{ margin: 0 }}>Nada pendente. Contas, revisões e documentos em dia.</p>
@@ -185,15 +192,17 @@ function AbaGeral({ d }: { d: Dados }) {
         </Cartao>
 
         <Cartao titulo="Resumo do mês">
-          {!fin ? (
+          {!d.carregado ? (
             carregando
+          ) : !fc && !frota ? (
+            <p className="muted" style={{ margin: 0 }}>Sem resumo financeiro ou da frota para o seu perfil.</p>
           ) : (
             <ul className="linhas">
-              <Linha titulo="Recebido" valor={formatarMoeda(fin.receber.realizadoMes)} tom="ok" />
-              <Linha titulo="Pago" valor={formatarMoeda(fin.pagar.realizadoMes)} />
-              <Linha titulo="Recebido − pago" sub="caixa do mês, sem a DRE" valor={formatarMoeda(resultadoMes)} tom={resultadoMes < 0 ? 'perigo' : 'ok'} />
-              <Linha para="/frota/abastecimentos" titulo="Diesel (30 dias)" sub={`${formatarNumero(litros30)} L abastecidos`} valor={formatarMoeda(diesel30)} />
-              <Linha para="/frota/os" titulo="Manutenção (30 dias)" sub="OS concluídas" valor={formatarMoeda(manut30)} />
+              {fc && <Linha titulo="Recebido" valor={formatarMoeda(fc.receber.realizadoMes)} tom="ok" />}
+              {fc && <Linha titulo="Pago" valor={formatarMoeda(fc.pagar.realizadoMes)} />}
+              {fc && <Linha titulo="Recebido − pago" sub="caixa do mês, sem a DRE" valor={formatarMoeda(resultadoMes)} tom={resultadoMes < 0 ? 'perigo' : 'ok'} />}
+              {frota && <Linha para="/frota/abastecimentos" titulo="Diesel (30 dias)" sub={`${formatarNumero(litros30)} L abastecidos`} valor={formatarMoeda(diesel30)} />}
+              {frota && <Linha para="/frota/os" titulo="Manutenção (30 dias)" sub="OS concluídas" valor={formatarMoeda(manut30)} />}
             </ul>
           )}
         </Cartao>
@@ -541,11 +550,11 @@ function PainelGestao() {
     const erros: string[] = [];
     const [frota, fin, consumo, manut] = await Promise.all([
       frotaOk ? api<ResumoFrota>('/frota/alertas').catch((e) => (erros.push(e.message), null)) : null,
-      finOk ? api<ResumoFin>('/fin/resumo').catch((e) => (erros.push(e.message), null)) : null,
+      api<ResumoFin>('/fin/resumo').catch((e) => (erros.push(e.message), null)),
       frotaOk ? api<{ veiculos: ConsumoVeiculo[] }>('/frota/consumo?dias=30').then((r) => r.veiculos).catch(() => []) : [],
       frotaOk ? api<{ veiculos: CustoManut[] }>('/frota/custo-manutencao?dias=30').then((r) => r.veiculos).catch(() => []) : [],
     ]);
-    setD({ frota, fin, consumo, manut, erro: [...new Set(erros)].join(' ') });
+    setD({ frota, fin, consumo, manut, erro: [...new Set(erros)].join(' '), carregado: true });
   }, [frotaOk, finOk]);
   useEffect(() => {
     carregar();
@@ -568,7 +577,7 @@ function PainelGestao() {
         ))}
       </div>
       {d.erro && <div className="alerta alerta-erro" role="alert">{d.erro}</div>}
-      {aba === 'geral' && (dono || usuario?.administrador) && temModulo(usuario, 'suprimentos') && <CardAprovacoes />}
+      {aba === 'geral' && (dono || usuario?.perfil === 'gestor' || usuario?.administrador) && temModulo(usuario, 'gerencial') && <CardAprovacoes />}
       {aba === 'geral' && <AbaGeral d={d} />}
       {aba === 'frota' && <AbaFrota d={d} />}
       {aba === 'financeiro' && <AbaFinanceiro d={d} />}
@@ -639,6 +648,8 @@ export function Painel() {
         <InicioUsina />
       ) : usuario.perfil === 'laboratorista' ? (
         <InicioLaboratorio />
+      ) : usuario.perfil === 'vendedor' ? (
+        <InicioVendedor />
       ) : (
         <PainelGestao />
       )}

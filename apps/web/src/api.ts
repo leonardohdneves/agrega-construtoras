@@ -27,7 +27,7 @@ export async function api<T = any>(caminho: string, opcoes: { metodo?: string; c
   return dados as T;
 }
 
-export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista' | 'operador_usina' | 'laboratorista';
+export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista' | 'operador_usina' | 'laboratorista' | 'administrativo' | 'vendedor' | 'financeiro';
 
 export type Usuario = {
   id: string;
@@ -44,10 +44,10 @@ export type Usuario = {
   modulosEfetivos: Modulo[];
 };
 
-export const MODULOS = ['frota', 'producao', 'qualidade', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'] as const;
+export const MODULOS = ['comercial', 'producao', 'suprimentos', 'financeiro', 'qualidade', 'frota', 'gerencial', 'administrativo', 'configuracoes'] as const;
 export type Modulo = (typeof MODULOS)[number];
 export const NOMES_MODULO: Record<Modulo, string> = {
-  frota: 'Frota', producao: 'Produção', qualidade: 'Qualidade', suprimentos: 'Suprimentos', financeiro: 'Financeiro',
+  comercial: 'Comercial', frota: 'Frota', producao: 'Produção', qualidade: 'Qualidade', suprimentos: 'Suprimentos', financeiro: 'Financeiro',
   gerencial: 'Gerencial', administrativo: 'Administrativo', configuracoes: 'Configurações',
 };
 export type Impressao = { orientacao: 'retrato' | 'paisagem'; papel: 'A4' | 'Carta' | 'Oficio' };
@@ -78,6 +78,9 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   motorista: 'Motorista',
   operador_usina: 'Operador de usina',
   laboratorista: 'Laboratorista',
+  administrativo: 'Administrativo',
+  vendedor: 'Vendedor',
+  financeiro: 'Financeiro',
 };
 
 export function formatarCnpj(c: string): string {
@@ -125,7 +128,7 @@ export type DocumentoVeiculo = {
   dias: number | null;
 };
 
-export type Funcao = 'motorista' | 'operador_bomba' | 'motorista_operador' | 'operador_usina' | 'mecanico' | 'laboratorista' | 'administrativo' | 'vendedor' | 'outro';
+export type Funcao = 'motorista' | 'operador_bomba' | 'motorista_operador' | 'operador_usina' | 'mecanico' | 'laboratorista' | 'administrativo' | 'vendedor' | 'gestor_patio' | 'outro';
 export type Motorista = {
   id: string;
   nome: string;
@@ -199,6 +202,7 @@ export const NOMES_FUNCAO: Record<Funcao, string> = {
   laboratorista: 'Laboratorista',
   administrativo: 'Administrativo',
   vendedor: 'Vendedor',
+  gestor_patio: 'Gestor de pátio',
   outro: 'Outra função',
 };
 export const FUNCOES_FROTA: Funcao[] = ['motorista', 'operador_bomba', 'motorista_operador'];
@@ -678,6 +682,7 @@ export type Carga = {
   obra: string | null; betoneiraId: string; betoneiraCodigo: string; motoristaId: string | null; motoristaNome: string | null; bombaId: string | null; bombaCodigo: string | null;
   operadorBombaId: string | null; operadorBombaNome: string | null; volumeBombeado: number | null; devolvido: number; documento: string | null; observacoes: string | null;
   status: 'produzida' | 'cancelada'; motivoCancelamento: string | null; registradoPor: string | null; slump: number | null;
+  vendaId: string | null; vendaNumero: number | null;
 };
 export type OpcoesCarga = {
   tracos: { id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null }[];
@@ -686,6 +691,26 @@ export type OpcoesCarga = {
   pessoas: { id: string; nome: string; funcao: Funcao; escala: string | null }[];
   clientes: { id: string; nome: string }[];
   motoristaDaBetoneira: Record<string, string>;
+  programacao: {
+    id: string; numero: number; clienteId: string; clienteNome: string; obra: string | null; endereco: string | null; tracoId: string; tracoCodigo: string;
+    volume: number; entregue: number; saldo: number; dataEntrega: string; horaEntrega: string | null; bombeamento: boolean;
+  }[];
+};
+export type StatusVenda = 'rascunho' | 'aguardando_aprovacao' | 'aprovada' | 'reprovada' | 'concluida' | 'cancelada';
+export type Venda = {
+  id: string; numero: number; vendedorId: string; vendedorNome: string; clienteId: string; clienteNome: string; clienteTelefone: string | null;
+  obra: string | null; endereco: string | null; contato: string | null; tracoId: string; tracoCodigo: string; tracoDescricao: string | null;
+  volume: number; dataEntrega: string; horaEntrega: string | null; bombeamento: boolean; precoM3: number; taxaBomba: number | null; valorTotal: number;
+  condicaoPagamento: string | null; observacoes: string | null; status: StatusVenda; motivo: string | null; enviadoEm: string | null;
+  aprovadoPor: string | null; aprovadoEm: string | null; criadoPor: string | null; criadoEm: string; entregue: number; devolvido: number; saldo: number; cargas: number;
+};
+export const SELO_VENDA: Record<StatusVenda, { texto: string; classe: string }> = {
+  rascunho: { texto: 'Rascunho', classe: 'selo-neutro' },
+  aguardando_aprovacao: { texto: 'Aguardando aprovação', classe: 'selo-aviso' },
+  aprovada: { texto: 'Aprovada', classe: 'selo-ok' },
+  reprovada: { texto: 'Reprovada', classe: 'selo-perigo' },
+  concluida: { texto: 'Entregue', classe: 'selo-neutro' },
+  cancelada: { texto: 'Cancelada', classe: 'selo-neutro' },
 };
 export type ProducaoPessoa = {
   pessoaId: string; nome: string; funcao: Funcao; entregas: number; m3Entregue: number; valorEntregas: number; bombeamentos: number; m3Bombeado: number;

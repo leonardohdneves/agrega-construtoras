@@ -6,7 +6,7 @@ import { esquemaAlterarUsuario, esquemaNovoUsuario } from '../esquemas.ts';
 import { usuarioPublico } from '../formatos.ts';
 import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
 import { MODULOS_PADRAO } from '../lib/modulos.ts';
-import { podeGerenciarPerfil } from '../lib/perfis.ts';
+import { PERFIS_EMPRESA, podeGerenciarPerfil } from '../lib/perfis.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import type { Perfil } from '../lib/token.ts';
 import { empresaDo, exigir } from '../sessao.ts';
@@ -27,17 +27,17 @@ function normalizarModulos(perfil: Perfil, modulos: string[] | null | undefined)
 
 export function rotasUsuarios(banco: Banco) {
   return async function (app: FastifyInstance) {
-    app.get('/', { preHandler: exigir(banco, 'dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista') }, async (req) => {
+    app.get('/', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req) => {
       if (!req.usuario!.administrador && !['dono', 'gestor'].includes(req.usuario!.perfil)) throw semPermissao();
       const r = await banco.query(
         `SELECT * FROM usuarios WHERE empresa_id = $1 AND excluido_em IS NULL
-          ORDER BY ativo DESC, array_position(ARRAY['dono','gestor','operador_usina','laboratorista','motorista']::perfil[], perfil), nome`,
+          ORDER BY ativo DESC, array_position(ARRAY['dono','gestor','financeiro','administrativo','vendedor','operador_usina','laboratorista','motorista']::perfil[], perfil), nome`,
         [empresaDo(req)],
       );
       return { usuarios: r.rows.map(usuarioPublico), padrao: MODULOS_PADRAO };
     });
 
-    app.post('/', { preHandler: exigir(banco, 'dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista') }, async (req, reply) => {
+    app.post('/', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req, reply) => {
       exigirAdministrador(req);
       const d = esquemaNovoUsuario.parse(req.body);
       if (!podeGerenciarPerfil(req.usuario!.perfil, d.perfil)) throw semPermissao();
@@ -58,7 +58,7 @@ export function rotasUsuarios(banco: Banco) {
       return { usuario: usuarioPublico(novo) };
     });
 
-    app.patch<{ Params: { id: string } }>('/:id', { preHandler: exigir(banco, 'dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista') }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/:id', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req) => {
       exigirAdministrador(req);
       const d = esquemaAlterarUsuario.parse(req.body);
       const empresaId = empresaDo(req);

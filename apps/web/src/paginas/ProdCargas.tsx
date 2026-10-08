@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   agoraLocal,
   api,
@@ -34,6 +34,7 @@ type Dados = {
   slump: string;
   documento: string;
   observacoes: string;
+  vendaId: string;
 };
 
 const vazio = (): Dados => ({
@@ -52,6 +53,7 @@ const vazio = (): Dados => ({
   slump: '',
   documento: '',
   observacoes: '',
+  vendaId: '',
 });
 
 function deCarga(c: Carga): Dados {
@@ -71,11 +73,104 @@ function deCarga(c: Carga): Dados {
     slump: c.slump === null ? '' : String(c.slump).replace('.', ','),
     documento: c.documento ?? '',
     observacoes: c.observacoes ?? '',
+    vendaId: c.vendaId ?? '',
   };
 }
 
-function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesCarga; editando?: Carga; aoSalvar: (c: Carga, outra: boolean) => void; aoCancelar: () => void }) {
-  const [d, setD] = useState<Dados>(() => (editando ? deCarga(editando) : vazio()));
+type ItemEstoque = {
+  insumoId: string; nome: string; tipo: string; unidade: string; porM3: number; controlaEstoque: boolean;
+  saldo: number | null; consumo: number; restante: number | null; minimo: number | null; rendeM3: number | null; situacao: 'ok' | 'abaixo' | 'falta' | 'livre';
+};
+const UNIDADE: Record<string, string> = { kg: 'kg', L: 'L', m3: 'm³', t: 't', un: 'un' };
+const qtd = (n: number | null, u: string) => (n === null ? '—' : `${formatarNumero(n, Math.abs(n) < 100 && !Number.isInteger(n) ? 1 : 0)} ${UNIDADE[u] ?? u}`);
+
+/** Quadro abaixo dos campos: saldo de cada insumo do traço, consumo desta carga e o que sobra. */
+function QuadroEstoque({ tracoId, volume, cargaId }: { tracoId: string; volume: number; cargaId?: string }) {
+  const [itens, setItens] = useState<ItemEstoque[] | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    if (!tracoId) return;
+    const t = setTimeout(() => {
+      api<{ itens: ItemEstoque[] }>(`/prod/cargas/estoque?tracoId=${tracoId}&volume=${volume}${cargaId ? `&ignorarCarga=${cargaId}` : ''}`)
+        .then((r) => {
+          setItens(r.itens);
+          setErro('');
+        })
+        .catch((e) => setErro((e as Error).message));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [tracoId, volume, cargaId]);
+  if (!tracoId) return null;
+  const falta = itens?.filter((i) => i.situacao === 'falta') ?? [];
+  const abaixo = itens?.filter((i) => i.situacao === 'abaixo') ?? [];
+  return (
+    <section className="quadro-estoque" aria-live="polite">
+      <div className="cartao-topo">
+        <h3>Estoque dos insumos {volume > 0 ? `para ${formatarNumero(volume, Number.isInteger(volume) ? 0 : 1)} m³` : 'do traço'}</h3>
+        {falta.length > 0 ? (
+          <span className="selo selo-perigo">falta {falta.map((i) => i.nome.split(' ')[0].toLowerCase()).join(', ')}</span>
+        ) : abaixo.length > 0 ? (
+          <span className="selo selo-aviso">abaixo do mínimo</span>
+        ) : itens ? (
+          <span className="selo selo-ok">estoque ok</span>
+        ) : null}
+      </div>
+      {erro && <div className="alerta alerta-erro" role="alert" style={{ margin: 8 }}>{erro}</div>}
+      {!itens ? (
+        <p className="muted small" style={{ padding: '8px 12px', margin: 0 }}>Carregando…</p>
+      ) : itens.length === 0 ? (
+        <p className="muted small" style={{ padding: '8px 12px', margin: 0 }}>Este traço não tem insumos cadastrados.</p>
+      ) : (
+        <div className="tabela-caixa">
+          <table className="tabela tabela-compacta">
+            <thead>
+              <tr>
+                <th>Insumo</th>
+                <th style={{ textAlign: 'right' }}>Em estoque</th>
+                <th style={{ textAlign: 'right' }}>Esta carga</th>
+                <th style={{ textAlign: 'right' }}>Restante</th>
+                <th style={{ textAlign: 'right' }}>Rende</th>
+              </tr>
+            </thead>
+            <tbody>
+              {itens.map((i) => (
+                <tr key={i.insumoId} className={i.situacao === 'falta' ? 'falta' : i.situacao === 'abaixo' ? 'abaixo' : undefined}>
+                  <td>
+                    {i.nome}
+                    <div className="small muted">{qtd(i.porM3, i.unidade)}/m³</div>
+                  </td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{i.controlaEstoque ? qtd(i.saldo, i.unidade) : 'sem controle'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{qtd(i.consumo, i.unidade)}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>
+                    <b>{i.controlaEstoque ? qtd(i.restante, i.unidade) : '—'}</b>
+                    {i.situacao === 'abaixo' && i.minimo !== null && <div className="small">mínimo {qtd(i.minimo, i.unidade)}</div>}
+                    {i.situacao === 'falta' && <div className="small">falta para esta carga</div>}
+                  </td>
+                  <td className="mono" style={{ textAlign: 'right' }}>{i.rendeM3 === null ? '—' : `${formatarNumero(i.rendeM3, 1)} m³`}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function FormCarga({
+  opcoes,
+  editando,
+  vendaInicial,
+  aoSalvar,
+  aoCancelar,
+}: {
+  opcoes: OpcoesCarga;
+  editando?: Carga;
+  vendaInicial?: string | null;
+  aoSalvar: (c: Carga, outra: boolean) => void;
+  aoCancelar: () => void;
+}) {
+  const [d, setD] = useState<Dados>(() => (editando ? deCarga(editando) : comVenda(vazio(), vendaInicial ?? '')));
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const motoristas = opcoes.pessoas.filter((p) => p.funcao !== 'operador_bomba');
@@ -83,6 +178,15 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
   const ordenar = (lista: OpcoesCarga['pessoas']) =>
     [...lista].sort((a, b) => Number(!a.escala || a.escala === 'folga') - Number(!b.escala || b.escala === 'folga') || a.nome.localeCompare(b.nome, 'pt-BR'));
   const betoneira = opcoes.betoneiras.find((b) => b.id === d.betoneiraId);
+
+  /** Escolher a entrega programada preenche cliente, obra, traço, volume e bomba. */
+  function comVenda(x: Dados, vendaId: string, capacidade?: number | null): Dados {
+    const v = opcoes.programacao.find((p) => p.id === vendaId);
+    if (!v) return { ...x, vendaId: '' };
+    const vol = Math.min(v.saldo || v.volume, capacidade || 8);
+    return { ...x, vendaId, clienteId: v.clienteId, obra: v.obra ?? x.obra, tracoId: v.tracoId, volume: String(vol).replace('.', ','), comBomba: v.bombeamento || x.comBomba };
+  }
+  const vendaEscolhida = opcoes.programacao.find((p) => p.id === d.vendaId);
 
   function escolherBetoneira(id: string) {
     const sugerido = opcoes.motoristaDaBetoneira[id];
@@ -114,6 +218,7 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
         slump: d.slump.trim() ? lerNumero(d.slump) : null,
         documento: d.documento,
         observacoes: d.observacoes,
+        vendaId: d.vendaId || null,
       };
       const r = editando
         ? await api<{ carga: Carga }>(`/prod/cargas/${editando.id}`, { metodo: 'PATCH', corpo })
@@ -121,7 +226,7 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
       aoSalvar(r.carga, outra);
       if (outra) {
         // Mantém cliente, obra e traço para a próxima viagem da mesma obra.
-        setD((x) => ({ ...vazio(), tracoId: x.tracoId, clienteId: x.clienteId, obra: x.obra, comBomba: x.comBomba, bombaId: x.bombaId, operadorBombaId: x.operadorBombaId }));
+        setD((x) => ({ ...vazio(), tracoId: x.tracoId, clienteId: x.clienteId, obra: x.obra, comBomba: x.comBomba, bombaId: x.bombaId, operadorBombaId: x.operadorBombaId, vendaId: x.vendaId }));
       }
     } catch (err) {
       setErro((err as Error).message);
@@ -133,6 +238,25 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
   return (
     <form className="form" onSubmit={(e) => salvar(e)}>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {(opcoes.programacao.length > 0 || d.vendaId) && (
+        <div className="campo">
+          <label htmlFor="c-venda">Entrega programada</label>
+          <select id="c-venda" value={d.vendaId} onChange={(e) => setD((x) => comVenda(x, e.target.value, betoneira?.capacidade))}>
+            <option value="">Carga avulsa (sem programação)</option>
+            {opcoes.programacao.map((v) => (
+              <option key={v.id} value={v.id}>
+                {diaCurto(v.dataEntrega)}{v.horaEntrega ? ` ${v.horaEntrega}` : ''} · {v.clienteNome} · {v.tracoCodigo} · faltam {formatarNumero(v.saldo, Number.isInteger(v.saldo) ? 0 : 1)} de {formatarNumero(v.volume)} m³
+              </option>
+            ))}
+            {d.vendaId && !vendaEscolhida && <option value={d.vendaId}>Venda nº {editando?.vendaNumero ?? ''} (já entregue)</option>}
+          </select>
+          {vendaEscolhida && (
+            <span className="small muted">
+              Venda nº {String(vendaEscolhida.numero).padStart(4, '0')}{vendaEscolhida.endereco ? ` · ${vendaEscolhida.endereco}` : ''}{vendaEscolhida.bombeamento ? ' · com bombeamento' : ''}
+            </span>
+          )}
+        </div>
+      )}
       <div className="campos">
         <div className="campo">
           <label htmlFor="c-traco">Traço</label>
@@ -244,6 +368,8 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
         </div>
       </div>
 
+      <QuadroEstoque tracoId={d.tracoId} volume={lerNumero(d.volume) ?? 0} cargaId={editando?.id} />
+
       <div className="acoes">
         <button className="btn btn-primario" type="submit" disabled={ocupado}>
           {editando ? 'Salvar alterações' : 'Registrar carga'}
@@ -263,6 +389,7 @@ function FormCarga({ opcoes, editando, aoSalvar, aoCancelar }: { opcoes: OpcoesC
 
 // ---------------------------------------------------------------- tela de registro (celular da usina)
 export function NovaCarga() {
+  const [busca] = useSearchParams();
   const [opcoes, setOpcoes] = useState<OpcoesCarga | null>(null);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
@@ -288,9 +415,11 @@ export function NovaCarga() {
         <div className="card">
           <FormCarga
             opcoes={opcoes}
+            vendaInicial={busca.get('venda')}
             aoCancelar={() => navegar('/prod/cargas')}
             aoSalvar={(c, outra) => {
               setAviso(`Carga nº ${c.numero} registrada: ${m3(c.volume)} de ${c.tracoCodigo} no ${c.betoneiraCodigo}.`);
+              api<OpcoesCarga>('/prod/cargas/opcoes').then(setOpcoes).catch(() => {});
               if (!outra) navegar('/prod/cargas', { state: { aviso: `Carga nº ${c.numero} registrada.` } });
             }}
           />
@@ -492,6 +621,7 @@ export function Cargas() {
                   <td>
                     {c.clienteNome ?? '—'}
                     {c.obra && <div className="small muted">{c.obra}</div>}
+                    {c.vendaNumero && <div className="small muted">venda nº {String(c.vendaNumero).padStart(4, '0')}</div>}
                   </td>
                   <td>
                     <span className="mono">{c.betoneiraCodigo}</span>

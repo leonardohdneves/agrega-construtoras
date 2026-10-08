@@ -3,15 +3,25 @@ import type { Modulo, Perfil, Usuario } from './api';
 
 export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   admin_sistema: [],
-  dono: ['frota', 'producao', 'qualidade', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
-  gestor: ['frota', 'producao', 'qualidade', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
+  dono: ['comercial', 'producao', 'suprimentos', 'financeiro', 'qualidade', 'frota', 'gerencial', 'administrativo', 'configuracoes'],
+  // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
+  gestor: ['comercial', 'producao', 'suprimentos', 'qualidade', 'frota', 'gerencial', 'administrativo', 'configuracoes'],
+  financeiro: ['financeiro', 'gerencial'],
+  administrativo: ['administrativo', 'suprimentos'],
+  vendedor: ['comercial'],
   operador_usina: ['producao'],
   laboratorista: ['qualidade', 'producao'],
   motorista: ['frota', 'producao'],
 };
 
+/** Só o dono e o perfil Financeiro veem saldo bancário, contas a pagar e a receber. */
+export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'financeiro'];
+/** Perfis cujo acesso é definido só pelos módulos que têm. */
+export const PERFIS_POR_MODULO: Perfil[] = ['financeiro', 'administrativo', 'vendedor'];
+
 /** Módulo de cada tela, pelo endereço. */
 export function moduloDaPagina(caminho: string): Modulo | null {
+  if (caminho.startsWith('/com')) return 'comercial';
   if (caminho.startsWith('/frota') || caminho.startsWith('/abastecer')) return 'frota';
   if (caminho.startsWith('/prod') || caminho.startsWith('/minha-')) return 'producao';
   if (caminho.startsWith('/qual')) return 'qualidade';
@@ -33,6 +43,9 @@ export function podeAcessar(usuario: Usuario | null, perfis: Perfil[] | undefine
   const porPerfil = !perfis || perfis.includes(usuario.perfil);
   const modulo = moduloDaPagina(caminho);
   if (!modulo || usuario.perfil === 'admin_sistema') return porPerfil;
+  if (modulo === 'financeiro' && !PERFIS_FINANCEIRO.includes(usuario.perfil)) return false;
+  // O fluxo de caixa mostra saldos: só dono e Financeiro.
+  if (caminho.startsWith('/ger/fluxo') && !PERFIS_FINANCEIRO.includes(usuario.perfil)) return false;
   if (!temModulo(usuario, modulo)) return false;
-  return porPerfil || !MODULOS_PADRAO[usuario.perfil].includes(modulo);
+  return porPerfil || PERFIS_POR_MODULO.includes(usuario.perfil) || !MODULOS_PADRAO[usuario.perfil].includes(modulo);
 }

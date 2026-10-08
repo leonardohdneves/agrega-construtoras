@@ -10,7 +10,7 @@ import { gerarContasAPagar } from '../rotas/contratos.ts';
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v8';
+export const VERSAO_DEMO = 'modelo-2026-10-v9';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -108,6 +108,7 @@ const COLABORADORES: [nome: string, funcao: string, cargo: string][] = [
   ['Paulo Henrique Dias', 'mecanico', 'Mecânico'],
   ['Rita de Cássia Moura', 'administrativo', 'Assistente financeiro'],
   ['André Luiz Barros', 'vendedor', 'Vendedor externo'],
+  ['Antônio Batista', 'gestor_patio', 'Gestor de pátio'],
 ];
 
 // chave, categoria, razão social, nome fantasia, ramo, raiz do CNPJ, conta padrão
@@ -171,7 +172,7 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
   for (const t of [
     'autorizacoes_pagamento', 'medicoes_itens', 'medicoes', 'contratos_itens', 'contratos', 'pedidos_itens', 'pedidos_compra', 'cotacoes_precos', 'cotacoes_itens', 'cotacoes_fornecedores', 'cotacoes', 'solicitacoes_itens', 'solicitacoes_compra', 'catalogo_itens',
-    'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'insumos_produtos',
+    'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'vendas', 'regras_producao', 'insumos_produtos',
     'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
     'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
     'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
@@ -201,7 +202,8 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   const usuarios = (await q('SELECT id, email FROM usuarios WHERE empresa_id = $1', [e])).rows as { id: string; email: string }[];
   const usuario = (p: string) => usuarios.find((u) => u.email.startsWith(p))?.id ?? null;
   const gestor = usuario('gestor@') ?? usuario('dono@');
-  for (const [p, nome] of [['dono@', 'Roberto Almeida'], ['gestor@', 'Juliana Freitas'], ['motorista@', 'Carlos Pereira'], ['operador@', 'Sérgio Nunes'], ['laboratorio@', 'Fábio Ramos']]) {
+  for (const [p, nome] of [['dono@', 'Roberto Almeida'], ['gestor@', 'Juliana Freitas'], ['motorista@', 'Carlos Pereira'], ['operador@', 'Sérgio Nunes'], ['laboratorio@', 'Fábio Ramos'],
+    ['financeiro@', 'Rita de Cássia Moura'], ['administrativo@', 'Paulo Henrique Souza'], ['vendedor@', 'André Luiz Barros']]) {
     await q('UPDATE usuarios SET nome = $3 WHERE empresa_id = $1 AND email LIKE $2', [e, `${p}%`, nome]);
   }
   // Acessos de exemplo: a gestora é administradora; o dono é sempre administrador.
@@ -1000,6 +1002,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   await popularSuprimentos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, forn, insumo, cnpjDe, centro });
   await popularContratos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, cnpjDe, centro, banco });
   await popularCatalogo(c, e);
+  await popularComercial(c, e, hoje, { vendedor: usuario('vendedor@') ?? gestor, gestor, dono: usuario('dono@') ?? gestor });
   await q("UPDATE contratos SET enviado_aprovacao_em = criado_em, aprovado_por_id = $2, aprovado_em = criado_em + interval '3 hours' WHERE empresa_id = $1 AND status = 'vigente'", [e, usuario('dono@') ?? gestor]);
 
   // ----- saldo inicial do banco: o menor saldo diário do período fica acima de R$ 60 mil
@@ -1022,6 +1025,91 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   }
   // ...e o saldo de hoje fica perto de R$ 185 mil.
   await q('UPDATE contas_financeiras SET saldo_inicial_centavos = $2 WHERE id = $1', [banco, Math.max(cents(60000) - menor, cents(185000) - acumulado)]);
+}
+
+// ---------------------------------------------------------------- comercial e produção da equipe
+
+const PRECO_M3: Record<string, number> = { 'C20-S100-B1': 430, 'C25-S100-B1': 460, 'C30-S120-B1': 500, 'C35-S120-B1': 545, 'C25-S160-B0': 485 };
+
+async function popularComercial(c: C, e: string, hoje: string, u: { vendedor: string | null; gestor: string | null; dono: string | null }): Promise<void> {
+  const q = (sql: string, p: unknown[] = []) => c.query(sql, p);
+  const vendedor = u.vendedor!;
+  const aprovador = u.dono ?? u.gestor;
+  const tracos = Object.fromEntries((await q('SELECT codigo, id FROM tracos WHERE empresa_id = $1', [e])).rows.map((t) => [t.codigo, t.id])) as Record<string, string>;
+  const codigoDe = Object.fromEntries(Object.entries(tracos).map(([k, v]) => [v, k]));
+  let numero = 0;
+  const condicoes = ['28 dias no boleto', 'À vista no PIX', '30/60 dias', '21 dias no boleto'];
+
+  // Vendas já entregues: as cargas dos últimos 75 dias, agrupadas por cliente, obra, traço e dia.
+  const grupos = (
+    await q(
+      `SELECT c.cliente_id, c.obra, c.traco_id, (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date AS dia, min((c.data_hora AT TIME ZONE 'America/Sao_Paulo')::time) AS hora,
+              sum(c.volume_m3) AS m3, bool_or(c.bomba_id IS NOT NULL) AS bomba, array_agg(c.id) AS ids
+         FROM cargas c WHERE c.empresa_id = $1 AND c.status = 'produzida' AND c.cliente_id IS NOT NULL
+          AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date BETWEEN $2::date - 75 AND $2::date - 1
+        GROUP BY 1, 2, 3, 4 ORDER BY 4, 5`,
+      [e, hoje],
+    )
+  ).rows;
+  for (const [i, g] of grupos.entries()) {
+    numero++;
+    const dia = g.dia instanceof Date ? g.dia.toISOString().slice(0, 10) : String(g.dia).slice(0, 10);
+    // Dois terços das vendas são do vendedor; o resto, da gestora.
+    const quem = i % 3 === 2 ? (u.gestor ?? vendedor) : vendedor;
+    const preco = (PRECO_M3[codigoDe[g.traco_id]] ?? 470) + ((i * 7) % 4) * 5;
+    const v = (
+      await q(
+        `INSERT INTO vendas (empresa_id, numero, vendedor_id, cliente_id, obra, traco_id, volume_m3, data_entrega, hora_entrega, bombeamento, preco_m3_centavos, taxa_bomba_centavos,
+                             condicao_pagamento, status, enviado_aprovacao_em, aprovado_por_id, aprovado_em, criado_por_id, criado_em)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'concluida',$8::date - 2 + time '10:00',$14,$8::date - 2 + time '15:30',$3,$8::date - 2 + time '09:20') RETURNING id`,
+        [e, numero, quem, g.cliente_id, g.obra, g.traco_id, g.m3, dia, String(g.hora).slice(0, 5), g.bomba, preco * 100, g.bomba ? 65000 : null, condicoes[i % 4], aprovador],
+      )
+    ).rows[0];
+    await q('UPDATE cargas SET venda_id = $1 WHERE id = ANY($2::uuid[])', [v.id, g.ids]);
+  }
+
+  // Próximas entregas e pendências.
+  const clientes = (await q('SELECT id, razao_social FROM clientes WHERE empresa_id = $1 AND excluido_em IS NULL ORDER BY razao_social', [e])).rows as { id: string }[];
+  const cl = (i: number) => clientes[i % clientes.length].id;
+  const futuras: [dias: number, hora: string, cliente: number, obra: string, traco: string, m3: number, bomba: boolean, status: string, quem: 'v' | 'g', motivo?: string][] = [
+    [0, '07:30', 0, 'Laje do 3º pavimento · Torre B', 'C30-S120-B1', 32, true, 'aprovada', 'v'],
+    [0, '13:00', 2, 'Calçada e rampa de acesso', 'C20-S100-B1', 8, false, 'aprovada', 'g'],
+    [1, '07:00', 1, 'Fundação · blocos e baldrames', 'C25-S100-B1', 24, false, 'aprovada', 'v'],
+    [1, '14:00', 3, 'Piso do galpão 2', 'C30-S120-B1', 40, true, 'aprovada', 'v'],
+    [3, '08:00', 4, 'Pilares do térreo', 'C35-S120-B1', 16, true, 'aprovada', 'g'],
+    [2, '09:00', 5, 'Contrapiso das casas 12 a 18', 'C20-S100-B1', 18, false, 'aguardando_aprovacao', 'v'],
+    [4, '07:30', 0, 'Laje do 4º pavimento · Torre B', 'C30-S120-B1', 34, true, 'aguardando_aprovacao', 'v'],
+    [6, '08:00', 6, 'Muro de arrimo', 'C25-S160-B0', 12, true, 'rascunho', 'v'],
+    [2, '10:00', 7, 'Reservatório elevado', 'C35-S120-B1', 10, true, 'reprovada', 'v', 'Preço abaixo da tabela para fck 35. Revise para R$ 545,00/m³.'],
+  ];
+  for (const [i, f] of futuras.entries()) {
+    numero++;
+    const quem = f[8] === 'g' ? (u.gestor ?? vendedor) : vendedor;
+    const enviado = f[7] !== 'rascunho';
+    const aprovado = f[7] === 'aprovada';
+    const preco = f[9] ? 495 : PRECO_M3[f[4]] + (i % 2) * 10;
+    await q(
+      `INSERT INTO vendas (empresa_id, numero, vendedor_id, cliente_id, obra, endereco, contato, traco_id, volume_m3, data_entrega, hora_entrega, bombeamento, preco_m3_centavos,
+                           taxa_bomba_centavos, condicao_pagamento, status, motivo, enviado_aprovacao_em, aprovado_por_id, aprovado_em, criado_por_id, criado_em)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,
+               CASE WHEN $18 THEN now() - interval '1 day' + ($2 % 5) * interval '1 hour' END, $19, CASE WHEN $20 THEN now() - interval '20 hours' END, $3, now() - interval '30 hours')`,
+      [e, numero, quem, cl(f[2]), f[3], `Quadra ${100 + i * 4}, lote ${3 + i} · Palmas/TO`, `Mestre de obras · (63) 9${8100 + i * 37}-${4400 + i * 91}`, tracos[f[4]], f[5],
+        somarDias(hoje, f[0]), f[1], f[6], preco * 100, f[6] ? 65000 : null, condicoes[i % 4], f[7], f[9] ?? null, enviado, aprovado ? aprovador : null, aprovado],
+    );
+  }
+
+  // Regras de produção da equipe (vigentes desde o início da demonstração).
+  const desde = somarMeses(inicioMes(hoje), -6);
+  const regras: [string, string, string, { ate: number | null; valorM3: number }[]][] = [
+    ['operador_usina', 'usina', 'progressiva', [{ ate: 1000, valorM3: 200 }, { ate: null, valorM3: 150 }]],
+    ['gestor_patio', 'usina', 'faixa', [{ ate: 1200, valorM3: 120 }, { ate: 1800, valorM3: 140 }, { ate: null, valorM3: 160 }]],
+    ['vendedor', 'vendas', 'progressiva', [{ ate: 500, valorM3: 300 }, { ate: null, valorM3: 200 }]],
+  ];
+  for (const [funcao, base, modo, faixas] of regras) {
+    await q('INSERT INTO regras_producao (empresa_id, funcao, base, modo, faixas, vigencia, criado_por_id) VALUES ($1,$2,$3,$4,$5,$6,$7)', [
+      e, funcao, base, modo, JSON.stringify(faixas), desde, aprovador,
+    ]);
+  }
 }
 
 // ---------------------------------------------------------------- suprimentos

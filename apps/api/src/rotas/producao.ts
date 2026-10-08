@@ -8,7 +8,8 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
-import { gravarConsumoCarga } from '../lib/estoque.ts';
+import { gravarConsumoCarga, saldosEm } from '../lib/estoque.ts';
+import { atualizarSituacaoVenda, vendaPublica } from './comercial.ts';
 import { cancelarAmostraCarga, criarAmostraCarga, reprogramarAmostra } from '../lib/qualidade.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -71,6 +72,7 @@ const esquemaCarga = z.object({
   slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
   documento: texto(60),
   observacoes: texto(1000),
+  vendaId: idOpcional,
 });
 
 export function insumoPublico(r: Record<string, any>) {
@@ -156,16 +158,18 @@ function cargaPublica(r: Record<string, any>) {
     status: r.status,
     motivoCancelamento: r.motivo_cancelamento,
     registradoPor: r.registrado_por,
+    vendaId: r.venda_id ?? null,
+    vendaNumero: r.venda_numero ?? null,
   };
 }
 
 const SELECT_CARGA = `
   SELECT c.*, ${DIA_LOCAL('c.data_hora')} AS dia, t.codigo AS traco_codigo, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome,
-         b.codigo AS betoneira_codigo, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por, am.slump_cm
+         b.codigo AS betoneira_codigo, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por, am.slump_cm, vd.numero AS venda_numero
     FROM cargas c JOIN tracos t ON t.id = c.traco_id JOIN veiculos b ON b.id = c.betoneira_id
     LEFT JOIN clientes cl ON cl.id = c.cliente_id LEFT JOIN motoristas m ON m.id = c.motorista_id
     LEFT JOIN veiculos bo ON bo.id = c.bomba_id LEFT JOIN motoristas o ON o.id = c.operador_bomba_id
-    LEFT JOIN usuarios u ON u.id = c.registrado_por_id LEFT JOIN amostras am ON am.carga_id = c.id`;
+    LEFT JOIN usuarios u ON u.id = c.registrado_por_id LEFT JOIN amostras am ON am.carga_id = c.id LEFT JOIN vendas vd ON vd.id = c.venda_id`;
 
 /** Confere se os cadastros escolhidos na carga são desta empresa e do tipo certo. */
 async function validarCarga(c: Cliente, empresaId: string, d: z.infer<typeof esquemaCarga>) {
@@ -184,6 +188,11 @@ async function validarCarga(c: Cliente, empresaId: string, d: z.infer<typeof esq
   }
   if (d.clienteId && !(await c.query('SELECT 1 FROM clientes WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL', [d.clienteId, empresaId])).rowCount) {
     throw new ErroHttp(400, 'Cliente não encontrado.');
+  }
+  if (d.vendaId) {
+    const v = (await c.query('SELECT status FROM vendas WHERE id = $1 AND empresa_id = $2', [d.vendaId, empresaId])).rows[0];
+    if (!v) throw new ErroHttp(400, 'Venda da programação não encontrada.');
+    if (!['aprovada', 'concluida'].includes(v.status)) throw new ErroHttp(400, 'A venda escolhida não está aprovada.');
   }
   if ((d.devolvido ?? 0) > d.volume) throw new ErroHttp(400, 'O volume devolvido não pode passar o volume da carga.');
   if (d.volumeBombeado && d.volumeBombeado > d.volume) throw new ErroHttp(400, 'O volume bombeado não pode passar o volume da carga.');
@@ -206,6 +215,29 @@ function periodoDias(q: Record<string, string | undefined>) {
   if (ate < de) throw new ErroHttp(400, 'A data final é antes da inicial.');
   if (Date.parse(ate) - Date.parse(de) > 400 * 86_400_000) throw new ErroHttp(400, 'Escolha um período de até 13 meses.');
   return { de, ate, hoje };
+}
+
+/**
+ * Vendas aprovadas para entregar: as do período e as atrasadas que ainda têm saldo.
+ * `abertas` = só as que ainda têm saldo (para escolher na carga).
+ */
+async function programacao(c: Cliente, empresaId: string, de: string | null, ate: string | null, abertas: boolean) {
+  const r = await c.query(
+    `SELECT v.*, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, cl.telefone AS cliente_telefone, t.codigo AS traco_codigo, t.descricao AS traco_descricao,
+            uv.nome AS vendedor_nome, ua.nome AS aprovado_por,
+            coalesce((SELECT sum(x.volume_m3) FROM cargas x WHERE x.venda_id = v.id AND x.status = 'produzida'), 0) AS entregue_m3,
+            coalesce((SELECT sum(x.devolvido_m3) FROM cargas x WHERE x.venda_id = v.id AND x.status = 'produzida'), 0) AS devolvido_m3,
+            (SELECT count(*) FROM cargas x WHERE x.venda_id = v.id AND x.status = 'produzida') AS cargas
+       FROM vendas v JOIN clientes cl ON cl.id = v.cliente_id JOIN tracos t ON t.id = v.traco_id
+       JOIN usuarios uv ON uv.id = v.vendedor_id LEFT JOIN usuarios ua ON ua.id = v.aprovado_por_id
+      WHERE v.empresa_id = $1 AND v.status IN ('aprovada', 'concluida')
+        AND (CASE WHEN $4 THEN v.status = 'aprovada' AND v.data_entrega <= (now() AT TIME ZONE 'America/Sao_Paulo')::date + 7
+                  ELSE v.data_entrega BETWEEN $2::date AND $3::date OR (v.status = 'aprovada' AND v.data_entrega < $2::date) END)
+      ORDER BY v.data_entrega, v.hora_entrega NULLS LAST, v.numero
+      LIMIT 300`,
+    [empresaId, de, ate, abertas],
+  );
+  return r.rows.map(vendaPublica);
 }
 
 /** Produção (m³ e valor) de cada pessoa no período, carga a carga. */
@@ -485,6 +517,10 @@ export function rotasProducao(banco: Banco) {
           return { id: p.id, nome: p.nome, funcao: p.funcao, escala: e ? (e.folga ? 'folga' : String(e.entrada).slice(0, 5)) : null };
         }),
         clientes: clientes.rows,
+        programacao: (await programacao(banco, empresaId, null, null, true)).map((v) => ({
+          id: v.id, numero: v.numero, clienteId: v.clienteId, clienteNome: v.clienteNome, obra: v.obra, endereco: v.endereco, tracoId: v.tracoId, tracoCodigo: v.tracoCodigo,
+          volume: v.volume, entregue: v.entregue, saldo: v.saldo, dataEntrega: v.dataEntrega, horaEntrega: v.horaEntrega, bombeamento: v.bombeamento,
+        })),
         // Última pessoa de cada veículo nos últimos dias (betoneira → motorista, bomba → operador), para sugerir no formulário.
         motoristaDaBetoneira: Object.fromEntries(ultimas.rows.map((x) => [x.veiculo_id, x.pessoa_id])),
       };
@@ -538,13 +574,14 @@ export function rotasProducao(banco: Banco) {
         const x = (
           await c.query(
             `INSERT INTO cargas (empresa_id, numero, data_hora, traco_id, volume_m3, cliente_id, obra, betoneira_id, motorista_id, bomba_id, operador_bomba_id,
-                                 volume_bombeado_m3, devolvido_m3, documento, observacoes, registrado_por_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING id`,
+                                 volume_bombeado_m3, devolvido_m3, documento, observacoes, registrado_por_id, venda_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
             [empresaId, numero, dataHora, d.tracoId, d.volume, d.clienteId, d.obra, d.betoneiraId, d.motoristaId, d.bombaId, d.bombaId ? d.operadorBombaId : null,
-              d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, req.usuario!.id],
+              d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, req.usuario!.id, d.vendaId],
           )
         ).rows[0];
         await gravarConsumoCarga(c, x.id);
+        await atualizarSituacaoVenda(c, d.vendaId);
         await criarAmostraCarga(c, empresaId, x.id, dataHora, d.slump ?? null);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'cargas', entidadeId: x.id, depois: { ...d, numero } });
         return x.id as string;
@@ -573,18 +610,20 @@ export function rotasProducao(banco: Banco) {
         const atual = {
           tracoId: antes.traco_id, volume: Number(antes.volume_m3), clienteId: antes.cliente_id, obra: antes.obra, betoneiraId: antes.betoneira_id,
           motoristaId: antes.motorista_id, bombaId: antes.bomba_id, operadorBombaId: antes.operador_bomba_id, volumeBombeado: num(antes.volume_bombeado_m3),
-          devolvido: Number(antes.devolvido_m3), documento: antes.documento, observacoes: antes.observacoes,
+          devolvido: Number(antes.devolvido_m3), documento: antes.documento, observacoes: antes.observacoes, vendaId: antes.venda_id,
         };
         const d = { ...atual, ...parcial } as z.infer<typeof esquemaCarga>;
         await validarCarga(c, empresaId, d);
         const dataHora = parcial.dataHora ? dataHoraDaCarga(parcial.dataHora) : null;
         await c.query(
           `UPDATE cargas SET data_hora = coalesce($3, data_hora), traco_id = $4, volume_m3 = $5, cliente_id = $6, obra = $7, betoneira_id = $8, motorista_id = $9,
-                  bomba_id = $10, operador_bomba_id = $11, volume_bombeado_m3 = $12, devolvido_m3 = $13, documento = $14, observacoes = $15, atualizado_em = now()
+                  bomba_id = $10, operador_bomba_id = $11, volume_bombeado_m3 = $12, devolvido_m3 = $13, documento = $14, observacoes = $15, venda_id = $16, atualizado_em = now()
             WHERE id = $1 AND empresa_id = $2`,
           [antes.id, empresaId, dataHora, d.tracoId, d.volume, d.clienteId, d.obra, d.betoneiraId, d.motoristaId, d.bombaId, d.bombaId ? d.operadorBombaId : null,
-            d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes],
+            d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, d.vendaId ?? null],
         );
+        await atualizarSituacaoVenda(c, antes.venda_id);
+        if (d.vendaId !== antes.venda_id) await atualizarSituacaoVenda(c, d.vendaId);
         if (parcial.tracoId !== undefined || parcial.volume !== undefined) await gravarConsumoCarga(c, antes.id);
         if (dataHora) await reprogramarAmostra(c, antes.id, dataHora);
         if (parcial.slump !== undefined) await c.query('UPDATE amostras SET slump_cm = $2, atualizado_em = now() WHERE carga_id = $1', [antes.id, parcial.slump]);
@@ -603,10 +642,84 @@ export function rotasProducao(banco: Banco) {
         await c.query(`UPDATE cargas SET status = 'cancelada', motivo_cancelamento = $3, atualizado_em = now() WHERE id = $1 AND empresa_id = $2`, [antes.id, empresaId, motivo]);
         await gravarConsumoCarga(c, antes.id);
         await cancelarAmostraCarga(c, antes.id);
+        await atualizarSituacaoVenda(c, antes.venda_id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'cargas', entidadeId: antes.id, antes: { status: antes.status }, depois: { status: 'cancelada', motivo } });
       });
       const r = await banco.query(`${SELECT_CARGA} WHERE c.id = $1`, [req.params.id]);
       return { carga: cargaPublica(r.rows[0]) };
+    });
+
+    // ======================= Estoque na hora da carga =======================
+    /** Saldo atual de cada insumo do traço, o consumo desta carga e o que sobra depois dela. */
+    app.get<{ Querystring: { tracoId?: string; volume?: string; ignorarCarga?: string } }>('/cargas/estoque', { preHandler: usina }, async (req) => {
+      const empresaId = empresaDo(req);
+      const { tracoId } = req.query;
+      if (!tracoId || !UUID.test(tracoId)) throw new ErroHttp(400, 'Escolha o traço.');
+      const volume = Math.max(0, Number(String(req.query.volume ?? '0').replace(',', '.')) || 0);
+      const itens = (
+        await banco.query(
+          `SELECT i.id, i.nome, i.tipo, i.unidade, i.estoque_minimo, i.controla_estoque, ti.quantidade
+             FROM tracos_itens ti JOIN insumos i ON i.id = ti.insumo_id JOIN tracos t ON t.id = ti.traco_id
+            WHERE ti.traco_id = $1 AND t.empresa_id = $2 ORDER BY CASE i.tipo WHEN 'cimento' THEN 1 WHEN 'areia' THEN 2 WHEN 'brita' THEN 3 WHEN 'agua' THEN 4 WHEN 'aditivo' THEN 5 ELSE 6 END, i.nome`,
+          [tracoId, empresaId],
+        )
+      ).rows;
+      const saldos = await saldosEm(banco, empresaId, hojeBrasil());
+      // Ao corrigir uma carga, o consumo dela já está no saldo: devolve antes de recalcular.
+      const devolver = new Map<string, number>();
+      if (req.query.ignorarCarga && UUID.test(req.query.ignorarCarga)) {
+        const r = await banco.query(
+          `SELECT cc.insumo_id, cc.quantidade FROM cargas_consumo cc JOIN cargas c ON c.id = cc.carga_id WHERE cc.carga_id = $1 AND c.empresa_id = $2 AND c.status = 'produzida'`,
+          [req.query.ignorarCarga, empresaId],
+        );
+        for (const x of r.rows) devolver.set(x.insumo_id, Number(x.quantidade));
+      }
+      const r3 = (n: number) => Math.round(n * 1000) / 1000;
+      return {
+        volume,
+        itens: itens.map((i) => {
+          const controla = !!i.controla_estoque;
+          const saldo = r3((saldos.get(i.id) ?? 0) + (devolver.get(i.id) ?? 0));
+          const consumo = r3(Number(i.quantidade) * volume);
+          const restante = r3(saldo - consumo);
+          const minimo = num(i.estoque_minimo);
+          return {
+            insumoId: i.id, nome: i.nome, tipo: i.tipo, unidade: i.unidade, porM3: Number(i.quantidade), controlaEstoque: controla,
+            saldo: controla ? saldo : null, consumo, restante: controla ? restante : null, minimo,
+            // Quantos m³ deste traço o saldo ainda produz.
+            rendeM3: controla && Number(i.quantidade) > 0 ? Math.max(0, Math.floor((saldo / Number(i.quantidade)) * 10) / 10) : null,
+            situacao: !controla ? 'livre' : restante < 0 ? 'falta' : minimo !== null && restante < minimo ? 'abaixo' : 'ok',
+          };
+        }),
+      };
+    });
+
+    // ======================= Programação de entregas (vendas aprovadas no Comercial) =======================
+    app.get<{ Querystring: Record<string, string | undefined> }>('/programacao', { preHandler: usina }, async (req) => {
+      const empresaId = empresaDo(req);
+      const hoje = hojeBrasil();
+      const de = req.query.de && DATA.test(req.query.de) ? req.query.de : hoje;
+      const ate = req.query.ate && DATA.test(req.query.ate) ? req.query.ate : somarDias(de, 6);
+      if (ate < de) throw new ErroHttp(400, 'A data final é antes da inicial.');
+      return { de, ate, hoje, vendas: await programacao(banco, empresaId, de, ate, false) };
+    });
+
+    /** Encerra a entrega com saldo (cliente não quis o restante, por exemplo). */
+    app.post<{ Params: { id: string } }>('/programacao/:id/encerrar', { preHandler: gestao }, async (req) => {
+      const empresaId = empresaDo(req);
+      const { motivo } = z.object({ motivo: texto(300) }).parse(req.body ?? {});
+      await emTransacao(banco, async (c) => {
+        if (!UUID.test(req.params.id)) throw naoEncontrado('Venda');
+        const v = (await c.query('SELECT id, status FROM vendas WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
+        if (!v) throw naoEncontrado('Venda');
+        if (v.status !== 'aprovada') throw new ErroHttp(409, 'Só entregas em andamento podem ser encerradas.');
+        await c.query(
+          `UPDATE vendas SET status = 'concluida', encerrada_em = now(), encerrada_por_id = $2, motivo = coalesce($3, motivo), atualizado_em = now() WHERE id = $1`,
+          [v.id, req.usuario!.id, motivo],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'encerrar', entidade: 'vendas', entidadeId: v.id, depois: { motivo } });
+      });
+      return { ok: true };
     });
 
     // ======================= Valores de produção =======================

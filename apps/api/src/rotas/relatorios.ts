@@ -5,6 +5,7 @@ import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
 import { montarDre, type CategoriaDre } from '../lib/dre.ts';
 import { BRUTO_ZERO, calcularIndicadores, type Bruto, type Retrato } from '../lib/indicadores.ts';
+import { acessaFinanceiro } from '../lib/perfis.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { SQL_SALDO } from './financeiro.ts';
 import { periodo } from './gerencial.ts';
@@ -214,6 +215,7 @@ export function rotasRelatorios(banco: Banco) {
 
     // ======================= Administrativo =======================
     app.get<{ Querystring: Record<string, string | undefined> }>('/administrativo', async (req) => {
+      const ve = acessaFinanceiro(req.usuario!.perfil);
       const empresaId = empresaDo(req);
       const { inicio, fim, hoje } = periodo(req.query, 3);
       const p = [empresaId, inicio, fim];
@@ -228,7 +230,7 @@ export function rotasRelatorios(banco: Banco) {
              FROM fornecedores f WHERE f.empresa_id = $1 AND f.excluido_em IS NULL ORDER BY comprado DESC, nome`,
           p,
         )
-      ).rows.map((x) => ({ id: x.id, nome: x.nome, categoria: x.categoria, ramo: x.ramo, documento: x.cnpj_cpf, ativo: x.ativo, automatico: x.criado_automaticamente, notas: x.notas, comprado: reais(x.comprado), ultima: x.ultima, aPagar: reais(x.a_pagar) }));
+      ).rows.map((x) => ({ id: x.id, nome: x.nome, categoria: x.categoria, ramo: x.ramo, documento: x.cnpj_cpf, ativo: x.ativo, automatico: x.criado_automaticamente, notas: x.notas, comprado: reais(x.comprado), ultima: x.ultima, aPagar: ve ? reais(x.a_pagar) : null }));
       const clientes = (
         await banco.query(
           `SELECT c.id, coalesce(c.nome_fantasia, c.razao_social) AS nome, c.cnpj_cpf, c.cidade, c.ativo,
@@ -241,7 +243,7 @@ export function rotasRelatorios(banco: Banco) {
              FROM clientes c WHERE c.empresa_id = $1 AND c.excluido_em IS NULL ORDER BY vendido DESC, nome`,
           [...p, hoje],
         )
-      ).rows.map((x) => ({ id: x.id, nome: x.nome, documento: x.cnpj_cpf, cidade: x.cidade, ativo: x.ativo, vendido: reais(x.vendido), ultima: x.ultima, aReceber: reais(x.a_receber), vencido: reais(x.vencido) }));
+      ).rows.map((x) => ({ id: x.id, nome: x.nome, documento: x.cnpj_cpf, cidade: x.cidade, ativo: x.ativo, vendido: reais(x.vendido), ultima: x.ultima, aReceber: ve ? reais(x.a_receber) : null, vencido: ve ? reais(x.vencido) : null }));
       const colaboradores = (
         await banco.query(
           `SELECT m.id, m.nome, m.funcao, m.cargo, m.ativo, m.cnh_categoria, m.cnh_vencimento, m.data_admissao, (u.id IS NOT NULL) AS tem_login,

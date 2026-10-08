@@ -1,7 +1,7 @@
 // Regras de quem pode fazer o quê com os usuários da empresa.
 import type { Perfil } from './token.ts';
 
-export const PERFIS_EMPRESA: Perfil[] = ['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista'];
+export const PERFIS_EMPRESA = ['dono', 'gestor', 'financeiro', 'administrativo', 'vendedor', 'operador_usina', 'laboratorista', 'motorista'] as const satisfies readonly Perfil[];
 
 export const NOMES_PERFIL: Record<Perfil, string> = {
   admin_sistema: 'Administrador do sistema',
@@ -10,11 +10,15 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   motorista: 'Motorista',
   operador_usina: 'Operador de usina',
   laboratorista: 'Laboratorista',
+  administrativo: 'Administrativo',
+  vendedor: 'Vendedor',
+  financeiro: 'Financeiro',
 };
 
-/** Perfis com acesso ao módulo Financeiro. */
+/** Só o dono e o perfil Financeiro veem saldo bancário, contas a pagar e contas a receber. */
+export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'financeiro'];
 export function acessaFinanceiro(perfil: Perfil): boolean {
-  return perfil === 'dono' || perfil === 'gestor';
+  return PERFIS_FINANCEIRO.includes(perfil);
 }
 
 /** Um administrador pode criar ou alterar um usuário com o perfil `alvo`? (quem chama já é administrador) */

@@ -6,11 +6,12 @@ import { esquemaEmpresa } from '../esquemas.ts';
 import { empresaPublica } from '../formatos.ts';
 import { z } from 'zod';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { PERFIS_EMPRESA } from '../lib/perfis.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 
 export function rotasEmpresa(banco: Banco) {
   return async function (app: FastifyInstance) {
-    app.get('/', { preHandler: exigir(banco, 'dono', 'gestor', 'motorista', 'operador_usina', 'laboratorista') }, async (req) => {
+    app.get('/', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req) => {
       const r = await banco.query('SELECT * FROM empresas WHERE id = $1', [empresaDo(req)]);
       if (!r.rows[0]) throw naoEncontrado('Empresa');
       return { empresa: empresaPublica(r.rows[0]) };
@@ -36,7 +37,7 @@ export function rotasEmpresa(banco: Banco) {
       return { empresa: empresaPublica(empresa) };
     });
 
-    const TODOS = ['dono', 'gestor', 'motorista', 'operador_usina', 'laboratorista'] as const;
+    const TODOS = PERFIS_EMPRESA;
     const administrador = (req: { usuario: { administrador: boolean } | null }) => {
       if (!req.usuario?.administrador) throw new ErroHttp(403, 'Só administradores alteram a logo e a impressão.');
     };

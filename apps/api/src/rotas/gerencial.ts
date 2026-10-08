@@ -4,6 +4,8 @@ import type { Banco } from '../db.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
 import { mesesEntre, montarDre, type Aliquotas, type CategoriaDre, type Regime, type ValorDre } from '../lib/dre.ts';
+import { acessaFinanceiro } from '../lib/perfis.ts';
+import { ErroHttp } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { SQL_SALDO } from './financeiro.ts';
 
@@ -121,6 +123,7 @@ export function rotasGerencial(banco: Banco) {
 
     // ----- Fluxo de caixa: realizado por mês e projeção por semana -----
     app.get<{ Querystring: Record<string, string | undefined> }>('/fluxo', async (req) => {
+      if (!acessaFinanceiro(req.usuario!.perfil)) throw new ErroHttp(403, 'O fluxo de caixa mostra saldos e contas: só o dono e o perfil Financeiro veem.');
       const empresaId = empresaDo(req);
       const { meses, inicio, hoje } = periodo(req.query, 6);
       const semanas = Math.min(Math.max(Number(req.query.semanas) || 12, 4), 26);

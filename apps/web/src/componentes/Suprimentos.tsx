@@ -62,7 +62,7 @@ export type PedidoResumo = {
   cotacaoNumero: number | null; aprovadoPor: string | null; aprovacaoAutomatica: boolean; resumo: string | null; notas: number;
 };
 export type Aprovacao = {
-  tipo: 'pedido' | 'contrato' | 'medicao' | 'autorizacao'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string;
+  tipo: 'pedido' | 'contrato' | 'medicao' | 'autorizacao' | 'venda'; id: string; numero: number; titulo: string; pessoa: string; resumo: string | null; valor: number; enviadoEm: string;
   criadoPor: string | null; link: string; podeAprovar: boolean;
 };
 export type RegrasAprovacao = { adminAte: number | null; dispensaAte: number | null; texto: string };

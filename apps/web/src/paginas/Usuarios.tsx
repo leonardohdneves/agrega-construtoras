@@ -4,7 +4,7 @@ import { MODULOS_PADRAO } from '../acesso';
 import { useSessao } from '../sessao';
 
 type PerfilEmpresa = Exclude<Perfil, 'admin_sistema'>;
-const PERFIS: PerfilEmpresa[] = ['dono', 'gestor', 'operador_usina', 'laboratorista', 'motorista'];
+const PERFIS: PerfilEmpresa[] = ['dono', 'gestor', 'financeiro', 'administrativo', 'vendedor', 'operador_usina', 'laboratorista', 'motorista'];
 
 type Acesso = { perfil: PerfilEmpresa; administrador: boolean; padrao: boolean; modulos: Modulo[] };
 type Novo = { nome: string; email: string; senha: string; telefoneWhatsapp: string } & Acesso;
@@ -17,11 +17,12 @@ function podeGerenciar(eu: Usuario, alvo: Perfil) {
 }
 
 const DESCRICAO_MODULO: Record<Modulo, string> = {
+  comercial: 'Vendas, programação de entregas e clientes',
   frota: 'Veículos, abastecimento, manutenção e OS',
   producao: 'Cargas, traços, estoque, produção e escala',
   qualidade: 'Corpos de prova, resultados, laudos e ensaios',
   suprimentos: 'Compras, cotações, pedidos e contratos',
-  financeiro: 'Contas, lançamentos, notas e bancos',
+  financeiro: 'Saldos, contas a pagar e receber, notas e bancos (só dono e Financeiro)',
   gerencial: 'DRE, fluxo de caixa, custo por veículo e indicadores',
   administrativo: 'Clientes, fornecedores e colaboradores',
   configuracoes: 'Empresa, usuários e relatórios de uso',
@@ -66,20 +67,22 @@ function EditorAcesso({ valor, aoMudar, eu }: { valor: Acesso; aoMudar: (a: Aces
             </label>
             <div className="grupo-marcar" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6 }}>
               {MODULOS.map((m) => {
-                const marcado = valor.modulos.includes(m) || (m === 'configuracoes' && valor.administrador);
+                // Financeiro (saldos e contas) é só do dono e do perfil Financeiro.
+                const bloqueado = m === 'financeiro' && valor.perfil !== 'financeiro';
+                const marcado = !bloqueado && (valor.modulos.includes(m) || (m === 'configuracoes' && valor.administrador));
                 const extra = !MODULOS_PADRAO[valor.perfil].includes(m);
                 return (
                   <label key={m} className="marcar" style={{ alignItems: 'flex-start', margin: 0 }}>
                     <input
                       type="checkbox"
                       checked={marcado}
-                      disabled={valor.padrao || (m === 'configuracoes' && valor.administrador)}
+                      disabled={bloqueado || valor.padrao || (m === 'configuracoes' && valor.administrador)}
                       onChange={(e) => aoMudar({ ...valor, modulos: e.target.checked ? [...valor.modulos, m] : valor.modulos.filter((x) => x !== m) })}
                     />
                     <span>
                       <b>{NOMES_MODULO[m]}</b>
                       {marcado && extra && !valor.padrao && <span className="selo selo-aviso" style={{ marginLeft: 6 }}>fora do padrão</span>}
-                      <span className="small muted" style={{ display: 'block' }}>{DESCRICAO_MODULO[m]}</span>
+                      <span className="small muted" style={{ display: 'block' }}>{bloqueado ? 'Só para o perfil Financeiro (e o dono)' : DESCRICAO_MODULO[m]}</span>
                     </span>
                   </label>
                 );
