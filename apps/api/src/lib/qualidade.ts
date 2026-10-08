@@ -64,26 +64,34 @@ export function desvioPadrao(v: number[]): number | null {
   return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / (v.length - 1));
 }
 
-/** Cria a amostra e os corpos de prova de uma carga, pelas idades da configuração. */
+/**
+ * Toda carga gera a demanda da qualidade: uma amostra pendente, sem corpos de prova.
+ * O laboratório confirma a moldagem (e aí nascem os CPs) ou marca a carga como não amostrada.
+ */
 export async function criarAmostraCarga(c: Cliente, empresaId: string, cargaId: string, dataHora: string, slump: number | null, moldadoPor: string | null = null): Promise<void> {
+  await c.query(
+    `INSERT INTO amostras (empresa_id, carga_id, data_moldagem, slump_cm, moldado_por, status) VALUES ($1,$2,$3,$4,$5,'pendente')
+     ON CONFLICT (carga_id) DO UPDATE SET slump_cm = coalesce(excluded.slump_cm, amostras.slump_cm),
+       status = CASE WHEN amostras.confirmada_em IS NULL THEN 'pendente' ELSE 'ativa' END, atualizado_em = now()`,
+    [empresaId, cargaId, dataHora, slump, moldadoPor],
+  );
+}
+
+/** Cria os corpos de prova da amostra pelas idades da configuração, a partir do dia da moldagem. */
+export async function criarCorposProva(c: Cliente, empresaId: string, amostraId: string, dataMoldagem: string): Promise<number> {
   const cfg = await lerConfig(c, empresaId);
-  const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(dataHora));
-  const a = (
-    await c.query(
-      `INSERT INTO amostras (empresa_id, carga_id, data_moldagem, slump_cm, moldado_por) VALUES ($1,$2,$3,$4,$5)
-       ON CONFLICT (carga_id) DO UPDATE SET slump_cm = coalesce(excluded.slump_cm, amostras.slump_cm), status = 'ativa', atualizado_em = now()
-       RETURNING id`,
-      [empresaId, cargaId, dataHora, slump, moldadoPor],
-    )
-  ).rows[0];
+  const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(dataMoldagem));
+  let n = 0;
   for (const idade of cfg.idades) {
-    for (let n = 1; n <= cfg.cpsPorIdade; n++) {
-      await c.query(
+    for (let k = 1; k <= cfg.cpsPorIdade; k++) {
+      const r = await c.query(
         `INSERT INTO corpos_prova (empresa_id, amostra_id, idade_dias, numero, data_prevista) VALUES ($1,$2,$3,$4,$5) ON CONFLICT (amostra_id, idade_dias, numero) DO NOTHING`,
-        [empresaId, a.id, idade, n, somarDias(dia, idade)],
+        [empresaId, amostraId, idade, k, somarDias(dia, idade)],
       );
+      n += r.rowCount ?? 0;
     }
   }
+  return n;
 }
 
 /** Carga cancelada: a amostra é cancelada e os CPs que ainda não foram rompidos são descartados. */

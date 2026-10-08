@@ -7,7 +7,7 @@ import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
-import { desvioPadrao, faixaSlump, fckEstimadoTotal, lerConfig, mpaDeKn } from '../lib/qualidade.ts';
+import { criarCorposProva, desvioPadrao, faixaSlump, fckEstimadoTotal, lerConfig, mpaDeKn } from '../lib/qualidade.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -37,6 +37,7 @@ function periodoDias(q: Record<string, string | undefined>, padraoDias = 60) {
 }
 
 type LinhaAmostra = {
+  slumpEntrega?: number | null;
   amostraId: string; cargaId: string; numero: number; dataHora: string; dia: string; tracoId: string; tracoCodigo: string; fck: number | null; slumpTraco: string | null;
   faixa: [number, number] | null; volume: number; clienteId: string | null; clienteNome: string | null; obra: string | null; betoneiraCodigo: string; documento: string | null;
   slump: number | null; slumpFora: boolean | null; temperatura: number | null; moldadoPor: string | null; observacao: string | null; status: string;
@@ -68,7 +69,7 @@ async function carregarAmostras(c: Cliente, empresaId: string, filtros: { de: st
   const rows = (
     await c.query(
       `SELECT a.*, ca.id AS carga_id, ca.numero, ca.data_hora, ${DIA('ca.data_hora')} AS dia, ca.traco_id, t.codigo AS traco_codigo, t.fck, t.slump AS slump_traco,
-              ca.volume_m3, ca.cliente_id, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, ca.obra, b.codigo AS betoneira_codigo, ca.documento,
+              ca.volume_m3, ca.cliente_id, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, ca.obra, b.codigo AS betoneira_codigo, ca.documento, ca.slump_entrega_cm,
               (SELECT json_agg(json_build_object('id', cp.id, 'idade', cp.idade_dias, 'numero', cp.numero, 'previsto', cp.data_prevista, 'resistencia', cp.resistencia_mpa,
                                                  'situacao', cp.situacao, 'ruptura', cp.data_ruptura) ORDER BY cp.idade_dias, cp.numero)
                  FROM corpos_prova cp WHERE cp.amostra_id = a.id) AS cps
@@ -110,6 +111,7 @@ async function carregarAmostras(c: Cliente, empresaId: string, filtros: { de: st
         betoneiraCodigo: r.betoneira_codigo,
         documento: r.documento,
         slump,
+        slumpEntrega: num(r.slump_entrega_cm),
         slumpFora: slump === null || !faixa ? null : slump < faixa[0] || slump > faixa[1],
         temperatura: num(r.temperatura_c),
         moldadoPor: r.moldado_por,
@@ -211,8 +213,10 @@ export function rotasQualidade(banco: Banco) {
           [empresaId],
         )
       ).rows.map((x) => ({ insumoId: x.insumo_id, nome: x.nome, data: x.data, umidade: num(x.umidade_pct) }));
+      const pend = (await banco.query(`SELECT count(*)::int AS n FROM amostras a JOIN cargas ca ON ca.id = a.carga_id WHERE a.empresa_id = $1 AND a.status = 'pendente' AND ca.status = 'produzida'`, [empresaId])).rows[0].n;
       return {
         hoje,
+        pendentes: pend,
         cps: { hoje: cps.hoje, atrasados: cps.atrasados, amanha: cps.amanha },
         abaixoFck: abaixo.slice(0, 20).map((a) => ({ amostraId: a.amostraId, numero: a.numero, dia: a.dia, tracoCodigo: a.tracoCodigo, fck: a.fck, resultado: a.resultadoControle, clienteNome: a.clienteNome, obra: a.obra })),
         equipamentos: { vencidos: equip.vencidos, vencendo: equip.vencendo },
@@ -364,6 +368,93 @@ export function rotasQualidade(banco: Banco) {
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'amostras', entidadeId: antes.id, antes, depois: d });
       });
       return { ok: true };
+    });
+
+    // ======================= Demandas: cargas a amostrar =======================
+    /** Cada carga registrada vira uma demanda; o laboratório confirma a moldagem ou marca "não amostrada". */
+    app.get<{ Querystring: Record<string, string | undefined> }>('/demandas', { preHandler: qualidade }, async (req) => {
+      const empresaId = empresaDo(req);
+      const { de, ate } = periodoDias(req.query, 7);
+      const r = await banco.query(
+        `SELECT a.id, a.status, a.slump_cm, a.temperatura_c, a.moldado_por, a.observacao, a.confirmada_em, uc.nome AS confirmada_por,
+                ca.id AS carga_id, ca.numero, ca.data_hora, ca.volume_m3, ca.obra, ca.slump_entrega_cm, ca.descarga_em, t.codigo AS traco_codigo, t.fck, t.slump AS slump_traco,
+                coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, b.codigo AS betoneira_codigo, m.nome AS motorista_nome
+           FROM amostras a JOIN cargas ca ON ca.id = a.carga_id JOIN tracos t ON t.id = ca.traco_id JOIN veiculos b ON b.id = ca.betoneira_id
+           LEFT JOIN clientes cl ON cl.id = ca.cliente_id LEFT JOIN motoristas m ON m.id = ca.motorista_id LEFT JOIN usuarios uc ON uc.id = a.confirmada_por_id
+          WHERE a.empresa_id = $1 AND ca.status = 'produzida'
+            AND (a.status = 'pendente' OR ${DIA('ca.data_hora')} BETWEEN $2 AND $3)
+          ORDER BY (a.status = 'pendente') DESC, ca.data_hora DESC LIMIT 500`,
+        [empresaId, de, ate],
+      );
+      const itens = r.rows.map((x) => ({
+        amostraId: x.id, status: x.status as 'pendente' | 'ativa' | 'nao_amostrada' | 'cancelada', cargaId: x.carga_id, numero: x.numero,
+        dataHora: x.data_hora instanceof Date ? x.data_hora.toISOString() : x.data_hora, volume: Number(x.volume_m3), tracoCodigo: x.traco_codigo, fck: num(x.fck),
+        slumpTraco: x.slump_traco, clienteNome: x.cliente_nome, obra: x.obra, betoneiraCodigo: x.betoneira_codigo, motoristaNome: x.motorista_nome,
+        slump: num(x.slump_cm), slumpEntrega: num(x.slump_entrega_cm), temperatura: num(x.temperatura_c), moldadoPor: x.moldado_por, observacao: x.observacao,
+        confirmadaEm: x.confirmada_em, confirmadaPor: x.confirmada_por, entregue: !!x.descarga_em,
+      }));
+      return { de, ate, itens, pendentes: itens.filter((i) => i.status === 'pendente').length };
+    });
+
+    app.post<{ Params: { id: string } }>('/amostras/:id/confirmar', { preHandler: qualidade }, async (req) => {
+      const d = z
+        .object({
+          dataMoldagem: z.string().optional().nullable(),
+          slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
+          temperatura: decimal('Temperatura inválida.').nullable().optional(),
+          moldadoPor: texto(80),
+          observacao: texto(300),
+        })
+        .parse(req.body ?? {});
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Amostra');
+      const cps = await emTransacao(banco, async (c) => {
+        const a = (await c.query('SELECT a.*, ca.data_hora FROM amostras a JOIN cargas ca ON ca.id = a.carga_id WHERE a.id = $1 AND a.empresa_id = $2 FOR UPDATE OF a', [req.params.id, empresaId])).rows[0];
+        if (!a) throw naoEncontrado('Amostra');
+        if (a.status !== 'pendente' && a.status !== 'nao_amostrada') throw new ErroHttp(409, 'Esta amostra já foi confirmada.');
+        const quando = d.dataMoldagem ? new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(d.dataMoldagem) ? d.dataMoldagem : `${d.dataMoldagem}-03:00`) : new Date(a.data_hora);
+        if (Number.isNaN(quando.getTime())) throw new ErroHttp(400, 'Data da moldagem inválida.');
+        await c.query(
+          `UPDATE amostras SET status = 'ativa', data_moldagem = $2, slump_cm = coalesce($3, slump_cm), temperatura_c = coalesce($4, temperatura_c),
+                  moldado_por = coalesce($5, moldado_por, $7), observacao = $6, confirmada_em = now(), confirmada_por_id = $8, atualizado_em = now() WHERE id = $1`,
+          [a.id, quando.toISOString(), d.slump ?? null, d.temperatura ?? null, d.moldadoPor, d.observacao, req.usuario!.nome, req.usuario!.id],
+        );
+        const n = await criarCorposProva(c, empresaId, a.id, quando.toISOString());
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'confirmar', entidade: 'amostras', entidadeId: a.id, depois: { ...d, cps: n } });
+        return n;
+      });
+      return { ok: true, cps };
+    });
+
+    app.post<{ Params: { id: string } }>('/amostras/:id/nao-amostrar', { preHandler: qualidade }, async (req) => {
+      const { motivo } = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo.').max(300) }).parse(req.body ?? {});
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Amostra');
+      await emTransacao(banco, async (c) => {
+        const a = (await c.query('SELECT * FROM amostras WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
+        if (!a) throw naoEncontrado('Amostra');
+        if (a.status !== 'pendente') throw new ErroHttp(409, 'Só demandas pendentes podem ser marcadas como não amostradas.');
+        await c.query(`UPDATE amostras SET status = 'nao_amostrada', observacao = $2, confirmada_em = now(), confirmada_por_id = $3, atualizado_em = now() WHERE id = $1`, [a.id, motivo, req.usuario!.id]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'nao_amostrar', entidade: 'amostras', entidadeId: a.id, depois: { motivo } });
+      });
+      return { ok: true };
+    });
+
+    // ======================= Rastreabilidade da carga =======================
+    /** Busca pela número da carga. */
+    app.get<{ Querystring: { numero?: string } }>('/rastreabilidade', { preHandler: qualidade }, async (req) => {
+      const empresaId = empresaDo(req);
+      const n = Number(req.query.numero);
+      if (!Number.isInteger(n) || n <= 0) throw new ErroHttp(400, 'Informe o número da carga.');
+      const r = (await banco.query('SELECT id FROM cargas WHERE empresa_id = $1 AND numero = $2', [empresaId, n])).rows[0];
+      if (!r) throw new ErroHttp(404, `Carga nº ${n} não encontrada.`);
+      return montarRastreabilidade(banco, empresaId, r.id);
+    });
+
+    app.get<{ Params: { cargaId: string } }>('/rastreabilidade/:cargaId', { preHandler: qualidade }, async (req) => {
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.cargaId)) throw naoEncontrado('Carga');
+      return montarRastreabilidade(banco, empresaId, req.params.cargaId);
     });
 
     // ======================= Resistência e fck estimado =======================
@@ -595,5 +686,114 @@ export function rotasQualidade(banco: Banco) {
       });
       return { ok: true };
     });
+  };
+}
+
+/** Linha do tempo da carga: venda → aprovação → carga → saída/chegada/descarga → amostra → CPs → resultados → conformidade. */
+export async function montarRastreabilidade(c: Cliente, empresaId: string, cargaId: string) {
+  const ca = (
+    await c.query(
+      `SELECT ca.*, t.codigo AS traco_codigo, t.descricao AS traco_descricao, t.fck, t.slump AS slump_traco, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome,
+              b.codigo AS betoneira_codigo, b.placa AS betoneira_placa, m.nome AS motorista_nome, bo.codigo AS bomba_codigo, o.nome AS operador_nome, u.nome AS registrado_por
+         FROM cargas ca JOIN tracos t ON t.id = ca.traco_id JOIN veiculos b ON b.id = ca.betoneira_id LEFT JOIN clientes cl ON cl.id = ca.cliente_id
+         LEFT JOIN motoristas m ON m.id = ca.motorista_id LEFT JOIN veiculos bo ON bo.id = ca.bomba_id LEFT JOIN motoristas o ON o.id = ca.operador_bomba_id
+         LEFT JOIN usuarios u ON u.id = ca.registrado_por_id
+        WHERE ca.id = $1 AND ca.empresa_id = $2`,
+      [cargaId, empresaId],
+    )
+  ).rows[0];
+  if (!ca) throw naoEncontrado('Carga');
+  const venda = ca.venda_id
+    ? (
+        await c.query(
+          `SELECT v.numero, v.status, v.criado_em, v.enviado_aprovacao_em, v.aprovado_em, v.volume_m3, v.data_entrega, uv.nome AS vendedor, ua.nome AS aprovado_por
+             FROM vendas v JOIN usuarios uv ON uv.id = v.vendedor_id LEFT JOIN usuarios ua ON ua.id = v.aprovado_por_id WHERE v.id = $1`,
+          [ca.venda_id],
+        )
+      ).rows[0]
+    : null;
+  const consumo = (
+    await c.query(
+      `SELECT i.nome, i.unidade, cc.quantidade FROM cargas_consumo cc JOIN insumos i ON i.id = cc.insumo_id WHERE cc.carga_id = $1
+        ORDER BY CASE i.tipo WHEN 'cimento' THEN 1 WHEN 'areia' THEN 2 WHEN 'brita' THEN 3 WHEN 'agua' THEN 4 ELSE 5 END, i.nome`,
+      [cargaId],
+    )
+  ).rows.map((x) => ({ nome: x.nome, unidade: x.unidade, quantidade: Number(x.quantidade) }));
+  const am = (await c.query('SELECT a.*, u.nome AS confirmada_por FROM amostras a LEFT JOIN usuarios u ON u.id = a.confirmada_por_id WHERE a.carga_id = $1', [cargaId])).rows[0] ?? null;
+  const cps = am
+    ? (
+        await c.query(
+          `SELECT cp.idade_dias, cp.numero, cp.data_prevista, cp.data_ruptura, cp.resistencia_mpa, cp.situacao, cp.observacao, u.nome AS rompido_por
+             FROM corpos_prova cp LEFT JOIN usuarios u ON u.id = cp.rompido_por_id WHERE cp.amostra_id = $1 ORDER BY cp.idade_dias, cp.numero`,
+          [am.id],
+        )
+      ).rows
+    : [];
+  const cfg = await lerConfig(c, empresaId);
+  const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : (v as string | null));
+  const porIdade = new Map<number, number | null>();
+  for (const cp of cps) if (cp.situacao === 'rompido' && cp.resistencia_mpa !== null) porIdade.set(cp.idade_dias, Math.max(porIdade.get(cp.idade_dias) ?? 0, Number(cp.resistencia_mpa)));
+  const controle = porIdade.get(cfg.idadeControle) ?? null;
+  const fck = num(ca.fck);
+  const faixa = faixaSlump(ca.slump_traco);
+  const fora = (v: number | null) => (v === null || !faixa ? null : v < faixa[0] || v > faixa[1]);
+  type Evento = { quando: string | null; etapa: string; titulo: string; detalhe: string | null; situacao: 'ok' | 'aviso' | 'perigo' | 'pendente' };
+  const ev: Evento[] = [];
+  if (venda) {
+    ev.push({ quando: iso(venda.criado_em), etapa: 'venda', titulo: `Venda nº ${String(venda.numero).padStart(4, '0')} lançada`, detalhe: `por ${venda.vendedor} · ${Number(venda.volume_m3).toLocaleString('pt-BR')} m³ para ${String(venda.data_entrega).split('-').reverse().join('/')}`, situacao: 'ok' });
+    if (venda.aprovado_em) ev.push({ quando: iso(venda.aprovado_em), etapa: 'venda', titulo: 'Venda aprovada', detalhe: venda.aprovado_por ? `por ${venda.aprovado_por}` : null, situacao: 'ok' });
+  }
+  ev.push({
+    quando: iso(ca.criado_em), etapa: 'usina', titulo: `Carga nº ${ca.numero} registrada`,
+    detalhe: `${Number(ca.volume_m3).toLocaleString('pt-BR')} m³ de ${ca.traco_codigo} · ${ca.betoneira_codigo}${ca.motorista_nome ? ` · ${ca.motorista_nome}` : ''}${ca.registrado_por ? ` · por ${ca.registrado_por}` : ''}${ca.carga_final ? ' · carga final da venda' : ''}`,
+    situacao: ca.status === 'cancelada' ? 'perigo' : 'ok',
+  });
+  const s1 = num(am?.slump_cm);
+  if (s1 !== null) ev.push({ quando: iso(ca.data_hora), etapa: 'usina', titulo: `Slump na usina: ${s1.toLocaleString('pt-BR')} cm`, detalhe: faixa ? `faixa do traço ${faixa[0]} a ${faixa[1]} cm` : null, situacao: fora(s1) ? 'aviso' : 'ok' });
+  ev.push({ quando: iso(ca.saida_em) ?? iso(ca.data_hora), etapa: 'transporte', titulo: 'Saída da usina', detalhe: ca.saida_em ? 'confirmada pelo motorista' : 'hora da carga', situacao: 'ok' });
+  ev.push({ quando: iso(ca.chegada_em), etapa: 'transporte', titulo: 'Chegada na obra', detalhe: ca.obra ?? ca.cliente_nome, situacao: ca.chegada_em ? 'ok' : 'pendente' });
+  const s2 = num(ca.slump_entrega_cm);
+  ev.push({
+    quando: iso(ca.descarga_em), etapa: 'transporte', titulo: 'Descarga concluída',
+    detalhe: [s2 !== null ? `slump na obra ${s2.toLocaleString('pt-BR')} cm` : null, Number(ca.devolvido_m3) > 0 ? `voltou ${Number(ca.devolvido_m3).toLocaleString('pt-BR')} m³` : null, ca.obs_motorista].filter(Boolean).join(' · ') || null,
+    situacao: !ca.descarga_em ? 'pendente' : fora(s2) || Number(ca.devolvido_m3) > 0 ? 'aviso' : 'ok',
+  });
+  if (am) {
+    if (am.status === 'pendente') ev.push({ quando: null, etapa: 'qualidade', titulo: 'Amostra aguardando o laboratório', detalhe: 'O laboratório confirma a moldagem dos corpos de prova.', situacao: 'pendente' });
+    else if (am.status === 'nao_amostrada') ev.push({ quando: iso(am.confirmada_em), etapa: 'qualidade', titulo: 'Carga não amostrada', detalhe: [am.observacao, am.confirmada_por ? `por ${am.confirmada_por}` : null].filter(Boolean).join(' · '), situacao: 'aviso' });
+    else if (am.status === 'cancelada') ev.push({ quando: iso(am.atualizado_em), etapa: 'qualidade', titulo: 'Amostra cancelada com a carga', detalhe: null, situacao: 'perigo' });
+    else {
+      ev.push({ quando: iso(am.data_moldagem), etapa: 'qualidade', titulo: `Moldagem de ${cps.length} corpos de prova`, detalhe: [am.moldado_por ? `por ${am.moldado_por}` : null, am.temperatura_c !== null ? `${Number(am.temperatura_c).toLocaleString('pt-BR')} °C` : null, am.confirmada_por ? `confirmada por ${am.confirmada_por}` : null].filter(Boolean).join(' · ') || null, situacao: 'ok' });
+      const idades = [...new Set(cps.map((x) => x.idade_dias as number))];
+      for (const idade of idades) {
+        const lista = cps.filter((x) => x.idade_dias === idade);
+        const rompidos = lista.filter((x) => x.situacao === 'rompido');
+        const ex = porIdade.get(idade) ?? null;
+        if (!rompidos.length) {
+          ev.push({ quando: null, etapa: 'qualidade', titulo: `Ruptura aos ${idade} dias`, detalhe: `prevista para ${String(lista[0].data_prevista).split('-').reverse().join('/')}`, situacao: 'pendente' });
+        } else {
+          ev.push({
+            quando: rompidos[0].data_ruptura ? `${rompidos[0].data_ruptura}T12:00:00-03:00` : null, etapa: 'qualidade', titulo: `Ruptura aos ${idade} dias: ${ex?.toLocaleString('pt-BR')} MPa`,
+            detalhe: rompidos.map((x) => `CP ${x.numero}: ${Number(x.resistencia_mpa).toLocaleString('pt-BR')} MPa`).join(' · ') + (rompidos[0].rompido_por ? ` · por ${rompidos[0].rompido_por}` : ''),
+            situacao: idade === cfg.idadeControle && fck !== null && ex !== null && ex < fck ? 'perigo' : 'ok',
+          });
+        }
+      }
+    }
+  }
+  const conformidade = controle === null || fck === null ? null : controle >= fck;
+  return {
+    carga: {
+      id: ca.id, numero: ca.numero, dataHora: iso(ca.data_hora), status: ca.status, volume: Number(ca.volume_m3), devolvido: Number(ca.devolvido_m3), tracoCodigo: ca.traco_codigo,
+      tracoDescricao: ca.traco_descricao, fck, slumpTraco: ca.slump_traco, clienteNome: ca.cliente_nome, obra: ca.obra, betoneira: ca.betoneira_codigo, placa: ca.betoneira_placa,
+      motorista: ca.motorista_nome, bomba: ca.bomba_codigo, operadorBomba: ca.operador_nome, documento: ca.documento, cargaFinal: ca.carga_final, vendaId: ca.venda_id,
+      vendaNumero: venda?.numero ?? null, slumpUsina: s1, slumpEntrega: s2,
+    },
+    consumo,
+    amostra: am ? { id: am.id, status: am.status } : null,
+    idadeControle: cfg.idadeControle,
+    resultadoControle: controle,
+    conformidade,
+    eventos: ev,
   };
 }

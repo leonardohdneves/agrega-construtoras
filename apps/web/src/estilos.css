@@ -552,3 +552,68 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 }
 .faixas-editor { display: grid; gap: 8px; }
 .faixas-editor .faixa { display: grid; grid-template-columns: 1fr 1fr auto; gap: 8px; align-items: end; }
+
+/* ---------- Motorista: carga na central ---------- */
+.minhas-cargas { display: grid; gap: 12px; margin-bottom: 16px; }
+.minhas-cargas > h2 { margin: 0; }
+.carga-motorista { display: grid; gap: 12px; }
+.carga-motorista.em-andamento { border-color: var(--brand-orange); box-shadow: inset 4px 0 0 var(--brand-orange); }
+.carga-destino { display: grid; gap: 2px; }
+.carga-destino b { font-size: 17px; }
+.carga-dados { display: flex; flex-wrap: wrap; gap: 8px 20px; }
+.carga-dados > span { display: grid; gap: 2px; }
+.etapas-carga { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.etapas-carga li { display: grid; justify-items: center; gap: 2px; text-align: center; position: relative; color: var(--ink-muted); }
+.etapas-carga li::before { content: ''; position: absolute; top: 6px; left: -50%; width: 100%; height: 2px; background: var(--border); z-index: 0; }
+.etapas-carga li:first-child::before { display: none; }
+.etapas-carga li.feita::before { background: var(--brand-orange); }
+.etapas-carga .ponto { width: 14px; height: 14px; border-radius: 50%; background: var(--surface-card); border: 2px solid var(--border); z-index: 1; }
+.etapas-carga li.feita { color: var(--ink); }
+.etapas-carga li.feita .ponto { background: var(--brand-orange); border-color: var(--brand-orange); }
+
+/* ---------- Qualidade: demandas e rastreabilidade ---------- */
+.lista-demandas { list-style: none; margin: 0; padding: 0; display: grid; }
+.demanda { padding: 12px 0; border-top: 1px solid var(--border); }
+.demanda:first-child { border-top: 0; padding-top: 0; }
+.demanda-topo { display: flex; gap: 12px; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; }
+.demanda-topo > div:first-child { display: grid; gap: 3px; flex: 1 1 320px; }
+.linha-tempo { list-style: none; margin: 0; padding: 0; display: grid; }
+.linha-tempo li { display: grid; grid-template-columns: 22px 1fr; gap: 10px; padding-bottom: 14px; position: relative; }
+.linha-tempo li::before { content: ''; position: absolute; left: 6px; top: 16px; bottom: 0; width: 2px; background: var(--border); }
+.linha-tempo li:last-child::before { display: none; }
+.linha-tempo .ev-ponto { width: 14px; height: 14px; border-radius: 50%; margin-top: 3px; background: var(--status-ok-ink); }
+.linha-tempo .ev-aviso .ev-ponto { background: var(--status-warn-ink); }
+.linha-tempo .ev-perigo .ev-ponto { background: var(--status-danger-ink); }
+.linha-tempo .ev-pendente .ev-ponto { background: var(--surface-card); border: 2px dashed var(--ink-muted); }
+.linha-tempo .ev-pendente { color: var(--ink-muted); }
+.ind-perigo { border-color: var(--status-danger-ink); }
+.ind-perigo .valor-ind { color: var(--status-danger-ink); }
+
+/* ---------- Faturamento da venda ---------- */
+.linha-adicional { display: grid; grid-template-columns: minmax(150px, 1fr) 2fr minmax(90px, 140px) auto; gap: 8px; align-items: center; }
+.linha-adicional select, .linha-adicional input { height: 44px; border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 0 10px; background: var(--surface-card); color: var(--ink); font: inherit; min-width: 0; }
+.chips-rapidos { display: flex; gap: 6px; flex-wrap: wrap; }
+.chip-mini { padding: 2px 10px; min-height: 28px; font-size: 13px; }
+@media (max-width: 640px) { .linha-adicional { grid-template-columns: 1fr 1fr; } }
+
+/* ---------- Mural ---------- */
+.cartao-mural .mural-grade { display: grid; grid-template-columns: 3fr 2fr; gap: 20px; }
+.mural-lateral { display: grid; gap: 14px; align-content: start; }
+.mural-lateral h3, .rankings h3 { margin: 0 0 6px; font-size: 14px; color: var(--ink-muted); font-weight: 600; }
+@media (max-width: 760px) { .cartao-mural .mural-grade { grid-template-columns: 1fr; } }
+.lista-avisos { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.lista-avisos li { display: grid; gap: 4px; padding: 10px 12px; border-radius: var(--radius-sm); background: var(--surface-sunken); }
+.lista-avisos li.fixado { box-shadow: inset 3px 0 0 var(--brand-orange); }
+.lista-avisos p { margin: 0; white-space: pre-line; }
+.aviso-topo { display: flex; gap: 8px; align-items: center; justify-content: space-between; }
+.rankings { display: grid; gap: 14px; }
+.ranking { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ranking li { display: grid; grid-template-columns: 34px 1fr auto; gap: 8px; align-items: center; }
+.ranking .posicao { font: 700 13px/1 var(--font-mono); color: var(--ink-muted); }
+.ranking .posicao.p1 { color: var(--brand-orange); }
+.ranking .nome { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lista-aniversarios { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.lista-aniversarios li { display: flex; gap: 10px; align-items: center; }
+.lista-aniversarios .dia { font-weight: 700; color: var(--brand-orange); min-width: 22px; }
+.lista-aniversarios li.hoje { font-weight: 600; }
+.relatorio-mural { margin-top: 24px; }

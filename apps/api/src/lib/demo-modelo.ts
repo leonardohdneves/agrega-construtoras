@@ -10,7 +10,7 @@ import { gerarContasAPagar } from '../rotas/contratos.ts';
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v9';
+export const VERSAO_DEMO = 'modelo-2026-10-v10';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -172,7 +172,7 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
   for (const t of [
     'autorizacoes_pagamento', 'medicoes_itens', 'medicoes', 'contratos_itens', 'contratos', 'pedidos_itens', 'pedidos_compra', 'cotacoes_precos', 'cotacoes_itens', 'cotacoes_fornecedores', 'cotacoes', 'solicitacoes_itens', 'solicitacoes_compra', 'catalogo_itens',
-    'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'vendas', 'regras_producao', 'insumos_produtos',
+    'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'vendas_adicionais', 'vendas', 'regras_producao', 'avisos', 'insumos_produtos',
     'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
     'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
     'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
@@ -1003,6 +1003,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   await popularContratos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, cnpjDe, centro, banco });
   await popularCatalogo(c, e);
   await popularComercial(c, e, hoje, { vendedor: usuario('vendedor@') ?? gestor, gestor, dono: usuario('dono@') ?? gestor });
+  await popularCampo(c, e, hoje, { lab: usuario('laboratorio@') ?? gestor, operador: usuario('operador@') ?? gestor, dono: usuario('dono@') ?? gestor, gestor });
   await q("UPDATE contratos SET enviado_aprovacao_em = criado_em, aprovado_por_id = $2, aprovado_em = criado_em + interval '3 hours' WHERE empresa_id = $1 AND status = 'vigente'", [e, usuario('dono@') ?? gestor]);
 
   // ----- saldo inicial do banco: o menor saldo diário do período fica acima de R$ 60 mil
@@ -1109,6 +1110,111 @@ async function popularComercial(c: C, e: string, hoje: string, u: { vendedor: st
     await q('INSERT INTO regras_producao (empresa_id, funcao, base, modo, faixas, vigencia, criado_por_id) VALUES ($1,$2,$3,$4,$5,$6,$7)', [
       e, funcao, base, modo, JSON.stringify(faixas), desde, aprovador,
     ]);
+  }
+}
+
+// ---------------------------------------------------------------- operação de campo e mural
+
+async function popularCampo(c: C, e: string, hoje: string, u: { lab: string | null; operador: string | null; dono: string | null; gestor: string | null }): Promise<void> {
+  const q = (sql: string, p: unknown[] = []) => c.query(sql, p);
+  // Etapas do motorista e slump na obra nas cargas que já foram entregues (até 2 h atrás).
+  await q(
+    `UPDATE cargas c SET saida_em = c.data_hora + interval '6 minutes', chegada_em = c.data_hora + interval '38 minutes', descarga_em = c.data_hora + interval '74 minutes',
+            slump_entrega_cm = greatest(2, coalesce(a.slump_cm, 10) - (1 + (c.numero % 3)) * 0.5)
+       FROM amostras a WHERE a.carga_id = c.id AND c.empresa_id = $1 AND c.status = 'produzida' AND c.data_hora < now() - interval '2 hours'`,
+    [e],
+  );
+  await q(`UPDATE cargas SET saida_em = data_hora + interval '6 minutes' WHERE empresa_id = $1 AND status = 'produzida' AND saida_em IS NULL AND data_hora < now() - interval '30 minutes'`, [e]);
+  // Qualidade: as de hoje ficam pendentes para o laboratório; uma de ontem não foi amostrada; as demais foram confirmadas.
+  await q(`UPDATE amostras a SET confirmada_em = a.data_moldagem + interval '25 minutes', confirmada_por_id = $2 WHERE a.empresa_id = $1 AND a.status = 'ativa'`, [e, u.lab]);
+  const pend = (
+    await q(
+      `SELECT a.id FROM amostras a JOIN cargas c ON c.id = a.carga_id WHERE a.empresa_id = $1 AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date = $2`,
+      [e, hoje],
+    )
+  ).rows.map((x) => x.id);
+  if (pend.length) {
+    await q('DELETE FROM corpos_prova WHERE amostra_id = ANY($1::uuid[])', [pend]);
+    await q(`UPDATE amostras SET status = 'pendente', confirmada_em = NULL, confirmada_por_id = NULL, temperatura_c = NULL WHERE id = ANY($1::uuid[])`, [pend]);
+  }
+  const ontem = (
+    await q(
+      `SELECT a.id FROM amostras a JOIN cargas c ON c.id = a.carga_id WHERE a.empresa_id = $1 AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date = $2::date - 1 ORDER BY c.data_hora DESC LIMIT 1`,
+      [e, hoje],
+    )
+  ).rows[0];
+  if (ontem) {
+    await q('DELETE FROM corpos_prova WHERE amostra_id = $1', [ontem.id]);
+    await q(`UPDATE amostras SET status = 'nao_amostrada', observacao = 'Concreto magro para regularização, sem moldagem (combinado com o cliente).' WHERE id = $1`, [ontem.id]);
+  }
+
+  // Vendas: condição de pagamento estruturada; as entregues ficam finalizadas, menos a última de ontem, que espera o vendedor.
+  await q(
+    `UPDATE vendas SET forma_pagamento = CASE WHEN condicao_pagamento ILIKE '%pix%' THEN 'pix' ELSE 'boleto' END,
+            prazos_dias = CASE WHEN condicao_pagamento ILIKE '%vista%' THEN '{0}'::int[] WHEN condicao_pagamento LIKE '30/60%' THEN '{30,60}'::int[]
+                               WHEN condicao_pagamento LIKE '21%' THEN '{21}'::int[] ELSE '{28}'::int[] END
+      WHERE empresa_id = $1`,
+    [e],
+  );
+  const aFaturar = (
+    await q(`SELECT id FROM vendas WHERE empresa_id = $1 AND status = 'concluida' AND data_entrega = $2::date - 1 ORDER BY volume_m3 DESC LIMIT 1`, [e, hoje])
+  ).rows[0];
+  await q(`UPDATE vendas SET entrega_finalizada_em = data_entrega + time '18:00', entrega_finalizada_por_id = vendedor_id WHERE empresa_id = $1 AND status = 'concluida' AND id IS DISTINCT FROM $2`, [e, aFaturar?.id ?? null]);
+  if (aFaturar) {
+    await q(`UPDATE cargas SET carga_final = true WHERE id = (SELECT id FROM cargas WHERE venda_id = $1 AND status = 'produzida' ORDER BY data_hora DESC LIMIT 1)`, [aFaturar.id]);
+    await q(`INSERT INTO vendas_adicionais (empresa_id, venda_id, tipo, descricao, valor_centavos, criado_por_id) SELECT $1, $2, 'hora_excedente', '1 h de espera da bomba além da franquia', 18000, vendedor_id FROM vendas WHERE id = $2`, [e, aFaturar.id]);
+  }
+
+  // Uma carga de agora para o motorista de exemplo, ligada à primeira entrega de hoje (ainda na central).
+  const mot = (await q(`SELECT motorista_id FROM usuarios WHERE empresa_id = $1 AND email LIKE 'motorista@%'`, [e])).rows[0]?.motorista_id;
+  const venda = (await q(`SELECT * FROM vendas WHERE empresa_id = $1 AND status = 'aprovada' AND data_entrega = $2 ORDER BY hora_entrega LIMIT 1`, [e, hoje])).rows[0];
+  if (mot && venda) {
+    const bet = (await q(`SELECT betoneira_id FROM cargas WHERE motorista_id = $1 ORDER BY data_hora DESC LIMIT 1`, [mot])).rows[0]?.betoneira_id
+      ?? (await q(`SELECT id AS betoneira_id FROM veiculos WHERE empresa_id = $1 AND tipo = 'betoneira' ORDER BY codigo LIMIT 1`, [e])).rows[0].betoneira_id;
+    const numero = Number((await q('SELECT coalesce(max(numero), 0) + 1 AS n FROM cargas WHERE empresa_id = $1', [e])).rows[0].n);
+    const { gravarConsumoCarga } = await import('./estoque.ts');
+    const { criarAmostraCarga } = await import('./qualidade.ts');
+    for (const [k, minutos] of [[0, 95], [1, 12]] as const) {
+      const quando = new Date(Date.now() - minutos * 60_000).toISOString();
+      const x = (
+        await q(
+          `INSERT INTO cargas (empresa_id, numero, data_hora, traco_id, volume_m3, cliente_id, obra, betoneira_id, motorista_id, registrado_por_id, venda_id, criado_em,
+                               saida_em, chegada_em, descarga_em, slump_entrega_cm)
+           VALUES ($1,$2,$3,$4,8,$5,$6,$7,$8,$9,$10,$3,$11,$12,$13,$14) RETURNING id`,
+          [e, numero + k, quando, venda.traco_id, venda.cliente_id, venda.obra, bet, mot, u.operador, venda.id,
+            k === 0 ? new Date(Date.now() - 88 * 60_000).toISOString() : null, k === 0 ? new Date(Date.now() - 55 * 60_000).toISOString() : null,
+            k === 0 ? new Date(Date.now() - 25 * 60_000).toISOString() : null, k === 0 ? 11.5 : null],
+        )
+      ).rows[0];
+      await gravarConsumoCarga(c, x.id);
+      await criarAmostraCarga(c, e, x.id, quando, 12);
+    }
+  }
+
+  // Aniversariantes: datas de nascimento dos colaboradores; três fazem aniversário neste mês (um hoje).
+  const pessoas = (await q('SELECT id FROM motoristas WHERE empresa_id = $1 ORDER BY nome', [e])).rows.map((x) => x.id as string);
+  const mes = Number(hoje.slice(5, 7));
+  for (const [i, id] of pessoas.entries()) {
+    const ano = 1972 + ((i * 7) % 28);
+    const noMes = i % 5 === 1;
+    const m = noMes ? mes : ((mes + 1 + i) % 12) + 1;
+    const dia = noMes && i === 1 ? Number(hoje.slice(8, 10)) : 1 + ((i * 11) % 27);
+    await q('UPDATE motoristas SET data_nascimento = $2 WHERE id = $1', [id, `${ano}-${String(m).padStart(2, '0')}-${String(dia).padStart(2, '0')}`]);
+  }
+
+  // Mural.
+  await q(`UPDATE empresas SET mural = $2 WHERE id = $1`, [e, JSON.stringify({ aniversariantes: true, ranking: true, rankings: ['motoristas_m3', 'bomba_m3', 'vendedores_m3'], posicoes: 5 })]);
+  const avisos: [number, string, string, string[] | null, boolean, number | null][] = [
+    [0, 'Uso obrigatório de EPI na usina', 'Capacete, botina e protetor auricular são obrigatórios na área da central dosadora e no pátio. A partir de segunda-feira, quem estiver sem EPI não carrega.', null, true, null],
+    [1, 'Manutenção da central no sábado', 'A central para no sábado das 7h às 12h para troca das palhetas do misturador. Não programem entregas para esse horário.', ['vendedor', 'operador_usina', 'gestor'], false, 5],
+    [3, 'Slump na obra pelo aplicativo', 'Motoristas: ao terminar a descarga, registrem no app o slump medido na obra e o concreto que voltou. Isso entra na rastreabilidade de cada carga.', ['motorista'], false, null],
+    [6, 'Meta do mês: 1.500 m³', 'Estamos a caminho! Confiram o ranking de produção no mural. Obrigado pelo empenho de todos.', null, false, null],
+  ];
+  for (const [dias, titulo, texto, perfis, fixado, validade] of avisos) {
+    await q(
+      `INSERT INTO avisos (empresa_id, titulo, texto, perfis, fixado, ate, criado_por_id, criado_em) VALUES ($1,$2,$3,$4,$5,$6,$7, now() - $8::int * interval '1 day')`,
+      [e, titulo, texto, perfis, fixado, validade === null ? null : somarDias(hoje, validade), dias % 2 ? u.gestor : u.dono, dias],
+    );
   }
 }
 

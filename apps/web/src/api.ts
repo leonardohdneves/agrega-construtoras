@@ -138,6 +138,7 @@ export type Motorista = {
   cargo: string | null;
   email: string | null;
   dataAdmissao: string | null;
+  dataNascimento?: string | null;
   observacoes: string | null;
   cnhNumero: string | null;
   cnhCategoria: string | null;
@@ -683,6 +684,7 @@ export type Carga = {
   operadorBombaId: string | null; operadorBombaNome: string | null; volumeBombeado: number | null; devolvido: number; documento: string | null; observacoes: string | null;
   status: 'produzida' | 'cancelada'; motivoCancelamento: string | null; registradoPor: string | null; slump: number | null;
   vendaId: string | null; vendaNumero: number | null;
+  cargaFinal?: boolean; saidaEm?: string | null; chegadaEm?: string | null; descargaEm?: string | null; slumpEntrega?: number | null; obsMotorista?: string | null;
 };
 export type OpcoesCarga = {
   tracos: { id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null }[];
@@ -703,6 +705,7 @@ export type Venda = {
   volume: number; dataEntrega: string; horaEntrega: string | null; bombeamento: boolean; precoM3: number; taxaBomba: number | null; valorTotal: number;
   condicaoPagamento: string | null; observacoes: string | null; status: StatusVenda; motivo: string | null; enviadoEm: string | null;
   aprovadoPor: string | null; aprovadoEm: string | null; criadoPor: string | null; criadoEm: string; entregue: number; devolvido: number; saldo: number; cargas: number;
+  formaPagamento: string | null; prazosDias: number[] | null; entregaFinalizadaEm: string | null; lancamentoId: string | null; cargaFinal: boolean;
 };
 export const SELO_VENDA: Record<StatusVenda, { texto: string; classe: string }> = {
   rascunho: { texto: 'Rascunho', classe: 'selo-neutro' },

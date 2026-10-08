@@ -72,6 +72,7 @@ export function motoristaPublico(r: Record<string, any>, hoje: string) {
     cargo: r.cargo ?? null,
     email: r.email ?? null,
     dataAdmissao: dataIso(r.data_admissao),
+    dataNascimento: dataIso(r.data_nascimento),
     observacoes: r.observacoes ?? null,
   };
 }
@@ -103,6 +104,7 @@ const COLUNAS_MOTORISTA: Record<string, string> = {
   cargo: 'cargo',
   email: 'email',
   dataAdmissao: 'data_admissao',
+  dataNascimento: 'data_nascimento',
   observacoes: 'observacoes',
 };
 const COLUNAS_DOCUMENTO: Record<string, string> = {
@@ -278,9 +280,9 @@ export function rotasFrota(banco: Banco) {
       const m = await emTransacao(banco, async (c) => {
         const novo = (
           await c.query(
-            `INSERT INTO motoristas (empresa_id, nome, telefone, cpf, funcao, cnh_numero, cnh_categoria, cnh_vencimento, cursos, ativo, cargo, email, data_admissao, observacoes)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-            [empresaId, d.nome, d.telefone, d.cpf, d.funcao, d.cnhNumero, d.cnhCategoria, d.cnhVencimento, JSON.stringify(d.cursos), d.ativo, d.cargo, d.email ?? null, d.dataAdmissao, d.observacoes],
+            `INSERT INTO motoristas (empresa_id, nome, telefone, cpf, funcao, cnh_numero, cnh_categoria, cnh_vencimento, cursos, ativo, cargo, email, data_admissao, observacoes, data_nascimento)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+            [empresaId, d.nome, d.telefone, d.cpf, d.funcao, d.cnhNumero, d.cnhCategoria, d.cnhVencimento, JSON.stringify(d.cursos), d.ativo, d.cargo, d.email ?? null, d.dataAdmissao, d.observacoes, d.dataNascimento ?? null],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'motoristas', entidadeId: novo.id, depois: novo });

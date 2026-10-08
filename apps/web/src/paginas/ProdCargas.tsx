@@ -13,6 +13,7 @@ import {
   type OpcoesCarga,
 } from '../api';
 import { useSessao } from '../sessao';
+import { podeAcessar } from '../acesso';
 
 const hora = (iso: string) => agoraLocal(new Date(iso)).slice(11, 16);
 const m3 = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n, Number.isInteger(n) ? 0 : 1)} m³`);
@@ -35,6 +36,7 @@ type Dados = {
   documento: string;
   observacoes: string;
   vendaId: string;
+  cargaFinal: boolean;
 };
 
 const vazio = (): Dados => ({
@@ -54,6 +56,7 @@ const vazio = (): Dados => ({
   documento: '',
   observacoes: '',
   vendaId: '',
+  cargaFinal: false,
 });
 
 function deCarga(c: Carga): Dados {
@@ -74,6 +77,7 @@ function deCarga(c: Carga): Dados {
     documento: c.documento ?? '',
     observacoes: c.observacoes ?? '',
     vendaId: c.vendaId ?? '',
+    cargaFinal: !!c.cargaFinal,
   };
 }
 
@@ -219,6 +223,7 @@ function FormCarga({
         documento: d.documento,
         observacoes: d.observacoes,
         vendaId: d.vendaId || null,
+        cargaFinal: !!d.vendaId && d.cargaFinal,
       };
       const r = editando
         ? await api<{ carga: Carga }>(`/prod/cargas/${editando.id}`, { metodo: 'PATCH', corpo })
@@ -226,7 +231,7 @@ function FormCarga({
       aoSalvar(r.carga, outra);
       if (outra) {
         // Mantém cliente, obra e traço para a próxima viagem da mesma obra.
-        setD((x) => ({ ...vazio(), tracoId: x.tracoId, clienteId: x.clienteId, obra: x.obra, comBomba: x.comBomba, bombaId: x.bombaId, operadorBombaId: x.operadorBombaId, vendaId: x.vendaId }));
+        setD((x) => ({ ...vazio(), tracoId: x.tracoId, clienteId: x.clienteId, obra: x.obra, comBomba: x.comBomba, bombaId: x.bombaId, operadorBombaId: x.operadorBombaId, vendaId: x.vendaId, cargaFinal: false }));
       }
     } catch (err) {
       setErro((err as Error).message);
@@ -254,6 +259,15 @@ function FormCarga({
             <span className="small muted">
               Venda nº {String(vendaEscolhida.numero).padStart(4, '0')}{vendaEscolhida.endereco ? ` · ${vendaEscolhida.endereco}` : ''}{vendaEscolhida.bombeamento ? ' · com bombeamento' : ''}
             </span>
+          )}
+          {d.vendaId && (
+            <label className="marcar" style={{ marginTop: 6 }}>
+              <input type="checkbox" checked={d.cargaFinal} onChange={(e) => setD({ ...d, cargaFinal: e.target.checked })} />
+              Carga final desta venda
+              {vendaEscolhida && (lerNumero(d.volume) ?? 0) >= vendaEscolhida.saldo && vendaEscolhida.saldo > 0 && !d.cargaFinal && (
+                <span className="small muted"> (esta carga completa o volume vendido)</span>
+              )}
+            </label>
           )}
         </div>
       )}
@@ -462,6 +476,7 @@ export function Cargas() {
   }, []);
 
   const podeMexer = gestao || dia === hoje;
+  const podeRastrear = podeAcessar(usuario, ['dono', 'gestor', 'laboratorista'], '/qual/rastreabilidade');
   const lista = useMemo(() => (dados?.cargas ?? []).filter((c) => !filtroBet || c.betoneiraId === filtroBet), [dados, filtroBet]);
   const porBetoneira = useMemo(() => {
     const m = new Map<string, { codigo: string; viagens: number; m3: number }>();
@@ -621,7 +636,18 @@ export function Cargas() {
                   <td>
                     {c.clienteNome ?? '—'}
                     {c.obra && <div className="small muted">{c.obra}</div>}
-                    {c.vendaNumero && <div className="small muted">venda nº {String(c.vendaNumero).padStart(4, '0')}</div>}
+                    {c.vendaNumero && (
+                      <div className="small muted">
+                        venda nº {String(c.vendaNumero).padStart(4, '0')}
+                        {c.cargaFinal && <span className="selo selo-neutro" style={{ marginLeft: 6 }}>final</span>}
+                      </div>
+                    )}
+                    {c.status === 'produzida' && (
+                      <div className="small muted">
+                        {c.descargaEm ? `entregue${c.slumpEntrega !== null && c.slumpEntrega !== undefined ? ` · slump obra ${formatarNumero(c.slumpEntrega, 1)} cm` : ''}` : c.chegadaEm ? 'na obra' : c.saidaEm ? 'em viagem' : 'na central'}
+                        {podeRastrear && <> · <Link to={`/qual/rastreabilidade/${c.id}`}>rastrear</Link></>}
+                      </div>
+                    )}
                   </td>
                   <td>
                     <span className="mono">{c.betoneiraCodigo}</span>

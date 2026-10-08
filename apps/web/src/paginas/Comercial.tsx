@@ -19,6 +19,7 @@ import {
 import { TabelaRelatorio } from '../componentes/Relatorio';
 import { SeletorPeriodo, type Periodo } from '../componentes/Periodo';
 import { useSessao } from '../sessao';
+import { podeAcessar } from '../acesso';
 
 const m3 = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n, Number.isInteger(n) ? 0 : 1)} m³`);
 const campoNum = (n: number | null | undefined) => (n === null || n === undefined ? '' : String(n).replace('.', ','));
@@ -59,11 +60,22 @@ type Dados = {
   bombeamento: boolean;
   precoM3: string;
   taxaBomba: string;
-  condicaoPagamento: string;
+  formaPagamento: string;
+  prazos: string;
   observacoes: string;
 };
 
-const CONDICOES = ['À vista no PIX', '28 dias no boleto', '30/60 dias', 'Na entrega'];
+const FORMAS: [string, string][] = [['boleto', 'Boleto'], ['pix', 'PIX'], ['transferencia', 'Transferência'], ['cartao', 'Cartão'], ['dinheiro', 'Dinheiro'], ['cheque', 'Cheque']];
+const PRAZOS_RAPIDOS: [string, string][] = [['0', 'À vista'], ['28', '28 dias'], ['30/60', '30/60'], ['30/60/90', '30/60/90']];
+/** "30/60" → [30, 60]; "à vista" ou "0" → [0]. */
+export function lerPrazos(t: string): number[] | null {
+  const x = t.trim().toLowerCase();
+  if (!x) return null;
+  if (/vista/.test(x)) return [0];
+  const v = x.split(/[\/;,+ ]+/).filter(Boolean).map(Number);
+  return v.length && v.every((n) => Number.isInteger(n) && n >= 0 && n <= 365) ? v : null;
+}
+export const textoPrazos = (p: number[] | null) => (!p?.length ? '—' : p.length === 1 && p[0] === 0 ? 'À vista' : `${p.join('/')} dias`);
 
 function deVenda(v: Venda): Dados {
   return {
@@ -79,7 +91,8 @@ function deVenda(v: Venda): Dados {
     bombeamento: v.bombeamento,
     precoM3: moedaCampo(v.precoM3),
     taxaBomba: v.taxaBomba === null ? '' : moedaCampo(v.taxaBomba),
-    condicaoPagamento: v.condicaoPagamento ?? '',
+    formaPagamento: v.formaPagamento ?? 'boleto',
+    prazos: v.prazosDias?.join('/') ?? '',
     observacoes: v.observacoes ?? '',
   };
 }
@@ -90,7 +103,7 @@ function FormVenda({ editando }: { editando?: Venda }) {
   const [d, setD] = useState<Dados>(() =>
     editando
       ? deVenda(editando)
-      : { vendedorId: '', clienteId: '', obra: '', endereco: '', contato: '', tracoId: '', volume: '', dataEntrega: somarDias(hojeLocal(), 1), horaEntrega: '07:30', bombeamento: false, precoM3: '', taxaBomba: '', condicaoPagamento: '', observacoes: '' },
+      : { vendedorId: '', clienteId: '', obra: '', endereco: '', contato: '', tracoId: '', volume: '', dataEntrega: somarDias(hojeLocal(), 1), horaEntrega: '07:30', bombeamento: false, precoM3: '', taxaBomba: '', formaPagamento: 'boleto', prazos: '28', observacoes: '' },
   );
   const [novoCliente, setNovoCliente] = useState<{ razaoSocial: string; cnpjCpf: string; telefone: string; cidade: string; uf: string } | null>(null);
   const [erro, setErro] = useState('');
@@ -131,6 +144,9 @@ function FormVenda({ editando }: { editando?: Venda }) {
     if (!volume) return setErro('Informe o volume vendido em m³.');
     if (!d.dataEntrega) return setErro('Informe a data da entrega.');
     if (lerNumero(d.precoM3) === null) return setErro('Informe o preço por m³.');
+    const prazos = lerPrazos(d.prazos);
+    if (d.prazos.trim() && !prazos) return setErro('Prazos inválidos. Use dias separados por barra, ex.: 28 ou 30/60 (0 = à vista).');
+    if (enviar && !prazos) return setErro('Informe a condição de pagamento (prazos em dias).');
     setOcupado(true);
     try {
       const corpo = {
@@ -146,7 +162,8 @@ function FormVenda({ editando }: { editando?: Venda }) {
         bombeamento: d.bombeamento,
         precoM3: preco,
         taxaBomba: d.bombeamento && d.taxaBomba.trim() ? lerNumero(d.taxaBomba) : null,
-        condicaoPagamento: d.condicaoPagamento,
+        formaPagamento: d.formaPagamento || null,
+        prazosDias: prazos,
         observacoes: d.observacoes,
         enviar,
       };
@@ -275,13 +292,21 @@ function FormVenda({ editando }: { editando?: Venda }) {
           </div>
         )}
         <div className="campo">
-          <label htmlFor="v-cond">Condição de pagamento</label>
-          <input id="v-cond" list="v-condicoes" value={d.condicaoPagamento} onChange={(e) => setD({ ...d, condicaoPagamento: e.target.value })} />
-          <datalist id="v-condicoes">
-            {CONDICOES.map((c) => (
-              <option key={c} value={c} />
+          <label htmlFor="v-forma">Forma de pagamento</label>
+          <select id="v-forma" value={d.formaPagamento} onChange={(e) => setD({ ...d, formaPagamento: e.target.value })}>
+            {FORMAS.map(([k, t]) => (
+              <option key={k} value={k}>{t}</option>
             ))}
-          </datalist>
+          </select>
+        </div>
+        <div className="campo">
+          <label htmlFor="v-prazos">Prazos (dias)</label>
+          <input id="v-prazos" className="mono" placeholder="ex.: 28 ou 30/60 · 0 = à vista" value={d.prazos} onChange={(e) => setD({ ...d, prazos: e.target.value })} />
+          <span className="chips-rapidos">
+            {PRAZOS_RAPIDOS.map(([k, t]) => (
+              <button key={k} type="button" className={`chip chip-mini ${d.prazos === k ? 'chip-ativo' : ''}`} onClick={() => setD({ ...d, prazos: k })}>{t}</button>
+            ))}
+          </span>
         </div>
         {op.gestao && op.vendedores.length > 0 && (
           <div className="campo">
@@ -452,11 +477,148 @@ export function ComVendas() {
 // ---------------------------------------------------------------- detalhe
 type Detalhe = {
   venda: Venda;
-  cargas: { id: string; numero: number; dataHora: string; volume: number; devolvido: number; status: string; betoneira: string; motorista: string | null }[];
-  pode: { editar: boolean; enviar: boolean; aprovar: boolean; cancelar: boolean };
+  cargas: { id: string; numero: number; dataHora: string; volume: number; devolvido: number; status: string; betoneira: string; motorista: string | null; cargaFinal: boolean; descargaEm: string | null; slumpEntrega: number | null }[];
+  pode: { editar: boolean; enviar: boolean; aprovar: boolean; cancelar: boolean; finalizar: boolean };
+  adicionais: { id: string; tipo: string; descricao: string; valor: number; criadoPor: string | null }[];
+  faturamento: {
+    m3Carregado: number; m3Devolvido: number; m3Liquido: number; concreto: number; bomba: number; adicionais: { tipo: string; descricao: string; valor: number }[]; total: number;
+    ultimaEntrega: string | null; parcelas: { numero: number; vencimento: string; valor: number; status: string }[];
+  };
 };
 
+const TIPOS_ADICIONAL: [string, string][] = [['feriado', 'Feriado / fim de semana'], ['hora_excedente', 'Horas excedidas'], ['equipamento_parado', 'Equipamento parado'], ['volume_minimo', 'Complemento de volume mínimo'], ['outro', 'Outro']];
+
+/** Finalizar a entrega: adicionais contratuais e a conta a receber nas parcelas da condição de pagamento. */
+function Faturamento({ r, aoMudar }: { r: Detalhe; aoMudar: (aviso: string) => void }) {
+  const { usuario } = useSessao();
+  const v = r.venda;
+  const f = r.faturamento;
+  const [ad, setAd] = useState<{ tipo: string; descricao: string; valor: string }[]>([]);
+  const [prazos, setPrazos] = useState(v.prazosDias?.join('/') ?? '');
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const somaNovos = ad.reduce((s, a) => s + (lerNumero(a.valor) ?? 0), 0);
+  const total = Math.round((f.total + somaNovos) * 100) / 100;
+  const veFin = usuario?.perfil === 'dono' || usuario?.perfil === 'financeiro';
+
+  async function finalizar() {
+    setErro('');
+    const p = lerPrazos(prazos);
+    if (!p) return setErro('Informe os prazos em dias (ex.: 28 ou 30/60; 0 = à vista).');
+    for (const a of ad) if (!a.descricao.trim() || !(lerNumero(a.valor) ?? 0)) return setErro('Preencha a descrição e o valor de cada adicional, ou tire a linha.');
+    setOcupado(true);
+    try {
+      await api(`/com/vendas/${v.id}/finalizar-entrega`, {
+        corpo: { adicionais: ad.map((a) => ({ tipo: a.tipo, descricao: a.descricao, valor: lerNumero(a.valor) })), prazosDias: p },
+      });
+      aoMudar(`Entrega finalizada: ${formatarMoeda(total)} lançados em Contas a receber.`);
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+    setOcupado(false);
+  }
+
+  const linhas = (
+    <table className="tabela tabela-compacta">
+      <tbody>
+        <tr>
+          <td>
+            Concreto: {m3(f.m3Liquido)} × {formatarMoeda(v.precoM3)}
+            {f.m3Devolvido > 0 && <div className="small muted">{m3(f.m3Carregado)} carregados − {m3(f.m3Devolvido)} devolvidos</div>}
+          </td>
+          <td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(f.concreto)}</td>
+        </tr>
+        {f.bomba > 0 && (
+          <tr>
+            <td>Taxa de bombeamento</td>
+            <td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(f.bomba)}</td>
+          </tr>
+        )}
+        {f.adicionais.map((a, i) => (
+          <tr key={i}>
+            <td>{a.descricao} <span className="small muted">· adicional</span></td>
+            <td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(a.valor)}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+
+  if (v.entregaFinalizadaEm) {
+    return (
+      <section className="card">
+        <h2>Faturamento</h2>
+        {linhas}
+        <div className="total-venda"><span className="muted">Total faturado</span><strong className="mono">{formatarMoeda(f.total)}</strong></div>
+        {f.parcelas.length > 0 ? (
+          <>
+            <p className="small" style={{ margin: '0 0 6px' }}>Em Contas a receber · {textoPrazos(v.prazosDias)}{v.formaPagamento ? ` · ${v.formaPagamento}` : ''}:</p>
+            <ul className="lista-simples">
+              {f.parcelas.map((p) => (
+                <li key={p.numero} className="small">
+                  Parcela {p.numero}: <b className="mono">{formatarMoeda(p.valor)}</b> vence {formatarData(p.vencimento)}{p.status === 'paga' ? ' · recebida' : ''}
+                </li>
+              ))}
+            </ul>
+            {veFin && v.lancamentoId && <Link className="btn btn-link" to={`/fin/lancamentos/${v.lancamentoId}`}>Ver o lançamento</Link>}
+          </>
+        ) : (
+          <p className="small muted" style={{ margin: 0 }}>Entrega finalizada em {formatarDataHora(v.entregaFinalizadaEm)}; faturada fora do Comercial.</p>
+        )}
+      </section>
+    );
+  }
+  if (!r.pode.finalizar) {
+    if (v.status !== 'aprovada' && v.status !== 'concluida') return null;
+    return (
+      <section className="card">
+        <h2>Faturamento</h2>
+        <p className="small muted" style={{ margin: 0 }}>
+          Quando o operador registrar a <b>carga final</b> (ou as cargas somarem o volume vendido), o vendedor finaliza a entrega aqui e o valor vai para Contas a receber.
+          {f.m3Liquido > 0 && <> Até agora: {m3(f.m3Liquido)} entregues · {formatarMoeda(f.total)}.</>}
+        </p>
+      </section>
+    );
+  }
+  return (
+    <section className="card form">
+      <h2>Finalizar entrega</h2>
+      <p className="small muted" style={{ margin: 0 }}>A carga final já saiu. Confira o entregue, lance os adicionais do contrato e finalize: o total vai para Contas a receber.</p>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {linhas}
+      <h3 style={{ margin: '4px 0 0', fontSize: 15 }}>Adicionais contratuais</h3>
+      {ad.map((a, i) => (
+        <div key={i} className="linha-adicional">
+          <select aria-label="Tipo do adicional" value={a.tipo} onChange={(e) => setAd(ad.map((x, j) => (j === i ? { ...x, tipo: e.target.value, descricao: x.descricao || (TIPOS_ADICIONAL.find((t) => t[0] === e.target.value)?.[1] ?? '') } : x)))}>
+            {TIPOS_ADICIONAL.map(([k, t]) => (
+              <option key={k} value={k}>{t}</option>
+            ))}
+          </select>
+          <input aria-label="Descrição do adicional" placeholder="Descrição (ex.: 2 h de espera)" value={a.descricao} onChange={(e) => setAd(ad.map((x, j) => (j === i ? { ...x, descricao: e.target.value } : x)))} />
+          <input aria-label="Valor do adicional" className="mono" inputMode="decimal" placeholder="R$" value={a.valor} onChange={(e) => setAd(ad.map((x, j) => (j === i ? { ...x, valor: e.target.value } : x)))} />
+          <button className="btn btn-link" type="button" onClick={() => setAd(ad.filter((_, j) => j !== i))}>Tirar</button>
+        </div>
+      ))}
+      <button className="btn btn-secundario" type="button" style={{ justifySelf: 'start' }} onClick={() => setAd([...ad, { tipo: 'hora_excedente', descricao: 'Horas excedidas', valor: '' }])}>
+        + Adicional (feriado, horas excedidas, equipamento parado…)
+      </button>
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="f-prazos">Prazos (dias)</label>
+          <input id="f-prazos" className="mono" value={prazos} onChange={(e) => setPrazos(e.target.value)} />
+          <span className="small muted">Contados a partir da última entrega{f.ultimaEntrega ? ` (${formatarData(f.ultimaEntrega)})` : ''}.</span>
+        </div>
+      </div>
+      <div className="total-venda"><span className="muted">Total a receber</span><strong className="mono">{formatarMoeda(total)}</strong></div>
+      <div className="acoes">
+        <button className="btn btn-primario" type="button" disabled={ocupado} onClick={finalizar}>Finalizar entrega e lançar a receber</button>
+      </div>
+    </section>
+  );
+}
+
 export function VendaDetalhe() {
+  const { usuario } = useSessao();
   const { id } = useParams();
   const local = useLocation();
   const [r, setR] = useState<Detalhe | null>(null);
@@ -486,6 +648,7 @@ export function VendaDetalhe() {
 
   if (!r) return erro ? <div className="alerta alerta-erro" role="alert">{erro}</div> : <p className="muted">Carregando…</p>;
   const v = r.venda;
+  const rastrear = podeAcessar(usuario, ['dono', 'gestor', 'laboratorista'], '/qual/rastreabilidade');
   const linhas: [string, ReactNode][] = [
     ['Cliente', <>{v.clienteNome}{v.clienteTelefone ? <span className="muted"> · {v.clienteTelefone}</span> : null}</>],
     ['Obra', v.obra ?? '—'],
@@ -495,7 +658,7 @@ export function VendaDetalhe() {
     ['Volume', <span className="mono">{m3(v.volume)}</span>],
     ['Entrega', `${formatarData(v.dataEntrega)}${v.horaEntrega ? ` às ${v.horaEntrega}` : ''}${v.bombeamento ? ' · com bombeamento' : ''}`],
     ['Preço', <span className="mono">{formatarMoeda(v.precoM3)}/m³{v.taxaBomba ? ` + bombeamento ${formatarMoeda(v.taxaBomba)}` : ''}</span>],
-    ['Condição de pagamento', v.condicaoPagamento ?? '—'],
+    ['Condição de pagamento', v.prazosDias ? `${textoPrazos(v.prazosDias)}${v.formaPagamento ? ` · ${FORMAS.find((x) => x[0] === v.formaPagamento)?.[1] ?? v.formaPagamento}` : ''}` : v.condicaoPagamento ?? '—'],
     ['Vendedor', v.vendedorNome],
     ['Observações', v.observacoes ?? '—'],
   ];
@@ -573,6 +736,8 @@ export function VendaDetalhe() {
         </div>
       </div>
 
+      <Faturamento r={r} aoMudar={(a) => { setAviso(a); carregar(); }} />
+
       {r.cargas.length > 0 && (
         <div className="card tabela-caixa">
           <h2>Cargas desta venda</h2>
@@ -590,7 +755,14 @@ export function VendaDetalhe() {
                 <tr key={c.id} style={c.status === 'cancelada' ? { opacity: 0.55 } : undefined}>
                   <td className="mono">{c.numero}</td>
                   <td className="mono">{formatarDataHora(c.dataHora)}</td>
-                  <td><span className="mono">{c.betoneira}</span>{c.motorista ? ` · ${c.motorista}` : ''}</td>
+                  <td>
+                    <span className="mono">{c.betoneira}</span>{c.motorista ? ` · ${c.motorista}` : ''}
+                    <div className="small muted">
+                      {c.status === 'cancelada' ? '' : c.descargaEm ? `entregue${c.slumpEntrega !== null ? ` · slump obra ${formatarNumero(c.slumpEntrega, 1)} cm` : ''}` : 'a caminho'}
+                      {c.cargaFinal && ' · carga final'}
+                      {rastrear && <> · <Link to={`/qual/rastreabilidade/${c.id}`}>rastrear</Link></>}
+                    </div>
+                  </td>
                   <td className="mono" style={{ textAlign: 'right' }}>
                     {m3(c.volume)}
                     {c.status === 'cancelada' ? <div className="small muted">cancelada</div> : c.devolvido > 0 ? <div className="small texto-perigo">voltou {m3(c.devolvido)}</div> : null}

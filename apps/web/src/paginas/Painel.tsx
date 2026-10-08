@@ -1,4 +1,6 @@
 import { InicioVendedor } from './Comercial';
+import { CardMural } from './Mural';
+import { MinhasCargas } from './MinhasCargas';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -623,6 +625,9 @@ export function Painel() {
           </span>
         </div>
       </div>
+
+      {usuario.perfil === 'motorista' && <MinhasCargas compacta />}
+      <CardMural />
 
       {usuario.perfil === 'motorista' ? (
         <>

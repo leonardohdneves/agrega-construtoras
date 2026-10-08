@@ -105,6 +105,7 @@ const camposMotorista = {
   cargo: textoOpcional,
   email: z.string().trim().toLowerCase().email('E-mail inválido.').optional().nullable().or(z.literal('').transform(() => null)),
   dataAdmissao: data,
+  dataNascimento: data,
   observacoes: textoOpcional,
 };
 

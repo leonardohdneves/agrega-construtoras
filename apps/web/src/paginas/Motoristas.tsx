@@ -15,9 +15,10 @@ type Dados = {
   cargo: string;
   email: string;
   dataAdmissao: string;
+  dataNascimento: string;
 };
 
-const VAZIO: Dados = { nome: '', telefone: '', cpf: '', funcao: 'motorista', cnhNumero: '', cnhCategoria: 'E', cnhVencimento: '', cursos: '', usuarioId: '', cargo: '', email: '', dataAdmissao: '' };
+const VAZIO: Dados = { nome: '', telefone: '', cpf: '', funcao: 'motorista', cnhNumero: '', cnhCategoria: 'E', cnhVencimento: '', cursos: '', usuarioId: '', cargo: '', email: '', dataAdmissao: '', dataNascimento: '' };
 
 function paraDados(m: Motorista): Dados {
   return {
@@ -34,6 +35,7 @@ function paraDados(m: Motorista): Dados {
     cargo: m.cargo ?? '',
     email: m.email ?? '',
     dataAdmissao: m.dataAdmissao ?? '',
+    dataNascimento: m.dataNascimento ?? '',
   };
 }
 
@@ -80,6 +82,7 @@ export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores
         cargo: form.cargo,
         email: form.email,
         dataAdmissao: form.dataAdmissao,
+        dataNascimento: form.dataNascimento || null,
       };
       let id = form.id;
       if (id) await api(`/frota/motoristas/${id}`, { metodo: 'PATCH', corpo });
@@ -173,6 +176,11 @@ export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores
                 <input id="m-adm" type="date" value={form.dataAdmissao} onChange={(e) => setForm({ ...form, dataAdmissao: e.target.value })} />
               </div>
             )}
+            <div className="campo">
+              <label htmlFor="m-nasc">Data de nascimento</label>
+              <input id="m-nasc" type="date" value={form.dataNascimento} onChange={(e) => setForm({ ...form, dataNascimento: e.target.value })} />
+              <span className="small muted">Para os aniversariantes do mural.</span>
+            </div>
             <div className="campo">
               <label htmlFor="m-cpf">CPF</label>
               <input id="m-cpf" className="mono" inputMode="numeric" value={form.cpf} onChange={(e) => setForm({ ...form, cpf: e.target.value })} />

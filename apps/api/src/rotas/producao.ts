@@ -73,6 +73,7 @@ const esquemaCarga = z.object({
   documento: texto(60),
   observacoes: texto(1000),
   vendaId: idOpcional,
+  cargaFinal: z.boolean().optional().default(false),
 });
 
 export function insumoPublico(r: Record<string, any>) {
@@ -160,6 +161,12 @@ function cargaPublica(r: Record<string, any>) {
     registradoPor: r.registrado_por,
     vendaId: r.venda_id ?? null,
     vendaNumero: r.venda_numero ?? null,
+    cargaFinal: !!r.carga_final,
+    saidaEm: r.saida_em ?? null,
+    chegadaEm: r.chegada_em ?? null,
+    descargaEm: r.descarga_em ?? null,
+    slumpEntrega: num(r.slump_entrega_cm),
+    obsMotorista: r.obs_motorista ?? null,
   };
 }
 
@@ -190,9 +197,10 @@ async function validarCarga(c: Cliente, empresaId: string, d: z.infer<typeof esq
     throw new ErroHttp(400, 'Cliente não encontrado.');
   }
   if (d.vendaId) {
-    const v = (await c.query('SELECT status FROM vendas WHERE id = $1 AND empresa_id = $2', [d.vendaId, empresaId])).rows[0];
+    const v = (await c.query('SELECT status, lancamento_id, entrega_finalizada_em FROM vendas WHERE id = $1 AND empresa_id = $2', [d.vendaId, empresaId])).rows[0];
     if (!v) throw new ErroHttp(400, 'Venda da programação não encontrada.');
     if (!['aprovada', 'concluida'].includes(v.status)) throw new ErroHttp(400, 'A venda escolhida não está aprovada.');
+    if (v.lancamento_id || v.entrega_finalizada_em) throw new ErroHttp(400, 'A entrega desta venda já foi finalizada e faturada.');
   }
   if ((d.devolvido ?? 0) > d.volume) throw new ErroHttp(400, 'O volume devolvido não pode passar o volume da carga.');
   if (d.volumeBombeado && d.volumeBombeado > d.volume) throw new ErroHttp(400, 'O volume bombeado não pode passar o volume da carga.');
@@ -574,10 +582,10 @@ export function rotasProducao(banco: Banco) {
         const x = (
           await c.query(
             `INSERT INTO cargas (empresa_id, numero, data_hora, traco_id, volume_m3, cliente_id, obra, betoneira_id, motorista_id, bomba_id, operador_bomba_id,
-                                 volume_bombeado_m3, devolvido_m3, documento, observacoes, registrado_por_id, venda_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
+                                 volume_bombeado_m3, devolvido_m3, documento, observacoes, registrado_por_id, venda_id, carga_final)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
             [empresaId, numero, dataHora, d.tracoId, d.volume, d.clienteId, d.obra, d.betoneiraId, d.motoristaId, d.bombaId, d.bombaId ? d.operadorBombaId : null,
-              d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, req.usuario!.id, d.vendaId],
+              d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, req.usuario!.id, d.vendaId, !!d.vendaId && d.cargaFinal],
           )
         ).rows[0];
         await gravarConsumoCarga(c, x.id);
@@ -610,17 +618,17 @@ export function rotasProducao(banco: Banco) {
         const atual = {
           tracoId: antes.traco_id, volume: Number(antes.volume_m3), clienteId: antes.cliente_id, obra: antes.obra, betoneiraId: antes.betoneira_id,
           motoristaId: antes.motorista_id, bombaId: antes.bomba_id, operadorBombaId: antes.operador_bomba_id, volumeBombeado: num(antes.volume_bombeado_m3),
-          devolvido: Number(antes.devolvido_m3), documento: antes.documento, observacoes: antes.observacoes, vendaId: antes.venda_id,
+          devolvido: Number(antes.devolvido_m3), documento: antes.documento, observacoes: antes.observacoes, vendaId: antes.venda_id, cargaFinal: antes.carga_final,
         };
         const d = { ...atual, ...parcial } as z.infer<typeof esquemaCarga>;
         await validarCarga(c, empresaId, d);
         const dataHora = parcial.dataHora ? dataHoraDaCarga(parcial.dataHora) : null;
         await c.query(
           `UPDATE cargas SET data_hora = coalesce($3, data_hora), traco_id = $4, volume_m3 = $5, cliente_id = $6, obra = $7, betoneira_id = $8, motorista_id = $9,
-                  bomba_id = $10, operador_bomba_id = $11, volume_bombeado_m3 = $12, devolvido_m3 = $13, documento = $14, observacoes = $15, venda_id = $16, atualizado_em = now()
+                  bomba_id = $10, operador_bomba_id = $11, volume_bombeado_m3 = $12, devolvido_m3 = $13, documento = $14, observacoes = $15, venda_id = $16, carga_final = $17, atualizado_em = now()
             WHERE id = $1 AND empresa_id = $2`,
           [antes.id, empresaId, dataHora, d.tracoId, d.volume, d.clienteId, d.obra, d.betoneiraId, d.motoristaId, d.bombaId, d.bombaId ? d.operadorBombaId : null,
-            d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, d.vendaId ?? null],
+            d.bombaId ? (d.volumeBombeado ?? null) : null, d.devolvido ?? 0, d.documento, d.observacoes, d.vendaId ?? null, !!d.vendaId && !!d.cargaFinal],
         );
         await atualizarSituacaoVenda(c, antes.venda_id);
         if (d.vendaId !== antes.venda_id) await atualizarSituacaoVenda(c, d.vendaId);
@@ -860,6 +868,65 @@ export function rotasProducao(banco: Banco) {
           );
         }
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'escalas', entidadeId: empresaId, depois: { data: req.params.data, itens: d.itens.length } });
+      });
+      return { ok: true };
+    });
+
+    // ======================= Cargas do motorista (app) =======================
+    /** Cargas do motorista: as de hoje e as que ainda não foram descarregadas. */
+    app.get('/minhas-cargas', { preHandler: motorista }, async (req) => {
+      const empresaId = empresaDo(req);
+      const mot = await motoristaDoUsuario(banco, req);
+      const r = await banco.query(
+        `SELECT c.*, t.codigo AS traco_codigo, t.slump AS slump_traco, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, cl.telefone AS cliente_telefone,
+                b.codigo AS betoneira_codigo, bo.codigo AS bomba_codigo, v.numero AS venda_numero, v.endereco, v.contato, v.observacoes AS obs_venda
+           FROM cargas c JOIN tracos t ON t.id = c.traco_id JOIN veiculos b ON b.id = c.betoneira_id LEFT JOIN clientes cl ON cl.id = c.cliente_id
+           LEFT JOIN veiculos bo ON bo.id = c.bomba_id LEFT JOIN vendas v ON v.id = c.venda_id
+          WHERE c.empresa_id = $1 AND c.motorista_id = $2 AND c.status = 'produzida'
+            AND (${DIA_LOCAL('c.data_hora')} = $3 OR (c.descarga_em IS NULL AND c.data_hora > now() - interval '2 days'))
+          ORDER BY (c.descarga_em IS NULL) DESC, c.data_hora DESC LIMIT 30`,
+        [empresaId, mot, hojeBrasil()],
+      );
+      return {
+        cargas: r.rows.map((x) => ({
+          id: x.id, numero: x.numero, dataHora: x.data_hora instanceof Date ? x.data_hora.toISOString() : x.data_hora, tracoCodigo: x.traco_codigo, slumpTraco: x.slump_traco,
+          volume: Number(x.volume_m3), clienteNome: x.cliente_nome, clienteTelefone: x.cliente_telefone, obra: x.obra, endereco: x.endereco, contato: x.contato,
+          observacoes: [x.obs_venda, x.observacoes].filter(Boolean).join(' · ') || null, betoneiraCodigo: x.betoneira_codigo, bombaCodigo: x.bomba_codigo,
+          vendaNumero: x.venda_numero, saidaEm: x.saida_em, chegadaEm: x.chegada_em, descargaEm: x.descarga_em, slumpEntrega: num(x.slump_entrega_cm),
+          devolvido: Number(x.devolvido_m3), obsMotorista: x.obs_motorista,
+        })),
+      };
+    });
+
+    app.post<{ Params: { id: string } }>('/minhas-cargas/:id/etapa', { preHandler: motorista }, async (req) => {
+      const d = z
+        .object({
+          etapa: z.enum(['saida', 'chegada', 'descarga'], { errorMap: () => ({ message: 'Etapa inválida.' }) }),
+          slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
+          devolvido: decimal('Volume devolvido inválido.').refine((n) => n >= 0, 'Volume devolvido inválido.').nullable().optional(),
+          observacao: texto(300),
+        })
+        .parse(req.body ?? {});
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Carga');
+      await emTransacao(banco, async (c) => {
+        const mot = await motoristaDoUsuario(c, req);
+        const x = (await c.query('SELECT * FROM cargas WHERE id = $1 AND empresa_id = $2 AND motorista_id = $3 FOR UPDATE', [req.params.id, empresaId, mot])).rows[0];
+        if (!x) throw naoEncontrado('Carga');
+        if (x.status !== 'produzida') throw new ErroHttp(409, 'Esta carga foi cancelada.');
+        if (d.etapa === 'descarga') {
+          if (d.slump === null || d.slump === undefined) throw new ErroHttp(400, 'Informe o slump medido na obra.');
+          if ((d.devolvido ?? 0) > Number(x.volume_m3)) throw new ErroHttp(400, 'O volume devolvido não pode passar o volume da carga.');
+          await c.query(
+            `UPDATE cargas SET saida_em = coalesce(saida_em, data_hora), chegada_em = coalesce(chegada_em, now()), descarga_em = now(), slump_entrega_cm = $2,
+                    devolvido_m3 = coalesce($3, devolvido_m3), obs_motorista = $4, atualizado_em = now() WHERE id = $1`,
+            [x.id, d.slump, d.devolvido ?? null, d.observacao],
+          );
+        } else {
+          const sql = d.etapa === 'saida' ? 'saida_em = coalesce(saida_em, now())' : 'saida_em = coalesce(saida_em, now()), chegada_em = coalesce(chegada_em, now())';
+          await c.query(`UPDATE cargas SET ${sql}, atualizado_em = now() WHERE id = $1`, [x.id]);
+        }
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'cargas', entidadeId: x.id, depois: { motorista: d } });
       });
       return { ok: true };
     });

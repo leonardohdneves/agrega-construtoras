@@ -62,6 +62,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Escala de trabalho', para: '/prod/escala', perfis: GESTAO },
       { rotulo: 'Estoque e inventário', para: '/prod/estoque', perfis: GESTAO },
       { rotulo: 'Relatórios', para: '/prod/relatorios', perfis: GESTAO },
+      { rotulo: 'Minhas cargas', para: '/minhas-cargas', perfis: ['motorista'] },
       { rotulo: 'Minha produção', para: '/minha-producao', perfis: ['motorista'] },
       { rotulo: 'Minha escala', para: '/minha-escala', perfis: ['motorista'] },
     ],
@@ -103,10 +104,12 @@ export const MODULOS: Modulo[] = [
     icone: <IconeFrasco />,
     perfis: LAB,
     itens: [
+      { rotulo: 'Cargas a amostrar', para: '/qual/demandas' },
       { rotulo: 'CPs a romper', para: '/qual/cps' },
       { rotulo: 'Amostras e resultados', para: '/qual/amostras' },
       { rotulo: 'Resistência e fck estimado', para: '/qual/resistencia' },
       { rotulo: 'Laudo para o cliente', para: '/qual/laudo' },
+      { rotulo: 'Rastreabilidade da carga', para: '/qual/rastreabilidade' },
       { rotulo: 'Ensaios de insumos', para: '/qual/insumos' },
       { rotulo: 'Equipamentos e calibração', para: '/qual/equipamentos' },
       { rotulo: 'Traços', para: '/prod/tracos', perfis: ['laboratorista'] },
@@ -163,6 +166,7 @@ export const MODULOS: Modulo[] = [
     itens: [
       { rotulo: 'Empresa', para: '/empresa', perfis: GESTAO },
       { rotulo: 'Usuários e acessos', para: '/usuarios', soAdmin: true },
+      { rotulo: 'Mural de avisos', para: '/mural', livre: true },
       { rotulo: 'Minha conta', para: '/conta', livre: true },
       { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
       { rotulo: 'Manual de operação (PDF)', arquivo: '/manual/agrega-manual-de-operacao.pdf', livre: true },

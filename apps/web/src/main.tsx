@@ -60,6 +60,9 @@ import { Conciliacao } from './paginas/Conciliacao';
 import { ComRelatorios, ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from './paginas/Comercial';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
 import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
+import { PaginaMinhasCargas } from './paginas/MinhasCargas';
+import { QualDemandas, QualRastreabilidade } from './paginas/QualRastreabilidade';
+import { MuralAvisos } from './paginas/Mural';
 
 registerSW({ immediate: true });
 
@@ -174,6 +177,11 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="prod/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelProducao /></Protegido>} />
             <Route path="prod/escala" element={<Protegido perfis={['dono', 'gestor']}><Escala /></Protegido>} />
             <Route path="minha-producao" element={<Protegido perfis={['motorista']}><MinhaProducao /></Protegido>} />
+            <Route path="minhas-cargas" element={<Protegido perfis={['motorista']}><PaginaMinhasCargas /></Protegido>} />
+            <Route path="qual/demandas" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualDemandas /></Protegido>} />
+            <Route path="qual/rastreabilidade" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualRastreabilidade /></Protegido>} />
+            <Route path="qual/rastreabilidade/:cargaId" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualRastreabilidade /></Protegido>} />
+            <Route path="mural" element={<MuralAvisos />} />
             <Route path="minha-escala" element={<Protegido perfis={['motorista']}><MinhaEscala /></Protegido>} />
             <Route path="conta" element={<Conta />} />
             <Route path="admin/empresas" element={<Protegido perfis={['admin_sistema']}><AdminEmpresas /></Protegido>} />
