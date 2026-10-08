@@ -69,12 +69,42 @@ export function desvioPadrao(v: number[]): number | null {
  * O laboratório confirma a moldagem (e aí nascem os CPs) ou marca a carga como não amostrada.
  */
 export async function criarAmostraCarga(c: Cliente, empresaId: string, cargaId: string, dataHora: string, slump: number | null, moldadoPor: string | null = null): Promise<void> {
+  // Os CPs nascem com a carga: as etiquetas saem com o romaneio e o motorista molda na obra.
+  const a = (
+    await c.query(
+      `INSERT INTO amostras (empresa_id, carga_id, data_moldagem, slump_cm, moldado_por, status) VALUES ($1,$2,$3,$4,$5,'pendente')
+       ON CONFLICT (carga_id) DO UPDATE SET slump_cm = coalesce(excluded.slump_cm, amostras.slump_cm), atualizado_em = now()
+       RETURNING id, status`,
+      [empresaId, cargaId, dataHora, slump, moldadoPor],
+    )
+  ).rows[0];
+  if (a.status === 'pendente') await criarCorposProva(c, empresaId, a.id, dataHora);
+}
+
+/**
+ * Moldagem na obra, informada pelo motorista ao concluir a descarga.
+ * `cps` = quantos moldou; null = não moldou (com motivo). As datas de ruptura passam a contar do dia da moldagem.
+ */
+export async function registrarMoldagemObra(
+  c: Cliente,
+  o: { cargaId: string; motoristaId: string; motoristaNome: string; cps: number | null; motivo: string | null; quando: string },
+): Promise<void> {
+  const a = (await c.query(`SELECT id, status FROM amostras WHERE carga_id = $1 FOR UPDATE`, [o.cargaId])).rows[0];
+  if (!a || !['pendente', 'moldada'].includes(a.status)) return;
+  if (o.cps === null || o.cps === 0) {
+    await c.query(
+      `UPDATE amostras SET status = 'nao_amostrada', cps_moldados = 0, observacao = $2, moldada_em = $3, moldada_por_id = $4, atualizado_em = now() WHERE id = $1`,
+      [a.id, o.motivo ?? 'Não moldado na obra', o.quando, o.motoristaId],
+    );
+    await c.query(`UPDATE corpos_prova SET situacao = 'descartado', observacao = 'Não moldado na obra', atualizado_em = now() WHERE amostra_id = $1 AND situacao = 'aguardando'`, [a.id]);
+    return;
+  }
+  const dia = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Sao_Paulo' }).format(new Date(o.quando));
   await c.query(
-    `INSERT INTO amostras (empresa_id, carga_id, data_moldagem, slump_cm, moldado_por, status) VALUES ($1,$2,$3,$4,$5,'pendente')
-     ON CONFLICT (carga_id) DO UPDATE SET slump_cm = coalesce(excluded.slump_cm, amostras.slump_cm),
-       status = CASE WHEN amostras.confirmada_em IS NULL THEN 'pendente' ELSE 'ativa' END, atualizado_em = now()`,
-    [empresaId, cargaId, dataHora, slump, moldadoPor],
+    `UPDATE amostras SET status = 'moldada', cps_moldados = $2, data_moldagem = $3, moldada_em = $3, moldada_por_id = $4, moldado_por = $5, atualizado_em = now() WHERE id = $1`,
+    [a.id, o.cps, o.quando, o.motoristaId, o.motoristaNome],
   );
+  await c.query(`UPDATE corpos_prova SET data_prevista = $2::date + idade_dias, atualizado_em = now() WHERE amostra_id = $1 AND situacao = 'aguardando'`, [a.id, dia]);
 }
 
 /** Cria os corpos de prova da amostra pelas idades da configuração, a partir do dia da moldagem. */

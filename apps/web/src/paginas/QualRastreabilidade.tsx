@@ -9,52 +9,56 @@ const hora = (iso: string) => agoraLocal(new Date(iso)).slice(11, 16);
 const dia = (iso: string) => agoraLocal(new Date(iso)).slice(0, 10).split('-').reverse().join('/');
 const cm = (n: number | null) => (n === null ? '—' : `${formatarNumero(n, Number.isInteger(n) ? 0 : 1)} cm`);
 
+type CpDemanda = { id: string; idade: number; numero: number; situacao: string; previsto: string };
 type Demanda = {
-  amostraId: string; status: 'pendente' | 'ativa' | 'nao_amostrada' | 'cancelada'; cargaId: string; numero: number; dataHora: string; volume: number; tracoCodigo: string;
+  amostraId: string; status: 'pendente' | 'moldada' | 'ativa' | 'nao_amostrada' | 'cancelada'; cargaId: string; numero: number; dataHora: string; volume: number; tracoCodigo: string;
   fck: number | null; slumpTraco: string | null; clienteNome: string | null; obra: string | null; betoneiraCodigo: string; motoristaNome: string | null;
   slump: number | null; slumpEntrega: number | null; temperatura: number | null; moldadoPor: string | null; observacao: string | null; confirmadaEm: string | null;
-  confirmadaPor: string | null; entregue: boolean;
+  confirmadaPor: string | null; entregue: boolean; cpsMoldados: number | null; moldadaEm: string | null; recebidaEm: string | null; recebidaPor: string | null; cps: CpDemanda[];
 };
 
 const SELO: Record<Demanda['status'], [string, string]> = {
-  pendente: ['Aguardando', 'selo-aviso'],
-  ativa: ['Moldada', 'selo-ok'],
+  pendente: ['Na obra', 'selo-neutro'],
+  moldada: ['A receber', 'selo-aviso'],
+  ativa: ['Recebidos', 'selo-ok'],
   nao_amostrada: ['Não amostrada', 'selo-neutro'],
   cancelada: ['Cancelada', 'selo-neutro'],
 };
+type SitCp = 'recebido' | 'danificado' | 'faltando';
 
+/** CPs moldados na obra pelo motorista; o laboratório confirma a chegada de cada um. */
 export function QualDemandas() {
-  const { usuario } = useSessao();
   const [itens, setItens] = useState<Demanda[] | null>(null);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
-  const [aberta, setAberta] = useState<{ id: string; modo: 'confirmar' | 'nao'; slump: string; temperatura: string; moldadoPor: string; motivo: string } | null>(null);
+  const [receber, setReceber] = useState<{ id: string; sit: Record<string, SitCp>; obs: string } | null>(null);
+  const [naoAmostrar, setNaoAmostrar] = useState<{ id: string; motivo: string } | null>(null);
   const [ocupado, setOcupado] = useState(false);
-  const [ultimaConfirmada, setUltimaConfirmada] = useState<string | null>(null);
 
   const carregar = useCallback(() => {
     api<{ itens: Demanda[] }>(`/qual/demandas?de=${somarDias(hojeLocal(), -3)}&ate=${hojeLocal()}`).then((r) => setItens(r.itens)).catch((e) => setErro((e as Error).message));
   }, []);
   useEffect(carregar, [carregar]);
 
-  async function enviar(e: FormEvent, d: Demanda) {
+  function abrirRecebimento(d: Demanda) {
+    setNaoAmostrar(null);
+    const vivos = d.cps.filter((c) => c.situacao === 'aguardando');
+    const n = d.cpsMoldados ?? vivos.length;
+    // O motorista informou quantos moldou: os excedentes já vêm como "faltando".
+    setReceber({ id: d.amostraId, sit: Object.fromEntries(vivos.map((c, i) => [c.id, i < n ? 'recebido' : 'faltando'])), obs: '' });
+  }
+
+  async function confirmarRecebimento(e: FormEvent, d: Demanda) {
     e.preventDefault();
-    if (!aberta) return;
+    if (!receber) return;
     setErro('');
     setOcupado(true);
     try {
-      if (aberta.modo === 'confirmar') {
-        const r = await api<{ cps: number }>(`/qual/amostras/${d.amostraId}/confirmar`, {
-          corpo: { slump: aberta.slump.trim() ? lerNumero(aberta.slump) : null, temperatura: aberta.temperatura.trim() ? lerNumero(aberta.temperatura) : null, moldadoPor: aberta.moldadoPor },
-        });
-        setAviso(`Carga nº ${d.numero}: moldagem confirmada, ${r.cps} corpos de prova gerados.`);
-        setUltimaConfirmada(d.cargaId);
-      } else {
-        await api(`/qual/amostras/${d.amostraId}/nao-amostrar`, { corpo: { motivo: aberta.motivo } });
-        setAviso(`Carga nº ${d.numero} marcada como não amostrada.`);
-        setUltimaConfirmada(null);
-      }
-      setAberta(null);
+      const r = await api<{ recebidos: number }>(`/qual/amostras/${d.amostraId}/receber`, {
+        corpo: { itens: Object.entries(receber.sit).map(([cpId, situacao]) => ({ cpId, situacao })), observacao: receber.obs },
+      });
+      setAviso(`Carga nº ${d.numero}: ${r.recebidos} CP(s) recebido(s) no laboratório. Já entram em CPs a romper nas datas previstas.`);
+      setReceber(null);
       carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -62,9 +66,26 @@ export function QualDemandas() {
     setOcupado(false);
   }
 
-  const pend = (itens ?? []).filter((i) => i.status === 'pendente');
-  const moldadasHoje = (itens ?? []).filter((i) => i.status === 'ativa' && agoraLocal(new Date(i.dataHora)).slice(0, 10) === hojeLocal());
-  const feitas = (itens ?? []).filter((i) => i.status !== 'pendente');
+  async function marcarNaoAmostrada(e: FormEvent, d: Demanda) {
+    e.preventDefault();
+    if (!naoAmostrar) return;
+    setErro('');
+    setOcupado(true);
+    try {
+      await api(`/qual/amostras/${d.amostraId}/nao-amostrar`, { corpo: { motivo: naoAmostrar.motivo } });
+      setAviso(`Carga nº ${d.numero} marcada como não amostrada.`);
+      setNaoAmostrar(null);
+      carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+    setOcupado(false);
+  }
+
+  const aReceber = (itens ?? []).filter((i) => i.status === 'moldada');
+  const naObra = (itens ?? []).filter((i) => i.status === 'pendente');
+  const feitas = (itens ?? []).filter((i) => !['pendente', 'moldada'].includes(i.status));
+
   const linha = (d: Demanda) => (
     <li key={d.amostraId} className="demanda">
       <div className="demanda-topo">
@@ -76,53 +97,72 @@ export function QualDemandas() {
           </div>
           <div className="small muted">
             {d.betoneiraCodigo}{d.motoristaNome ? ` · ${d.motoristaNome}` : ''} · slump usina {cm(d.slump)} · slump obra {d.entregue ? cm(d.slumpEntrega) : 'aguardando o motorista'}
-            {d.slumpTraco ? ` · traço ${d.slumpTraco} cm` : ''}
           </div>
-          {d.status !== 'pendente' && (d.confirmadaPor || d.observacao) && (
-            <div className="small muted">{[d.observacao, d.confirmadaPor ? `por ${d.confirmadaPor}` : null, d.confirmadaEm ? formatarDataHora(d.confirmadaEm) : null].filter(Boolean).join(' · ')}</div>
+          {d.moldadaEm && d.status !== 'nao_amostrada' && (
+            <div className="small">Moldagem na obra: <b>{d.cpsMoldados ?? '?'} CP(s)</b> por {d.moldadoPor ?? 'motorista'} · {formatarDataHora(d.moldadaEm)}</div>
           )}
+          {d.status === 'ativa' && d.recebidaEm && (
+            <div className="small muted">
+              Recebidos {formatarDataHora(d.recebidaEm)}{d.recebidaPor ? ` por ${d.recebidaPor}` : ''} · {d.cps.filter((c) => c.situacao !== 'descartado').length} de {d.cps.length} CPs
+            </div>
+          )}
+          {(d.status === 'nao_amostrada' || d.observacao) && d.observacao && <div className="small muted">{d.observacao}</div>}
         </div>
         <div className="aprov-acoes">
-          {d.status === 'pendente' && (
-            <>
-              <button className="btn btn-primario" type="button" onClick={() => setAberta({ id: d.amostraId, modo: 'confirmar', slump: d.slump === null ? '' : String(d.slump).replace('.', ','), temperatura: '', moldadoPor: usuario?.nome ?? '', motivo: '' })}>
-                Confirmar moldagem
-              </button>
-              <button className="btn btn-secundario" type="button" onClick={() => setAberta({ id: d.amostraId, modo: 'nao', slump: '', temperatura: '', moldadoPor: '', motivo: '' })}>
-                Não amostrar
-              </button>
-            </>
+          {d.status === 'moldada' && <button className="btn btn-primario" type="button" onClick={() => abrirRecebimento(d)}>Receber CPs</button>}
+          {(d.status === 'moldada' || d.status === 'pendente') && (
+            <button className="btn btn-secundario" type="button" onClick={() => { setReceber(null); setNaoAmostrar({ id: d.amostraId, motivo: '' }); }}>Não amostrada</button>
           )}
-          {d.status === 'ativa' && <Link className="btn btn-link" to={`/prod/etiquetas/imprimir?ids=${d.cargaId}`}>Etiquetas</Link>}
           <Link className="btn btn-link" to={`/qual/rastreabilidade/${d.cargaId}`}>Rastrear</Link>
         </div>
       </div>
-      {aberta?.id === d.amostraId && (
-        <form className="form" onSubmit={(e) => enviar(e, d)} style={{ marginTop: 8 }}>
-          {aberta.modo === 'confirmar' ? (
-            <div className="campos">
-              <div className="campo">
-                <label htmlFor={`s-${d.amostraId}`}>Slump na usina (cm)</label>
-                <input id={`s-${d.amostraId}`} className="mono" inputMode="decimal" value={aberta.slump} onChange={(e) => setAberta({ ...aberta, slump: e.target.value })} />
-              </div>
-              <div className="campo">
-                <label htmlFor={`t-${d.amostraId}`}>Temperatura do concreto (°C)</label>
-                <input id={`t-${d.amostraId}`} className="mono" inputMode="decimal" value={aberta.temperatura} onChange={(e) => setAberta({ ...aberta, temperatura: e.target.value })} />
-              </div>
-              <div className="campo">
-                <label htmlFor={`m-${d.amostraId}`}>Moldado por</label>
-                <input id={`m-${d.amostraId}`} value={aberta.moldadoPor} onChange={(e) => setAberta({ ...aberta, moldadoPor: e.target.value })} />
-              </div>
-            </div>
-          ) : (
-            <div className="campo">
-              <label htmlFor={`n-${d.amostraId}`}>Motivo de não amostrar</label>
-              <input id={`n-${d.amostraId}`} required minLength={3} value={aberta.motivo} onChange={(e) => setAberta({ ...aberta, motivo: e.target.value })} />
-            </div>
-          )}
+      {receber?.id === d.amostraId && (
+        <form className="form" onSubmit={(e) => confirmarRecebimento(e, d)} style={{ marginTop: 8 }}>
+          <table className="tabela tabela-compacta">
+            <thead>
+              <tr>
+                <th>CP</th>
+                <th>Ruptura prevista</th>
+                <th>Chegou</th>
+              </tr>
+            </thead>
+            <tbody>
+              {d.cps.filter((c) => c.situacao === 'aguardando').map((c) => (
+                <tr key={c.id}>
+                  <td className="mono">{d.numero}-{c.idade}-{c.numero}</td>
+                  <td className="mono">{c.previsto.split('-').reverse().join('/')} ({c.idade} d)</td>
+                  <td>
+                    <div className="segmentado" role="group" aria-label={`CP ${c.numero} aos ${c.idade} dias`}>
+                      {(['recebido', 'danificado', 'faltando'] as SitCp[]).map((sit) => (
+                        <button key={sit} type="button" aria-pressed={receber.sit[c.id] === sit} className={receber.sit[c.id] === sit ? 'ativo' : ''} onClick={() => setReceber({ ...receber, sit: { ...receber.sit, [c.id]: sit } })}>
+                          {sit === 'recebido' ? 'Recebido' : sit === 'danificado' ? 'Danificado' : 'Faltando'}
+                        </button>
+                      ))}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <div className="campo">
+            <label htmlFor={`o-${d.amostraId}`}>Observação</label>
+            <input id={`o-${d.amostraId}`} placeholder="Opcional" value={receber.obs} onChange={(e) => setReceber({ ...receber, obs: e.target.value })} />
+          </div>
           <div className="acoes">
-            <button className="btn btn-primario" type="submit" disabled={ocupado}>{aberta.modo === 'confirmar' ? 'Confirmar e gerar os CPs' : 'Marcar como não amostrada'}</button>
-            <button className="btn btn-link" type="button" onClick={() => setAberta(null)}>Voltar</button>
+            <button className="btn btn-primario" type="submit" disabled={ocupado}>Confirmar recebimento</button>
+            <button className="btn btn-link" type="button" onClick={() => setReceber(null)}>Voltar</button>
+          </div>
+        </form>
+      )}
+      {naoAmostrar?.id === d.amostraId && (
+        <form className="form" onSubmit={(e) => marcarNaoAmostrada(e, d)} style={{ marginTop: 8 }}>
+          <div className="campo">
+            <label htmlFor={`n-${d.amostraId}`}>Motivo</label>
+            <input id={`n-${d.amostraId}`} required minLength={3} value={naoAmostrar.motivo} onChange={(e) => setNaoAmostrar({ ...naoAmostrar, motivo: e.target.value })} />
+          </div>
+          <div className="acoes">
+            <button className="btn btn-primario" type="submit" disabled={ocupado}>Marcar como não amostrada</button>
+            <button className="btn btn-link" type="button" onClick={() => setNaoAmostrar(null)}>Voltar</button>
           </div>
         </form>
       )}
@@ -133,33 +173,29 @@ export function QualDemandas() {
     <>
       <div className="cabecalho">
         <div className="titulo">
-          <h1>Cargas a amostrar</h1>
-          <span className="muted">Cada carga registrada vira uma demanda. Confirme a moldagem para gerar os corpos de prova.</span>
+          <h1>CPs a receber</h1>
+          <span className="muted">Os CPs são moldados na obra pelo motorista. Confirme a chegada de cada um no laboratório para liberar a ruptura.</span>
         </div>
         <Link className="btn btn-secundario" to="/qual/rastreabilidade">Rastrear carga</Link>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      {aviso && (
-        <div className="alerta alerta-ok" role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
-          <span style={{ flex: 1 }}>{aviso}</span>
-          {ultimaConfirmada && <Link className="btn btn-secundario" to={`/prod/etiquetas/imprimir?ids=${ultimaConfirmada}`}>Imprimir etiquetas</Link>}
-        </div>
-      )}
-      {moldadasHoje.length > 0 && (
-        <div className="filtros">
-          <Link className="btn btn-secundario" to={`/prod/etiquetas/imprimir?ids=${moldadasHoje.map((i) => i.cargaId).join(',')}`}>
-            Etiquetas das cargas moldadas hoje ({moldadasHoje.length})
-          </Link>
-        </div>
-      )}
+      {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
       <section className="card">
-        <h2>Aguardando o laboratório {pend.length > 0 && <span className="selo selo-aviso">{pend.length}</span>}</h2>
-        {!itens ? <p className="muted">Carregando…</p> : pend.length === 0 ? <p className="muted" style={{ margin: 0 }}>Nenhuma carga esperando.</p> : <ul className="lista-demandas">{pend.map(linha)}</ul>}
+        <h2>Moldados na obra, a receber {aReceber.length > 0 && <span className="selo selo-aviso">{aReceber.length}</span>}</h2>
+        {!itens ? <p className="muted">Carregando…</p> : aReceber.length === 0 ? <p className="muted" style={{ margin: 0 }}>Nenhum CP esperando o laboratório.</p> : <ul className="lista-demandas">{aReceber.map(linha)}</ul>}
       </section>
+      {naObra.length > 0 && (
+        <section className="card">
+          <h2>Cargas a caminho ou na obra <span className="small muted">({naObra.length})</span></h2>
+          <p className="small muted" style={{ marginTop: 0 }}>O motorista ainda não informou a moldagem.</p>
+          <ul className="lista-demandas">{naObra.map(linha)}</ul>
+        </section>
+      )}
       {feitas.length > 0 && (
         <section className="card">
           <h2>Últimos 3 dias</h2>
-          <ul className="lista-demandas">{feitas.map(linha)}</ul>
+          <ul className="lista-demandas">{feitas.slice(0, 15).map(linha)}</ul>
+          {feitas.length > 15 && <p className="small muted" style={{ margin: 0 }}>Mais {feitas.length - 15} carga(s) em Amostras e resultados.</p>}
         </section>
       )}
     </>

@@ -38,7 +38,6 @@ export function ProdRomaneios() {
   const [dia, setDia] = useState(hojeLocal());
   const [cargas, setCargas] = useState<Carga[] | null>(null);
   const [sel, setSel] = useState<Set<string>>(new Set());
-  const [inicio, setInicio] = useState(1);
   const [erro, setErro] = useState('');
   const hoje = hojeLocal();
 
@@ -55,7 +54,7 @@ export function ProdRomaneios() {
   useEffect(carregar, [carregar]);
 
   const marcadas = (cargas ?? []).filter((c) => sel.has(c.id));
-  const comCps = marcadas.filter((c) => c.amostraStatus === 'ativa');
+  const comCps = marcadas.filter((c) => c.status === 'produzida' && ['pendente', 'moldada', 'ativa'].includes(c.amostraStatus ?? ''));
   const todas = !!cargas?.length && cargas.every((c) => sel.has(c.id));
   const alternar = (id: string) => setSel((s) => {
     const n = new Set(s);
@@ -84,25 +83,17 @@ export function ProdRomaneios() {
 
       <div className="card barra-impressao">
         <div>
-          <b>{marcadas.length}</b> carga(s) marcada(s) · <b>{comCps.length}</b> com corpos de prova moldados
+          <b>{marcadas.length}</b> carga(s) marcada(s) · <b>{comCps.length}</b> com etiquetas de CP
         </div>
         <div className="acoes">
-          <button className="btn btn-primario" type="button" disabled={!marcadas.length} onClick={() => navegar(`/prod/romaneios/imprimir?ids=${marcadas.map((c) => c.id).join(',')}`)}>
-            Imprimir romaneios
+          <button className="btn btn-primario" type="button" disabled={!marcadas.length} onClick={() => navegar(`/prod/kit?ids=${marcadas.map((c) => c.id).join(',')}`)}>
+            Romaneios e etiquetas das marcadas
           </button>
-          <button className="btn btn-secundario" type="button" disabled={!comCps.length} onClick={() => navegar(`/prod/etiquetas/imprimir?ids=${comCps.map((c) => c.id).join(',')}&inicio=${inicio}`)}>
-            Imprimir etiquetas dos CPs
+          <button className="btn btn-secundario" type="button" disabled={!comCps.length} onClick={() => navegar(`/prod/etiquetas/imprimir?ids=${comCps.map((c) => c.id).join(',')}`)}>
+            Só as etiquetas
           </button>
-          <label className="small">
-            começar na etiqueta{' '}
-            <select value={inicio} onChange={(e) => setInicio(Number(e.target.value))} aria-label="Primeira etiqueta livre da folha">
-              {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </label>
         </div>
-        <span className="small muted">Para reaproveitar uma folha de etiquetas já usada, escolha a primeira etiqueta livre (contando da esquerda para a direita, de cima para baixo).</span>
+        <span className="small muted">O sistema lembra a próxima etiqueta livre da folha adesiva deste computador; confira na tela de impressão.</span>
       </div>
 
       <div className="card tabela-caixa">
@@ -140,17 +131,18 @@ export function ProdRomaneios() {
                   <td>
                     {c.status === 'cancelada' ? (
                       <span className="selo selo-neutro">cancelada</span>
+                    ) : c.amostraStatus === 'pendente' ? (
+                      <span className="selo selo-aviso">a moldar na obra</span>
+                    ) : c.amostraStatus === 'moldada' ? (
+                      <span className="selo selo-aviso">a receber no lab.</span>
                     ) : c.amostraStatus === 'ativa' ? (
-                      <span className="selo selo-ok">moldados</span>
-                    ) : c.amostraStatus === 'nao_amostrada' ? (
-                      <span className="selo selo-neutro">não amostrada</span>
+                      <span className="selo selo-ok">no laboratório</span>
                     ) : (
-                      <span className="selo selo-aviso">aguardando lab.</span>
+                      <span className="selo selo-neutro">não amostrada</span>
                     )}
                   </td>
                   <td style={{ whiteSpace: 'nowrap', textAlign: 'right' }}>
-                    <Link className="btn btn-link" to={`/prod/romaneios/imprimir?ids=${c.id}`}>Romaneio</Link>
-                    {c.amostraStatus === 'ativa' && <Link className="btn btn-link" to={`/prod/etiquetas/imprimir?ids=${c.id}`}>Etiquetas</Link>}
+                    <Link className="btn btn-link" to={`/prod/kit?ids=${c.id}`}>Romaneio e etiquetas</Link>
                   </td>
                 </tr>
               ))}
@@ -169,6 +161,7 @@ type Romaneio = {
   vendaNumero: number | null; cargaFinal: boolean; traco: { codigo: string; descricao: string | null; fck: number | null; slump: string | null; brita: string | null };
   betoneira: string; placa: string | null; motorista: string | null; bomba: string | null; operadorBomba: string | null; volumeBombeado: number | null; registradoPor: string | null;
   composicao: { nome: string; tipo: string; unidade: string; quantidade: number }[]; aguaCentral: number; aditivos: string[];
+  cps: { idade: number; quantidade: number }[];
 };
 
 function Campo({ rotulo, children, largo }: { rotulo: string; children?: ReactNode; largo?: boolean }) {
@@ -259,7 +252,9 @@ function Via({ r, via }: { r: Romaneio; via: string }) {
         <Campo rotulo="Slump na obra">______ cm</Campo>
         <Campo rotulo="Água adicionada na obra">______ L</Campo>
         <Campo rotulo="Aditivo adicionado na obra">________</Campo>
-        <Campo rotulo="CPs moldados na obra">______</Campo>
+        <Campo rotulo={r.cps.length ? `CPs a moldar (${r.cps.map((c) => `${c.quantidade} × ${c.idade} d`).join(' + ')})` : 'CPs moldados na obra'}>
+          {r.cps.length ? <>moldados: ______ <span className="small">(etiquetas anexas)</span></> : '______'}
+        </Campo>
       </div>
       <p className="via-aviso">
         Adição de água ou aditivo na obra a pedido do contratante: registrar acima e assinar. Nesse caso a concreteira fica isenta de responsabilidade pelas características do concreto (NBR 7212).
@@ -298,12 +293,12 @@ export function ImprimirRomaneios() {
           <span className="muted">{lista ? `${lista.length} carga(s) · uma folha A4 por carga, com a via do cliente e a via da concreteira.` : 'Carregando…'}</span>
         </div>
         <div className="acoes">
-          <button className="btn btn-primario" type="button" disabled={!lista?.length} onClick={() => window.print()}>Imprimir</button>
+          <button className="btn btn-primario" type="button" disabled={!lista?.length} onClick={() => imprimirParte('romaneio', () => marcarImpressos(lista!.map((r) => r.id), 'romaneio'))}>Imprimir</button>
           <button className="btn btn-secundario" type="button" onClick={() => navegar(-1)}>Voltar</button>
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      <div className="folhas-impressao">
+      <div className="folhas-impressao secao-romaneio">
         {lista?.map((r) => (
           <div key={r.id} className="folha folha-romaneio">
             <Via r={r} via="Via do cliente" />
@@ -321,28 +316,111 @@ type Etiqueta = {
   id: string; codigo: string; cargaId: string; cargaNumero: number; idade: number; cp: number; dataMoldagem: string; dataPrevista: string;
   tracoCodigo: string; fck: number | null; clienteNome: string | null; obra: string | null;
 };
+type RespEtiquetas = { etiquetas: Etiqueta[]; semEtiqueta: { numero: number; status: string }[] };
 
 const POR_FOLHA = 24; // 3 colunas × 8 linhas, 70 × 37 mm
+const CHAVE_POSICAO = 'agrega.etiquetas.proxima';
+
+/** Próxima etiqueta livre da folha adesiva que está na impressora deste computador. */
+function usePosicaoEtiqueta(inicial?: number): [number, (n: number) => void, (usadas: number) => void] {
+  const ler = () => {
+    try {
+      return Math.min(POR_FOLHA, Math.max(1, Number(localStorage.getItem(CHAVE_POSICAO)) || 1));
+    } catch {
+      return 1;
+    }
+  };
+  const [pos, setPos] = useState(inicial && inicial >= 1 && inicial <= POR_FOLHA ? inicial : ler());
+  const gravar = (n: number) => {
+    setPos(n);
+    try {
+      localStorage.setItem(CHAVE_POSICAO, String(n));
+    } catch {
+      /* sem armazenamento: só vale nesta tela */
+    }
+  };
+  const avancar = (usadas: number) => gravar(((pos - 1 + usadas) % POR_FOLHA) + 1);
+  return [pos, gravar, avancar];
+}
+
+function SeletorPosicao({ valor, aoMudar }: { valor: number; aoMudar: (n: number) => void }) {
+  return (
+    <label className="small">
+      próxima etiqueta livre da folha{' '}
+      <select value={valor} onChange={(e) => aoMudar(Number(e.target.value))}>
+        {Array.from({ length: POR_FOLHA }, (_, i) => i + 1).map((n) => (
+          <option key={n} value={n}>{n}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
+function FolhasEtiquetas({ etiquetas, inicio }: { etiquetas: Etiqueta[]; inicio: number }) {
+  const origem = window.location.origin;
+  const folhas = useMemo(() => {
+    const cel: (Etiqueta | null)[] = [...Array(inicio - 1).fill(null), ...etiquetas];
+    const out: (Etiqueta | null)[][] = [];
+    for (let i = 0; i < cel.length; i += POR_FOLHA) out.push(cel.slice(i, i + POR_FOLHA));
+    return out;
+  }, [etiquetas, inicio]);
+  return (
+    <>
+      {folhas.map((f, k) => (
+        <div key={k} className="folha folha-etiquetas">
+          {Array.from({ length: POR_FOLHA }, (_, i) => f[i] ?? null).map((e, i) =>
+            e ? (
+              <div key={i} className="etiqueta-cp">
+                <Qr texto={`${origem}/qual/cps?cp=${e.codigo}`} mm={23} />
+                <div className="et-txt">
+                  <b className="et-cod">{e.codigo}</b>
+                  <span><b>{e.tracoCodigo}</b>{e.fck ? ` · fck ${e.fck}` : ''}</span>
+                  <span>Carga {e.cargaNumero} · {dataCurta(agoraLocal(new Date(e.dataMoldagem)))}</span>
+                  <span><b>Romper {e.idade}d: {dataCurta(e.dataPrevista)}</b></span>
+                  <span className="et-cli">{[e.clienteNome, e.obra].filter(Boolean).join(' · ')}</span>
+                </div>
+              </div>
+            ) : (
+              <div key={i} className="etiqueta-cp vazia" />
+            ),
+          )}
+        </div>
+      ))}
+    </>
+  );
+}
+
+const textoSem = (s: { numero: number; status: string }) =>
+  `carga ${s.numero} (${s.status === 'nao_amostrada' ? 'não amostrada' : s.status === 'cancelada' ? 'cancelada' : 'sem corpos de prova'})`;
+
+/** Marca no sistema o que foi impresso (rastreabilidade). */
+function marcarImpressos(ids: string[], tipo: 'romaneio' | 'etiquetas') {
+  if (ids.length) api('/prod/impressos', { corpo: { ids, tipo } }).catch(() => {});
+}
+
+/** Imprime só uma parte da tela (romaneios ou etiquetas) e chama `depois` ao terminar. */
+function imprimirParte(parte: 'romaneio' | 'etiquetas' | 'tudo', depois?: () => void) {
+  document.documentElement.dataset.imprimir = parte;
+  const fim = () => {
+    window.removeEventListener('afterprint', fim);
+    delete document.documentElement.dataset.imprimir;
+    depois?.();
+  };
+  window.addEventListener('afterprint', fim);
+  setTimeout(() => window.print(), 50);
+}
 
 export function ImprimirEtiquetas() {
   const [busca] = useSearchParams();
   const navegar = useNavigate();
-  const [dados, setDados] = useState<{ etiquetas: Etiqueta[]; semEtiqueta: { numero: number; status: string }[] } | null>(null);
+  const [dados, setDados] = useState<RespEtiquetas | null>(null);
   const [erro, setErro] = useState('');
-  const [inicio, setInicio] = useState(Math.min(24, Math.max(1, Number(busca.get('inicio')) || 1)));
+  const [pos, setPos, avancar] = usePosicaoEtiqueta(Number(busca.get('inicio')) || undefined);
+  const ids = (busca.get('ids') ?? '').split(',').filter(Boolean);
   usePaginaA4('0');
   useEffect(() => {
-    api<{ etiquetas: Etiqueta[]; semEtiqueta: { numero: number; status: string }[] }>(`/prod/etiquetas?ids=${busca.get('ids') ?? ''}`).then(setDados).catch((e) => setErro((e as Error).message));
+    api<RespEtiquetas>(`/prod/etiquetas?ids=${busca.get('ids') ?? ''}`).then(setDados).catch((e) => setErro((e as Error).message));
   }, [busca]);
-
-  const folhas = useMemo(() => {
-    if (!dados) return [];
-    const cel: (Etiqueta | null)[] = [...Array(inicio - 1).fill(null), ...dados.etiquetas];
-    const out: (Etiqueta | null)[][] = [];
-    for (let i = 0; i < cel.length; i += POR_FOLHA) out.push(cel.slice(i, i + POR_FOLHA));
-    return out;
-  }, [dados, inicio]);
-  const origem = window.location.origin;
 
   return (
     <>
@@ -350,51 +428,86 @@ export function ImprimirEtiquetas() {
         <div className="titulo">
           <h1>Etiquetas dos corpos de prova</h1>
           <span className="muted">
-            {dados ? `${dados.etiquetas.length} etiqueta(s) em ${folhas.length} folha(s) A4 de 24 etiquetas (3 × 8, 70 × 37 mm).` : 'Carregando…'} Use etiqueta sintética resistente à água: os CPs vão para o tanque de cura.
+            {dados ? `${dados.etiquetas.length} etiqueta(s) · folha A4 de 24 etiquetas (3 × 8, 70 × 37 mm).` : 'Carregando…'} Use etiqueta sintética resistente à água: os CPs vão para o tanque de cura.
           </span>
         </div>
         <div className="acoes">
-          <label className="small">
-            começar na etiqueta{' '}
-            <select value={inicio} onChange={(e) => setInicio(Number(e.target.value))}>
-              {Array.from({ length: 24 }, (_, i) => i + 1).map((n) => (
-                <option key={n} value={n}>{n}</option>
-              ))}
-            </select>
-          </label>
-          <button className="btn btn-primario" type="button" disabled={!dados?.etiquetas.length} onClick={() => window.print()}>Imprimir</button>
+          <SeletorPosicao valor={pos} aoMudar={setPos} />
+          <button className="btn btn-primario" type="button" disabled={!dados?.etiquetas.length} onClick={() => imprimirParte('etiquetas', () => { avancar(dados!.etiquetas.length); marcarImpressos(ids, 'etiquetas'); })}>
+            Imprimir
+          </button>
           <button className="btn btn-secundario" type="button" onClick={() => navegar(-1)}>Voltar</button>
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      {dados && dados.semEtiqueta.length > 0 && (
-        <div className="alerta alerta-aviso nao-imprimir">
-          Sem etiquetas: {dados.semEtiqueta.map((s) => `carga ${s.numero} (${s.status === 'pendente' ? 'moldagem não confirmada' : s.status === 'nao_amostrada' ? 'não amostrada' : s.status === 'cancelada' ? 'cancelada' : 'sem amostra'})`).join(', ')}.
-          {' '}As etiquetas saem depois que o laboratório confirma a moldagem em Qualidade › Cargas a amostrar.
+      {dados && dados.semEtiqueta.length > 0 && <div className="alerta alerta-aviso nao-imprimir">Sem etiquetas: {dados.semEtiqueta.map(textoSem).join(', ')}.</div>}
+      <div className="folhas-impressao secao-etiquetas">{dados && <FolhasEtiquetas etiquetas={dados.etiquetas} inicio={pos} />}</div>
+    </>
+  );
+}
+
+/**
+ * Kit da carga para o motorista: romaneio (papel comum, 2 vias) e etiquetas dos CPs (folha adesiva).
+ * Duas impressões na mesma tela, porque o papel é diferente; a posição da folha de etiquetas é lembrada.
+ */
+export function ImprimirKit() {
+  const [busca] = useSearchParams();
+  const navegar = useNavigate();
+  const [lista, setLista] = useState<Romaneio[] | null>(null);
+  const [et, setEt] = useState<RespEtiquetas | null>(null);
+  const [erro, setErro] = useState('');
+  const [feito, setFeito] = useState<{ romaneio: boolean; etiquetas: boolean }>({ romaneio: false, etiquetas: false });
+  const [pos, setPos, avancar] = usePosicaoEtiqueta();
+  const ids = (busca.get('ids') ?? '').split(',').filter(Boolean);
+  usePaginaA4('0');
+  useEffect(() => {
+    const q = busca.get('ids') ?? '';
+    api<{ romaneios: Romaneio[] }>(`/prod/romaneios?ids=${q}`).then((r) => setLista(r.romaneios)).catch((e) => setErro((e as Error).message));
+    api<RespEtiquetas>(`/prod/etiquetas?ids=${q}`).then(setEt).catch(() => setEt({ etiquetas: [], semEtiqueta: [] }));
+  }, [busca]);
+  const n = et?.etiquetas.length ?? 0;
+
+  return (
+    <>
+      <div className="cabecalho nao-imprimir">
+        <div className="titulo">
+          <h1>Romaneio e etiquetas para o motorista</h1>
+          <span className="muted">
+            {lista ? `${lista.length} carga(s)` : 'Carregando…'}
+            {et ? ` · ${n} etiqueta(s) de CP` : ''}. O motorista leva o romaneio e as etiquetas para moldar os CPs na obra.
+          </span>
         </div>
-      )}
-      <div className="folhas-impressao">
-        {folhas.map((f, k) => (
-          <div key={k} className="folha folha-etiquetas">
-            {Array.from({ length: POR_FOLHA }, (_, i) => f[i] ?? null).map((e, i) =>
-              e ? (
-                <div key={i} className="etiqueta-cp">
-                  <Qr texto={`${origem}/qual/cps?cp=${e.codigo}`} mm={23} />
-                  <div className="et-txt">
-                    <b className="et-cod">{e.codigo}</b>
-                    <span><b>{e.tracoCodigo}</b>{e.fck ? ` · fck ${e.fck}` : ''}</span>
-                    <span>Mold. {dataCurta(agoraLocal(new Date(e.dataMoldagem)))}</span>
-                    <span><b>Romper {e.idade}d: {dataCurta(e.dataPrevista)}</b></span>
-                    <span className="et-cli">{[e.clienteNome, e.obra].filter(Boolean).join(' · ')}</span>
-                  </div>
-                </div>
-              ) : (
-                <div key={i} className="etiqueta-cp vazia" />
-              ),
-            )}
+        <button className="btn btn-secundario" type="button" onClick={() => navegar(-1)}>Voltar</button>
+      </div>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <div className="card passos-kit nao-imprimir">
+        <div className={`passo-kit ${feito.romaneio ? 'feito' : ''}`}>
+          <b>1. Romaneio</b>
+          <span className="small muted">Papel A4 comum · {lista?.length ?? 0} folha(s), 2 vias cada</span>
+          <button className="btn btn-primario" type="button" disabled={!lista?.length} onClick={() => imprimirParte('romaneio', () => { setFeito((f) => ({ ...f, romaneio: true })); marcarImpressos(ids, 'romaneio'); })}>
+            {feito.romaneio ? 'Imprimir de novo' : 'Imprimir romaneio'}
+          </button>
+        </div>
+        <div className={`passo-kit ${feito.etiquetas ? 'feito' : ''}`}>
+          <b>2. Etiquetas dos CPs</b>
+          <span className="small muted">Coloque a folha adesiva (3 × 8) · {n} etiqueta(s), a partir da nº {pos}</span>
+          <SeletorPosicao valor={pos} aoMudar={setPos} />
+          <button className="btn btn-primario" type="button" disabled={!n} onClick={() => imprimirParte('etiquetas', () => { setFeito((f) => ({ ...f, etiquetas: true })); avancar(n); marcarImpressos(ids, 'etiquetas'); })}>
+            {feito.etiquetas ? 'Imprimir de novo' : 'Imprimir etiquetas'}
+          </button>
+        </div>
+        {et && et.semEtiqueta.length > 0 && <span className="small muted">Sem etiquetas: {et.semEtiqueta.map(textoSem).join(', ')}.</span>}
+      </div>
+      <div className="folhas-impressao secao-romaneio">
+        {lista?.map((r) => (
+          <div key={r.id} className="folha folha-romaneio">
+            <Via r={r} via="Via do cliente" />
+            <div className="corte" aria-hidden="true"><span>✂ corte aqui</span></div>
+            <Via r={r} via="Via da concreteira" />
           </div>
         ))}
       </div>
+      <div className="folhas-impressao secao-etiquetas">{et && n > 0 && <FolhasEtiquetas etiquetas={et.etiquetas} inicio={pos} />}</div>
     </>
   );
 }

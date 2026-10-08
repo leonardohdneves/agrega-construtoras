@@ -10,7 +10,7 @@ import { somarDias } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { gravarConsumoCarga, saldosEm } from '../lib/estoque.ts';
 import { atualizarSituacaoVenda, vendaPublica } from './comercial.ts';
-import { cancelarAmostraCarga, criarAmostraCarga, reprogramarAmostra } from '../lib/qualidade.ts';
+import { cancelarAmostraCarga, criarAmostraCarga, registrarMoldagemObra, reprogramarAmostra } from '../lib/qualidade.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -694,6 +694,12 @@ export function rotasProducao(banco: Banco) {
            FROM cargas c JOIN tracos_itens ti ON ti.traco_id = c.traco_id JOIN insumos i ON i.id = ti.insumo_id WHERE c.id = ANY($1::uuid[])`,
         [ids],
       );
+      const cps = await banco.query(
+        `SELECT a.carga_id, cp.idade_dias, count(*)::int AS n FROM amostras a JOIN corpos_prova cp ON cp.amostra_id = a.id
+          WHERE a.carga_id = ANY($1::uuid[]) AND a.status IN ('pendente', 'moldada', 'ativa') AND cp.situacao <> 'descartado'
+          GROUP BY 1, 2 ORDER BY 2`,
+        [ids],
+      );
       const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : (v as string | null));
       return {
         romaneios: r.rows.map((x) => {
@@ -711,6 +717,7 @@ export function rotasProducao(banco: Banco) {
             composicao: itens,
             aguaCentral: Math.round(itens.filter((k) => k.tipo === 'agua').reduce((s, k) => s + k.quantidade, 0) * 10) / 10,
             aditivos: itens.filter((k) => k.tipo === 'aditivo').map((k) => k.nome),
+            cps: cps.rows.filter((k) => k.carga_id === x.id).map((k) => ({ idade: k.idade_dias as number, quantidade: k.n as number })),
           };
         }),
       };
@@ -725,13 +732,13 @@ export function rotasProducao(banco: Banco) {
                 t.codigo AS traco_codigo, t.fck, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, c.obra
            FROM cargas c JOIN amostras a ON a.carga_id = c.id JOIN corpos_prova cp ON cp.amostra_id = a.id JOIN tracos t ON t.id = c.traco_id
            LEFT JOIN clientes cl ON cl.id = c.cliente_id
-          WHERE c.empresa_id = $1 AND c.id = ANY($2::uuid[]) AND a.status = 'ativa' AND cp.situacao <> 'descartado'
+          WHERE c.empresa_id = $1 AND c.id = ANY($2::uuid[]) AND a.status IN ('pendente', 'moldada', 'ativa') AND cp.situacao <> 'descartado'
           ORDER BY c.data_hora, c.numero, cp.idade_dias, cp.numero`,
         [empresaId, ids],
       );
       const semCps = await banco.query(
         `SELECT c.numero, coalesce(a.status, 'sem_amostra') AS status FROM cargas c LEFT JOIN amostras a ON a.carga_id = c.id
-          WHERE c.empresa_id = $1 AND c.id = ANY($2::uuid[]) AND (a.status IS NULL OR a.status <> 'ativa') ORDER BY c.numero`,
+          WHERE c.empresa_id = $1 AND c.id = ANY($2::uuid[]) AND (a.status IS NULL OR a.status NOT IN ('pendente', 'moldada', 'ativa')) ORDER BY c.numero`,
         [empresaId, ids],
       );
       return {
@@ -742,6 +749,14 @@ export function rotasProducao(banco: Banco) {
         })),
         semEtiqueta: semCps.rows.map((x) => ({ numero: x.numero, status: x.status })),
       };
+    });
+
+    /** Marca romaneios ou etiquetas como impressos (vai para a rastreabilidade). */
+    app.post('/impressos', { preHandler: impressao }, async (req) => {
+      const d = z.object({ ids: z.array(z.string().uuid()).min(1).max(200), tipo: z.enum(['romaneio', 'etiquetas']) }).parse(req.body);
+      const col = d.tipo === 'romaneio' ? 'romaneio_impresso_em' : 'etiquetas_impressas_em';
+      await banco.query(`UPDATE cargas SET ${col} = coalesce(${col}, now()) WHERE empresa_id = $1 AND id = ANY($2::uuid[])`, [empresaDo(req), d.ids]);
+      return { ok: true };
     });
 
     // ======================= Estoque na hora da carga =======================
@@ -966,9 +981,11 @@ export function rotasProducao(banco: Banco) {
       const mot = await motoristaDoUsuario(banco, req);
       const r = await banco.query(
         `SELECT c.*, t.codigo AS traco_codigo, t.slump AS slump_traco, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, cl.telefone AS cliente_telefone,
-                b.codigo AS betoneira_codigo, bo.codigo AS bomba_codigo, v.numero AS venda_numero, v.endereco, v.contato, v.observacoes AS obs_venda
+                b.codigo AS betoneira_codigo, bo.codigo AS bomba_codigo, v.numero AS venda_numero, v.endereco, v.contato, v.observacoes AS obs_venda,
+                am.status AS amostra_status, am.cps_moldados,
+                (SELECT count(*) FROM corpos_prova cp WHERE cp.amostra_id = am.id AND cp.situacao <> 'descartado')::int AS cps_previstos
            FROM cargas c JOIN tracos t ON t.id = c.traco_id JOIN veiculos b ON b.id = c.betoneira_id LEFT JOIN clientes cl ON cl.id = c.cliente_id
-           LEFT JOIN veiculos bo ON bo.id = c.bomba_id LEFT JOIN vendas v ON v.id = c.venda_id
+           LEFT JOIN veiculos bo ON bo.id = c.bomba_id LEFT JOIN vendas v ON v.id = c.venda_id LEFT JOIN amostras am ON am.carga_id = c.id
           WHERE c.empresa_id = $1 AND c.motorista_id = $2 AND c.status = 'produzida'
             AND (${DIA_LOCAL('c.data_hora')} = $3 OR (c.descarga_em IS NULL AND c.data_hora > now() - interval '2 days'))
           ORDER BY (c.descarga_em IS NULL) DESC, c.data_hora DESC LIMIT 30`,
@@ -981,6 +998,7 @@ export function rotasProducao(banco: Banco) {
           observacoes: [x.obs_venda, x.observacoes].filter(Boolean).join(' · ') || null, betoneiraCodigo: x.betoneira_codigo, bombaCodigo: x.bomba_codigo,
           vendaNumero: x.venda_numero, saidaEm: x.saida_em, chegadaEm: x.chegada_em, descargaEm: x.descarga_em, slumpEntrega: num(x.slump_entrega_cm),
           devolvido: Number(x.devolvido_m3), obsMotorista: x.obs_motorista,
+          amostraStatus: x.amostra_status ?? null, cpsPrevistos: x.cps_previstos ?? 0, cpsMoldados: x.cps_moldados ?? null,
         })),
       };
     });
@@ -992,6 +1010,8 @@ export function rotasProducao(banco: Banco) {
           slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
           devolvido: decimal('Volume devolvido inválido.').refine((n) => n >= 0, 'Volume devolvido inválido.').nullable().optional(),
           observacao: texto(300),
+          cpsMoldados: z.number().int().min(0).max(20).nullable().optional(),
+          motivoSemCps: texto(200),
         })
         .parse(req.body ?? {});
       const empresaId = empresaDo(req);
@@ -1009,6 +1029,15 @@ export function rotasProducao(banco: Banco) {
                     devolvido_m3 = coalesce($3, devolvido_m3), obs_motorista = $4, atualizado_em = now() WHERE id = $1`,
             [x.id, d.slump, d.devolvido ?? null, d.observacao],
           );
+          // CPs moldados na obra pelo motorista (ou o motivo de não moldar).
+          const am = (await c.query(`SELECT status FROM amostras WHERE carga_id = $1`, [x.id])).rows[0];
+          if (am && ['pendente', 'moldada'].includes(am.status)) {
+            if ((d.cpsMoldados === null || d.cpsMoldados === undefined || d.cpsMoldados === 0) && !d.motivoSemCps) {
+              throw new ErroHttp(400, 'Informe quantos CPs você moldou, ou o motivo de não moldar.');
+            }
+            const nome = (await c.query('SELECT nome FROM motoristas WHERE id = $1', [mot])).rows[0]?.nome ?? req.usuario!.nome;
+            await registrarMoldagemObra(c, { cargaId: x.id, motoristaId: mot, motoristaNome: nome, cps: d.cpsMoldados || null, motivo: d.motivoSemCps, quando: new Date().toISOString() });
+          }
         } else {
           const sql = d.etapa === 'saida' ? 'saida_em = coalesce(saida_em, now())' : 'saida_em = coalesce(saida_em, now()), chegada_em = coalesce(chegada_em, now())';
           await c.query(`UPDATE cargas SET ${sql}, atualizado_em = now() WHERE id = $1`, [x.id]);

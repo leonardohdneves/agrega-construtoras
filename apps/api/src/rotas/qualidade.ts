@@ -213,7 +213,7 @@ export function rotasQualidade(banco: Banco) {
           [empresaId],
         )
       ).rows.map((x) => ({ insumoId: x.insumo_id, nome: x.nome, data: x.data, umidade: num(x.umidade_pct) }));
-      const pend = (await banco.query(`SELECT count(*)::int AS n FROM amostras a JOIN cargas ca ON ca.id = a.carga_id WHERE a.empresa_id = $1 AND a.status = 'pendente' AND ca.status = 'produzida'`, [empresaId])).rows[0].n;
+      const pend = (await banco.query(`SELECT count(*)::int AS n FROM amostras a JOIN cargas ca ON ca.id = a.carga_id WHERE a.empresa_id = $1 AND a.status = 'moldada' AND ca.status = 'produzida'`, [empresaId])).rows[0].n;
       return {
         hoje,
         pendentes: pend,
@@ -377,13 +377,17 @@ export function rotasQualidade(banco: Banco) {
       const { de, ate } = periodoDias(req.query, 7);
       const r = await banco.query(
         `SELECT a.id, a.status, a.slump_cm, a.temperatura_c, a.moldado_por, a.observacao, a.confirmada_em, uc.nome AS confirmada_por,
+                a.cps_moldados, a.moldada_em, a.recebida_em, ur.nome AS recebida_por,
+                (SELECT json_agg(json_build_object('id', cp.id, 'idade', cp.idade_dias, 'numero', cp.numero, 'situacao', cp.situacao, 'previsto', cp.data_prevista) ORDER BY cp.idade_dias, cp.numero)
+                   FROM corpos_prova cp WHERE cp.amostra_id = a.id) AS cps,
                 ca.id AS carga_id, ca.numero, ca.data_hora, ca.volume_m3, ca.obra, ca.slump_entrega_cm, ca.descarga_em, t.codigo AS traco_codigo, t.fck, t.slump AS slump_traco,
                 coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, b.codigo AS betoneira_codigo, m.nome AS motorista_nome
            FROM amostras a JOIN cargas ca ON ca.id = a.carga_id JOIN tracos t ON t.id = ca.traco_id JOIN veiculos b ON b.id = ca.betoneira_id
            LEFT JOIN clientes cl ON cl.id = ca.cliente_id LEFT JOIN motoristas m ON m.id = ca.motorista_id LEFT JOIN usuarios uc ON uc.id = a.confirmada_por_id
+           LEFT JOIN usuarios ur ON ur.id = a.recebida_por_id
           WHERE a.empresa_id = $1 AND ca.status = 'produzida'
-            AND (a.status = 'pendente' OR ${DIA('ca.data_hora')} BETWEEN $2 AND $3)
-          ORDER BY (a.status = 'pendente') DESC, ca.data_hora DESC LIMIT 500`,
+            AND (a.status IN ('pendente', 'moldada') OR ${DIA('ca.data_hora')} BETWEEN $2 AND $3)
+          ORDER BY (a.status = 'moldada') DESC, (a.status = 'pendente') DESC, ca.data_hora DESC LIMIT 500`,
         [empresaId, de, ate],
       );
       const itens = r.rows.map((x) => ({
@@ -392,8 +396,10 @@ export function rotasQualidade(banco: Banco) {
         slumpTraco: x.slump_traco, clienteNome: x.cliente_nome, obra: x.obra, betoneiraCodigo: x.betoneira_codigo, motoristaNome: x.motorista_nome,
         slump: num(x.slump_cm), slumpEntrega: num(x.slump_entrega_cm), temperatura: num(x.temperatura_c), moldadoPor: x.moldado_por, observacao: x.observacao,
         confirmadaEm: x.confirmada_em, confirmadaPor: x.confirmada_por, entregue: !!x.descarga_em,
+        cpsMoldados: x.cps_moldados, moldadaEm: x.moldada_em, recebidaEm: x.recebida_em, recebidaPor: x.recebida_por,
+        cps: ((x.cps ?? []) as { id: string; idade: number; numero: number; situacao: string; previsto: string }[]),
       }));
-      return { de, ate, itens, pendentes: itens.filter((i) => i.status === 'pendente').length };
+      return { de, ate, itens, pendentes: itens.filter((i) => i.status === 'moldada').length, naObra: itens.filter((i) => i.status === 'pendente').length };
     });
 
     app.post<{ Params: { id: string } }>('/amostras/:id/confirmar', { preHandler: qualidade }, async (req) => {
@@ -411,7 +417,8 @@ export function rotasQualidade(banco: Banco) {
       const cps = await emTransacao(banco, async (c) => {
         const a = (await c.query('SELECT a.*, ca.data_hora FROM amostras a JOIN cargas ca ON ca.id = a.carga_id WHERE a.id = $1 AND a.empresa_id = $2 FOR UPDATE OF a', [req.params.id, empresaId])).rows[0];
         if (!a) throw naoEncontrado('Amostra');
-        if (a.status !== 'pendente' && a.status !== 'nao_amostrada') throw new ErroHttp(409, 'Esta amostra já foi confirmada.');
+        if (!['pendente', 'moldada', 'nao_amostrada'].includes(a.status)) throw new ErroHttp(409, 'Esta amostra já foi confirmada.');
+        if (a.status === 'nao_amostrada') await c.query(`UPDATE corpos_prova SET situacao = 'aguardando', observacao = NULL WHERE amostra_id = $1 AND situacao = 'descartado' AND resistencia_mpa IS NULL`, [a.id]);
         const quando = d.dataMoldagem ? new Date(/[zZ]|[+-]\d{2}:?\d{2}$/.test(d.dataMoldagem) ? d.dataMoldagem : `${d.dataMoldagem}-03:00`) : new Date(a.data_hora);
         if (Number.isNaN(quando.getTime())) throw new ErroHttp(400, 'Data da moldagem inválida.');
         await c.query(
@@ -433,11 +440,45 @@ export function rotasQualidade(banco: Banco) {
       await emTransacao(banco, async (c) => {
         const a = (await c.query('SELECT * FROM amostras WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
         if (!a) throw naoEncontrado('Amostra');
-        if (a.status !== 'pendente') throw new ErroHttp(409, 'Só demandas pendentes podem ser marcadas como não amostradas.');
+        if (!['pendente', 'moldada'].includes(a.status)) throw new ErroHttp(409, 'Só demandas pendentes podem ser marcadas como não amostradas.');
+        await c.query(`UPDATE corpos_prova SET situacao = 'descartado', observacao = $2, atualizado_em = now() WHERE amostra_id = $1 AND situacao = 'aguardando'`, [a.id, motivo]);
         await c.query(`UPDATE amostras SET status = 'nao_amostrada', observacao = $2, confirmada_em = now(), confirmada_por_id = $3, atualizado_em = now() WHERE id = $1`, [a.id, motivo, req.usuario!.id]);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'nao_amostrar', entidade: 'amostras', entidadeId: a.id, depois: { motivo } });
       });
       return { ok: true };
+    });
+
+    /** Recebimento no laboratório dos CPs moldados na obra: cada CP recebido, danificado ou faltando. */
+    app.post<{ Params: { id: string } }>('/amostras/:id/receber', { preHandler: qualidade }, async (req) => {
+      const d = z
+        .object({
+          itens: z.array(z.object({ cpId: z.string().uuid(), situacao: z.enum(['recebido', 'danificado', 'faltando']) })).min(1).max(40),
+          observacao: texto(300),
+        })
+        .parse(req.body ?? {});
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Amostra');
+      const r = await emTransacao(banco, async (c) => {
+        const a = (await c.query('SELECT * FROM amostras WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [req.params.id, empresaId])).rows[0];
+        if (!a) throw naoEncontrado('Amostra');
+        if (!['moldada', 'pendente'].includes(a.status)) throw new ErroHttp(409, 'Os CPs desta carga já foram recebidos.');
+        let recebidos = 0;
+        for (const it of d.itens) {
+          const cp = (await c.query(`SELECT id FROM corpos_prova WHERE id = $1 AND amostra_id = $2 AND situacao = 'aguardando'`, [it.cpId, a.id])).rows[0];
+          if (!cp) continue;
+          if (it.situacao === 'recebido') recebidos++;
+          else await c.query(`UPDATE corpos_prova SET situacao = 'descartado', observacao = $2, atualizado_em = now() WHERE id = $1`, [cp.id, it.situacao === 'danificado' ? 'Chegou danificado ao laboratório' : 'Não chegou ao laboratório']);
+        }
+        if (!recebidos) throw new ErroHttp(400, 'Nenhum CP recebido. Se a carga não foi amostrada, use "Não amostrar".');
+        await c.query(
+          `UPDATE amostras SET status = 'ativa', recebida_em = now(), recebida_por_id = $2, confirmada_em = coalesce(confirmada_em, now()), confirmada_por_id = coalesce(confirmada_por_id, $2),
+                  observacao = coalesce($3, observacao), atualizado_em = now() WHERE id = $1`,
+          [a.id, req.usuario!.id, d.observacao],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'receber', entidade: 'amostras', entidadeId: a.id, depois: d });
+        return recebidos;
+      });
+      return { ok: true, recebidos: r };
     });
 
     // ======================= Rastreabilidade da carga =======================
@@ -719,7 +760,13 @@ export async function montarRastreabilidade(c: Cliente, empresaId: string, carga
       [cargaId],
     )
   ).rows.map((x) => ({ nome: x.nome, unidade: x.unidade, quantidade: Number(x.quantidade) }));
-  const am = (await c.query('SELECT a.*, u.nome AS confirmada_por FROM amostras a LEFT JOIN usuarios u ON u.id = a.confirmada_por_id WHERE a.carga_id = $1', [cargaId])).rows[0] ?? null;
+  const am = (
+    await c.query(
+      `SELECT a.*, u.nome AS confirmada_por, ur.nome AS recebida_por, mm.nome AS moldada_por FROM amostras a LEFT JOIN usuarios u ON u.id = a.confirmada_por_id
+         LEFT JOIN usuarios ur ON ur.id = a.recebida_por_id LEFT JOIN motoristas mm ON mm.id = a.moldada_por_id WHERE a.carga_id = $1`,
+      [cargaId],
+    )
+  ).rows[0] ?? null;
   const cps = am
     ? (
         await c.query(
@@ -750,6 +797,12 @@ export async function montarRastreabilidade(c: Cliente, empresaId: string, carga
   });
   const s1 = num(am?.slump_cm);
   if (s1 !== null) ev.push({ quando: iso(ca.data_hora), etapa: 'usina', titulo: `Slump na usina: ${s1.toLocaleString('pt-BR')} cm`, detalhe: faixa ? `faixa do traço ${faixa[0]} a ${faixa[1]} cm` : null, situacao: fora(s1) ? 'aviso' : 'ok' });
+  if (ca.romaneio_impresso_em || ca.etiquetas_impressas_em) {
+    ev.push({
+      quando: iso(ca.etiquetas_impressas_em ?? ca.romaneio_impresso_em), etapa: 'usina', titulo: 'Romaneio e etiquetas impressos',
+      detalhe: [ca.romaneio_impresso_em ? 'romaneio' : null, ca.etiquetas_impressas_em ? 'etiquetas dos CPs' : null].filter(Boolean).join(' e ') + ' entregues ao motorista', situacao: 'ok',
+    });
+  }
   ev.push({ quando: iso(ca.saida_em) ?? iso(ca.data_hora), etapa: 'transporte', titulo: 'Saída da usina', detalhe: ca.saida_em ? 'confirmada pelo motorista' : 'hora da carga', situacao: 'ok' });
   ev.push({ quando: iso(ca.chegada_em), etapa: 'transporte', titulo: 'Chegada na obra', detalhe: ca.obra ?? ca.cliente_nome, situacao: ca.chegada_em ? 'ok' : 'pendente' });
   const s2 = num(ca.slump_entrega_cm);
@@ -759,14 +812,28 @@ export async function montarRastreabilidade(c: Cliente, empresaId: string, carga
     situacao: !ca.descarga_em ? 'pendente' : fora(s2) || Number(ca.devolvido_m3) > 0 ? 'aviso' : 'ok',
   });
   if (am) {
-    if (am.status === 'pendente') ev.push({ quando: null, etapa: 'qualidade', titulo: 'Amostra aguardando o laboratório', detalhe: 'O laboratório confirma a moldagem dos corpos de prova.', situacao: 'pendente' });
-    else if (am.status === 'nao_amostrada') ev.push({ quando: iso(am.confirmada_em), etapa: 'qualidade', titulo: 'Carga não amostrada', detalhe: [am.observacao, am.confirmada_por ? `por ${am.confirmada_por}` : null].filter(Boolean).join(' · '), situacao: 'aviso' });
-    else if (am.status === 'cancelada') ev.push({ quando: iso(am.atualizado_em), etapa: 'qualidade', titulo: 'Amostra cancelada com a carga', detalhe: null, situacao: 'perigo' });
-    else {
-      ev.push({ quando: iso(am.data_moldagem), etapa: 'qualidade', titulo: `Moldagem de ${cps.length} corpos de prova`, detalhe: [am.moldado_por ? `por ${am.moldado_por}` : null, am.temperatura_c !== null ? `${Number(am.temperatura_c).toLocaleString('pt-BR')} °C` : null, am.confirmada_por ? `confirmada por ${am.confirmada_por}` : null].filter(Boolean).join(' · ') || null, situacao: 'ok' });
+    const total = cps.length;
+    const descartados = cps.filter((x) => x.situacao === 'descartado');
+    if (am.moldada_em && am.status !== 'nao_amostrada') {
+      ev.push({ quando: iso(am.moldada_em), etapa: 'qualidade', titulo: `Moldagem na obra: ${am.cps_moldados ?? total} CPs`, detalhe: am.moldada_por ? `por ${am.moldada_por} (motorista)` : null, situacao: 'ok' });
+    }
+    if (am.status === 'pendente') ev.push({ quando: null, etapa: 'qualidade', titulo: 'Moldagem dos CPs na obra', detalhe: 'O motorista informa no app ao concluir a descarga.', situacao: 'pendente' });
+    else if (am.status === 'moldada') ev.push({ quando: null, etapa: 'qualidade', titulo: 'Recebimento dos CPs no laboratório', detalhe: 'Aguardando o laboratório confirmar a chegada.', situacao: 'pendente' });
+    else if (am.status === 'nao_amostrada') ev.push({ quando: iso(am.moldada_em ?? am.confirmada_em), etapa: 'qualidade', titulo: 'Carga não amostrada', detalhe: [am.observacao, am.moldada_por ? `por ${am.moldada_por}` : am.confirmada_por ? `por ${am.confirmada_por}` : null].filter(Boolean).join(' · '), situacao: 'aviso' });
+    if (am.recebida_em) {
+      ev.push({
+        quando: iso(am.recebida_em), etapa: 'qualidade', titulo: `CPs recebidos no laboratório: ${total - descartados.length} de ${total}`,
+        detalhe: [am.recebida_por ? `por ${am.recebida_por}` : null, descartados.length ? `${descartados.length} danificado(s) ou faltando` : null].filter(Boolean).join(' · ') || null,
+        situacao: descartados.length ? 'aviso' : 'ok',
+      });
+    }
+    if (am.status === 'cancelada') ev.push({ quando: iso(am.atualizado_em), etapa: 'qualidade', titulo: 'Amostra cancelada com a carga', detalhe: null, situacao: 'perigo' });
+    else if (am.status === 'ativa') {
+      if (!am.moldada_em) ev.push({ quando: iso(am.data_moldagem), etapa: 'qualidade', titulo: `Moldagem de ${cps.length} corpos de prova`, detalhe: [am.moldado_por ? `por ${am.moldado_por}` : null, am.temperatura_c !== null ? `${Number(am.temperatura_c).toLocaleString('pt-BR')} °C` : null, am.confirmada_por ? `confirmada por ${am.confirmada_por}` : null].filter(Boolean).join(' · ') || null, situacao: 'ok' });
       const idades = [...new Set(cps.map((x) => x.idade_dias as number))];
       for (const idade of idades) {
-        const lista = cps.filter((x) => x.idade_dias === idade);
+        const lista = cps.filter((x) => x.idade_dias === idade && x.situacao !== 'descartado');
+        if (!lista.length) continue;
         const rompidos = lista.filter((x) => x.situacao === 'rompido');
         const ex = porIdade.get(idade) ?? null;
         if (!rompidos.length) {

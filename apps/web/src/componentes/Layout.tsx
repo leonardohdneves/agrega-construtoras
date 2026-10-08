@@ -105,7 +105,7 @@ export const MODULOS: Modulo[] = [
     icone: <IconeFrasco />,
     perfis: LAB,
     itens: [
-      { rotulo: 'Cargas a amostrar', para: '/qual/demandas' },
+      { rotulo: 'CPs a receber', para: '/qual/demandas' },
       { rotulo: 'CPs a romper', para: '/qual/cps' },
       { rotulo: 'Amostras e resultados', para: '/qual/amostras' },
       { rotulo: 'Resistência e fck estimado', para: '/qual/resistencia' },

@@ -10,7 +10,7 @@ import { gerarContasAPagar } from '../rotas/contratos.ts';
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v10';
+export const VERSAO_DEMO = 'modelo-2026-10-v11';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -1125,18 +1125,26 @@ async function popularCampo(c: C, e: string, hoje: string, u: { lab: string | nu
     [e],
   );
   await q(`UPDATE cargas SET saida_em = data_hora + interval '6 minutes' WHERE empresa_id = $1 AND status = 'produzida' AND saida_em IS NULL AND data_hora < now() - interval '30 minutes'`, [e]);
-  // Qualidade: as de hoje ficam pendentes para o laboratório; uma de ontem não foi amostrada; as demais foram confirmadas.
-  await q(`UPDATE amostras a SET confirmada_em = a.data_moldagem + interval '25 minutes', confirmada_por_id = $2 WHERE a.empresa_id = $1 AND a.status = 'ativa'`, [e, u.lab]);
-  const pend = (
-    await q(
-      `SELECT a.id FROM amostras a JOIN cargas c ON c.id = a.carga_id WHERE a.empresa_id = $1 AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date = $2`,
-      [e, hoje],
-    )
-  ).rows.map((x) => x.id);
-  if (pend.length) {
-    await q('DELETE FROM corpos_prova WHERE amostra_id = ANY($1::uuid[])', [pend]);
-    await q(`UPDATE amostras SET status = 'pendente', confirmada_em = NULL, confirmada_por_id = NULL, temperatura_c = NULL WHERE id = ANY($1::uuid[])`, [pend]);
-  }
+  // Qualidade: CPs moldados na obra pelo motorista e recebidos no laboratório no dia seguinte.
+  await q(
+    `UPDATE amostras a SET moldada_em = c.data_hora + interval '74 minutes', data_moldagem = c.data_hora + interval '74 minutes', moldada_por_id = c.motorista_id,
+            moldado_por = coalesce(m.nome, a.moldado_por), cps_moldados = (SELECT count(*) FROM corpos_prova cp WHERE cp.amostra_id = a.id),
+            recebida_em = date_trunc('day', c.data_hora) + interval '1 day 11 hours', recebida_por_id = $2,
+            confirmada_em = date_trunc('day', c.data_hora) + interval '1 day 11 hours', confirmada_por_id = $2
+       FROM cargas c LEFT JOIN motoristas m ON m.id = c.motorista_id
+      WHERE a.carga_id = c.id AND a.empresa_id = $1 AND a.status = 'ativa'`,
+    [e, u.lab],
+  );
+  await q(`UPDATE cargas SET romaneio_impresso_em = data_hora - interval '4 minutes', etiquetas_impressas_em = data_hora - interval '3 minutes' WHERE empresa_id = $1 AND status = 'produzida'`, [e]);
+  // Hoje: descarregadas → moldadas, aguardando o laboratório; ainda na obra → pendentes. Os CPs já existem (etiquetas impressas com o romaneio).
+  await q(
+    `UPDATE amostras a SET status = CASE WHEN c.descarga_em IS NOT NULL THEN 'moldada' ELSE 'pendente' END,
+            recebida_em = NULL, recebida_por_id = NULL, confirmada_em = NULL, confirmada_por_id = NULL, temperatura_c = NULL,
+            moldada_em = CASE WHEN c.descarga_em IS NOT NULL THEN c.descarga_em END, moldada_por_id = CASE WHEN c.descarga_em IS NOT NULL THEN c.motorista_id END,
+            cps_moldados = CASE WHEN c.descarga_em IS NOT NULL THEN cps_moldados END
+       FROM cargas c WHERE a.carga_id = c.id AND a.empresa_id = $1 AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date = $2`,
+    [e, hoje],
+  );
   const ontem = (
     await q(
       `SELECT a.id FROM amostras a JOIN cargas c ON c.id = a.carga_id WHERE a.empresa_id = $1 AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date = $2::date - 1 ORDER BY c.data_hora DESC LIMIT 1`,
@@ -1144,8 +1152,8 @@ async function popularCampo(c: C, e: string, hoje: string, u: { lab: string | nu
     )
   ).rows[0];
   if (ontem) {
-    await q('DELETE FROM corpos_prova WHERE amostra_id = $1', [ontem.id]);
-    await q(`UPDATE amostras SET status = 'nao_amostrada', observacao = 'Concreto magro para regularização, sem moldagem (combinado com o cliente).' WHERE id = $1`, [ontem.id]);
+    await q(`UPDATE corpos_prova SET situacao = 'descartado', observacao = 'Não moldado na obra', resistencia_mpa = NULL, data_ruptura = NULL WHERE amostra_id = $1`, [ontem.id]);
+    await q(`UPDATE amostras SET status = 'nao_amostrada', recebida_em = NULL, recebida_por_id = NULL, cps_moldados = 0, observacao = 'Concreto magro para regularização, sem moldagem (combinado com o cliente).' WHERE id = $1`, [ontem.id]);
   }
 
   // Vendas: condição de pagamento estruturada; as entregues ficam finalizadas, menos a última de ontem, que espera o vendedor.
@@ -1188,6 +1196,12 @@ async function popularCampo(c: C, e: string, hoje: string, u: { lab: string | nu
       ).rows[0];
       await gravarConsumoCarga(c, x.id);
       await criarAmostraCarga(c, e, x.id, quando, 12);
+      await q(`UPDATE cargas SET romaneio_impresso_em = $2, etiquetas_impressas_em = $2 WHERE id = $1`, [x.id, quando]);
+      if (k === 0) {
+        const { registrarMoldagemObra } = await import('./qualidade.ts');
+        const nome = (await q('SELECT nome FROM motoristas WHERE id = $1', [mot])).rows[0]?.nome ?? 'Motorista';
+        await registrarMoldagemObra(c, { cargaId: x.id, motoristaId: mot, motoristaNome: nome, cps: 4, motivo: null, quando: new Date(Date.now() - 25 * 60_000).toISOString() });
+      }
     }
   }
 

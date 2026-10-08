@@ -654,9 +654,9 @@ export function InicioLaboratorio() {
     <>
       {d && (d.pendentes ?? 0) > 0 && (
         <div className="card form">
-          <h2>Cargas a amostrar <span className="selo selo-aviso">{d.pendentes}</span></h2>
-          <p className="muted" style={{ margin: 0 }}>Cargas registradas que esperam a confirmação da moldagem dos corpos de prova.</p>
-          <Link to="/qual/demandas" className="btn btn-primario btn-bloco">Confirmar moldagem</Link>
+          <h2>CPs a receber <span className="selo selo-aviso">{d.pendentes}</span></h2>
+          <p className="muted" style={{ margin: 0 }}>CPs moldados na obra pelos motoristas que esperam a confirmação de chegada.</p>
+          <Link to="/qual/demandas" className="btn btn-primario btn-bloco">Receber CPs</Link>
         </div>
       )}
       <div className="card form">

@@ -636,8 +636,8 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .folhas-impressao { display: grid; gap: 16px; overflow-x: auto; padding-bottom: 8px; }
 .folha { width: 210mm; height: 297mm; background: #fff; color: #111; box-shadow: 0 1px 6px rgba(0,0,0,.18); margin: 0 auto; box-sizing: border-box; overflow: hidden; font-family: var(--font-sans); }
 .folha .mono { font-family: var(--font-mono); }
-.folha-romaneio { padding: 7mm 9mm; display: grid; grid-template-rows: 1fr auto 1fr; }
-.via { position: relative; display: flex; flex-direction: column; gap: 2mm; font-size: 8.4pt; line-height: 1.25; overflow: hidden; }
+.folha-romaneio { padding: 5mm 9mm; display: grid; grid-template-rows: 1fr auto 1fr; }
+.via { position: relative; display: flex; flex-direction: column; gap: 1.4mm; font-size: 7.8pt; line-height: 1.25; overflow: hidden; }
 .via-cancelada { position: absolute; inset: 30% 0 auto; text-align: center; font: 800 34pt/1 var(--font-sans); color: rgba(200,0,0,.18); transform: rotate(-12deg); pointer-events: none; }
 .via-topo { display: grid; grid-template-columns: 1fr auto auto; gap: 4mm; align-items: center; border-bottom: 1.2pt solid #111; padding-bottom: 1.6mm; }
 .via-empresa { display: flex; gap: 3mm; align-items: center; min-width: 0; }
@@ -659,7 +659,7 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .rc { display: grid; gap: .4mm; padding: 1mm 1.6mm; min-width: 0; align-content: start; }
 .rc-rot { font-size: 6.6pt; text-transform: uppercase; letter-spacing: .03em; color: #555; }
 .rc-val { min-height: 3.4mm; overflow-wrap: anywhere; }
-.g-ass .rc { min-height: 12mm; }
+.g-ass .rc { min-height: 10mm; }
 .via-volume { font-size: 11pt; }
 .via-horas b { font-size: 10pt; }
 .via-aviso { margin: 0; font-size: 6.6pt; color: #333; display: flex; gap: 3mm; justify-content: space-between; flex-wrap: wrap; }
@@ -686,3 +686,16 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 /* Página própria (A4 retrato, sem margem) para romaneios e etiquetas: vale mesmo com o padrão em paisagem. */
 @page folha-a4 { size: A4 portrait; margin: 0; }
 @media print { .folha { page: folha-a4; } }
+
+/* Kit da carga: imprime só a parte escolhida */
+.passos-kit { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+.passo-kit { display: grid; gap: 6px; align-content: start; padding: 12px; border: 1px solid var(--border); border-radius: var(--radius-sm); }
+.passo-kit.feito { border-color: var(--status-ok-ink); box-shadow: inset 3px 0 0 var(--status-ok-ink); }
+.passo-kit .btn { justify-self: start; }
+@media print {
+  html[data-imprimir="romaneio"] .secao-etiquetas, html[data-imprimir="etiquetas"] .secao-romaneio { display: none !important; }
+}
+@media print { .folhas-impressao { page: folha-a4; } }
+.via-obs, .via .rc-val { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
+.via-obs { -webkit-line-clamp: 2; }
+.via .rc-val { -webkit-line-clamp: 3; }

@@ -425,7 +425,7 @@ export function NovaCarga() {
       {aviso && (
         <div className="alerta alerta-ok" role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ flex: 1 }}>{aviso}</span>
-          {ultima && <Link className="btn btn-secundario" to={`/prod/romaneios/imprimir?ids=${ultima.id}`}>Imprimir romaneio</Link>}
+          {ultima && <Link className="btn btn-secundario" to={`/prod/kit?ids=${ultima.id}`}>Imprimir romaneio e etiquetas</Link>}
         </div>
       )}
       {opcoes && opcoes.tracos.length === 0 && (
@@ -525,7 +525,7 @@ export function Cargas() {
       {estado?.aviso && !aviso && (
         <div className="alerta alerta-ok" role="status" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
           <span style={{ flex: 1 }}>{estado.aviso}</span>
-          {estado.cargaId && <Link className="btn btn-secundario" to={`/prod/romaneios/imprimir?ids=${estado.cargaId}`}>Imprimir romaneio</Link>}
+          {estado.cargaId && <Link className="btn btn-secundario" to={`/prod/kit?ids=${estado.cargaId}`}>Imprimir romaneio e etiquetas</Link>}
         </div>
       )}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
@@ -682,7 +682,7 @@ export function Cargas() {
                       <span className="selo selo-neutro" title={c.motivoCancelamento ?? ''}>Cancelada</span>
                     ) : (
                       <>
-                      <Link className="btn btn-link" to={`/prod/romaneios/imprimir?ids=${c.id}`}>Romaneio</Link>
+                      <Link className="btn btn-link" to={`/prod/kit?ids=${c.id}`}>Romaneio e etiquetas</Link>
                       {podeMexer && (
                         <>
                           <button className="btn btn-link" type="button" onClick={() => setEditando(c)}>Corrigir</button>

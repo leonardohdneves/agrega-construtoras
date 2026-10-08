@@ -6,6 +6,7 @@ type MinhaCarga = {
   id: string; numero: number; dataHora: string; tracoCodigo: string; slumpTraco: string | null; volume: number; clienteNome: string | null; clienteTelefone: string | null;
   obra: string | null; endereco: string | null; contato: string | null; observacoes: string | null; betoneiraCodigo: string; bombaCodigo: string | null;
   vendaNumero: number | null; saidaEm: string | null; chegadaEm: string | null; descargaEm: string | null; slumpEntrega: number | null; devolvido: number; obsMotorista: string | null;
+  amostraStatus: string | null; cpsPrevistos: number; cpsMoldados: number | null;
 };
 
 const hora = (iso: string | null) => (iso ? agoraLocal(new Date(iso)).slice(11, 16) : '—');
@@ -32,7 +33,8 @@ function Etapas({ c }: { c: MinhaCarga }) {
 }
 
 function CartaoCarga({ c, aoMudar }: { c: MinhaCarga; aoMudar: () => void }) {
-  const [form, setForm] = useState<{ slump: string; devolvido: string; observacao: string } | null>(null);
+  const [form, setForm] = useState<{ slump: string; devolvido: string; observacao: string; cps: string; semCps: boolean; motivo: string } | null>(null);
+  const moldar = c.amostraStatus === 'pendente' && c.cpsPrevistos > 0;
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
@@ -54,7 +56,18 @@ function CartaoCarga({ c, aoMudar }: { c: MinhaCarga; aoMudar: () => void }) {
     if (!form) return;
     const slump = lerNumero(form.slump);
     if (slump === null) return setErro('Informe o slump medido na obra, em cm.');
-    etapa('descarga', { slump, devolvido: form.devolvido.trim() ? lerNumero(form.devolvido) : 0, observacao: form.observacao });
+    let cps: Record<string, unknown> = {};
+    if (moldar) {
+      if (form.semCps) {
+        if (form.motivo.trim().length < 3) return setErro('Informe o motivo de não moldar os CPs.');
+        cps = { cpsMoldados: 0, motivoSemCps: form.motivo };
+      } else {
+        const n = Number(form.cps);
+        if (!Number.isInteger(n) || n <= 0) return setErro('Informe quantos CPs você moldou.');
+        cps = { cpsMoldados: n };
+      }
+    }
+    etapa('descarga', { slump, devolvido: form.devolvido.trim() ? lerNumero(form.devolvido) : 0, observacao: form.observacao, ...cps });
   }
 
   const pendente = !c.descargaEm;
@@ -80,6 +93,11 @@ function CartaoCarga({ c, aoMudar }: { c: MinhaCarga; aoMudar: () => void }) {
         {c.bombaCodigo && <span><span className="muted small">Bomba</span><b className="mono">{c.bombaCodigo}</b></span>}
       </div>
       {c.observacoes && <p className="small" style={{ margin: 0 }}>Obs.: {c.observacoes}</p>}
+      {moldar && !c.descargaEm && (
+        <div className="alerta alerta-info" style={{ margin: 0 }}>
+          Moldar <b>{c.cpsPrevistos} corpos de prova</b> na obra. As etiquetas vão com o romaneio: cole uma em cada CP.
+        </div>
+      )}
       <Etapas c={c} />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {pendente ? (
@@ -95,6 +113,26 @@ function CartaoCarga({ c, aoMudar }: { c: MinhaCarga; aoMudar: () => void }) {
                 <input id={`dv-${c.id}`} className="mono" inputMode="decimal" placeholder="0" value={form.devolvido} onChange={(e) => setForm({ ...form, devolvido: e.target.value })} />
               </div>
             </div>
+            {moldar && (
+              <div className="caixa-destaque">
+                {!form.semCps && (
+                  <div className="campo" style={{ maxWidth: 220 }}>
+                    <label htmlFor={`cp-${c.id}`}>CPs moldados na obra</label>
+                    <input id={`cp-${c.id}`} className="mono" inputMode="numeric" value={form.cps} onChange={(e) => setForm({ ...form, cps: e.target.value.replace(/\D/g, '') })} />
+                  </div>
+                )}
+                <label className="marcar">
+                  <input type="checkbox" checked={form.semCps} onChange={(e) => setForm({ ...form, semCps: e.target.checked })} />
+                  Não moldei os CPs
+                </label>
+                {form.semCps && (
+                  <div className="campo">
+                    <label htmlFor={`mt-${c.id}`}>Motivo</label>
+                    <input id={`mt-${c.id}`} value={form.motivo} placeholder="ex.: cliente dispensou, sem moldes" onChange={(e) => setForm({ ...form, motivo: e.target.value })} />
+                  </div>
+                )}
+              </div>
+            )}
             <div className="campo">
               <label htmlFor={`ob-${c.id}`}>Observação</label>
               <input id={`ob-${c.id}`} value={form.observacao} placeholder="Opcional" onChange={(e) => setForm({ ...form, observacao: e.target.value })} />
@@ -108,7 +146,7 @@ function CartaoCarga({ c, aoMudar }: { c: MinhaCarga; aoMudar: () => void }) {
           <div className="acoes">
             {!c.saidaEm && <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => etapa('saida')}>Saí da usina</button>}
             {c.saidaEm && !c.chegadaEm && <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => etapa('chegada')}>Cheguei na obra</button>}
-            <button className={`btn ${c.chegadaEm ? 'btn-primario' : 'btn-secundario'}`} type="button" disabled={ocupado} onClick={() => setForm({ slump: '', devolvido: '', observacao: '' })}>
+            <button className={`btn ${c.chegadaEm ? 'btn-primario' : 'btn-secundario'}`} type="button" disabled={ocupado} onClick={() => setForm({ slump: '', devolvido: '', observacao: '', cps: String(c.cpsPrevistos || ''), semCps: false, motivo: '' })}>
               Descarga concluída
             </button>
           </div>
@@ -118,6 +156,7 @@ function CartaoCarga({ c, aoMudar }: { c: MinhaCarga; aoMudar: () => void }) {
           Slump na obra: <b className="mono">{c.slumpEntrega === null ? '—' : `${formatarNumero(c.slumpEntrega, 1)} cm`}</b>
           {c.devolvido > 0 && <> · voltou <b className="mono">{m3(c.devolvido)}</b></>}
           {c.obsMotorista && <> · {c.obsMotorista}</>}
+          {c.cpsMoldados !== null && <> · CPs moldados: <b className="mono">{c.cpsMoldados}</b></>}
         </p>
       )}
     </article>
