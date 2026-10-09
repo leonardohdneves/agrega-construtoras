@@ -1,6 +1,6 @@
 // Leitura da nota pela IA (API da Anthropic), usada quando o leitor próprio não consegue:
 // PDF escaneado, foto da nota ou layout que o leitor não entende. Só funciona com ANTHROPIC_API_KEY definida.
-import { chavePlausivel } from './code128.ts';
+import { chaveAceita } from './code128.ts';
 import { notaVazia, type NotaLida, type TipoNota } from './nota-pdf.ts';
 
 export class ErroIa extends Error {}
@@ -17,7 +17,7 @@ const FERRAMENTA = {
     properties: {
       legivel: { type: 'boolean', description: 'false se o arquivo não for um documento fiscal ou estiver ilegível.' },
       tipo: { type: 'string', enum: ['nfe', 'nfce', 'nfse', 'cte', 'recibo', 'cupom', 'outro'], description: 'nfe = DANFE de NF-e (modelo 55); nfce = cupom NFC-e; nfse = nota de serviço.' },
-      chave_acesso: { type: ['string', 'null'], description: 'Chave de acesso de 44 dígitos, só números.' },
+      chave_acesso: { type: ['string', 'null'], description: 'Chave de acesso, só números: 44 dígitos (NF-e) ou 50 (NFS-e nacional).' },
       numero: { type: ['string', 'null'] },
       serie: { type: ['string', 'null'] },
       data_emissao: { type: ['string', 'null'], description: 'AAAA-MM-DD' },
@@ -82,7 +82,7 @@ export function notaDaIa(r: Record<string, any>): NotaLida {
   if (!r.legivel) return n;
   n.tipo = (['nfe', 'nfce', 'nfse', 'cte', 'recibo', 'cupom', 'outro'].includes(r.tipo) ? r.tipo : 'outro') as TipoNota;
   const chave = typeof r.chave_acesso === 'string' ? r.chave_acesso.replace(/\D/g, '') : '';
-  if (chavePlausivel(chave)) {
+  if (chaveAceita(chave)) {
     n.chaveAcesso = chave;
     n.chaveVia = 'ia';
   }

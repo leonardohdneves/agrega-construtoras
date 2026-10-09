@@ -1,4 +1,4 @@
-import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import {
   api,
@@ -761,6 +761,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
       {nota.avisos.map((a) => (
         <div key={a} className="alerta alerta-aviso">{a}</div>
       ))}
+      {editavel && nota.origem === 'chave' && <CompletarComArquivo nota={nota} />}
 
       <div className="card">
         <div className="campos">
@@ -1230,6 +1231,56 @@ function DadosDocumento({ nota, conferirData, alterar }: { nota: NotaFiscal; con
         {dinheiro('desconto')}
         {dinheiro('outras')}
       </div>
+    </div>
+  );
+}
+
+function arquivoBase64(arquivo: Blob): Promise<string> {
+  return new Promise((ok, falha) => {
+    const r = new FileReader();
+    r.onload = () => ok(String(r.result).split(',')[1] ?? '');
+    r.onerror = () => falha(new Error('Não consegui abrir o arquivo.'));
+    r.readAsDataURL(arquivo);
+  });
+}
+
+/** Rascunho criado só pela chave: o PDF (ou foto) da nota completa valor, itens e parcelas. */
+function CompletarComArquivo({ nota }: { nota: NotaFiscal }) {
+  const navegar = useNavigate();
+  const entrada = useRef<HTMLInputElement>(null);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  async function enviar(f: File | undefined) {
+    if (!f) return;
+    setErro('');
+    setOcupado(true);
+    try {
+      const pdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+      if (!pdf && !/^image\/(jpeg|png|webp)$/.test(f.type)) throw new Error('Envie o PDF da nota ou uma foto (JPG ou PNG).');
+      if (f.size > 10 * 1024 * 1024) throw new Error('Arquivo grande demais (máximo 10 MB).');
+      const r = await api<{ nota: NotaFiscal }>('/fin/notas/pdf', {
+        corpo: { arquivo: await arquivoBase64(f), nome: f.name, tipo: pdf ? 'application/pdf' : f.type, chave: nota.chaveAcesso },
+      });
+      navegar(`/fin/notas/${r.nota.id}`, { replace: true });
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+    setOcupado(false);
+    if (entrada.current) entrada.current.value = '';
+  }
+  return (
+    <div className="card completar-arquivo">
+      <h2 style={{ margin: 0 }}>Completar com o PDF da nota</h2>
+      <p className="small" style={{ margin: '4px 0 10px' }}>
+        A chave não traz valor nem itens. Envie o PDF da nota (ou uma foto) e o Agrega preenche o resto neste rascunho.
+      </p>
+      <input ref={entrada} type="file" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp" hidden onChange={(e) => enviar(e.target.files?.[0])} />
+      <div className="acoes">
+        <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => entrada.current?.click()}>
+          {ocupado ? 'Lendo a nota…' : 'Enviar PDF ou foto'}
+        </button>
+      </div>
+      {erro && <div className="alerta alerta-erro" role="alert" style={{ marginTop: 10 }}>{erro}</div>}
     </div>
   );
 }

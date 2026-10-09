@@ -1,6 +1,6 @@
 // Leitura do código de barras da chave de acesso (DANFE) no navegador:
 // câmera (BarcodeDetector quando existe, senão o decodificador próprio), foto e imagens dentro do PDF escaneado.
-import { chavePlausivel, decodificarCode128, largurasDaLinha } from './code128';
+import { chaveDoTexto, chavePlausivel, decodificarCode128, largurasDaLinha } from './code128';
 
 /** Larguras com limiar local (média do mínimo e máximo ao redor), melhor para fotos com sombra. */
 function largurasAdaptativas(px: ArrayLike<number>, ini: number, n: number, passo: number, janela: number): number[] {
@@ -69,7 +69,9 @@ export async function detectorNativo(): Promise<Detector | null> {
   if (!BD) return null;
   try {
     const formatos = (await BD.getSupportedFormats?.()) ?? [];
-    if (formatos.includes('code_128')) detectorCache = new BD({ formats: ['code_128'] });
+    // Code 128 (DANFE) e QR code (DANFSe da NFS-e nacional e NFC-e trazem a chave no link).
+    const quer = ['code_128', 'qr_code'].filter((f) => formatos.includes(f));
+    if (quer.length) detectorCache = new BD({ formats: quer });
   } catch {
     detectorCache = null;
   }
@@ -82,8 +84,8 @@ export async function chaveDaImagem(fonte: CanvasImageSource, largura: number, a
   if (det) {
     try {
       for (const r of await det.detect(fonte)) {
-        const c = r.rawValue.replace(/\D/g, '');
-        if (chavePlausivel(c)) return c;
+        const c = chaveDoTexto(r.rawValue);
+        if (c) return c;
       }
     } catch {
       /* segue com o decodificador próprio */

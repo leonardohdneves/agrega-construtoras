@@ -12,7 +12,7 @@ import { somarDias } from '../lib/financeiro.ts';
 import { ErroNfe, fecharCentavos, formaDoTPag, lerNfe, type NotaNfe } from '../lib/nfe.ts';
 import { ErroPdf, lerPdf } from '../lib/pdf.ts';
 import { completarLeitura, completarPelaChave, interpretarNotaPdf, leituraSuficiente, notaVazia, type NotaLida } from '../lib/nota-pdf.ts';
-import { chavePlausivel, partesDaChave } from '../lib/code128.ts';
+import { chaveAceita } from '../lib/code128.ts';
 import { ErroIa, iaDisponivel, lerNotaComIa } from '../lib/ia-nota.ts';
 import { cnpjValido } from '../lib/cnpj.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
@@ -49,7 +49,7 @@ const esquemaNotaManual = z.object({
   numero: textoOpc(20),
   serie: textoOpc(5),
   chaveAcesso: z.union([z.string(), z.null()]).optional().transform((v) => (v ?? '').replace(/\D/g, '') || null)
-    .refine((v) => v === null || v.length === 44, 'A chave de acesso tem 44 números.'),
+    .refine((v) => v === null || v.length === 44 || v.length === 50, 'A chave de acesso tem 44 números (NF-e) ou 50 (NFS-e nacional).'),
   dataEmissao: dataObrig('Data de emissão inválida.'),
   competencia: dataObrig('Data de competência inválida.').optional(),
   fornecedorId: uuidOpc,
@@ -668,7 +668,7 @@ export function rotasNotas(banco: Banco) {
       const empresa = (await banco.query('SELECT cnpj, razao_social FROM empresas WHERE id = $1', [empresaId])).rows[0];
       const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
       const chaveExterna = (d.chave ?? '').replace(/\D/g, '');
-      const externaOk = chavePlausivel(chaveExterna) ? chaveExterna : null;
+      const externaOk = chaveAceita(chaveExterna) ? chaveExterna : null;
       const avisos: string[] = [];
       let lida = notaVazia();
       let metodo = 'leitor';
@@ -721,6 +721,12 @@ export function rotasNotas(banco: Banco) {
       }
       completarPelaChave(lida);
       if (metodo !== 'ia') completarLeitura(lida);
+      if (metodo === 'leitor' && !leituraSuficiente(lida)) {
+        const faltou = [!lida.totais.total ? 'o valor' : null, !lida.itens.length ? 'os itens' : null, !lida.dataEmissao ? 'a data' : null, !lida.emitente?.documento ? 'o emitente' : null].filter(Boolean);
+        avisos.push(`O leitor não encontrou ${faltou.join(', ').replace(/, ([^,]*)$/, ' e $1')} neste modelo de documento: preencha a partir do PDF anexado.`);
+        if (!lida.totais.total) lida.conferir.push('total');
+        if (!lida.itens.length) lida.conferir.push('itens');
+      }
       lida.avisos.push(...avisos);
       const substituir = await conferirDuplicada(banco, empresaId, lida.chaveAcesso, 'pdf');
       const usuarioId = req.usuario!.id;
@@ -735,17 +741,16 @@ export function rotasNotas(banco: Banco) {
     app.post('/notas/chave', async (req, reply) => {
       const { chave } = z.object({ chave: z.string({ required_error: 'Informe a chave de acesso.' }) }).parse(req.body);
       const limpa = chave.replace(/\D/g, '');
-      if (limpa.length !== 44) throw new ErroHttp(400, 'A chave de acesso tem 44 números.');
-      if (!chavePlausivel(limpa)) throw new ErroHttp(400, 'Chave de acesso inválida: confira os números (o último é o dígito verificador).');
+      if (limpa.length !== 44 && limpa.length !== 50) throw new ErroHttp(400, `A chave de acesso tem 44 números (NF-e) ou 50 (NFS-e nacional); veio com ${limpa.length}.`);
+      if (!chaveAceita(limpa)) throw new ErroHttp(400, 'Chave de acesso inválida: confira os números (o último é o dígito verificador).');
       const empresaId = empresaDo(req);
       const empresa = (await banco.query('SELECT cnpj FROM empresas WHERE id = $1', [empresaId])).rows[0];
       const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
       await conferirDuplicada(banco, empresaId, limpa, 'chave');
       const lida = completarPelaChave({ ...notaVazia(), chaveAcesso: limpa, chaveVia: 'codigo_barras', textoUtil: false });
       lida.conferir.push('itens', 'total');
-      const p = partesDaChave(limpa)!;
       if (lida.emitente?.documento && !cnpjValido(lida.emitente.documento) && lida.emitente.documento.length === 14) lida.emitente = null;
-      lida.avisos.push(`Inclua os itens da ${p.modelo === '65' ? 'NFC-e' : 'NF-e'} ${p.numero}. Se chegar o XML desta nota, importe-o: ele completa o rascunho.`);
+      // O cartão "Completar com o PDF da nota" orienta o próximo passo na tela.
       const usuarioId = req.usuario!.id;
       const r = await emTransacao(banco, (c) => criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'chave', metodo: 'codigo_barras', anexo: null, substituir: null }));
       reply.code(201);

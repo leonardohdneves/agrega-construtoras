@@ -897,7 +897,7 @@ export function linhasDoTexto(itens: ItemTexto[]): Linha[] {
       for (const it of g) {
         const ant = juntos[juntos.length - 1];
         const vao = ant ? it.x - (ant.x + ant.w) : 0;
-        if (ant && vao < Math.max(0.6, it.tam * 0.18) && vao > -Math.max(0.5, it.tam * 0.1)) {
+        if (ant && vao < Math.max(0.6, it.tam * 0.4) && vao > -Math.max(0.5, it.tam * 0.1)) {
           const espaco = vao > it.tam * 0.12 && !/\s$/.test(ant.texto) && !/^\s/.test(it.texto);
           ant.texto += (espaco ? ' ' : '') + it.texto;
           ant.w = Math.max(ant.w, it.x + it.w - ant.x);

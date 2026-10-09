@@ -197,3 +197,45 @@ export function chavePlausivel(c: string): boolean {
   const mes = Number(c.slice(4, 6));
   return /^(1[1-7]|2[1-9]|3[1-5]|4[1-3]|5[0-3])/.test(c) && mes >= 1 && mes <= 12 && ['55', '65', '57', '67'].includes(c.slice(20, 22));
 }
+
+// ---------- NFS-e do padrão nacional (DANFSe): chave de acesso com 50 dígitos ----------
+// Município (7) · ambiente (1) · tipo de inscrição (1: CPF, 2: CNPJ) · CNPJ/CPF (14) · número da NFS-e (13) · AAMM (4) · código (9) · DV (1)
+
+export type PartesChaveNfse = { municipio: string; documento: string; numero: string; anoMes: string };
+
+export function chaveNfsePlausivel(c: string): boolean {
+  if (!/^\d{50}$/.test(c)) return false;
+  const mes = Number(c.slice(38, 40));
+  return /^(1[1-7]|2[1-9]|3[1-5]|4[1-3]|5[0-3])/.test(c) && (c[8] === '1' || c[8] === '2') && mes >= 1 && mes <= 12 && Number(c.slice(23, 36)) > 0;
+}
+
+export function partesDaChaveNfse(c: string): PartesChaveNfse | null {
+  if (!chaveNfsePlausivel(c)) return null;
+  const insc = c.slice(9, 23);
+  return { municipio: c.slice(0, 7), documento: c[8] === '1' ? insc.slice(3) : insc, numero: String(Number(c.slice(23, 36))), anoMes: `20${c.slice(36, 38)}-${c.slice(38, 40)}` };
+}
+
+/** Chave de NF-e/NFC-e (44) ou de NFS-e nacional (50). */
+export function chaveAceita(c: string): boolean {
+  return chavePlausivel(c) || chaveNfsePlausivel(c);
+}
+
+/** Acha a chave de 50 dígitos da NFS-e nacional num texto (seguida ou em grupos). */
+export function acharChaveNfse(texto: string): string | null {
+  for (const m of texto.matchAll(/(?<!\d)(?:\d[ . ]?){49}\d(?!\d)/g)) {
+    const c = m[0].replace(/\D/g, '');
+    if (chaveNfsePlausivel(c)) return c;
+  }
+  return null;
+}
+
+/** Tira a chave de um texto lido (código de barras, QR code com link da consulta, texto colado). */
+export function chaveDoTexto(t: string): string | null {
+  const so = t.replace(/\D/g, '');
+  if (chaveAceita(so)) return so;
+  for (const m of t.matchAll(/\d{44,50}/g)) {
+    if (chaveNfsePlausivel(m[0].slice(0, 50))) return m[0].slice(0, 50);
+    if (chavePlausivel(m[0].slice(0, 44))) return m[0].slice(0, 44);
+  }
+  return acharChave(t) ?? acharChaveNfse(t);
+}

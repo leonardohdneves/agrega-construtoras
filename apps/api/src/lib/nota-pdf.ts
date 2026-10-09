@@ -1,7 +1,7 @@
 // Interpreta o texto de um PDF de nota (DANFE de NF-e, NFS-e, recibo/cupom) e o código de barras da chave.
 // O resultado é um rascunho: o que não deu para ler com segurança vai na lista `conferir`.
 import { cnpjValido } from './cnpj.ts';
-import { acharChave, chavePlausivel, decodificarCode128, largurasDaLinha, partesDaChave } from './code128.ts';
+import { acharChave, acharChaveNfse, chaveAceita, chavePlausivel, decodificarCode128, largurasDaLinha, partesDaChave, partesDaChaveNfse } from './code128.ts';
 import { linhasDoTexto, type ConteudoPdf, type ItemTexto, type Linha } from './pdf.ts';
 import { normalizar } from './sugestoes.ts';
 
@@ -325,14 +325,15 @@ export function interpretarNotaPdf(c: ConteudoPdf, opcoes: { chaveExterna?: stri
   const empresa = (opcoes.cnpjEmpresa ?? '').replace(/\D/g, '');
 
   // Chave: código de barras (fora ou dentro do PDF) e texto.
-  const externa = opcoes.chaveExterna && chavePlausivel(opcoes.chaveExterna) ? opcoes.chaveExterna : null;
+  const externa = opcoes.chaveExterna && chaveAceita(opcoes.chaveExterna) ? opcoes.chaveExterna : null;
   const barras = externa ?? chaveDoCodigoDeBarras(c);
-  const doTexto = acharChave(texto);
+  const doTexto = acharChave(texto) ?? acharChaveNfse(texto);
   n.chaveAcesso = barras ?? doTexto;
   n.chaveVia = barras ? 'codigo_barras' : doTexto ? 'texto' : null;
   if (barras && doTexto && barras !== doTexto) n.avisos.push('A chave do código de barras é diferente da chave impressa. Vale a do código de barras; confira a nota.');
   const partes = n.chaveAcesso ? partesDaChave(n.chaveAcesso) : null;
-  n.tipo = detectarTipo(ctx.norm, n.chaveAcesso);
+  const partesNfse = n.chaveAcesso ? partesDaChaveNfse(n.chaveAcesso) : null;
+  n.tipo = partesNfse ? 'nfse' : detectarTipo(ctx.norm, n.chaveAcesso);
   if (!n.textoUtil && !n.chaveAcesso) return n;
 
   // Pessoas.
@@ -346,15 +347,17 @@ export function interpretarNotaPdf(c: ConteudoPdf, opcoes: { chaveExterna?: stri
     n.emitente = { documento: emitDoc, nome: emitidaPelaEmpresa ? null : nomeEmitenteDanfe(ctx) };
     n.destinatario = { documento: dest, nome: valorDoRotulo(ctx, ['NOME / RAZAO SOCIAL', 'NOME RAZAO SOCIAL', 'RAZAO SOCIAL'], /^\s*([A-ZÀ-Ú0-9][^]{2,120})$/i) };
   } else if (n.tipo === 'nfse') {
-    const prest = ctx.norm.search(/PRESTADOR/);
+    // Layout municipal ("PRESTADOR DE SERVIÇOS") ou nacional/DANFSe ("EMITENTE DA NFS-e").
+    const prest = ctx.norm.search(/PRESTADOR|EMITENTE DA NFS E/);
     const tom = ctx.norm.search(/TOMADOR/);
     const posNorm = (pos: number) => normalizar(texto.slice(0, pos)).length;
-    const prestDoc = docs.find((d) => prest >= 0 && posNorm(d.pos) >= prest && (tom < prest || posNorm(d.pos) < tom))?.doc ?? docs[0]?.doc ?? null;
+    const prestDoc =
+      partesNfse?.documento ?? docs.find((d) => prest >= 0 && posNorm(d.pos) >= prest && (tom < prest || posNorm(d.pos) < tom))?.doc ?? docs[0]?.doc ?? null;
     const tomDoc = docs.find((d) => tom >= 0 && posNorm(d.pos) >= tom && d.doc !== prestDoc)?.doc ?? null;
     // O prestador nunca é a própria empresa numa nota de compra de serviço.
     const prestador = prestDoc && prestDoc === empresa && tom >= 0 ? docs.find((d) => d.doc !== empresa)?.doc ?? null : prestDoc;
-    n.emitente = { documento: prestador, nome: nomeDepoisDoRotulo(ctx, /PRESTADOR/, ['NOME/RAZAO SOCIAL', 'NOME RAZAO SOCIAL', 'RAZAO SOCIAL', 'NOME']) };
-    n.destinatario = { documento: tomDoc, nome: nomeDepoisDoRotulo(ctx, /TOMADOR/, ['NOME/RAZAO SOCIAL', 'NOME RAZAO SOCIAL', 'RAZAO SOCIAL', 'NOME']) };
+    n.emitente = { documento: prestador, nome: nomeDepoisDoRotulo(ctx, /PRESTADOR|EMITENTE DA NFS E/, ['NOME / NOME EMPRESARIAL', 'NOME NOME EMPRESARIAL', 'NOME EMPRESARIAL', 'NOME/RAZAO SOCIAL', 'NOME RAZAO SOCIAL', 'RAZAO SOCIAL', 'NOME']) };
+    n.destinatario = { documento: tomDoc, nome: nomeDepoisDoRotulo(ctx, /TOMADOR/, ['NOME / NOME EMPRESARIAL', 'NOME NOME EMPRESARIAL', 'NOME EMPRESARIAL', 'NOME/RAZAO SOCIAL', 'NOME RAZAO SOCIAL', 'RAZAO SOCIAL', 'NOME']) };
   } else {
     const outro = docs.find((d) => d.doc !== empresa)?.doc ?? null;
     const daEmpresa = docs.find((d) => d.doc === empresa)?.doc ?? null;
@@ -368,7 +371,7 @@ export function interpretarNotaPdf(c: ConteudoPdf, opcoes: { chaveExterna?: stri
     n.numero = partes.numero;
     n.serie = partes.serie;
   } else if (n.tipo === 'nfse') {
-    n.numero = valorDoRotulo(ctx, ['NUMERO DA NOTA', 'NUMERO DA NFS E', 'N DA NFS E', 'NUMERO NFS E', 'NFS E N', 'N DA NOTA', 'NUMERO'], /(\d[\d./-]{0,18}\d|\d)/);
+    n.numero = valorDoRotulo(ctx, ['NUMERO DA NOTA', 'NUMERO DA NFS E', 'NUMERO DA NFSE', 'NUMERO NFSE', 'N NFS E', 'N DA NFS E', 'NUMERO NFS E', 'NFS E N', 'N DA NOTA', 'NUMERO'], /(\d[\d./-]{0,18}\d|\d)/);
   } else {
     const m = /\bN[º°o.]?\s*:?\s*([\d.]{1,15})\b/.exec(texto);
     n.numero = m ? String(Number(m[1].replace(/\./g, ''))) : null;
@@ -384,18 +387,33 @@ export function interpretarNotaPdf(c: ConteudoPdf, opcoes: { chaveExterna?: stri
     if (n.dataEmissao) n.conferir.push('dataEmissao');
   }
   if (n.dataEmissao && partes && n.dataEmissao.slice(0, 7) !== partes.anoMes) n.conferir.push('dataEmissao');
-  if (!n.dataEmissao && partes) {
-    n.dataEmissao = `${partes.anoMes}-01`;
+  if (!n.numero && partesNfse) n.numero = partesNfse.numero;
+  if (n.dataEmissao && partesNfse && n.dataEmissao.slice(0, 7) !== partesNfse.anoMes) n.conferir.push('dataEmissao');
+  if (!n.dataEmissao && (partes || partesNfse)) {
+    n.dataEmissao = `${(partes ?? partesNfse)!.anoMes}-01`;
     n.conferir.push('dataEmissao');
   }
   n.naturezaOperacao = valorDoRotulo(ctx, ['NATUREZA DA OPERACAO'], /^\s*([A-ZÀ-Ú][^]{2,80})$/i);
 
   // Valores e itens.
   if (n.tipo === 'nfse') {
-    const bruto = dinheiroDoRotulo(ctx, ['VALOR TOTAL DO SERVICO', 'VALOR TOTAL DOS SERVICOS', 'VALOR DOS SERVICOS', 'VALOR DO SERVICO', 'VALOR TOTAL DA NOTA', 'VALOR BRUTO', 'VALOR DA NOTA', 'VALOR TOTAL']);
-    const liquido = dinheiroDoRotulo(ctx, ['VALOR LIQUIDO DA NOTA', 'VALOR LIQUIDO DA NFS E', 'VALOR LIQUIDO']);
-    const base = bruto ?? liquido;
-    const disc = trecho(ctx, /^DISCRIMINACAO|^DESCRICAO DOS? SERVICOS?|^DESCRICAO DO SERVICO|^SERVICOS? PRESTADOS?/, /^(VALOR|CODIGO DO SERVICO|ITEM DA LISTA|DEDUCOES|BASE DE CALCULO|TRIBUTOS|OUTRAS INFORMACOES|INFORMACOES|AVISO|RETENCOES)/)
+    const bruto = dinheiroDoRotulo(ctx, [
+      'VALOR TOTAL DO SERVICO', 'VALOR TOTAL DOS SERVICOS', 'VALOR DOS SERVICOS', 'VALOR DO SERVICO', 'VALOR SERVICO', 'VALOR SERVICOS', 'VALOR TOTAL DA NOTA',
+      'VALOR TOTAL DA NFS E', 'VALOR DA NFS E', 'VALOR BRUTO', 'VALOR DA NOTA', 'TOTAL DO SERVICO', 'TOTAL DOS SERVICOS', 'VALOR TOTAL', 'TOTAL DA NOTA',
+    ]);
+    const liquido = dinheiroDoRotulo(ctx, ['VALOR LIQUIDO DA NOTA', 'VALOR LIQUIDO DA NFS E', 'VALOR LIQUIDO DA NFSE', 'VALOR LIQUIDO', 'LIQUIDO A PAGAR', 'TOTAL LIQUIDO']);
+    let base = bruto ?? liquido;
+    if (!base) {
+      // Último recurso: o maior valor em linhas que falam de valor/total (fora alíquotas e impostos).
+      const cands = ctx.linhas
+        .filter((l) => /\b(VALOR|TOTAL)\b/.test(normalizar(l.texto)) && !/ALIQUOTA|\bISS\b|ISSQN|\bIR\b|INSS|PIS|COFINS|CSLL|BASE DE CALCULO|DEDUC/.test(normalizar(l.texto)))
+        .flatMap((l) => [...l.texto.matchAll(new RegExp(RE_DINHEIRO.source, 'g'))].map((m) => centavos(m[1])));
+      if (cands.length) {
+        base = Math.max(...cands);
+        n.conferir.push('total');
+      }
+    }
+    const disc = trecho(ctx, /^DISCRIMINACAO|^DESCRICAO DOS? SERVICOS?|^DESCRICAO DO SERVICO|^SERVICOS? PRESTADOS?/, /^(VALOR|CODIGO DO SERVICO|CODIGO DE TRIBUTACAO|ITEM DA LISTA|DEDUCOES|BASE DE CALCULO|TRIBUTOS|TRIBUTACAO|OUTRAS INFORMACOES|INFORMACOES|AVISO|RETENCOES|NBS|LOCAL DA PRESTACAO|MUNICIPIO DE INCIDENCIA)/)
       .map((l) => l.texto.trim())
       .filter((t) => !/^VALOR/i.test(t))
       .join(' ')
@@ -497,6 +515,19 @@ export function completarLeitura(n: NotaLida): NotaLida {
 
 /** Usa a chave de acesso para preencher o que faltou: número, série, emitente e mês de emissão. */
 export function completarPelaChave(n: NotaLida): NotaLida {
+  const ps = n.chaveAcesso ? partesDaChaveNfse(n.chaveAcesso) : null;
+  if (ps) {
+    n.tipo = 'nfse';
+    n.numero ??= ps.numero;
+    const d = cnpjValido(ps.documento) || cpfValido(ps.documento) ? ps.documento : null;
+    if (d && !n.emitente?.documento) n.emitente = { documento: d, nome: n.emitente?.nome ?? null };
+    if (!n.dataEmissao) {
+      n.dataEmissao = `${ps.anoMes}-01`;
+      n.conferir.push('dataEmissao');
+    }
+    n.conferir = [...new Set(n.conferir)];
+    return n;
+  }
   const p = n.chaveAcesso ? partesDaChave(n.chaveAcesso) : null;
   if (!p) return n;
   if (n.tipo === 'outro' || n.tipo === 'recibo' || n.tipo === 'cupom') n.tipo = p.modelo === '65' ? 'nfce' : p.modelo === '57' ? 'cte' : 'nfe';
