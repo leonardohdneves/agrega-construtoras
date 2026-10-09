@@ -166,10 +166,18 @@ export async function lerNotaComIa(arquivo: Buffer, tipoArquivo: string, context
     throw new ErroIa('Não consegui falar com o serviço de IA agora. Tente de novo em instantes.');
   }
   if (!resp.ok) {
+    // A mensagem da API diz o motivo (crédito, modelo, pedido inválido); nunca inclui a chave.
+    const detalhe = await resp
+      .json()
+      .then((j: { error?: { type?: string; message?: string } }) => j?.error?.message ?? '')
+      .catch(() => '');
+    console.error(`[ia-nota] Anthropic ${resp.status}: ${detalhe}`);
+    if (/credit balance/i.test(detalhe)) throw new ErroIa('A conta da IA está sem créditos. Adicione saldo em console.anthropic.com › Billing e tente de novo.');
+    if (/model/i.test(detalhe) && (resp.status === 400 || resp.status === 404)) throw new ErroIa(`O modelo de IA configurado não está disponível para esta chave (${detalhe}).`);
     if (resp.status === 401 || resp.status === 403) throw new ErroIa('A chave da IA foi recusada. Confira a variável ANTHROPIC_API_KEY.');
     if (resp.status === 429 || resp.status === 529) throw new ErroIa('O serviço de IA está ocupado. Tente de novo em instantes.');
     if (resp.status === 413) throw new ErroIa('O arquivo é grande demais para a leitura por IA.');
-    throw new ErroIa(`A leitura por IA falhou (código ${resp.status}).`);
+    throw new ErroIa(`A leitura por IA falhou (código ${resp.status}${detalhe ? `: ${detalhe}` : ''}).`);
   }
   const corpo = (await resp.json()) as { content?: { type: string; name?: string; input?: Record<string, unknown> }[] };
   const uso = corpo.content?.find((b) => b.type === 'tool_use' && b.name === 'registrar_nota');
