@@ -46,7 +46,8 @@ const FERRAMENTA = {
             cfop: { type: ['string', 'null'] },
             unidade: { type: ['string', 'null'] },
             quantidade: { type: 'number' },
-            valor_total: { type: 'number', description: 'Valor total do item em reais.' },
+            valor_unitario: { type: ['number', 'null'], description: 'Valor unitário do item em reais (coluna "VLR. UNIT" / "V. UNITÁRIO").' },
+            valor_total: { type: 'number', description: 'Valor total do item em reais, da coluna "VLR. TOTAL" / "V. TOTAL" / "VALOR TOTAL" da tabela de produtos (antes de descontos da nota).' },
             cadastro_ref: { type: ['string', 'null'], description: 'Código (ref) do insumo ou do item do catálogo da empresa que corresponde a este item, se houver um claramente equivalente; senão null.' },
           },
           required: ['descricao', 'quantidade', 'valor_total'],
@@ -67,8 +68,18 @@ const FERRAMENTA = {
   },
 };
 
-const c = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) : 0);
-const cn = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? Math.round(v * 100) : null);
+/** Número em reais vindo da IA: aceita número ou texto ("1.234,56", "R$ 1234.56"). */
+function num(v: unknown): number | null {
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  if (typeof v !== 'string') return null;
+  let t = v.replace(/[^\d,.-]/g, '');
+  if (/,\d{1,4}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
+  else t = t.replace(/,/g, '');
+  const x = Number(t);
+  return t && Number.isFinite(x) ? x : null;
+}
+const c = (v: unknown) => Math.round((num(v) ?? 0) * 100);
+const cn = (v: unknown) => (num(v) === null ? null : Math.round(num(v)! * 100));
 const txt = (v: unknown, max = 200) => (typeof v === 'string' && v.trim() ? v.trim().slice(0, max) : null);
 const doc = (v: unknown) => {
   const d = typeof v === 'string' ? v.replace(/\D/g, '') : '';
@@ -104,7 +115,12 @@ export function notaDaIa(r: Record<string, any>): NotaLida {
     total: cn(r.valor_total),
   };
   n.itens = (Array.isArray(r.itens) ? r.itens : [])
-    .filter((i: any) => typeof i?.descricao === 'string' && typeof i?.valor_total === 'number')
+    .filter((i: any) => typeof i?.descricao === 'string' && i.descricao.trim())
+    .map((i: any) => {
+      // Sem o total do item, usa quantidade × unitário.
+      const total = num(i.valor_total) ?? (num(i.valor_unitario) !== null && num(i.quantidade) !== null ? num(i.valor_unitario)! * num(i.quantidade)! : 0);
+      return { ...i, valor_total: total, quantidade: num(i.quantidade) };
+    })
     .slice(0, 300)
     .map((i: any) => ({
       codigo: txt(i.codigo, 60),
@@ -168,7 +184,9 @@ export async function lerNotaComIa(
               `A empresa que está lançando a nota é ${contexto.razaoEmpresa ?? 'a concreteira'}${contexto.cnpjEmpresa ? ` (CNPJ ${contexto.cnpjEmpresa})` : ''}. ` +
               'Valores em reais, como número (ex.: 1234.56). Datas no formato AAAA-MM-DD. Copie os números exatamente como impressos; ' +
               'se não conseguir ler um campo, deixe null e inclua-o em "duvidas". Não invente dados. ' +
-              'ITENS: transcreva a descrição de cada produto ou serviço exatamente como está no documento, completa, sem resumir nem trocar por termos genéricos. ' +
+              'ITENS: liste TODOS os itens da tabela de produtos/serviços, um por linha da tabela, mesmo que a soma não bata com o total. ' +
+              'Transcreva a descrição de cada produto ou serviço exatamente como está no documento, completa, sem resumir nem trocar por termos genéricos. ' +
+              'Em "valor_total" de cada item use a coluna VLR. TOTAL (valor total do item); em "quantidade" a coluna QTD/QUANT e em "valor_unitario" a coluna VLR. UNIT. ' +
               'Na NFS-e, use a discriminação do serviço; se ela listar vários serviços ou materiais com valores próprios, crie um item para cada um (a soma deve dar o valor dos serviços); ' +
               'se não houver valores separados, faça um único item com a discriminação inteira.' +
               listaCadastros(contexto.cadastros),

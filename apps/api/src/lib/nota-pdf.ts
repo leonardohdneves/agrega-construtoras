@@ -450,13 +450,14 @@ export function interpretarNotaPdf(c: ConteudoPdf, opcoes: { chaveExterna?: stri
     const itens = itensDanfe(ctx);
     const soma = itens.reduce((s, i) => s + i.valor, 0);
     if (t.produtos === null && t.total !== null) t.produtos = t.total - t.frete - t.seguro - t.outras - t.ipi - t.icmsSt + t.desconto;
-    if (itens.length && (t.produtos === null || Math.abs(soma - t.produtos) <= itens.length)) {
+    if (itens.length) {
+      // Os itens entram sempre como estão na nota; se a soma não bate, o usuário corrige os valores.
       n.itens = itens;
       if (t.produtos === null) t.produtos = soma;
+      else if (Math.abs(soma - t.produtos) > itens.length) avisoSoma(n, soma, t.produtos);
     } else if (t.produtos) {
       n.itens = [{ codigo: null, descricao: `Produtos da NF ${n.numero ?? ''}${n.emitente?.nome ? ` · ${n.emitente.nome}` : ''}`.replace(/\s+/g, ' ').trim(), ncm: null, cfop: null, unidade: null, quantidade: 1, valor: t.produtos }];
       n.conferir.push('itens');
-      if (itens.length) n.avisos.push('Os itens lidos não fecharam com o valor dos produtos; a nota entrou com um item só. Ajuste se precisar.');
     }
     if (t.total === null && t.produtos !== null) {
       t.total = t.produtos + t.frete + t.seguro + t.outras + t.ipi + t.icmsSt - t.desconto;
@@ -484,6 +485,13 @@ export function leituraSuficiente(n: NotaLida): boolean {
   return !!(n.totais.total && n.totais.total > 0 && n.dataEmissao && n.emitente?.documento && n.itens.length);
 }
 
+function avisoSoma(n: NotaLida, soma: number, produtos: number) {
+  n.avisos.push(
+    `A soma dos itens lidos (${reais(soma)}) é diferente do valor dos produtos na nota (${reais(produtos)}). Os itens foram listados como estão na nota: confira e corrija os valores (coluna "valor total" de cada item) antes de confirmar.`,
+  );
+  n.conferir.push('itens');
+}
+
 /** Fecha a leitura (da IA ou do leitor): valor dos produtos, item único quando não há itens, total e parcelas. */
 export function completarLeitura(n: NotaLida): NotaLida {
   const t = n.totais;
@@ -491,10 +499,7 @@ export function completarLeitura(n: NotaLida): NotaLida {
   const extras = t.frete + t.seguro + t.outras + t.ipi + t.icmsSt - t.desconto;
   if (t.produtos === null && n.itens.length) t.produtos = soma;
   if (t.produtos === null && t.total !== null) t.produtos = t.total - extras;
-  if (n.itens.length && t.produtos !== null && Math.abs(soma - t.produtos) > n.itens.length) {
-    n.avisos.push('Os itens lidos não fecharam com o valor dos produtos; a nota entrou com um item só. Ajuste se precisar.');
-    n.itens = [];
-  }
+  if (n.itens.length && t.produtos !== null && Math.abs(soma - t.produtos) > n.itens.length) avisoSoma(n, soma, t.produtos);
   if (!n.itens.length && t.produtos && t.produtos > 0) {
     const nome = n.emitente?.nome ? ` · ${n.emitente.nome}` : '';
     const rotulo = n.tipo === 'nfse' ? 'Serviço' : n.tipo === 'recibo' ? 'Recibo' : 'Produtos';

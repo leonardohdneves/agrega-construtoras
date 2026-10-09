@@ -184,3 +184,21 @@ test('chave da NFS-e nacional: partes, busca no texto e texto colado ou de QR co
   assert.equal(n.numero, '458');
   assert.equal(n.emitente?.documento, '23456789000195');
 });
+
+test('itens que não fecham com o valor dos produtos continuam listados, com aviso e para conferir', () => {
+  const n = completarLeitura(
+    notaDaIa({
+      legivel: true, tipo: 'nfe', numero: '78373', valor_produtos: '1.500,00', valor_total: 1500,
+      itens: [
+        { descricao: 'CIMENTO CP II-F 32 SC 50KG', quantidade: '20', valor_unitario: '35,90', valor_total: '718,00' },
+        { descricao: 'ARGAMASSA AC-I 20KG', quantidade: 10, valor_unitario: 18.5 },
+      ],
+    }),
+  );
+  assert.deepEqual(n.itens.map((i) => [i.descricao, i.quantidade, i.valor]), [
+    ['CIMENTO CP II-F 32 SC 50KG', 20, 71800],
+    ['ARGAMASSA AC-I 20KG', 10, 18500],
+  ]);
+  assert.ok(n.conferir.includes('itens'));
+  assert.match(n.avisos.join(' '), /soma dos itens lidos \(R\$\s?903,00\) é diferente do valor dos produtos na nota \(R\$\s?1\.500,00\)/);
+});

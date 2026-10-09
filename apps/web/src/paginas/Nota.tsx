@@ -603,7 +603,8 @@ function LinhaItem({
           {editavel && manual ? (
             <input
               aria-label="Valor do item"
-              className="campo-tabela mono"
+              title="Valor total do item (coluna VLR. TOTAL da nota)"
+              className={`campo-tabela mono ${nota.leitura?.conferir.includes('itens') ? 'pendente' : ''}`}
               style={{ textAlign: 'right', width: 120 }}
               inputMode="decimal"
               value={desc.valor}
