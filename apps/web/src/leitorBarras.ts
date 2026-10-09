@@ -177,3 +177,33 @@ export async function chaveNoPdf(bytes: Uint8Array): Promise<string | null> {
   }
   return null;
 }
+
+/** Converte uma imagem (foto, quadro da câmera) em JPEG de até `max` px no lado maior, para enviar à IA. */
+export async function imagemParaJpeg(fonte: Blob | HTMLVideoElement, max = 2000): Promise<Blob | null> {
+  try {
+    let img: CanvasImageSource;
+    let w: number;
+    let h: number;
+    let bmp: ImageBitmap | null = null;
+    if (fonte instanceof Blob) {
+      bmp = await createImageBitmap(fonte);
+      img = bmp;
+      w = bmp.width;
+      h = bmp.height;
+    } else {
+      img = fonte;
+      w = fonte.videoWidth;
+      h = fonte.videoHeight;
+    }
+    if (!w || !h) return null;
+    const escala = Math.min(1, max / Math.max(w, h));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(w * escala);
+    canvas.height = Math.round(h * escala);
+    canvas.getContext('2d')?.drawImage(img, 0, 0, canvas.width, canvas.height);
+    bmp?.close();
+    return await new Promise<Blob | null>((ok) => canvas.toBlob((b) => ok(b), 'image/jpeg', 0.85));
+  } catch {
+    return null;
+  }
+}

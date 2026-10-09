@@ -2,9 +2,9 @@
 // câmera do celular ou foto da nota.
 import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { chaveAceita, chaveDoTexto, partesDaChave, partesDaChaveNfse } from '../code128';
-import { chaveDaImagem, chaveDoArquivoDeImagem } from '../leitorBarras';
+import { chaveDaImagem, chaveDoArquivoDeImagem, imagemParaJpeg } from '../leitorBarras';
 
-export function LeitorCodigo({ aoLer, aoFechar, ocupado }: { aoLer: (chave: string) => void; aoFechar: () => void; ocupado?: boolean }) {
+export function LeitorCodigo({ aoLer, aoFechar, ocupado }: { aoLer: (chave: string, imagem?: Blob | null) => void; aoFechar: () => void; ocupado?: boolean }) {
   const [texto, setTexto] = useState('');
   const [erro, setErro] = useState('');
   const [camera, setCamera] = useState(false);
@@ -34,12 +34,12 @@ export function LeitorCodigo({ aoLer, aoFechar, ocupado }: { aoLer: (chave: stri
     }
   }
 
-  function usar(chave: string) {
+  function usar(chave: string, imagem?: Blob | null) {
     if (lido.current) return;
     lido.current = true;
     setCamera(false);
     setTexto(chave);
-    aoLer(chave);
+    aoLer(chave, imagem);
     setTimeout(() => {
       lido.current = false;
     }, 1500);
@@ -81,7 +81,8 @@ export function LeitorCodigo({ aoLer, aoFechar, ocupado }: { aoLer: (chave: stri
         if (v.videoWidth) {
           const c = await chaveDaImagem(v, v.videoWidth, v.videoHeight, tela.current ?? undefined);
           if (c && !parar) {
-            usar(c);
+            // A imagem da câmera vai junto para a IA ler o resto da nota.
+            usar(c, await imagemParaJpeg(v));
             break;
           }
         }
@@ -101,7 +102,7 @@ export function LeitorCodigo({ aoLer, aoFechar, ocupado }: { aoLer: (chave: stri
     const c = await chaveDoArquivoDeImagem(arquivo);
     setSituacao('');
     if (foto.current) foto.current.value = '';
-    if (c) usar(c);
+    if (c) usar(c, await imagemParaJpeg(arquivo));
     else setErro('Não achei o código de barras na foto. Tire outra mais de perto, com o código reto e bem iluminado, ou digite a chave.');
   }
 

@@ -26,6 +26,7 @@ import {
   type TipoLanc,
 } from '../api';
 import { OpcoesCategoria, useCadastros, type Cadastros } from './Lancamento';
+import { imagemParaJpeg } from '../leitorBarras';
 
 /** Origens em que os dados do documento e os itens podem ser corrigidos à mão. */
 const DIGITAVEL = new Set<NotaFiscal['origem']>(['manual', 'pdf', 'chave']);
@@ -449,7 +450,7 @@ function LinhaItem({
     <Fragment>
       <tr className={salvando ? 'salvando' : undefined}>
         <td className="mono small">{item.numeroItem}</td>
-        <td style={{ minWidth: 220 }}>
+        <td style={{ minWidth: 190 }}>
           {editavel && manual ? (
             <textarea
               aria-label="Descrição do item"
@@ -501,7 +502,7 @@ function LinhaItem({
                   <select
                     aria-label="Cadastro do item"
                     className="campo-tabela"
-                    style={{ width: 'auto', maxWidth: 320 }}
+                    style={{ width: 'auto', maxWidth: 190 }}
                     value={item.insumoId ? `ins:${item.insumoId}` : item.catalogoId ? `cat:${item.catalogoId}` : item.cadastrarCatalogo ? 'novo' : ''}
                     onChange={(e) => {
                       const v = e.target.value;
@@ -556,7 +557,7 @@ function LinhaItem({
             </div>
           )}
         </td>
-        <td style={{ minWidth: 220 }}>
+        <td style={{ minWidth: 150 }}>
           {editavel ? (
             <select
               aria-label="Categoria"
@@ -605,19 +606,21 @@ function LinhaItem({
               aria-label="Valor do item"
               title="Valor total do item (coluna VLR. TOTAL da nota)"
               className={`campo-tabela mono ${nota.leitura?.conferir.includes('itens') ? 'pendente' : ''}`}
-              style={{ textAlign: 'right', width: 120 }}
+              style={{ textAlign: 'right', width: 110 }}
               inputMode="decimal"
               value={desc.valor}
               onChange={(e) => setDesc({ ...desc, valor: e.target.value })}
               onBlur={() => lerNumero(desc.valor) !== item.valorProduto && salvar({ valor: desc.valor })}
             />
           ) : (
-            formatarMoeda(item.valorCusto)
+            formatarMoeda(item.valorProduto)
           )}
-          {item.valorCusto !== item.valorProduto && <div className="small muted">produto {formatarMoeda(item.valorProduto)}</div>}
+          {Math.abs(item.valorCusto - item.valorProduto) >= 0.01 && (
+            <div className="small muted" title="Valor do item com frete, descontos e impostos da nota rateados">custo {formatarMoeda(item.valorCusto)}</div>
+          )}
         </td>
         <td>
-          <div className="acoes" style={{ flexWrap: 'nowrap', gap: 4 }}>
+          <div className="acoes" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
             {editavel && nota.direcao === 'entrada' && (
               <button className="btn btn-link" type="button" onClick={() => setVinculo(!vinculo)}>
                 {vinculo ? 'Fechar' : 'Vincular'}
@@ -909,7 +912,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
               <th>Categoria</th>
               <th>Centro de custo</th>
               {nota.direcao === 'entrada' && <th>Veículo</th>}
-              <th style={{ textAlign: 'right' }}>Custo</th>
+              <th style={{ textAlign: 'right' }}>Valor total</th>
               <th><span style={{ position: 'absolute', left: -9999 }}>Ações</span></th>
             </tr>
           </thead>
@@ -919,9 +922,38 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
             ))}
           </tbody>
           <tfoot>
+            {/* Conferência com a nota: itens (valor dos produtos) + acréscimos − desconto = total. */}
             <tr>
-              <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">Soma dos itens</td>
-              <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>{formatarMoeda(soma(nota.itens.map((i) => i.valorCusto)))}</td>
+              <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">Soma dos itens (valor dos produtos)</td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>{formatarMoeda(soma(nota.itens.map((i) => i.valorProduto)))}</td>
+              <td />
+            </tr>
+            {(
+              [
+                ['+ frete', nota.totais.frete],
+                ['+ seguro', nota.totais.seguro],
+                ['+ outras despesas', nota.totais.outras],
+                ['+ IPI', nota.totais.ipi],
+                ['+ ICMS ST', nota.totais.icmsSt],
+                ['− desconto', -nota.totais.desconto],
+              ] as [string, number][]
+            )
+              .filter(([, v]) => v)
+              .map(([r, v]) => (
+                <tr key={r}>
+                  <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">{r}</td>
+                  <td className="mono small" style={{ textAlign: 'right' }}>{formatarMoeda(Math.abs(v))}</td>
+                  <td />
+                </tr>
+              ))}
+            <tr>
+              <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">
+                = Total da nota
+                {nota.leitura?.totalLido != null && Math.round(nota.leitura.totalLido) !== Math.round(nota.totais.total * 100) && (
+                  <span style={{ color: 'var(--status-warn-ink)' }}> · na nota impressa: {formatarMoeda(nota.leitura.totalLido / 100)}</span>
+                )}
+              </td>
+              <td className="mono" style={{ textAlign: 'right', fontWeight: 700 }}>{formatarMoeda(nota.totais.total)}</td>
               <td />
             </tr>
           </tfoot>
@@ -1297,8 +1329,9 @@ function CompletarComArquivo({ nota }: { nota: NotaFiscal }) {
       const pdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
       if (!pdf && !/^image\/(jpeg|png|webp)$/.test(f.type)) throw new Error('Envie o PDF da nota ou uma foto (JPG ou PNG).');
       if (f.size > 10 * 1024 * 1024) throw new Error('Arquivo grande demais (máximo 10 MB).');
+      const envio = pdf ? f : ((await imagemParaJpeg(f)) ?? f);
       const r = await api<{ nota: NotaFiscal }>('/fin/notas/pdf', {
-        corpo: { arquivo: await arquivoBase64(f), nome: f.name, tipo: pdf ? 'application/pdf' : f.type, chave: nota.chaveAcesso },
+        corpo: { arquivo: await arquivoBase64(envio), nome: f.name, tipo: pdf ? 'application/pdf' : envio.type || f.type, chave: nota.chaveAcesso },
       });
       navegar(`/fin/notas/${r.nota.id}`, { replace: true });
     } catch (e) {
@@ -1316,7 +1349,7 @@ function CompletarComArquivo({ nota }: { nota: NotaFiscal }) {
       <input ref={entrada} type="file" accept=".pdf,application/pdf,image/jpeg,image/png,image/webp" hidden onChange={(e) => enviar(e.target.files?.[0])} />
       <div className="acoes">
         <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => entrada.current?.click()}>
-          {ocupado ? 'Lendo a nota…' : 'Enviar PDF ou foto'}
+          {ocupado ? 'A IA está lendo a nota…' : 'Enviar PDF ou foto'}
         </button>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert" style={{ marginTop: 10 }}>{erro}</div>}

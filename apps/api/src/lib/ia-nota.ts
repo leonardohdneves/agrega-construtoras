@@ -29,7 +29,7 @@ const FERRAMENTA = {
       valor_produtos: { type: ['number', 'null'], description: 'Valor total dos produtos ou serviços (bruto), em reais.' },
       frete: { type: ['number', 'null'] },
       seguro: { type: ['number', 'null'] },
-      desconto: { type: ['number', 'null'] },
+      desconto: { type: ['number', 'null'], description: 'Desconto total da nota em reais: o campo DESCONTO / "V. DESC." do quadro de totais (ou, se só houver por item, a soma da coluna de desconto dos itens). 0 se não houver.' },
       outras_despesas: { type: ['number', 'null'] },
       ipi: { type: ['number', 'null'] },
       icms_st: { type: ['number', 'null'] },
@@ -73,6 +73,7 @@ function num(v: unknown): number | null {
   if (typeof v === 'number') return Number.isFinite(v) ? v : null;
   if (typeof v !== 'string') return null;
   let t = v.replace(/[^\d,.-]/g, '');
+  if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, ''); // "1.500" = mil e quinhentos
   if (/,\d{1,4}$/.test(t)) t = t.replace(/\./g, '').replace(',', '.');
   else t = t.replace(/,/g, '');
   const x = Number(t);
@@ -187,6 +188,7 @@ export async function lerNotaComIa(
               'ITENS: liste TODOS os itens da tabela de produtos/serviços, um por linha da tabela, mesmo que a soma não bata com o total. ' +
               'Transcreva a descrição de cada produto ou serviço exatamente como está no documento, completa, sem resumir nem trocar por termos genéricos. ' +
               'Em "valor_total" de cada item use a coluna VLR. TOTAL (valor total do item); em "quantidade" a coluna QTD/QUANT e em "valor_unitario" a coluna VLR. UNIT. ' +
+              'Procure o campo de DESCONTO da nota (quadro de totais, ou a coluna de desconto dos itens) e informe em "desconto"; informe também frete, seguro, outras despesas, IPI e ICMS ST quando houver, para que itens + acréscimos − desconto = valor total da nota. ' +
               'Na NFS-e, use a discriminação do serviço; se ela listar vários serviços ou materiais com valores próprios, crie um item para cada um (a soma deve dar o valor dos serviços); ' +
               'se não houver valores separados, faça um único item com a discriminação inteira.' +
               listaCadastros(contexto.cadastros),

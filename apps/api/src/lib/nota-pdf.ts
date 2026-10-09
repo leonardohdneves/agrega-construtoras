@@ -454,7 +454,7 @@ export function interpretarNotaPdf(c: ConteudoPdf, opcoes: { chaveExterna?: stri
       // Os itens entram sempre como estão na nota; se a soma não bate, o usuário corrige os valores.
       n.itens = itens;
       if (t.produtos === null) t.produtos = soma;
-      else if (Math.abs(soma - t.produtos) > itens.length) avisoSoma(n, soma, t.produtos);
+      // A conferência da soma (com descontos e acréscimos) é feita em completarLeitura.
     } else if (t.produtos) {
       n.itens = [{ codigo: null, descricao: `Produtos da NF ${n.numero ?? ''}${n.emitente?.nome ? ` · ${n.emitente.nome}` : ''}`.replace(/\s+/g, ' ').trim(), ncm: null, cfop: null, unidade: null, quantidade: 1, valor: t.produtos }];
       n.conferir.push('itens');
@@ -496,10 +496,29 @@ function avisoSoma(n: NotaLida, soma: number, produtos: number) {
 export function completarLeitura(n: NotaLida): NotaLida {
   const t = n.totais;
   const soma = n.itens.reduce((s, i) => s + i.valor, 0);
-  const extras = t.frete + t.seguro + t.outras + t.ipi + t.icmsSt - t.desconto;
-  if (t.produtos === null && n.itens.length) t.produtos = soma;
+  const acrescimos = t.frete + t.seguro + t.outras + t.ipi + t.icmsSt;
+  const tol = Math.max(1, n.itens.length);
+  if (n.itens.length && t.total !== null && Math.abs(soma + acrescimos - t.desconto - t.total) > tol) {
+    // Itens + acréscimos − descontos não dão o total da nota.
+    const diferenca = soma + acrescimos - t.desconto - t.total;
+    const itensBatemProdutos = t.produtos === null || Math.abs(t.produtos - soma) <= tol;
+    if (diferenca > 0 && t.desconto === 0 && itensBatemProdutos) {
+      // A nota tem desconto que não foi lido: a diferença é o desconto.
+      t.desconto = diferenca;
+      n.avisos.push(
+        `Os itens somam ${reais(soma)} e o total da nota é ${reais(t.total)}: a diferença de ${reais(diferenca)} foi lançada como desconto. Confira o campo desconto da nota.`,
+      );
+      n.conferir.push('total');
+    } else if (itensBatemProdutos) {
+      n.avisos.push(
+        `Os itens somam ${reais(soma)}, mas produtos + acréscimos − descontos lidos (${reais(soma + acrescimos - t.desconto)}) não dão o total da nota (${reais(t.total)}). Confira frete, desconto e outras despesas em "Dados do documento".`,
+      );
+      n.conferir.push('total');
+    } else avisoSoma(n, soma, t.produtos ?? t.total);
+  } else if (n.itens.length && t.total === null && t.produtos !== null && Math.abs(soma - t.produtos) > tol) avisoSoma(n, soma, t.produtos);
+  if (n.itens.length) t.produtos = soma;
+  const extras = acrescimos - t.desconto;
   if (t.produtos === null && t.total !== null) t.produtos = t.total - extras;
-  if (n.itens.length && t.produtos !== null && Math.abs(soma - t.produtos) > n.itens.length) avisoSoma(n, soma, t.produtos);
   if (!n.itens.length && t.produtos && t.produtos > 0) {
     const nome = n.emitente?.nome ? ` · ${n.emitente.nome}` : '';
     const rotulo = n.tipo === 'nfse' ? 'Serviço' : n.tipo === 'recibo' ? 'Recibo' : 'Produtos';

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LeitorCodigo } from '../componentes/LeitorCodigo';
-import { chaveDoArquivoDeImagem, chaveNoPdf } from '../leitorBarras';
+import { chaveDoArquivoDeImagem, chaveNoPdf, imagemParaJpeg } from '../leitorBarras';
 import { api, ErroApi, formatarChave, formatarData, formatarMoeda, hojeLocal, NOMES_MODELO, nomeMes, SELO_NOTA, somarMeses, type NotaFiscal, type NotaResumo } from '../api';
 
 type Filtro = 'todas' | 'rascunho' | 'confirmada' | 'cancelada';
@@ -104,7 +104,7 @@ export function Notas() {
     const lista = Array.from(arquivos);
     const res: Resultado[] = [];
     for (const [k, f] of lista.entries()) {
-      setProgresso(lista.length > 1 ? `Lendo ${k + 1} de ${lista.length}…` : 'Lendo a nota…');
+      setProgresso(`${lista.length > 1 ? `Nota ${k + 1} de ${lista.length}: ` : ''}${ia ? 'a IA está lendo a nota (10 a 30 segundos)…' : 'lendo a nota…'}`);
       try {
         const pdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
         const tipo = pdf ? 'application/pdf' : f.type;
@@ -112,7 +112,11 @@ export function Notas() {
         if (f.size > 10 * 1024 * 1024) throw new Error('Arquivo grande demais (máximo 10 MB).');
         // Código de barras em imagem (PDF escaneado ou foto): lido aqui no navegador.
         const chave = pdf ? await chaveNoPdf(new Uint8Array(await f.arrayBuffer())).catch(() => null) : await chaveDoArquivoDeImagem(f);
-        const r = await api<{ nota: NotaFiscal; metodo: string }>('/fin/notas/pdf', { corpo: { arquivo: await base64(f), nome: f.name, tipo, chave } });
+        // Fotos vão reduzidas (JPEG até 2000 px), dentro do limite da IA.
+        const envio = pdf ? f : ((await imagemParaJpeg(f)) ?? f);
+        const r = await api<{ nota: NotaFiscal; metodo: string }>('/fin/notas/pdf', {
+          corpo: { arquivo: await base64(envio), nome: f.name, tipo: pdf ? 'application/pdf' : envio.type || tipo, chave },
+        });
         const n = r.nota;
         const conferir = (n.leitura?.conferir ?? []).map((c) => CAMPOS_CONFERIR[c]).filter(Boolean);
         res.push({
@@ -132,13 +136,26 @@ export function Notas() {
     await carregar();
   }
 
-  async function criarPelaChave(chave: string) {
+  async function criarPelaChave(chave: string, imagem?: Blob | null) {
     setErro('');
     setCriandoChave(true);
     try {
-      const r = await api<{ nota: NotaFiscal }>('/fin/notas/chave', { corpo: { chave } });
+      let r: { nota: NotaFiscal } | null = null;
+      if (imagem && ia) {
+        // Foto ou imagem da câmera: a IA lê a nota inteira (valores e itens), com a chave do código de barras.
+        setProgresso('A IA está lendo a nota da foto (10 a 30 segundos)…');
+        try {
+          r = await api<{ nota: NotaFiscal }>('/fin/notas/pdf', { corpo: { arquivo: await base64(imagem), nome: 'foto-da-nota.jpg', tipo: 'image/jpeg', chave } });
+        } catch (e) {
+          if (e instanceof ErroApi && e.status === 409) throw e;
+          r = null;
+        }
+        setProgresso('');
+      }
+      r ??= await api<{ nota: NotaFiscal }>('/fin/notas/chave', { corpo: { chave } });
       navegar(`/fin/notas/${r.nota.id}`);
     } catch (e) {
+      setProgresso('');
       const id = e instanceof ErroApi ? e.dados.notaId : undefined;
       setResultados([{ arquivo: formatarChave(chave), ok: false, texto: (e as Error).message, notaId: id }]);
       setLeitor(false);
@@ -184,7 +201,7 @@ export function Notas() {
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {progresso && (
         <div className="alerta alerta-info" role="status">
-          {progresso} {ia ? 'O Agrega lê o PDF; o que ele não conseguir vai para a IA.' : 'O Agrega lê o texto e o código de barras do PDF.'}
+          {progresso} {ia ? 'Ela transcreve os itens, valores, descontos e parcelas e sugere o cadastro de cada item.' : 'A leitura por IA está desligada: o Agrega lê o texto e o código de barras do PDF.'}
         </div>
       )}
       {leitor && <LeitorCodigo aoLer={criarPelaChave} aoFechar={() => setLeitor(false)} ocupado={criandoChave} />}

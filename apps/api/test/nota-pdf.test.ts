@@ -202,3 +202,16 @@ test('itens que não fecham com o valor dos produtos continuam listados, com avi
   assert.ok(n.conferir.includes('itens'));
   assert.match(n.avisos.join(' '), /soma dos itens lidos \(R\$\s?903,00\) é diferente do valor dos produtos na nota \(R\$\s?1\.500,00\)/);
 });
+
+test('desconto da nota fecha a soma dos itens com o total; sem desconto lido, a diferença vira desconto com aviso', () => {
+  const base = { legivel: true, tipo: 'nfe', valor_produtos: 1000, valor_total: 950, itens: [{ descricao: 'A', quantidade: 1, valor_total: 600 }, { descricao: 'B', quantidade: 1, valor_total: 400 }] };
+  const lido = completarLeitura(notaDaIa({ ...base, desconto: 50 }));
+  assert.equal(lido.totais.desconto, 5000);
+  assert.deepEqual(lido.avisos, []);
+  assert.deepEqual(lido.conferir, []);
+  const inferido = completarLeitura(notaDaIa(base));
+  assert.equal(inferido.totais.desconto, 5000);
+  assert.equal(inferido.totais.produtos, 100000);
+  assert.ok(inferido.conferir.includes('total'));
+  assert.match(inferido.avisos[0], /diferença de R\$\s?50,00 foi lançada como desconto/);
+});

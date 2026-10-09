@@ -290,7 +290,7 @@ select.busca { appearance: auto; }
 .item-nota-form { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
 .item-nota-form .campos { width: 100%; }
 .campo-tabela { height: 40px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-card); color: var(--ink); padding: 0 8px; font: inherit; font-size: 14px; max-width: 100%; }
-select.campo-tabela { width: 100%; min-width: 150px; }
+select.campo-tabela { width: 100%; min-width: 120px; }
 .campo-tabela.pendente { border-color: var(--status-warn-ink); background: var(--status-warn-bg); }
 .campo-tabela.curto { width: 80px; height: 32px; }
 .tabela-nota td { vertical-align: top; }
@@ -709,3 +709,5 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .camera-codigo video { display: block; width: 100%; height: auto; }
 .camera-codigo .mira { position: absolute; left: 6%; right: 6%; top: 50%; height: 26%; transform: translateY(-50%); border: 2px solid rgba(255,255,255,.85); border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,.25); pointer-events: none; }
 .completar-arquivo { border: 2px solid var(--status-warn-bg); }
+.tabela td select.campo-tabela { max-width: 170px; }
+.tabela td select.campo-tabela:not([aria-label="Cadastro do item"]) { width: 112px; min-width: 100px; }
