@@ -594,6 +594,11 @@ export type ItemNota = {
   insumoNome: string | null;
   insumoUnidade: UnidadeInsumo | null;
   fatorEstoque: number | null;
+  catalogoId: string | null;
+  catalogoCodigo: string | null;
+  catalogoDescricao: string | null;
+  cadastrarCatalogo: boolean;
+  vinculoSugestao: 'ia' | 'aprendido' | null;
   sugestao: 'regra' | 'palavras' | 'fornecedor' | null;
   abastecimentos: { quantidade: number; litros: number; valor: number; veiculos: string | null } | null;
   os: { quantidade: number; valor: number; ordens: string | null } | null;

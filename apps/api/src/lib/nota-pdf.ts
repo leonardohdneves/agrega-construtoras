@@ -7,7 +7,7 @@ import { normalizar } from './sugestoes.ts';
 
 export type TipoNota = 'nfe' | 'nfce' | 'nfse' | 'cte' | 'recibo' | 'cupom' | 'outro';
 export type PessoaLida = { documento: string | null; nome: string | null };
-export type ItemLido = { codigo: string | null; descricao: string; ncm: string | null; cfop: string | null; unidade: string | null; quantidade: number; valor: number };
+export type ItemLido = { codigo: string | null; descricao: string; ncm: string | null; cfop: string | null; unidade: string | null; quantidade: number; valor: number; ref?: string | null };
 export type NotaLida = {
   tipo: TipoNota;
   chaveAcesso: string | null;
@@ -284,7 +284,7 @@ function itensDanfe(ctx: Ctx): ItemLido[] {
       out.push(ultimo);
     } else if (ultimo && !RE_DINHEIRO.test(t) && t.length < 120 && l.itens.length <= 2) {
       // Continuação da descrição na linha de baixo.
-      ultimo.descricao = `${ultimo.descricao} ${t}`.slice(0, 300);
+      ultimo.descricao = `${ultimo.descricao} ${t}`.slice(0, 2000);
     } else if (out.length) ultimo = null;
   }
   return out;
@@ -417,7 +417,7 @@ export function interpretarNotaPdf(c: ConteudoPdf, opcoes: { chaveExterna?: stri
       .map((l) => l.texto.trim())
       .filter((t) => !/^VALOR/i.test(t))
       .join(' ')
-      .slice(0, 300);
+      .slice(0, 2000);
     if (base) {
       n.totais.produtos = base;
       n.itens = [{ codigo: null, descricao: disc || `Serviço · NFS-e ${n.numero ?? ''}`.trim(), ncm: null, cfop: null, unidade: 'SV', quantidade: 1, valor: base }];

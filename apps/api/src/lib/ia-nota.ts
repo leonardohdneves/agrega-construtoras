@@ -41,12 +41,13 @@ const FERRAMENTA = {
           type: 'object',
           properties: {
             codigo: { type: ['string', 'null'] },
-            descricao: { type: 'string' },
+            descricao: { type: 'string', description: 'Descrição do produto/serviço transcrita exatamente como impressa (na NFS-e, a discriminação do serviço completa), sem resumir.' },
             ncm: { type: ['string', 'null'] },
             cfop: { type: ['string', 'null'] },
             unidade: { type: ['string', 'null'] },
             quantidade: { type: 'number' },
             valor_total: { type: 'number', description: 'Valor total do item em reais.' },
+            cadastro_ref: { type: ['string', 'null'], description: 'Código (ref) do insumo ou do item do catálogo da empresa que corresponde a este item, se houver um claramente equivalente; senão null.' },
           },
           required: ['descricao', 'quantidade', 'valor_total'],
         },
@@ -107,12 +108,13 @@ export function notaDaIa(r: Record<string, any>): NotaLida {
     .slice(0, 300)
     .map((i: any) => ({
       codigo: txt(i.codigo, 60),
-      descricao: i.descricao.trim().slice(0, 300) || 'Item',
+      descricao: i.descricao.replace(/[ \t]+/g, ' ').trim().slice(0, 2000) || 'Item',
       ncm: typeof i.ncm === 'string' && /^\d{8}$/.test(i.ncm.replace(/\D/g, '')) ? i.ncm.replace(/\D/g, '') : null,
       cfop: typeof i.cfop === 'string' && /^\d{4}$/.test(i.cfop.replace(/\D/g, '')) ? i.cfop.replace(/\D/g, '') : null,
       unidade: txt(i.unidade, 10),
       quantidade: typeof i.quantidade === 'number' && i.quantidade > 0 ? i.quantidade : 1,
       valor: c(i.valor_total),
+      ref: typeof i.cadastro_ref === 'string' && i.cadastro_ref.trim() ? i.cadastro_ref.trim().slice(0, 40) : null,
     }));
   n.duplicatas = (Array.isArray(r.duplicatas) ? r.duplicatas : [])
     .filter((d: any) => data(d?.vencimento) && typeof d?.valor === 'number')
@@ -123,8 +125,25 @@ export function notaDaIa(r: Record<string, any>): NotaLida {
   return n;
 }
 
+function listaCadastros(c: CadastrosIa | undefined): string {
+  if (!c || (!c.insumos.length && !c.catalogo.length)) return '';
+  const ins = c.insumos.map((i) => `${i.ref} | ${i.nome} | ${i.unidade}`).join('\n');
+  const cat = c.catalogo.map((i) => `${i.ref} | ${i.descricao} | ${i.unidade} | ${i.tipo}`).join('\n');
+  return (
+    '\n\nCADASTROS DA EMPRESA (para "cadastro_ref" de cada item; use o ref só quando o item for claramente o mesmo produto ou serviço, mesmo com nome diferente):' +
+    (ins ? `\nInsumos da usina (ref | nome | unidade):\n${ins}` : '') +
+    (cat ? `\nCatálogo de materiais e serviços (ref | descrição | unidade | tipo):\n${cat}` : '')
+  );
+}
+
 /** Envia o arquivo (PDF ou foto) para a IA e devolve os dados lidos. */
-export async function lerNotaComIa(arquivo: Buffer, tipoArquivo: string, contexto: { cnpjEmpresa: string | null; razaoEmpresa: string | null }): Promise<NotaLida> {
+export type CadastrosIa = { insumos: { ref: string; nome: string; unidade: string }[]; catalogo: { ref: string; descricao: string; unidade: string; tipo: string }[] };
+
+export async function lerNotaComIa(
+  arquivo: Buffer,
+  tipoArquivo: string,
+  contexto: { cnpjEmpresa: string | null; razaoEmpresa: string | null; cadastros?: CadastrosIa },
+): Promise<NotaLida> {
   const chave = process.env.ANTHROPIC_API_KEY?.trim();
   if (!chave) throw new ErroIa('A leitura por IA não está configurada.');
   const modelo = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5';
@@ -148,7 +167,11 @@ export async function lerNotaComIa(arquivo: Buffer, tipoArquivo: string, context
               'Leia este documento fiscal brasileiro e registre os dados chamando a ferramenta registrar_nota (uma única vez, sem texto antes). ' +
               `A empresa que está lançando a nota é ${contexto.razaoEmpresa ?? 'a concreteira'}${contexto.cnpjEmpresa ? ` (CNPJ ${contexto.cnpjEmpresa})` : ''}. ` +
               'Valores em reais, como número (ex.: 1234.56). Datas no formato AAAA-MM-DD. Copie os números exatamente como impressos; ' +
-              'se não conseguir ler um campo, deixe null e inclua-o em "duvidas". Não invente dados.',
+              'se não conseguir ler um campo, deixe null e inclua-o em "duvidas". Não invente dados. ' +
+              'ITENS: transcreva a descrição de cada produto ou serviço exatamente como está no documento, completa, sem resumir nem trocar por termos genéricos. ' +
+              'Na NFS-e, use a discriminação do serviço; se ela listar vários serviços ou materiais com valores próprios, crie um item para cada um (a soma deve dar o valor dos serviços); ' +
+              'se não houver valores separados, faça um único item com a discriminação inteira.' +
+              listaCadastros(contexto.cadastros),
           },
         ],
       },

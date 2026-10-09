@@ -33,6 +33,8 @@ const ORIGEM_TEXTO: Record<NotaFiscal['origem'], string> = { xml: 'importada do 
 const CONFERIR_TEXTO: Record<string, string> = { dataEmissao: 'a data de emissão', fornecedor: 'o fornecedor', itens: 'os itens', total: 'o total' };
 const METODO_TEXTO: Record<string, string> = { leitor: 'pelo leitor do Agrega', ia: 'pela IA', codigo_barras: 'pela chave do código de barras' };
 
+type ItemCatalogoMin = { id: string; codigo: string; descricao: string; tipo: 'material' | 'servico'; ativo: boolean };
+
 const soma = (xs: number[]) => Math.round(xs.reduce((s, x) => s + x, 0) * 100) / 100;
 
 // ======================= Nota lançada à mão =======================
@@ -402,6 +404,7 @@ function LinhaItem({
   cadastros,
   editavel,
   insumos,
+  catalogo,
   aoMudar,
   aoErro,
 }: {
@@ -410,6 +413,7 @@ function LinhaItem({
   cadastros: Cadastros;
   editavel: boolean;
   insumos: Insumo[];
+  catalogo: ItemCatalogoMin[];
   aoMudar: (n: NotaFiscal) => void;
   aoErro: (m: string) => void;
 }) {
@@ -447,15 +451,17 @@ function LinhaItem({
         <td className="mono small">{item.numeroItem}</td>
         <td style={{ minWidth: 220 }}>
           {editavel && manual ? (
-            <input
+            <textarea
               aria-label="Descrição do item"
               className="campo-tabela"
+              rows={Math.min(6, Math.max(1, Math.ceil(desc.descricao.length / 60)))}
+              style={{ resize: 'vertical', width: '100%' }}
               value={desc.descricao}
               onChange={(e) => setDesc({ ...desc, descricao: e.target.value })}
               onBlur={() => desc.descricao.trim() !== item.descricao && salvar({ descricao: desc.descricao })}
             />
           ) : (
-            <span style={{ fontWeight: 500 }}>{item.descricao}</span>
+            <span style={{ fontWeight: 500, whiteSpace: 'pre-wrap' }}>{item.descricao}</span>
           )}
           <div className="small muted">
             {editavel && manual ? (
@@ -487,23 +493,50 @@ function LinhaItem({
               Ligado a {item.os.quantidade} item(ns) de OS · {item.os.ordens}
             </div>
           )}
-          {nota.direcao === 'entrada' && insumos.length > 0 && (editavel || item.insumoId) && (
+          {nota.direcao === 'entrada' && (editavel || item.insumoId || item.catalogoId) && (
             <div className="small" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
               {editavel ? (
                 <>
-                  <span className="muted">Estoque:</span>
-                  <select aria-label="Insumo do estoque" className="campo-tabela" style={{ width: 'auto' }} value={item.insumoId ?? ''} onChange={(e) => salvar({ insumoId: e.target.value || null })}>
-                    <option value="">não entra no estoque</option>
-                    {insumos.filter((x) => x.controlaEstoque && (x.ativo || x.id === item.insumoId)).map((x) => (
-                      <option key={x.id} value={x.id}>{x.nome}</option>
-                    ))}
+                  <span className="muted">Cadastro:</span>
+                  <select
+                    aria-label="Cadastro do item"
+                    className="campo-tabela"
+                    style={{ width: 'auto', maxWidth: 320 }}
+                    value={item.insumoId ? `ins:${item.insumoId}` : item.catalogoId ? `cat:${item.catalogoId}` : item.cadastrarCatalogo ? 'novo' : ''}
+                    onChange={(e) => {
+                      const v = e.target.value;
+                      if (v.startsWith('ins:')) salvar({ insumoId: v.slice(4) });
+                      else if (v.startsWith('cat:')) salvar({ catalogoId: v.slice(4) });
+                      else if (v === 'novo') salvar({ cadastrarCatalogo: true });
+                      else salvar({ insumoId: null, catalogoId: null, cadastrarCatalogo: false });
+                    }}
+                  >
+                    <option value="">Lançar sem cadastrar</option>
+                    <option value="novo">Cadastrar no catálogo ao confirmar</option>
+                    {insumos.some((x) => x.controlaEstoque) && (
+                      <optgroup label="Insumos da usina (entra no estoque)">
+                        {insumos.filter((x) => x.controlaEstoque && (x.ativo || x.id === item.insumoId)).map((x) => (
+                          <option key={x.id} value={`ins:${x.id}`}>{x.nome}</option>
+                        ))}
+                      </optgroup>
+                    )}
+                    {catalogo.length > 0 && (
+                      <optgroup label="Catálogo de materiais e serviços">
+                        {catalogo.filter((x) => x.ativo || x.id === item.catalogoId).map((x) => (
+                          <option key={x.id} value={`cat:${x.id}`}>{x.codigo} · {x.descricao}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
+                  {item.vinculoSugestao && (item.insumoId || item.catalogoId) && (
+                    <span className="selo selo-neutro">{item.vinculoSugestao === 'ia' ? 'sugerido pela IA' : 'já usado com este fornecedor'}</span>
+                  )}
                   {item.insumoId && (
                     <>
                       <span className="muted">1 {item.unidade || 'un'} =</span>
                       <input
                         aria-label="Fator de conversão"
-                        className="campo-tabela mono curto"
+                        className={`campo-tabela mono curto ${item.fatorEstoque ? '' : 'pendente'}`}
                         inputMode="decimal"
                         value={fator}
                         onChange={(e) => setFator(e.target.value)}
@@ -513,10 +546,12 @@ function LinhaItem({
                     </>
                   )}
                 </>
-              ) : (
+              ) : item.insumoId ? (
                 <span style={{ color: 'var(--status-ok-ink)' }}>
                   Entrou no estoque: {formatarNumero(item.quantidade * (item.fatorEstoque ?? 1), 0)} {unidadeInsumo} de {item.insumoNome}
                 </span>
+              ) : (
+                <span style={{ color: 'var(--status-ok-ink)' }}>Catálogo: {item.catalogoCodigo} · {item.catalogoDescricao}</span>
               )}
             </div>
           )}
@@ -631,7 +666,9 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   useEffect(() => {
     api<{ insumos: Insumo[] }>('/prod/insumos').then((r) => setInsumos(r.insumos)).catch(() => {});
+    api<{ itens: ItemCatalogoMin[] }>('/sup/catalogo').then((r) => setCatalogo(r.itens)).catch(() => {});
   }, []);
+  const [catalogo, setCatalogo] = useState<ItemCatalogoMin[]>([]);
 
   const carregar = useCallback(async () => {
     try {
@@ -756,7 +793,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
               <a href={`/api/fin/notas/${nota.id}/arquivo`} target="_blank" rel="noreferrer">Abrir o {nota.anexo.tipo === 'application/pdf' ? 'PDF' : 'arquivo'}</a>
             </>
           )}
-          {editavel && nota.anexo && nota.leitura.metodo !== 'ia' && <LerComIa nota={nota} />}
+          {editavel && nota.anexo && <LerComIa nota={nota} />}
         </div>
       )}
       {nota.avisos.map((a) => (
@@ -877,7 +914,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
           </thead>
           <tbody>
             {nota.itens.map((i) => (
-              <LinhaItem key={`${i.id}-${i.valorProduto}-${i.quantidade}`} item={i} nota={nota} cadastros={cadastros} editavel={!!editavel} insumos={insumos} aoMudar={setNota} aoErro={setErro} />
+              <LinhaItem key={`${i.id}-${i.valorProduto}-${i.quantidade}`} item={i} nota={nota} cadastros={cadastros} editavel={!!editavel} insumos={insumos} catalogo={catalogo} aoMudar={setNota} aoErro={setErro} />
             ))}
           </tbody>
           <tfoot>

@@ -18,7 +18,8 @@ import { cnpjValido } from '../lib/cnpj.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
 import { atualizarStatusRecebimento } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
-import { fatorPadrao, registrarEntradasNota, removerEntradasNota, sugerirInsumo } from '../lib/estoque.ts';
+import { fatorPadrao, registrarEntradasNota, removerEntradasNota } from '../lib/estoque.ts';
+import { aplicarCatalogoNaConfirmacao, cadastrosParaIa, vinculoDoItem } from '../lib/vinculos.ts';
 import { baixarParcela, dinheiro, esquemaBaixa, numeroBr } from './financeiro.ts';
 
 const reais = (c: unknown) => (c === null || c === undefined ? null : Number(c) / 100);
@@ -34,7 +35,7 @@ const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque'
 const esquemaDuplicata = z.object({ numero: textoOpc(30), vencimento: dataObrig('Vencimento inválido.'), valor: dinheiro('o valor da parcela') });
 
 const esquemaItemManual = z.object({
-  descricao: z.string({ required_error: 'Descreva o item.' }).trim().min(2, 'Descreva o item.').max(300),
+  descricao: z.string({ required_error: 'Descreva o item.' }).trim().min(2, 'Descreva o item.').max(2000),
   unidade: textoOpc(10),
   quantidade: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000)).optional().default(1),
   valor: dinheiro('o valor do item'),
@@ -90,9 +91,11 @@ const esquemaAlterarItem = z
     veiculoId: uuidOpc,
     // Estoque: insumo e quantas unidades do insumo vale cada unidade da nota (t → kg = 1000).
     insumoId: uuidOpc,
+    catalogoId: uuidOpc,
+    cadastrarCatalogo: z.boolean(),
     fatorEstoque: z.union([z.preprocess(numeroBr, z.number({ invalid_type_error: 'Fator inválido.' }).positive('O fator precisa ser maior que zero.').max(1_000_000)), z.null()]),
     // Só para notas lançadas à mão:
-    descricao: z.string().trim().min(2, 'Descreva o item.').max(300),
+    descricao: z.string().trim().min(2, 'Descreva o item.').max(2000),
     unidade: textoOpc(10),
     quantidade: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000)),
     valor: dinheiro('o valor do item'),
@@ -138,8 +141,8 @@ async function detalharNota(c: Cliente, empresaId: string, id: string) {
                                         'ordens', string_agg(DISTINCT '#' || o.numero || ' ' || vo.codigo, ', '))
                  FROM os_itens oi JOIN ordens_servico o ON o.id = oi.os_id JOIN veiculos vo ON vo.id = o.veiculo_id
                 WHERE oi.nota_item_id = i.id AND oi.excluido_em IS NULL) AS os
-         , ins.nome AS insumo_nome, ins.unidade AS insumo_unidade
-         FROM notas_itens i LEFT JOIN plano_contas pc ON pc.id = i.plano_conta_id LEFT JOIN insumos ins ON ins.id = i.insumo_id
+         , ins.nome AS insumo_nome, ins.unidade AS insumo_unidade, ct.codigo AS catalogo_codigo, ct.descricao AS catalogo_descricao
+         FROM notas_itens i LEFT JOIN plano_contas pc ON pc.id = i.plano_conta_id LEFT JOIN insumos ins ON ins.id = i.insumo_id LEFT JOIN catalogo_itens ct ON ct.id = i.catalogo_id
          LEFT JOIN centros_custo cc ON cc.id = i.centro_custo_id LEFT JOIN veiculos v ON v.id = i.veiculo_id
         WHERE i.nota_id = $1 ORDER BY i.numero_item, i.criado_em`,
       [n.id],
@@ -240,6 +243,11 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
       insumoNome: i.insumo_nome ?? null,
       insumoUnidade: i.insumo_unidade ?? null,
       fatorEstoque: i.fator_estoque === null || i.fator_estoque === undefined ? null : Number(i.fator_estoque),
+      catalogoId: i.catalogo_id ?? null,
+      catalogoCodigo: i.catalogo_codigo ?? null,
+      catalogoDescricao: i.catalogo_descricao ?? null,
+      cadastrarCatalogo: !!i.cadastrar_catalogo,
+      vinculoSugestao: i.vinculo_sugestao ?? null,
       sugestao: i.sugestao,
       abastecimentos: i.abast && Number(i.abast.n) ? { quantidade: Number(i.abast.n), litros: Number(i.abast.litros), valor: Number(i.abast.valor) / 100, veiculos: i.abast.veiculos } : null,
       os: i.os && Number(i.os.n) ? { quantidade: Number(i.os.n), valor: Number(i.os.valor) / 100, ordens: i.os.ordens } : null,
@@ -421,7 +429,10 @@ async function conferirDuplicada(c: Cliente, empresaId: string, chave: string | 
 
 export async function criarNotaLida(
   c: pg.PoolClient,
-  a: { empresaId: string; usuarioId: string; cnpjEmpresa: string; lida: NotaLida; origem: 'pdf' | 'chave'; metodo: string; anexo: Anexo | null; substituir: string | null },
+  a: {
+    empresaId: string; usuarioId: string; cnpjEmpresa: string; lida: NotaLida; origem: 'pdf' | 'chave'; metodo: string; anexo: Anexo | null; substituir: string | null;
+    mapa?: Awaited<ReturnType<typeof cadastrosParaIa>>['mapa'] | null;
+  },
 ) {
   const { empresaId, usuarioId, lida, cnpjEmpresa } = a;
   const emitidaPelaEmpresa = !!cnpjEmpresa && lida.emitente?.documento === cnpjEmpresa;
@@ -472,13 +483,13 @@ export async function criarNotaLida(
   const sugerir = await criarSugeridor(c, empresaId, tipo, direcao === 'entrada' ? pessoa.id : null);
   for (const [k, i] of lida.itens.entries()) {
     const sug = sugerir(i.descricao, i.ncm);
-    const ins = direcao === 'entrada' ? await sugerirInsumo(c, empresaId, pessoa.id, i.descricao, i.unidade) : null;
+    const v = await vinculoDoItem(c, empresaId, direcao === 'entrada', pessoa.id, i, a.mapa ?? null);
     await c.query(
       `INSERT INTO notas_itens (empresa_id, nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade, quantidade, valor_produto_centavos,
-                                plano_conta_id, centro_custo_id, veiculo_id, regra_id, sugestao, insumo_id, fator_estoque)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
-      [empresaId, n.id, k + 1, i.codigo?.slice(0, 60) ?? null, i.descricao.slice(0, 300), i.ncm, i.cfop, i.unidade?.slice(0, 10) ?? null, i.quantidade, i.valor,
-        sug.planoContaId, sug.centroCustoId, sug.veiculoId, sug.regraId, sug.sugestao, ins?.insumoId ?? null, ins?.fator ?? null],
+                                plano_conta_id, centro_custo_id, veiculo_id, regra_id, sugestao, insumo_id, fator_estoque, catalogo_id, vinculo_sugestao)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
+      [empresaId, n.id, k + 1, i.codigo?.slice(0, 60) ?? null, i.descricao.slice(0, 2000), i.ncm, i.cfop, i.unidade?.slice(0, 10) ?? null, i.quantidade, i.valor,
+        sug.planoContaId, sug.centroCustoId, sug.veiculoId, sug.regraId, sug.sugestao, v.insumoId, v.fator, v.catalogoId, v.origem],
     );
   }
   if (lida.itens.length) await recalcularManual(c, n.id);
@@ -614,13 +625,13 @@ export function rotasNotas(banco: Banco) {
         ).rows[0];
         for (const i of nfe.itens) {
           const s = sugerir(i.descricao, i.ncm);
-          const ins = direcao === 'entrada' ? await sugerirInsumo(c, empresaId, pessoa.id, i.descricao, i.unidade) : null;
+          const v = await vinculoDoItem(c, empresaId, direcao === 'entrada', pessoa.id, i, null);
           await c.query(
             `INSERT INTO notas_itens (empresa_id, nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade, quantidade, valor_produto_centavos,
-                                      valor_custo_centavos, plano_conta_id, centro_custo_id, veiculo_id, regra_id, sugestao, insumo_id, fator_estoque)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
-            [empresaId, n.id, i.numeroItem, i.codigoProduto, i.descricao.slice(0, 300), i.ncm, i.cfop, i.unidade, i.quantidade, i.valorProduto, i.valorCusto,
-              s.planoContaId, s.centroCustoId, s.veiculoId, s.regraId, s.sugestao, ins?.insumoId ?? null, ins?.fator ?? null],
+                                      valor_custo_centavos, plano_conta_id, centro_custo_id, veiculo_id, regra_id, sugestao, insumo_id, fator_estoque, catalogo_id, vinculo_sugestao)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)`,
+            [empresaId, n.id, i.numeroItem, i.codigoProduto, i.descricao.slice(0, 2000), i.ncm, i.cfop, i.unidade, i.quantidade, i.valorProduto, i.valorCusto,
+              s.planoContaId, s.centroCustoId, s.veiculoId, s.regraId, s.sugestao, v.insumoId, v.fator, v.catalogoId, v.origem],
           );
         }
         for (const d of nfe.duplicatas) {
@@ -685,10 +696,15 @@ export function rotasNotas(banco: Banco) {
         lida.chaveAcesso = externaOk;
         lida.chaveVia = 'codigo_barras';
       }
-      if (!leituraSuficiente(lida) && d.usarIa && iaDisponivel()) {
+      // Com a IA ligada, ela lê sempre (transcreve os itens e indica o cadastro de cada um); o leitor fica de reserva.
+      let mapa: Awaited<ReturnType<typeof cadastrosParaIa>>['mapa'] | null = null;
+      if (d.usarIa && iaDisponivel()) {
         try {
-          const ia = completarLeitura(await lerNotaComIa(bytes, d.tipo, { cnpjEmpresa: cnpjEmpresa || null, razaoEmpresa: empresa?.razao_social ?? null }));
+          const cad = await cadastrosParaIa(banco, empresaId, true);
+          mapa = cad.mapa;
+          const ia = completarLeitura(await lerNotaComIa(bytes, d.tipo, { cnpjEmpresa: cnpjEmpresa || null, razaoEmpresa: empresa?.razao_social ?? null, cadastros: cad.ia }));
           if (ia.textoUtil) {
+            if (!ia.emitente?.documento && lida.emitente?.documento) ia.emitente = { documento: lida.emitente.documento, nome: ia.emitente?.nome ?? lida.emitente.nome };
             if (lida.chaveAcesso) {
               if (ia.chaveAcesso && ia.chaveAcesso !== lida.chaveAcesso) ia.avisos.push('A chave lida pela IA é diferente da chave do código de barras. Vale a do código de barras.');
               ia.chaveAcesso = lida.chaveAcesso;
@@ -731,7 +747,7 @@ export function rotasNotas(banco: Banco) {
       const substituir = await conferirDuplicada(banco, empresaId, lida.chaveAcesso, 'pdf');
       const usuarioId = req.usuario!.id;
       const r = await emTransacao(banco, (c) =>
-        criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'pdf', metodo, anexo: { nome: d.nome || 'nota.pdf', tipo: d.tipo, conteudo: bytes }, substituir }),
+        criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'pdf', metodo, anexo: { nome: d.nome || 'nota.pdf', tipo: d.tipo, conteudo: bytes }, substituir, mapa }),
       );
       reply.code(201);
       return { nota: await detalharNota(banco, empresaId, r.id), metodo };
@@ -750,8 +766,9 @@ export function rotasNotas(banco: Banco) {
       const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
       const bytes: Buffer = Buffer.isBuffer(a.conteudo) ? a.conteudo : Buffer.from(String(a.conteudo).replace(/^\\x/, ''), 'hex');
       let lida: NotaLida;
+      const cad = await cadastrosParaIa(banco, empresaId, n.direcao !== 'saida');
       try {
-        lida = completarLeitura(await lerNotaComIa(bytes, a.tipo, { cnpjEmpresa: cnpjEmpresa || null, razaoEmpresa: empresa?.razao_social ?? null }));
+        lida = completarLeitura(await lerNotaComIa(bytes, a.tipo, { cnpjEmpresa: cnpjEmpresa || null, razaoEmpresa: empresa?.razao_social ?? null, cadastros: cad.ia }));
       } catch (e) {
         if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
         throw e;
@@ -764,7 +781,7 @@ export function rotasNotas(banco: Banco) {
       }
       completarPelaChave(lida);
       const usuarioId = req.usuario!.id;
-      const r = await emTransacao(banco, (c) => criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'pdf', metodo: 'ia', anexo: null, substituir: n.id }));
+      const r = await emTransacao(banco, (c) => criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'pdf', metodo: 'ia', anexo: null, substituir: n.id, mapa: cad.mapa }));
       reply.code(201);
       return { nota: await detalharNota(banco, empresaId, r.id) };
     });
@@ -925,9 +942,16 @@ export function rotasNotas(banco: Banco) {
           if (!fator) throw new ErroHttp(400, `Informe quantos ${ins.unidade === 'm3' ? 'm³' : ins.unidade} vale cada ${i.unidade || 'unidade'} da nota.`);
         }
         if (d.insumoId === null) fator = null;
+        // Catálogo: um item ou é insumo (estoque), ou fica ligado ao catálogo, ou é cadastrado nele, ou nada.
+        if (d.catalogoId && !(await c.query('SELECT 1 FROM catalogo_itens WHERE id = $1 AND empresa_id = $2', [d.catalogoId, empresaId])).rowCount)
+          throw new ErroHttp(400, 'Item do catálogo não encontrado.');
+        const vinculoCatalogo = d.catalogoId !== undefined || d.cadastrarCatalogo !== undefined;
         const campos: Record<string, unknown> = {
-          insumo_id: d.insumoId,
-          fator_estoque: d.insumoId !== undefined || d.fatorEstoque !== undefined ? fator : undefined,
+          catalogo_id: d.insumoId ? null : d.catalogoId !== undefined ? d.catalogoId : d.cadastrarCatalogo ? null : undefined,
+          cadastrar_catalogo: d.insumoId || d.catalogoId ? false : d.cadastrarCatalogo,
+          vinculo_sugestao: d.insumoId !== undefined || vinculoCatalogo ? null : undefined,
+          insumo_id: vinculoCatalogo && (d.catalogoId || d.cadastrarCatalogo) ? null : d.insumoId,
+          fator_estoque: vinculoCatalogo && (d.catalogoId || d.cadastrarCatalogo) ? null : d.insumoId !== undefined || d.fatorEstoque !== undefined ? fator : undefined,
           plano_conta_id: d.planoContaId,
           centro_custo_id: d.centroCustoId,
           veiculo_id: d.veiculoId,
@@ -1207,7 +1231,10 @@ export function rotasNotas(banco: Banco) {
           `UPDATE notas_fiscais SET status = 'confirmada', lancamento_id = $2, conferido_por_id = $3, conferido_em = now(), atualizado_em = now() WHERE id = $1`,
           [n.id, l.id, usuarioId],
         );
-        if (n.direcao === 'entrada') await registrarEntradasNota(c, empresaId, n.id, usuarioId);
+        if (n.direcao === 'entrada') {
+          await registrarEntradasNota(c, empresaId, n.id, usuarioId);
+          await aplicarCatalogoNaConfirmacao(c, empresaId, n.id);
+        }
         await auditar(c, { empresaId, usuarioId, acao: 'confirmar', entidade: 'notas_fiscais', entidadeId: n.id, depois: { lancamentoId: l.id, parcelas: parcelas.length, baixa: !!d.baixa } });
       });
       return { nota: await detalharNota(banco, empresaId, req.params.id) };
