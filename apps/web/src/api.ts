@@ -622,9 +622,11 @@ export type NotaFiscal = {
   informacoes: string | null;
   observacoes: string | null;
   avisos: string[];
-  origem: 'manual' | 'xml' | 'ia_whatsapp';
+  origem: 'manual' | 'xml' | 'ia_whatsapp' | 'pdf' | 'chave';
   status: StatusNota;
   temXml: boolean;
+  anexo: { id: string; nome: string; tipo: string; tamanho: number } | null;
+  leitura: { metodo: 'leitor' | 'ia' | 'codigo_barras'; chaveVia: 'codigo_barras' | 'texto' | 'ia' | null; conferir: string[]; totalLido: number | null; arquivo: string | null } | null;
   conferidoEm: string | null;
   lancamento: { id: string; status: string; parcelas: number; pagas: number } | null;
   pendencias: string[];

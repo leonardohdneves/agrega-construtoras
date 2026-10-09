@@ -10,6 +10,11 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias } from '../lib/financeiro.ts';
 import { ErroNfe, fecharCentavos, formaDoTPag, lerNfe, type NotaNfe } from '../lib/nfe.ts';
+import { ErroPdf, lerPdf } from '../lib/pdf.ts';
+import { completarLeitura, completarPelaChave, interpretarNotaPdf, leituraSuficiente, notaVazia, type NotaLida } from '../lib/nota-pdf.ts';
+import { chavePlausivel, partesDaChave } from '../lib/code128.ts';
+import { ErroIa, iaDisponivel, lerNotaComIa } from '../lib/ia-nota.ts';
+import { cnpjValido } from '../lib/cnpj.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
 import { atualizarStatusRecebimento } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
@@ -22,6 +27,8 @@ const dataObrig = (msg: string) => z.string({ required_error: msg }).regex(/^\d{
 const uuidOpc = z.union([z.string().uuid(), z.literal(''), z.null()]).optional().transform((v) => v || null);
 const textoOpc = (max = 200) => z.string().trim().max(max).optional().nullable().transform((v) => v || null);
 const MODELOS = ['nfe', 'nfce', 'nfse', 'cte', 'cupom', 'recibo', 'outro'] as const;
+/** Origens em que os dados fiscais e os itens podem ser corrigidos à mão. */
+const DIGITAVEL = new Set(['manual', 'pdf', 'chave']);
 const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico'] as const;
 
 const esquemaDuplicata = z.object({ numero: textoOpc(30), vencimento: dataObrig('Vencimento inválido.'), valor: dinheiro('o valor da parcela') });
@@ -108,7 +115,8 @@ async function carregarNota(c: Cliente, empresaId: string, id: string, travar = 
     await c.query(
       `SELECT n.*, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor_nome, f.criado_automaticamente AS fornecedor_novo,
               coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome,
-              (SELECT numero FROM pedidos_compra pc WHERE pc.id = n.pedido_id) AS pedido_numero
+              (SELECT numero FROM pedidos_compra pc WHERE pc.id = n.pedido_id) AS pedido_numero,
+              (SELECT json_build_object('id', a.id, 'nome', a.nome, 'tipo', a.tipo, 'tamanho', a.tamanho) FROM notas_anexos a WHERE a.nota_id = n.id ORDER BY a.criado_em DESC LIMIT 1) AS anexo
          FROM notas_fiscais n LEFT JOIN fornecedores f ON f.id = n.fornecedor_id LEFT JOIN clientes cl ON cl.id = n.cliente_id
         WHERE n.id = $1 AND n.empresa_id = $2 AND n.excluido_em IS NULL ${travar ? 'FOR UPDATE OF n' : ''}`,
       [id, empresaId],
@@ -166,6 +174,9 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
   if (somaItens !== Number(n.total_centavos)) pendencias.push('A soma dos itens é diferente do total da nota.');
   if (duplicatas.length && somaDup !== Number(n.total_centavos)) pendencias.push('A soma das parcelas é diferente do total da nota.');
   if (Number(n.total_centavos) <= 0) pendencias.push('O total da nota precisa ser maior que zero.');
+  const lido = n.leitura?.totalLido;
+  if (typeof lido === 'number' && lido > 0 && lido !== Number(n.total_centavos))
+    pendencias.push(`O total calculado é diferente do total impresso no documento (${(lido / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).`);
   return {
     id: n.id,
     direcao: n.direcao,
@@ -202,6 +213,8 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
     origem: n.origem,
     status: n.status,
     temXml: !!n.xml,
+    anexo: n.anexo ?? null,
+    leitura: n.leitura ?? null,
     conferidoEm: n.conferido_em,
     lancamento,
     pendencias,
@@ -325,7 +338,7 @@ async function recalcularManual(c: pg.PoolClient, notaId: string) {
   const n = (await c.query('SELECT * FROM notas_fiscais WHERE id = $1', [notaId])).rows[0];
   const itens = (await c.query('SELECT id, valor_produto_centavos FROM notas_itens WHERE nota_id = $1 ORDER BY numero_item, criado_em', [notaId])).rows;
   const produtos = itens.reduce((s, i) => s + Number(i.valor_produto_centavos), 0);
-  const total = produtos + Number(n.frete_centavos) + Number(n.outras_centavos) - Number(n.desconto_centavos);
+  const total = produtos + Number(n.frete_centavos) + Number(n.seguro_centavos) + Number(n.outras_centavos) + Number(n.ipi_centavos) + Number(n.icms_st_centavos) - Number(n.desconto_centavos);
   if (total < 0) throw new ErroHttp(400, 'O desconto não pode ser maior que o valor dos itens.');
   const custos = produtos > 0 ? fecharCentavos(itens.map((i) => Math.round((Number(i.valor_produto_centavos) * total) / produtos)), total) : itens.map(() => 0);
   for (const [k, i] of itens.entries()) await c.query('UPDATE notas_itens SET valor_custo_centavos = $2 WHERE id = $1', [i.id, custos[k]]);
@@ -369,6 +382,122 @@ async function desfazerLancamento(c: pg.PoolClient, n: Nota, usuarioId: string) 
   await c.query("UPDATE lancamentos SET status = 'cancelado', atualizado_em = now() WHERE id = $1", [n.lancamento_id]);
   await c.query("UPDATE parcelas SET status = 'cancelada', atualizado_em = now() WHERE lancamento_id = $1 AND status = 'aberta'", [n.lancamento_id]);
   await auditar(c, { empresaId: n.empresa_id, usuarioId, acao: 'excluir', entidade: 'lancamentos', entidadeId: n.lancamento_id, depois: { status: 'cancelado', motivo: 'nota reaberta ou cancelada' } });
+}
+
+// ---------- Notas lidas de PDF / foto / chave ----------
+const TIPOS_ARQUIVO = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
+const MAX_ARQUIVO = 10 * 1024 * 1024;
+
+/** Acha o fornecedor/cliente pelo documento; se não existir e houver nome, cadastra. */
+async function pessoaLida(c: pg.PoolClient, empresaId: string, p: { documento: string | null; nome: string | null } | null, papel: 'fornecedor' | 'cliente') {
+  if (!p?.documento && !p?.nome) return { id: null, novo: false };
+  const tabela = papel === 'fornecedor' ? 'fornecedores' : 'clientes';
+  if (p.documento) {
+    const r = (await c.query(`SELECT id FROM ${tabela} WHERE empresa_id = $1 AND cnpj_cpf = $2 AND excluido_em IS NULL`, [empresaId, p.documento])).rows[0];
+    if (r) return { id: r.id as string, novo: false };
+  }
+  if (!p.nome || !p.documento) return { id: null, novo: false };
+  const tipo = p.documento.length === 11 ? 'PF' : 'PJ';
+  const r =
+    papel === 'fornecedor'
+      ? await c.query(
+          `INSERT INTO fornecedores (empresa_id, categoria, tipo_pessoa, cnpj_cpf, razao_social, criado_automaticamente) VALUES ($1,'fornecedor',$2,$3,$4,true) RETURNING id`,
+          [empresaId, tipo, p.documento, p.nome.slice(0, 200)],
+        )
+      : await c.query(`INSERT INTO clientes (empresa_id, tipo_pessoa, cnpj_cpf, razao_social) VALUES ($1,$2,$3,$4) RETURNING id`, [empresaId, tipo, p.documento, p.nome.slice(0, 200)]);
+  return { id: r.rows[0].id as string, novo: true };
+}
+
+type Anexo = { nome: string; tipo: string; conteudo: Buffer };
+
+/** Confere duplicidade antes de criar. Devolve o id do rascunho a substituir (lido só pela chave), se houver. */
+async function conferirDuplicada(c: Cliente, empresaId: string, chave: string | null, origemNova: string): Promise<string | null> {
+  if (!chave) return null;
+  const ja = (await c.query('SELECT id, numero, status, origem FROM notas_fiscais WHERE empresa_id = $1 AND chave_acesso = $2 AND excluido_em IS NULL', [empresaId, chave])).rows[0];
+  if (!ja) return null;
+  if (origemNova === 'pdf' && ja.status === 'rascunho' && ja.origem === 'chave') return ja.id as string;
+  throw new ErroHttp(409, `A nota ${ja.numero ?? ''} já foi lançada${ja.status === 'confirmada' ? ' e confirmada' : ''}.`.replace('  ', ' '), { notaId: ja.id });
+}
+
+export async function criarNotaLida(
+  c: pg.PoolClient,
+  a: { empresaId: string; usuarioId: string; cnpjEmpresa: string; lida: NotaLida; origem: 'pdf' | 'chave'; metodo: string; anexo: Anexo | null; substituir: string | null },
+) {
+  const { empresaId, usuarioId, lida, cnpjEmpresa } = a;
+  const emitidaPelaEmpresa = !!cnpjEmpresa && lida.emitente?.documento === cnpjEmpresa;
+  const direcao: 'entrada' | 'saida' = emitidaPelaEmpresa ? 'saida' : 'entrada';
+  const tipo = direcao === 'saida' ? 'receita' : 'despesa';
+  const avisos = [...lida.avisos];
+  if (direcao === 'entrada' && lida.destinatario?.documento && cnpjEmpresa && lida.destinatario.documento !== cnpjEmpresa)
+    avisos.push(`O documento foi emitido para outro CNPJ/CPF (${lida.destinatario.documento}), não para esta empresa.`);
+  if (a.substituir) await c.query('UPDATE notas_fiscais SET excluido_em = now(), atualizado_em = now() WHERE id = $1', [a.substituir]);
+  const pessoa = await pessoaLida(c, empresaId, direcao === 'entrada' ? lida.emitente : lida.destinatario, direcao === 'entrada' ? 'fornecedor' : 'cliente');
+  // Sem o nome no documento (só a chave), usa o do cadastro.
+  if (direcao === 'entrada' && pessoa.id && lida.emitente && !lida.emitente.nome)
+    lida.emitente.nome = (await c.query('SELECT razao_social FROM fornecedores WHERE id = $1', [pessoa.id])).rows[0]?.razao_social ?? null;
+  if (lida.numero && pessoa.id && !lida.chaveAcesso) {
+    const dup = (
+      await c.query(
+        `SELECT id FROM notas_fiscais WHERE empresa_id = $1 AND numero = $2 AND coalesce(serie, '') = coalesce($3, '') AND modelo = $4
+            AND (fornecedor_id = $5 OR cliente_id = $5) AND excluido_em IS NULL AND status <> 'cancelada'`,
+        [empresaId, lida.numero, lida.serie, lida.tipo, pessoa.id],
+      )
+    ).rows[0];
+    if (dup) throw new ErroHttp(409, `A nota ${lida.numero} deste ${tipo === 'despesa' ? 'fornecedor' : 'cliente'} já foi lançada.`, { notaId: dup.id });
+  }
+  const conferir = [...lida.conferir];
+  let data = lida.dataEmissao;
+  if (!data) {
+    data = hojeBrasil();
+    conferir.push('dataEmissao');
+  }
+  if (!pessoa.id && !conferir.includes('fornecedor')) conferir.push('fornecedor');
+  if (pessoa.id && !pessoa.novo && conferir.includes('fornecedor')) conferir.splice(conferir.indexOf('fornecedor'), 1);
+  const t = lida.totais;
+  const leitura = { metodo: a.metodo, chaveVia: lida.chaveVia, conferir: [...new Set(conferir)], totalLido: t.total, arquivo: a.anexo?.nome ?? null };
+  const n = (
+    await c.query(
+      `INSERT INTO notas_fiscais (empresa_id, direcao, modelo, chave_acesso, numero, serie, data_emissao, competencia, fornecedor_id, cliente_id,
+                                  emitente_nome, emitente_documento, natureza_operacao, frete_centavos, seguro_centavos, desconto_centavos, outras_centavos,
+                                  ipi_centavos, icms_st_centavos, informacoes, avisos, origem, status, leitura, criado_por_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,'rascunho',$22,$23) RETURNING *`,
+      [
+        empresaId, direcao, lida.tipo, lida.chaveAcesso, lida.numero?.slice(0, 20) ?? null, lida.serie?.slice(0, 5) ?? null, data,
+        direcao === 'entrada' ? pessoa.id : null, direcao === 'saida' ? pessoa.id : null,
+        lida.emitente?.nome?.slice(0, 200) ?? null, lida.emitente?.documento ?? null, lida.naturezaOperacao?.slice(0, 200) ?? null,
+        t.frete, t.seguro, t.desconto, t.outras, t.ipi, t.icmsSt, lida.informacoes?.slice(0, 2000) ?? null, JSON.stringify(avisos), a.origem, JSON.stringify(leitura), usuarioId,
+      ],
+    )
+  ).rows[0];
+  const sugerir = await criarSugeridor(c, empresaId, tipo, direcao === 'entrada' ? pessoa.id : null);
+  for (const [k, i] of lida.itens.entries()) {
+    const sug = sugerir(i.descricao, i.ncm);
+    const ins = direcao === 'entrada' ? await sugerirInsumo(c, empresaId, pessoa.id, i.descricao, i.unidade) : null;
+    await c.query(
+      `INSERT INTO notas_itens (empresa_id, nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade, quantidade, valor_produto_centavos,
+                                plano_conta_id, centro_custo_id, veiculo_id, regra_id, sugestao, insumo_id, fator_estoque)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+      [empresaId, n.id, k + 1, i.codigo?.slice(0, 60) ?? null, i.descricao.slice(0, 300), i.ncm, i.cfop, i.unidade?.slice(0, 10) ?? null, i.quantidade, i.valor,
+        sug.planoContaId, sug.centroCustoId, sug.veiculoId, sug.regraId, sug.sugestao, ins?.insumoId ?? null, ins?.fator ?? null],
+    );
+  }
+  if (lida.itens.length) await recalcularManual(c, n.id);
+  const total = Number((await c.query('SELECT total_centavos FROM notas_fiscais WHERE id = $1', [n.id])).rows[0].total_centavos);
+  if (lida.duplicatas.length && lida.duplicatas.reduce((s, d) => s + d.valor, 0) === total) {
+    for (const d of lida.duplicatas)
+      await c.query('INSERT INTO notas_duplicatas (empresa_id, nota_id, numero, vencimento, valor_centavos) VALUES ($1,$2,$3,$4,$5)', [empresaId, n.id, d.numero?.slice(0, 30) ?? null, d.vencimento, d.valor]);
+  }
+  if (a.anexo) {
+    await c.query('INSERT INTO notas_anexos (empresa_id, nota_id, nome, tipo, tamanho, conteudo, criado_por_id) VALUES ($1,$2,$3,$4,$5,$6,$7)', [
+      empresaId, n.id, a.anexo.nome.slice(0, 200), a.anexo.tipo, a.anexo.conteudo.length, a.anexo.conteudo, usuarioId,
+    ]);
+  }
+  if (a.substituir) {
+    await c.query('UPDATE notas_anexos SET nota_id = $2 WHERE nota_id = $1', [a.substituir, n.id]);
+    await auditar(c, { empresaId, usuarioId, acao: 'excluir', entidade: 'notas_fiscais', entidadeId: a.substituir, depois: { motivo: 'substituída pela leitura do PDF', notaId: n.id } });
+  }
+  await auditar(c, { empresaId, usuarioId, acao: 'criar', entidade: 'notas_fiscais', entidadeId: n.id, depois: { origem: a.origem, metodo: a.metodo, chave: lida.chaveAcesso, numero: lida.numero, itens: lida.itens.length, total } });
+  return { id: n.id as string, fornecedorNovo: pessoa.novo };
 }
 
 // ---------- Rotas ----------
@@ -442,11 +571,14 @@ export function rotasNotas(banco: Banco) {
       }
       const empresa = (await banco.query('SELECT cnpj FROM empresas WHERE id = $1', [empresaId])).rows[0];
       const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
+      let substituir: string | null = null;
       if (nfe.chaveAcesso) {
         const ja = (
-          await banco.query("SELECT id, numero, status FROM notas_fiscais WHERE empresa_id = $1 AND chave_acesso = $2 AND excluido_em IS NULL", [empresaId, nfe.chaveAcesso])
+          await banco.query("SELECT id, numero, status, origem FROM notas_fiscais WHERE empresa_id = $1 AND chave_acesso = $2 AND excluido_em IS NULL", [empresaId, nfe.chaveAcesso])
         ).rows[0];
-        if (ja) return reply.code(409).send({ erro: `A nota ${ja.numero ?? ''} já foi importada${ja.status === 'confirmada' ? ' e lançada' : ''}.`.replace('  ', ' '), notaId: ja.id });
+        // Rascunho lido do PDF ou da chave: o XML completa (substitui) o rascunho.
+        if (ja && ja.status === 'rascunho' && (ja.origem === 'pdf' || ja.origem === 'chave')) substituir = ja.id as string;
+        else if (ja) return reply.code(409).send({ erro: `A nota ${ja.numero ?? ''} já foi importada${ja.status === 'confirmada' ? ' e lançada' : ''}.`.replace('  ', ' '), notaId: ja.id });
       }
       const emitidaPelaEmpresa = !!cnpjEmpresa && nfe.emitente.documento === cnpjEmpresa;
       // Nota emitida pela concreteira é venda (receita), a não ser que seja uma nota de entrada que ela mesma emitiu.
@@ -460,6 +592,7 @@ export function rotasNotas(banco: Banco) {
 
       const usuarioId = req.usuario!.id;
       const id = await emTransacao(banco, async (c) => {
+        if (substituir) await c.query('UPDATE notas_fiscais SET excluido_em = now(), atualizado_em = now() WHERE id = $1', [substituir]);
         const pessoa = await pessoaDaNota(c, empresaId, nfe, direcao === 'entrada' ? 'fornecedor' : 'cliente');
         const sugerir = await criarSugeridor(c, empresaId, direcao === 'saida' ? 'receita' : 'despesa', direcao === 'entrada' ? pessoa.id : null);
         const forma = formaDoTPag(nfe.formasPagamento[0]);
@@ -493,11 +626,130 @@ export function rotasNotas(banco: Banco) {
         for (const d of nfe.duplicatas) {
           await c.query('INSERT INTO notas_duplicatas (empresa_id, nota_id, numero, vencimento, valor_centavos) VALUES ($1,$2,$3,$4,$5)', [empresaId, n.id, d.numero, d.vencimento, d.valor]);
         }
+        if (substituir) {
+          await c.query('UPDATE notas_anexos SET nota_id = $2 WHERE nota_id = $1', [substituir, n.id]);
+          await auditar(c, { empresaId, usuarioId, acao: 'excluir', entidade: 'notas_fiscais', entidadeId: substituir, depois: { motivo: 'substituída pelo XML', notaId: n.id } });
+        }
         await auditar(c, { empresaId, usuarioId, acao: 'criar', entidade: 'notas_fiscais', entidadeId: n.id, depois: { ...n, xml: undefined, itens: nfe.itens.length } });
         return n.id as string;
       });
       reply.code(201);
       return { nota: await detalharNota(banco, empresaId, id) };
+    });
+
+    // ----- Arquivo anexo (PDF ou foto da nota) -----
+    app.get<{ Params: { id: string } }>('/notas/:id/arquivo', async (req, reply) => {
+      const n = await carregarNota(banco, empresaDo(req), req.params.id);
+      const a = (await banco.query('SELECT nome, tipo, conteudo FROM notas_anexos WHERE nota_id = $1 ORDER BY criado_em DESC LIMIT 1', [n.id])).rows[0];
+      if (!a) throw new ErroHttp(404, 'Esta nota não tem arquivo anexo.');
+      reply.header('Content-Type', a.tipo);
+      reply.header('Content-Disposition', `inline; filename="${String(a.nome).replace(/[^\w.\- ]/g, '_')}"`);
+      reply.header('Cache-Control', 'private, max-age=300');
+      reply.header('X-Content-Type-Options', 'nosniff');
+      return reply.send(a.conteudo);
+    });
+
+    // ----- Importação do PDF (ou foto): leitor próprio, código de barras e IA -----
+    app.get('/notas/leitura', async () => ({ ia: iaDisponivel() }));
+
+    app.post('/notas/pdf', { bodyLimit: 16 * 1024 * 1024 }, async (req, reply) => {
+      const d = z
+        .object({
+          arquivo: z.string({ required_error: 'Envie o arquivo.' }).min(20, 'Arquivo vazio.'),
+          nome: z.string().trim().max(200).optional().default('nota.pdf'),
+          tipo: z.enum(TIPOS_ARQUIVO, { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG ou PNG) da nota.' }) }).optional().default('application/pdf'),
+          chave: z.string().max(80).optional().nullable(),
+          usarIa: z.boolean().optional().default(true),
+        })
+        .parse(req.body);
+      const bytes = Buffer.from(d.arquivo, 'base64');
+      if (bytes.length > MAX_ARQUIVO) throw new ErroHttp(400, 'Arquivo grande demais (máximo 10 MB).');
+      const empresaId = empresaDo(req);
+      const empresa = (await banco.query('SELECT cnpj, razao_social FROM empresas WHERE id = $1', [empresaId])).rows[0];
+      const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
+      const chaveExterna = (d.chave ?? '').replace(/\D/g, '');
+      const externaOk = chavePlausivel(chaveExterna) ? chaveExterna : null;
+      const avisos: string[] = [];
+      let lida = notaVazia();
+      let metodo = 'leitor';
+      if (d.tipo === 'application/pdf') {
+        try {
+          lida = interpretarNotaPdf(lerPdf(bytes), { chaveExterna: externaOk, cnpjEmpresa });
+        } catch (e) {
+          if (!(e instanceof ErroPdf)) throw e;
+          if (/não é um PDF|não parece/.test(e.message)) throw new ErroHttp(400, 'Este arquivo não é um PDF válido.');
+          avisos.push(`${e.message} O leitor do Agrega não conseguiu abrir o arquivo.`);
+        }
+      }
+      if (externaOk && !lida.chaveAcesso) {
+        lida.chaveAcesso = externaOk;
+        lida.chaveVia = 'codigo_barras';
+      }
+      if (!leituraSuficiente(lida) && d.usarIa && iaDisponivel()) {
+        try {
+          const ia = completarLeitura(await lerNotaComIa(bytes, d.tipo, { cnpjEmpresa: cnpjEmpresa || null, razaoEmpresa: empresa?.razao_social ?? null }));
+          if (ia.textoUtil) {
+            if (lida.chaveAcesso) {
+              if (ia.chaveAcesso && ia.chaveAcesso !== lida.chaveAcesso) ia.avisos.push('A chave lida pela IA é diferente da chave do código de barras. Vale a do código de barras.');
+              ia.chaveAcesso = lida.chaveAcesso;
+              ia.chaveVia = lida.chaveVia;
+            }
+            lida = ia;
+            metodo = 'ia';
+          }
+        } catch (e) {
+          if (!(e instanceof ErroIa)) throw e;
+          avisos.push(e.message);
+        }
+      }
+      if (!lida.textoUtil && !lida.chaveAcesso) {
+        const motivo = avisos.length ? ` ${avisos.join(' ')}` : '';
+        throw new ErroHttp(
+          422,
+          iaDisponivel()
+            ? `Não consegui ler este arquivo.${motivo} Leia o código de barras da nota ou lance à mão.`
+            : `Não consegui ler este arquivo: parece uma imagem (PDF escaneado ou foto).${motivo} Leia o código de barras da nota ou lance à mão. Com a leitura por IA configurada, esses arquivos também são lidos.`,
+        );
+      }
+      if (metodo === 'leitor' && !lida.textoUtil) {
+        metodo = 'codigo_barras';
+        avisos.push(
+          iaDisponivel()
+            ? 'Só a chave do código de barras foi lida. Inclua os itens e o total a partir do documento.'
+            : 'O arquivo é uma imagem (escaneado ou foto): sem a leitura por IA, só a chave do código de barras foi lida. Inclua os itens e o total a partir do documento.',
+        );
+      }
+      completarPelaChave(lida);
+      if (metodo !== 'ia') completarLeitura(lida);
+      lida.avisos.push(...avisos);
+      const substituir = await conferirDuplicada(banco, empresaId, lida.chaveAcesso, 'pdf');
+      const usuarioId = req.usuario!.id;
+      const r = await emTransacao(banco, (c) =>
+        criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'pdf', metodo, anexo: { nome: d.nome || 'nota.pdf', tipo: d.tipo, conteudo: bytes }, substituir }),
+      );
+      reply.code(201);
+      return { nota: await detalharNota(banco, empresaId, r.id), metodo };
+    });
+
+    // ----- Nota pela chave lida no código de barras (câmera ou leitor USB) -----
+    app.post('/notas/chave', async (req, reply) => {
+      const { chave } = z.object({ chave: z.string({ required_error: 'Informe a chave de acesso.' }) }).parse(req.body);
+      const limpa = chave.replace(/\D/g, '');
+      if (limpa.length !== 44) throw new ErroHttp(400, 'A chave de acesso tem 44 números.');
+      if (!chavePlausivel(limpa)) throw new ErroHttp(400, 'Chave de acesso inválida: confira os números (o último é o dígito verificador).');
+      const empresaId = empresaDo(req);
+      const empresa = (await banco.query('SELECT cnpj FROM empresas WHERE id = $1', [empresaId])).rows[0];
+      const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
+      await conferirDuplicada(banco, empresaId, limpa, 'chave');
+      const lida = completarPelaChave({ ...notaVazia(), chaveAcesso: limpa, chaveVia: 'codigo_barras', textoUtil: false });
+      lida.conferir.push('itens', 'total');
+      const p = partesDaChave(limpa)!;
+      if (lida.emitente?.documento && !cnpjValido(lida.emitente.documento) && lida.emitente.documento.length === 14) lida.emitente = null;
+      lida.avisos.push(`Inclua os itens da ${p.modelo === '65' ? 'NFC-e' : 'NF-e'} ${p.numero}. Se chegar o XML desta nota, importe-o: ele completa o rascunho.`);
+      const usuarioId = req.usuario!.id;
+      const r = await emTransacao(banco, (c) => criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'chave', metodo: 'codigo_barras', anexo: null, substituir: null }));
+      reply.code(201);
+      return { nota: await detalharNota(banco, empresaId, r.id) };
     });
 
     // ----- Nota lançada à mão -----
@@ -556,14 +808,15 @@ export function rotasNotas(banco: Banco) {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const n = await exigirRascunho(c, empresaId, req.params.id);
-        const manual = n.origem === 'manual';
+        const manual = DIGITAVEL.has(n.origem);
         const soManual = (['modelo', 'numero', 'serie', 'dataEmissao', 'frete', 'desconto', 'outras'] as const).filter((k) => d[k] !== undefined);
         if (!manual && soManual.length) throw new ErroHttp(400, 'Os dados fiscais vêm do XML e não podem ser alterados.');
         const fornecedorId = d.fornecedorId !== undefined ? d.fornecedorId : n.fornecedor_id;
         const clienteId = d.clienteId !== undefined ? d.clienteId : n.cliente_id;
         await validarPessoa(c, empresaId, n.direcao, fornecedorId, clienteId);
         const campos: Record<string, unknown> = {
-          competencia: d.competencia,
+          // Corrigir a emissão leva junto a competência, se ela era a própria emissão.
+          competencia: d.competencia ?? (d.dataEmissao && String(n.competencia) === String(n.data_emissao) ? d.dataEmissao : undefined),
           observacoes: d.observacoes,
           fornecedor_id: d.fornecedorId,
           cliente_id: d.clienteId,
@@ -601,7 +854,7 @@ export function rotasNotas(banco: Banco) {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const n = await exigirRascunho(c, empresaId, req.params.id);
-        if (n.origem !== 'manual') throw new ErroHttp(400, 'Os itens vêm do XML e não podem ser incluídos à mão.');
+        if (!DIGITAVEL.has(n.origem)) throw new ErroHttp(400, 'Os itens vêm do XML e não podem ser incluídos à mão.');
         await validarApropriacao(c, empresaId, n.direcao === 'saida' ? 'receita' : 'despesa', d);
         const prox = (await c.query('SELECT coalesce(max(numero_item), 0) + 1 AS n FROM notas_itens WHERE nota_id = $1', [n.id])).rows[0].n;
         await c.query(
@@ -623,7 +876,7 @@ export function rotasNotas(banco: Banco) {
         if (!i) throw naoEncontrado('Item');
         const n = await exigirRascunho(c, empresaId, i.nota_id);
         const fiscais = (['descricao', 'unidade', 'quantidade', 'valor'] as const).filter((k) => d[k] !== undefined);
-        if (n.origem !== 'manual' && fiscais.length) throw new ErroHttp(400, 'Descrição, quantidade e valor vêm do XML e não podem ser alterados.');
+        if (!DIGITAVEL.has(n.origem) && fiscais.length) throw new ErroHttp(400, 'Descrição, quantidade e valor vêm do XML e não podem ser alterados.');
         await validarApropriacao(c, empresaId, n.direcao === 'saida' ? 'receita' : 'despesa', d);
         // Ligação com o insumo do estoque.
         let fator = d.fatorEstoque;
@@ -686,7 +939,7 @@ export function rotasNotas(banco: Banco) {
         const i = (await c.query('SELECT * FROM notas_itens WHERE id = $1 AND empresa_id = $2', [UUID.test(req.params.id) ? req.params.id : null, empresaId])).rows[0];
         if (!i) throw naoEncontrado('Item');
         const n = await exigirRascunho(c, empresaId, i.nota_id);
-        if (n.origem !== 'manual') throw new ErroHttp(400, 'Os itens vêm do XML e não podem ser removidos.');
+        if (!DIGITAVEL.has(n.origem)) throw new ErroHttp(400, 'Os itens vêm do XML e não podem ser removidos.');
         if ((await c.query('SELECT count(*)::int AS n FROM notas_itens WHERE nota_id = $1', [n.id])).rows[0].n <= 1) throw new ErroHttp(400, 'A nota precisa de pelo menos um item.');
         await c.query('DELETE FROM notas_itens WHERE id = $1', [i.id]);
         await recalcularManual(c, n.id);
@@ -833,7 +1086,7 @@ export function rotasNotas(banco: Banco) {
           await c.query(
             `INSERT INTO lancamentos (empresa_id, tipo, competencia, descricao, documento, valor_total_centavos, cliente_id, fornecedor_id, nota_id, origem, status, observacoes, criado_por_id)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,'confirmado',$11,$12) RETURNING *`,
-            [empresaId, tipo, n.competencia, descricao, documento, n.total_centavos, n.cliente_id, n.fornecedor_id, n.id, n.origem === 'manual' ? 'manual' : 'xml', n.observacoes, usuarioId],
+            [empresaId, tipo, n.competencia, descricao, documento, n.total_centavos, n.cliente_id, n.fornecedor_id, n.id, n.origem === 'xml' ? 'xml' : 'manual', n.observacoes, usuarioId],
           )
         ).rows[0];
 

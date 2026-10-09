@@ -1,8 +1,10 @@
 export class ErroHttp extends Error {
   status: number;
-  constructor(status: number, mensagem: string) {
+  dados: Record<string, unknown> | undefined;
+  constructor(status: number, mensagem: string, dados?: Record<string, unknown>) {
     super(mensagem);
     this.status = status;
+    this.dados = dados;
   }
 }
 

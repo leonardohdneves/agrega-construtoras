@@ -6,11 +6,15 @@ import { somarDias, somarMeses } from './financeiro.ts';
 import { normalizar } from './sugestoes.ts';
 import { registrarEntradasNota, saldosEm } from './estoque.ts';
 import { gerarContasAPagar } from '../rotas/contratos.ts';
+import { criarNotaLida } from '../rotas/notas.ts';
+import { gerarDanfeExemplo } from './pdf-exemplo.ts';
+import { lerPdf } from './pdf.ts';
+import { interpretarNotaPdf } from './nota-pdf.ts';
 
 type C = pg.PoolClient;
 
 /** Mude este valor para o ambiente de teste apagar e recriar a demonstração na próxima inicialização. */
-export const VERSAO_DEMO = 'modelo-2026-10-v11';
+export const VERSAO_DEMO = 'modelo-2026-10-v12';
 
 // ---------------------------------------------------------------- datas e números
 const diaSemana = (d: string) => new Date(`${d}T12:00:00Z`).getUTCDay();
@@ -1004,6 +1008,7 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   await popularCatalogo(c, e);
   await popularComercial(c, e, hoje, { vendedor: usuario('vendedor@') ?? gestor, gestor, dono: usuario('dono@') ?? gestor });
   await popularCampo(c, e, hoje, { lab: usuario('laboratorio@') ?? gestor, operador: usuario('operador@') ?? gestor, dono: usuario('dono@') ?? gestor, gestor });
+  await popularNotaPdf(c, e, hoje, usuario('financeiro@') ?? usuario('dono@') ?? gestor);
   await q("UPDATE contratos SET enviado_aprovacao_em = criado_em, aprovado_por_id = $2, aprovado_em = criado_em + interval '3 hours' WHERE empresa_id = $1 AND status = 'vigente'", [e, usuario('dono@') ?? gestor]);
 
   // ----- saldo inicial do banco: o menor saldo diário do período fica acima de R$ 60 mil
@@ -1516,4 +1521,35 @@ async function popularCatalogo(c: C, e: string): Promise<void> {
       WHERE ct.id = u.catalogo_id`,
     [e],
   );
+}
+
+// ---------------------------------------------------------------- nota lida do PDF
+
+/** Uma NF-e de areia "importada do PDF" pelo leitor do Agrega, esperando conferência. */
+async function popularNotaPdf(c: C, e: string, hoje: string, usuarioId: string | null): Promise<void> {
+  if (!usuarioId) return;
+  const empresa = (await c.query('SELECT cnpj, razao_social FROM empresas WHERE id = $1', [e])).rows[0];
+  const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
+  const forn = cnpjDe('22975318');
+  const emissao = somarDias(hoje, -1);
+  const numero = 20417;
+  const chave = chaveNfe(emissao, forn, numero, 4417);
+  const pdf = gerarDanfeExemplo({
+    chave, numero, serie: 1, emissao,
+    emitente: { nome: 'AREIAL RIO TOCANTINS LTDA', cnpj: forn, endereco: 'ROD. TO-010, KM 8 - ZONA RURAL - PALMAS - TO' },
+    destinatario: { nome: String(empresa?.razao_social ?? 'CONCRETEIRA MODELO LTDA').toUpperCase(), cnpj: cnpjEmpresa || '11222333000181' },
+    natureza: 'VENDA DE PRODUÇÃO DO ESTABELECIMENTO',
+    itens: [
+      { codigo: 'AR-02', descricao: 'AREIA MEDIA LAVADA', ncm: '25051000', cfop: '5101', unidade: 'M3', quantidade: 120, unitario: 92, total: 11040 },
+      { codigo: 'AR-05', descricao: 'AREIA FINA LAVADA', ncm: '25051000', cfop: '5101', unidade: 'M3', quantidade: 30, unitario: 88.5, total: 2655 },
+    ],
+    frete: 480, desconto: 0,
+    duplicatas: [{ numero: '001', vencimento: somarDias(emissao, 30), valor: 14175 }],
+    informacoes: 'Pedido 318. Entrega na usina. Documento de demonstração.',
+  });
+  const lida = interpretarNotaPdf(lerPdf(pdf), { cnpjEmpresa });
+  await criarNotaLida(c, {
+    empresaId: e, usuarioId, cnpjEmpresa, lida, origem: 'pdf', metodo: 'leitor',
+    anexo: { nome: `danfe-${numero}-areial.pdf`, tipo: 'application/pdf', conteudo: pdf }, substituir: null,
+  });
 }

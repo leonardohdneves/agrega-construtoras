@@ -48,7 +48,7 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
       const primeiro = erro.issues[0];
       return reply.code(400).send({ erro: primeiro?.message ?? 'Dados inválidos.', campos: erro.issues.map((i) => ({ campo: i.path.join('.'), mensagem: i.message })) });
     }
-    if (erro instanceof ErroHttp) return reply.code(erro.status).send({ erro: erro.message });
+    if (erro instanceof ErroHttp) return reply.code(erro.status).send({ ...erro.dados, erro: erro.message });
     const e = erro as FastifyError & { code?: string };
     if (e.code === '23505') {
       const restricao = String((e as { constraint?: string }).constraint ?? '');

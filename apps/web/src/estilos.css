@@ -699,3 +699,12 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .via-obs, .via .rc-val { display: -webkit-box; -webkit-box-orient: vertical; overflow: hidden; }
 .via-obs { -webkit-line-clamp: 2; }
 .via .rc-val { -webkit-line-clamp: 3; }
+
+/* Notas lidas do PDF / código de barras */
+.campo.conferir { background: var(--status-warn-bg); border-radius: 8px; padding: 6px 8px; margin: -6px -8px; }
+.campo.conferir > label, .campo.conferir > .rotulo { color: var(--status-warn-ink); }
+.dados-documento { margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--border, rgba(0,0,0,.1)); display: flex; flex-direction: column; gap: 8px; }
+.dados-documento .campos { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); }
+.camera-codigo { position: relative; margin-top: 12px; border-radius: 10px; overflow: hidden; background: #000; max-width: 640px; }
+.camera-codigo video { display: block; width: 100%; height: auto; }
+.camera-codigo .mira { position: absolute; left: 6%; right: 6%; top: 50%; height: 26%; transform: translateY(-50%); border: 2px solid rgba(255,255,255,.85); border-radius: 8px; box-shadow: 0 0 0 9999px rgba(0,0,0,.25); pointer-events: none; }

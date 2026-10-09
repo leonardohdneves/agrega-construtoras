@@ -27,6 +27,12 @@ import {
 } from '../api';
 import { OpcoesCategoria, useCadastros, type Cadastros } from './Lancamento';
 
+/** Origens em que os dados do documento e os itens podem ser corrigidos à mão. */
+const DIGITAVEL = new Set<NotaFiscal['origem']>(['manual', 'pdf', 'chave']);
+const ORIGEM_TEXTO: Record<NotaFiscal['origem'], string> = { xml: 'importada do XML', manual: 'digitada', ia_whatsapp: 'recebida pelo WhatsApp', pdf: 'lida do PDF', chave: 'criada pelo código de barras' };
+const CONFERIR_TEXTO: Record<string, string> = { dataEmissao: 'a data de emissão', fornecedor: 'o fornecedor', itens: 'os itens', total: 'o total' };
+const METODO_TEXTO: Record<string, string> = { leitor: 'pelo leitor do Agrega', ia: 'pela IA', codigo_barras: 'pela chave do código de barras' };
+
 const soma = (xs: number[]) => Math.round(xs.reduce((s, x) => s + x, 0) * 100) / 100;
 
 // ======================= Nota lançada à mão =======================
@@ -410,7 +416,7 @@ function LinhaItem({
   const [vinculo, setVinculo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [desc, setDesc] = useState({ descricao: item.descricao, quantidade: formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0), valor: moedaCampo(item.valorProduto) });
-  const manual = nota.origem === 'manual';
+  const manual = DIGITAVEL.has(nota.origem);
   const [fator, setFator] = useState(item.fatorEstoque ? String(item.fatorEstoque).replace('.', ',') : '');
   useEffect(() => setFator(item.fatorEstoque ? String(item.fatorEstoque).replace('.', ',') : ''), [item.fatorEstoque]);
   const unidadeInsumo = item.insumoUnidade ? NOMES_UNIDADE[item.insumoUnidade] : '';
@@ -718,6 +724,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
 
   if (!nota) return erro ? <div className="alerta alerta-erro" role="alert">{erro}</div> : <p className="muted">Carregando…</p>;
   const pessoas = nota.direcao === 'entrada' ? cadastros.fornecedores : cadastros.clientes;
+  const confere = (c: string) => !!nota.leitura?.conferir.includes(c);
   const somaDups = dups ? soma(dups.map((d) => lerNumero(d.valor) ?? 0)) : 0;
 
   return (
@@ -730,7 +737,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
             {nota.serie ? <span className="muted" style={{ fontWeight: 500 }}> · série {nota.serie}</span> : null}
           </h1>
           <span className="muted">
-            {nota.direcao === 'entrada' ? 'Compra' : 'Venda'} · emitida em {formatarData(nota.dataEmissao)} · {nota.origem === 'xml' ? 'importada do XML' : 'digitada'}
+            {nota.direcao === 'entrada' ? 'Compra' : 'Venda'} · emitida em {formatarData(nota.dataEmissao)} · {ORIGEM_TEXTO[nota.origem] ?? 'digitada'}
             {nota.naturezaOperacao ? ` · ${nota.naturezaOperacao}` : ''}
           </span>
         </div>
@@ -738,13 +745,26 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      {nota.leitura && (
+        <div className={`alerta ${editavel && nota.leitura.conferir.length ? 'alerta-aviso' : 'alerta-info'}`}>
+          {nota.origem === 'chave' ? 'Rascunho criado pela chave do código de barras.' : `Dados lidos ${METODO_TEXTO[nota.leitura.metodo] ?? ''}${nota.leitura.chaveVia === 'codigo_barras' && nota.leitura.metodo !== 'codigo_barras' ? ', com a chave do código de barras' : ''}.`}
+          {editavel && nota.leitura.conferir.length > 0 && <> Confira {listaE(nota.leitura.conferir.map((c) => CONFERIR_TEXTO[c] ?? c))} antes de confirmar.</>}
+          {editavel && !nota.leitura.conferir.length && ' Confira com o documento antes de confirmar.'}
+          {nota.anexo && (
+            <>
+              {' '}
+              <a href={`/api/fin/notas/${nota.id}/arquivo`} target="_blank" rel="noreferrer">Abrir o {nota.anexo.tipo === 'application/pdf' ? 'PDF' : 'arquivo'}</a>
+            </>
+          )}
+        </div>
+      )}
       {nota.avisos.map((a) => (
         <div key={a} className="alerta alerta-aviso">{a}</div>
       ))}
 
       <div className="card">
         <div className="campos">
-          <div className="campo">
+          <div className={`campo ${editavel && confere('fornecedor') ? 'conferir' : ''}`}>
             <label htmlFor="nt-pessoa">{nota.direcao === 'entrada' ? 'Fornecedor' : 'Cliente'}</label>
             {editavel ? (
               <select
@@ -762,8 +782,8 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
             )}
             {nota.emitenteDocumento && (
               <span className="small muted">
-                Emitente: {nota.emitenteNome} · {formatarDocumento(nota.emitenteDocumento)}
-                {nota.fornecedorNovo && editavel ? ' · cadastrado agora a partir do XML' : ''}
+                Emitente: {nota.emitenteNome ? `${nota.emitenteNome} · ` : ''}{formatarDocumento(nota.emitenteDocumento)}
+                {nota.fornecedorNovo && editavel ? ` · cadastrado agora a partir do ${nota.origem === 'xml' ? 'XML' : 'documento'}` : ''}
               </span>
             )}
             {nota.pedido && (
@@ -781,7 +801,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
             )}
             <span className="ajuda">Data que vale na DRE por competência. Normalmente, a emissão.</span>
           </div>
-          <div className="campo">
+          <div className={`campo ${editavel && confere('total') ? 'conferir' : ''}`}>
             <span className="rotulo">Total da nota</span>
             <strong className="mono" style={{ fontSize: 24 }}>{formatarMoeda(nota.totais.total)}</strong>
             <span className="small muted">
@@ -794,6 +814,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
             </span>
           </div>
         </div>
+        {editavel && DIGITAVEL.has(nota.origem) && nota.origem !== 'manual' && <DadosDocumento nota={nota} conferirData={confere('dataEmissao')} alterar={alterar} />}
         {nota.chaveAcesso && (
           <p className="small muted" style={{ margin: '12px 0 0' }}>
             Chave de acesso: <span className="mono">{formatarChave(nota.chaveAcesso)}</span>
@@ -810,7 +831,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
 
       <div className="card tabela-caixa">
         <div className="cabecalho" style={{ marginBottom: 8 }}>
-          <h2>Itens e apropriação</h2>
+          <h2>Itens e apropriação{editavel && confere('itens') && <span className="selo selo-aviso" style={{ marginLeft: 8 }}>Conferir itens</span>}</h2>
           <span className="small muted">{nota.itens.length} {nota.itens.length === 1 ? 'item' : 'itens'}</span>
         </div>
         {editavel && nota.itens.length > 1 && (
@@ -865,7 +886,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
             </tr>
           </tfoot>
         </table>
-        {editavel && nota.origem === 'manual' && <NovoItemManual nota={nota} cadastros={cadastros} aoMudar={setNota} aoErro={setErro} />}
+        {editavel && DIGITAVEL.has(nota.origem) && <NovoItemManual nota={nota} cadastros={cadastros} aoMudar={setNota} aoErro={setErro} />}
       </div>
 
       <div className="card">
@@ -1156,5 +1177,59 @@ export function Nota() {
         <DetalheNota key={id} id={id!} cadastros={cadastros} />
       )}
     </>
+  );
+}
+
+function listaE(xs: string[]): string {
+  return xs.length <= 1 ? xs.join('') : `${xs.slice(0, -1).join(', ')} e ${xs[xs.length - 1]}`;
+}
+
+/** Dados do documento lido do PDF ou da chave: número, série, emissão e acréscimos, corrigíveis na conferência. */
+function DadosDocumento({ nota, conferirData, alterar }: { nota: NotaFiscal; conferirData: boolean; alterar: (c: Record<string, unknown>, msg?: string) => Promise<void> }) {
+  const inicial = () => ({
+    numero: nota.numero ?? '',
+    serie: nota.serie ?? '',
+    dataEmissao: nota.dataEmissao,
+    frete: moedaCampo(nota.totais.frete),
+    desconto: moedaCampo(nota.totais.desconto),
+    outras: moedaCampo(nota.totais.outras),
+  });
+  const [f, setF] = useState(inicial);
+  useEffect(() => setF(inicial()), [nota.numero, nota.serie, nota.dataEmissao, nota.totais.frete, nota.totais.desconto, nota.totais.outras]); // eslint-disable-line react-hooks/exhaustive-deps
+  const salvar = (campo: keyof typeof f, valor: unknown) => alterar({ [campo]: valor }, 'Dados do documento salvos.');
+  const dinheiro = (campo: 'frete' | 'desconto' | 'outras') => (
+    <div className="campo">
+      <label htmlFor={`dd-${campo}`}>{campo === 'frete' ? 'Frete' : campo === 'desconto' ? 'Desconto / retenções' : 'Outras despesas'}</label>
+      <input
+        id={`dd-${campo}`}
+        className="mono"
+        inputMode="decimal"
+        value={f[campo]}
+        onChange={(e) => setF({ ...f, [campo]: e.target.value })}
+        onBlur={() => (lerNumero(f[campo]) ?? 0) !== nota.totais[campo] && salvar(campo, f[campo] || '0')}
+      />
+    </div>
+  );
+  return (
+    <div className="dados-documento">
+      <span className="small muted">Dados do documento (corrija se a leitura errou)</span>
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="dd-numero">Número</label>
+          <input id="dd-numero" className="mono" value={f.numero} onChange={(e) => setF({ ...f, numero: e.target.value })} onBlur={() => f.numero !== (nota.numero ?? '') && salvar('numero', f.numero)} />
+        </div>
+        <div className="campo">
+          <label htmlFor="dd-serie">Série</label>
+          <input id="dd-serie" className="mono" value={f.serie} onChange={(e) => setF({ ...f, serie: e.target.value })} onBlur={() => f.serie !== (nota.serie ?? '') && salvar('serie', f.serie)} />
+        </div>
+        <div className={`campo ${conferirData ? 'conferir' : ''}`}>
+          <label htmlFor="dd-emissao">Data de emissão</label>
+          <input id="dd-emissao" type="date" value={f.dataEmissao} onChange={(e) => setF({ ...f, dataEmissao: e.target.value })} onBlur={() => f.dataEmissao && f.dataEmissao !== nota.dataEmissao && salvar('dataEmissao', f.dataEmissao)} />
+        </div>
+        {dinheiro('frete')}
+        {dinheiro('desconto')}
+        {dinheiro('outras')}
+      </div>
+    </div>
   );
 }
