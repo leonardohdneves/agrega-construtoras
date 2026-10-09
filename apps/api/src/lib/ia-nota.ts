@@ -136,7 +136,7 @@ export async function lerNotaComIa(arquivo: Buffer, tipoArquivo: string, context
     model: modelo,
     max_tokens: 8000,
     tools: [FERRAMENTA],
-    tool_choice: { type: 'tool', name: 'registrar_nota' },
+    tool_choice: { type: 'auto' },
     messages: [
       {
         role: 'user',
@@ -145,7 +145,7 @@ export async function lerNotaComIa(arquivo: Buffer, tipoArquivo: string, context
           {
             type: 'text',
             text:
-              'Leia este documento fiscal brasileiro e registre os dados com a ferramenta. ' +
+              'Leia este documento fiscal brasileiro e registre os dados chamando a ferramenta registrar_nota (uma única vez, sem texto antes). ' +
               `A empresa que está lançando a nota é ${contexto.razaoEmpresa ?? 'a concreteira'}${contexto.cnpjEmpresa ? ` (CNPJ ${contexto.cnpjEmpresa})` : ''}. ` +
               'Valores em reais, como número (ex.: 1234.56). Datas no formato AAAA-MM-DD. Copie os números exatamente como impressos; ' +
               'se não conseguir ler um campo, deixe null e inclua-o em "duvidas". Não invente dados.',
@@ -173,14 +173,24 @@ export async function lerNotaComIa(arquivo: Buffer, tipoArquivo: string, context
       .catch(() => '');
     console.error(`[ia-nota] Anthropic ${resp.status}: ${detalhe}`);
     if (/credit balance/i.test(detalhe)) throw new ErroIa('A conta da IA está sem créditos. Adicione saldo em console.anthropic.com › Billing e tente de novo.');
-    if (/model/i.test(detalhe) && (resp.status === 400 || resp.status === 404)) throw new ErroIa(`O modelo de IA configurado não está disponível para esta chave (${detalhe}).`);
+    if (resp.status === 404 || /^model:|not_found/i.test(detalhe)) throw new ErroIa(`O modelo de IA configurado não está disponível para esta chave (${detalhe}).`);
     if (resp.status === 401 || resp.status === 403) throw new ErroIa('A chave da IA foi recusada. Confira a variável ANTHROPIC_API_KEY.');
     if (resp.status === 429 || resp.status === 529) throw new ErroIa('O serviço de IA está ocupado. Tente de novo em instantes.');
     if (resp.status === 413) throw new ErroIa('O arquivo é grande demais para a leitura por IA.');
     throw new ErroIa(`A leitura por IA falhou (código ${resp.status}${detalhe ? `: ${detalhe}` : ''}).`);
   }
-  const corpo = (await resp.json()) as { content?: { type: string; name?: string; input?: Record<string, unknown> }[] };
+  const corpo = (await resp.json()) as { content?: { type: string; name?: string; input?: Record<string, unknown>; text?: string }[] };
   const uso = corpo.content?.find((b) => b.type === 'tool_use' && b.name === 'registrar_nota');
-  if (!uso?.input) throw new ErroIa('A IA não devolveu os dados da nota.');
-  return notaDaIa(uso.input);
+  if (uso?.input) return notaDaIa(uso.input);
+  // Se a IA respondeu em texto, aproveita o JSON que vier nele.
+  const texto = (corpo.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('\n');
+  const json = /\{[\s\S]*\}/.exec(texto)?.[0];
+  if (json) {
+    try {
+      return notaDaIa(JSON.parse(json));
+    } catch {
+      /* cai no erro abaixo */
+    }
+  }
+  throw new ErroIa('A IA não devolveu os dados da nota. Tente de novo.');
 }
