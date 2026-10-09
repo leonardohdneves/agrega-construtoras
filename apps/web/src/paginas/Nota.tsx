@@ -756,6 +756,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
               <a href={`/api/fin/notas/${nota.id}/arquivo`} target="_blank" rel="noreferrer">Abrir o {nota.anexo.tipo === 'application/pdf' ? 'PDF' : 'arquivo'}</a>
             </>
           )}
+          {editavel && nota.anexo && nota.leitura.metodo !== 'ia' && <LerComIa nota={nota} />}
         </div>
       )}
       {nota.avisos.map((a) => (
@@ -1281,6 +1282,32 @@ function CompletarComArquivo({ nota }: { nota: NotaFiscal }) {
         </button>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert" style={{ marginTop: 10 }}>{erro}</div>}
+    </div>
+  );
+}
+
+/** Lê de novo, pela IA, o PDF ou a foto anexada (quando o leitor do Agrega não entendeu o modelo da nota). */
+function LerComIa({ nota }: { nota: NotaFiscal }) {
+  const navegar = useNavigate();
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  async function ler() {
+    setErro('');
+    setOcupado(true);
+    try {
+      const r = await api<{ nota: NotaFiscal }>(`/fin/notas/${nota.id}/reler`, { metodo: 'POST' });
+      navegar(`/fin/notas/${r.nota.id}`, { replace: true });
+    } catch (e) {
+      setErro((e as Error).message);
+      setOcupado(false);
+    }
+  }
+  return (
+    <div style={{ marginTop: 8 }}>
+      <button className="btn btn-secundario" type="button" disabled={ocupado} onClick={ler}>
+        {ocupado ? 'A IA está lendo a nota…' : 'Ler de novo com a IA'}
+      </button>
+      {erro && <div className="small" role="alert" style={{ marginTop: 6, color: 'var(--status-danger-ink)' }}>{erro}</div>}
     </div>
   );
 }

@@ -737,6 +737,38 @@ export function rotasNotas(banco: Banco) {
       return { nota: await detalharNota(banco, empresaId, r.id), metodo };
     });
 
+    // ----- Ler de novo, pela IA, o arquivo anexado a um rascunho -----
+    app.post<{ Params: { id: string } }>('/notas/:id/reler', async (req, reply) => {
+      const empresaId = empresaDo(req);
+      const n = await carregarNota(banco, empresaId, req.params.id);
+      if (n.status !== 'rascunho' && n.status !== 'aguardando_conferencia') throw new ErroHttp(409, 'Só dá para ler de novo uma nota que ainda está para conferir.');
+      if (n.origem !== 'pdf' && n.origem !== 'chave') throw new ErroHttp(400, 'Esta nota não veio de um PDF.');
+      const a = (await banco.query('SELECT nome, tipo, conteudo FROM notas_anexos WHERE nota_id = $1 ORDER BY criado_em DESC LIMIT 1', [n.id])).rows[0];
+      if (!a) throw new ErroHttp(400, 'Esta nota não tem PDF ou foto anexado. Use "Enviar PDF ou foto".');
+      if (!iaDisponivel()) throw new ErroHttp(400, 'A leitura por IA ainda não está ligada: falta cadastrar a variável ANTHROPIC_API_KEY no servidor.');
+      const empresa = (await banco.query('SELECT cnpj, razao_social FROM empresas WHERE id = $1', [empresaId])).rows[0];
+      const cnpjEmpresa = String(empresa?.cnpj ?? '').replace(/\D/g, '');
+      const bytes: Buffer = Buffer.isBuffer(a.conteudo) ? a.conteudo : Buffer.from(String(a.conteudo).replace(/^\\x/, ''), 'hex');
+      let lida: NotaLida;
+      try {
+        lida = completarLeitura(await lerNotaComIa(bytes, a.tipo, { cnpjEmpresa: cnpjEmpresa || null, razaoEmpresa: empresa?.razao_social ?? null }));
+      } catch (e) {
+        if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
+        throw e;
+      }
+      if (!lida.textoUtil) throw new ErroHttp(422, 'A IA não conseguiu ler este arquivo. Confira se é o documento da nota e se está legível.');
+      if (n.chave_acesso) {
+        if (lida.chaveAcesso && lida.chaveAcesso !== n.chave_acesso) lida.avisos.push('A chave lida pela IA é diferente da chave já registrada. Vale a já registrada.');
+        lida.chaveAcesso = n.chave_acesso;
+        lida.chaveVia = (n.leitura?.chaveVia as NotaLida['chaveVia']) ?? lida.chaveVia;
+      }
+      completarPelaChave(lida);
+      const usuarioId = req.usuario!.id;
+      const r = await emTransacao(banco, (c) => criarNotaLida(c, { empresaId, usuarioId, cnpjEmpresa, lida, origem: 'pdf', metodo: 'ia', anexo: null, substituir: n.id }));
+      reply.code(201);
+      return { nota: await detalharNota(banco, empresaId, r.id) };
+    });
+
     // ----- Nota pela chave lida no código de barras (câmera ou leitor USB) -----
     app.post('/notas/chave', async (req, reply) => {
       const { chave } = z.object({ chave: z.string({ required_error: 'Informe a chave de acesso.' }) }).parse(req.body);
