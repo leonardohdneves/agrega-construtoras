@@ -1,0 +1,106 @@
+// Engenharia (Fase 1): regras puras de níveis da EAP, códigos e leitura do CSV das tabelas de referência.
+// Formato do CSV (separador ;, primeira linha é o cabeçalho):
+//   tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente
+//   insumo;CODIGO;descricao;unidade;preco;grupo;;
+//   composicao;CODIGO;descricao;unidade;;grupo;;
+//   componente;CODIGO_DA_COMPOSICAO;;;;;CODIGO_DO_INSUMO;coeficiente
+
+export const NIVEIS_OBRA = ['obra', 'etapa', 'subetapa', 'tarefa'] as const;
+export type NivelObra = (typeof NIVEIS_OBRA)[number];
+export type NivelEap = Exclude<NivelObra, 'obra'>;
+
+const POSICAO: Record<NivelEap, number> = { etapa: 1, subetapa: 2, tarefa: 3 };
+
+/** Parâmetros do BDI calculado, em %: administração central, seguros, riscos, garantias, despesas financeiras, lucro e impostos. */
+export const CAMPOS_BDI = ['ac', 's', 'r', 'g', 'df', 'l', 'i'] as const;
+export type ParametrosBdi = Record<(typeof CAMPOS_BDI)[number], number>;
+
+/** BDI = [(1+AC+S+R+G) x (1+DF) x (1+L)] / (1-I) - 1 (fórmula do TCU, Acórdão 2622/2013). Retorna % com duas casas. */
+export function bdiCalculado(p: Partial<ParametrosBdi>): number {
+  const f = (k: keyof ParametrosBdi) => (p[k] ?? 0) / 100;
+  const bdi = ((1 + f('ac') + f('s') + f('r') + f('g')) * (1 + f('df')) * (1 + f('l'))) / (1 - f('i')) - 1;
+  return Math.round(bdi * 10000) / 100;
+}
+
+/** Nível do nó novo na EAP, dado o pai e o nível de apropriação da obra. null = não é permitido. */
+export function nivelDoNovoNo(apropriacao: NivelObra, pai: NivelEap | null): NivelEap | null {
+  if (apropriacao === 'obra') return null;
+  const proximo: Record<NivelEap, NivelEap | null> = { etapa: 'subetapa', subetapa: 'tarefa', tarefa: null };
+  const nivel: NivelEap | null = pai === null ? 'etapa' : proximo[pai];
+  if (!nivel) return null;
+  return POSICAO[nivel] <= POSICAO[apropriacao as NivelEap] ? nivel : null;
+}
+
+/** Código hierárquico: 1, 1.2, 1.2.3. */
+export function codigoDoNo(codigoPai: string | null, irmaos: number): string {
+  return codigoPai ? `${codigoPai}.${irmaos + 1}` : `${irmaos + 1}`;
+}
+
+/** Número em pt-BR ("1.234,56") ou em formato com ponto ("1234.56"). */
+export function numeroBr(texto: string | undefined): number | null {
+  const s = (texto ?? '').trim();
+  if (!s) return null;
+  const n = Number(s.includes(',') ? s.replace(/\./g, '').replace(',', '.') : s);
+  return Number.isFinite(n) ? n : null;
+}
+
+export type LinhaInsumo = { codigo: string; descricao: string; unidade: string; precoCentavos: number; grupo: string | null };
+export type LinhaComposicao = { codigo: string; descricao: string; unidade: string; grupo: string | null };
+export type LinhaComponente = { composicao: string; insumo: string; coeficiente: number };
+export type LeituraCsv = { insumos: LinhaInsumo[]; composicoes: LinhaComposicao[]; componentes: LinhaComponente[]; erros: string[] };
+
+const COLUNAS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
+
+export function lerCsvReferencia(texto: string): LeituraCsv {
+  const leitura: LeituraCsv = { insumos: [], composicoes: [], componentes: [], erros: [] };
+  const linhas = texto.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim() !== '');
+  if (!linhas.length) {
+    leitura.erros.push('O arquivo está vazio.');
+    return leitura;
+  }
+  const cab = linhas[0].split(';').map((c) => c.trim().toLowerCase());
+  if (!COLUNAS.every((c) => cab.includes(c))) {
+    leitura.erros.push(`O cabeçalho precisa ter as colunas: ${COLUNAS.join(';')}.`);
+    return leitura;
+  }
+  const idx = Object.fromEntries(COLUNAS.map((c) => [c, cab.indexOf(c)])) as Record<(typeof COLUNAS)[number], number>;
+  const vistos = new Set<string>();
+  linhas.slice(1).forEach((linha, i) => {
+    const n = i + 2;
+    const c = linha.split(';').map((x) => x.trim());
+    const v = (k: (typeof COLUNAS)[number]) => c[idx[k]] ?? '';
+    const tipo = v('tipo').toLowerCase();
+    const codigo = v('codigo');
+    if (tipo === 'insumo' || tipo === 'composicao') {
+      if (!codigo) return leitura.erros.push(`Linha ${n}: falta o código.`);
+      if (!v('descricao')) return leitura.erros.push(`Linha ${n}: falta a descrição.`);
+      if (!v('unidade')) return leitura.erros.push(`Linha ${n}: falta a unidade.`);
+      const chave = `${tipo}:${codigo}`;
+      if (vistos.has(chave)) return leitura.erros.push(`Linha ${n}: código ${codigo} repetido.`);
+      vistos.add(chave);
+      const base = { codigo, descricao: v('descricao'), unidade: v('unidade'), grupo: v('grupo') || null };
+      if (tipo === 'insumo') {
+        const preco = numeroBr(v('preco'));
+        if (preco === null || preco < 0) return leitura.erros.push(`Linha ${n}: preço inválido para o insumo ${codigo}.`);
+        leitura.insumos.push({ ...base, precoCentavos: Math.round(preco * 100) });
+      } else {
+        leitura.composicoes.push(base);
+      }
+    } else if (tipo === 'componente') {
+      const coeficiente = numeroBr(v('coeficiente'));
+      if (!codigo || !v('insumo')) return leitura.erros.push(`Linha ${n}: o componente precisa de composição e insumo.`);
+      if (coeficiente === null || coeficiente < 0) return leitura.erros.push(`Linha ${n}: coeficiente inválido.`);
+      leitura.componentes.push({ composicao: codigo, insumo: v('insumo'), coeficiente });
+    } else {
+      leitura.erros.push(`Linha ${n}: tipo "${tipo || '(vazio)'}" desconhecido (use insumo, composicao ou componente).`);
+    }
+  });
+  // Componentes precisam apontar para insumos e composições do próprio arquivo.
+  const insumos = new Set(leitura.insumos.map((x) => x.codigo));
+  const composicoes = new Set(leitura.composicoes.map((x) => x.codigo));
+  for (const k of leitura.componentes) {
+    if (!composicoes.has(k.composicao)) leitura.erros.push(`Componente: a composição ${k.composicao} não existe no arquivo.`);
+    if (!insumos.has(k.insumo)) leitura.erros.push(`Componente: o insumo ${k.insumo} não existe no arquivo.`);
+  }
+  return leitura;
+}
