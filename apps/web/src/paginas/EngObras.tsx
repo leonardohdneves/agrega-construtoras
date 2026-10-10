@@ -22,7 +22,7 @@ export const ROTULO_NIVEL: Record<Nivel, string> = { obra: 'Obra', etapa: 'Etapa
 const ORDEM: Record<Nivel, number> = { obra: 0, etapa: 1, subetapa: 2, tarefa: 3 };
 // Nível do filho de cada nó da EAP (a raiz é sempre Etapa).
 const FILHO: Partial<Record<Nivel, Nivel>> = { etapa: 'subetapa', subetapa: 'tarefa' };
-const ROTULO_STATUS: Record<string, string> = { planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída' };
+const ROTULO_STATUS: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída' };
 const LIMITE_CATALOGO = 200;
 
 export function EngObras() {

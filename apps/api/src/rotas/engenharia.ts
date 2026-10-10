@@ -59,7 +59,7 @@ const esquemaObra = z.object({
   cidade: texto(80),
   uf,
   responsavel: texto(120),
-  status: z.enum(['planejamento', 'em_andamento', 'suspensa', 'concluida']).optional(),
+  status: z.enum(['orcamento', 'planejamento', 'em_andamento', 'suspensa', 'concluida']).optional(),
   dataInicio: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
   dataPrevisao: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
   nivelApropriacao: z.enum(NIVEIS_OBRA).optional(),
