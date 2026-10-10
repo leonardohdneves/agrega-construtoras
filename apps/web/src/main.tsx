@@ -23,11 +23,10 @@ import { OrdensServico } from './paginas/OrdensServico';
 import { OrdemServico } from './paginas/OrdemServico';
 import { Fornecedores } from './paginas/Fornecedores';
 import { ContasPagarReceber } from './paginas/ContasPagarReceber';
-import { Lancamentos } from './paginas/Lancamentos';
+import { Lancamentos, RedirecionaNotas } from './paginas/Lancamentos';
 import { Lancamento } from './paginas/Lancamento';
 import { ContasFinanceiras } from './paginas/ContasFinanceiras';
 import { PlanoContas } from './paginas/PlanoContas';
-import { Notas } from './paginas/Notas';
 import { Nota } from './paginas/Nota';
 import { Cargas, NovaCarga } from './paginas/ProdCargas';
 import { Insumos, Tracos } from './paginas/ProdTracos';
@@ -58,6 +57,7 @@ import { RelGerencial } from './paginas/RelGerencial';
 import { Indicadores } from './paginas/Indicadores';
 import { Conciliacao } from './paginas/Conciliacao';
 import { ComRelatorios, ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from './paginas/Comercial';
+import { ComPropostas, PropostaDetalhe, PropostaEditar, PropostaNova } from './paginas/Propostas';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
 import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
 import { PaginaMinhasCargas } from './paginas/MinhasCargas';
@@ -116,7 +116,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="fin/lancamentos" element={<Protegido perfis={['dono', 'gestor']}><Lancamentos /></Protegido>} />
             <Route path="fin/lancamentos/:id" element={<Protegido perfis={['dono', 'gestor']}><Lancamento /></Protegido>} />
             <Route path="fin/contas" element={<Protegido perfis={['dono', 'gestor']}><ContasFinanceiras /></Protegido>} />
-            <Route path="fin/notas" element={<Protegido perfis={['dono', 'gestor']}><Notas /></Protegido>} />
+            <Route path="fin/notas" element={<Protegido perfis={['dono', 'gestor']}><RedirecionaNotas /></Protegido>} />
             <Route path="fin/notas/:id" element={<Protegido perfis={['dono', 'gestor']}><Nota /></Protegido>} />
             <Route path="frota/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelFrota /></Protegido>} />
             <Route path="fin/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelFinanceiro /></Protegido>} />
@@ -165,6 +165,10 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/aprovacoes" element={<Navigate to="/ger/aprovacoes" replace />} />
             <Route path="sup/catalogo" element={<Protegido perfis={['dono', 'gestor']}><SupCatalogo /></Protegido>} />
             <Route path="sup/relatorios" element={<Protegido perfis={['dono', 'gestor']}><SupRelatorios /></Protegido>} />
+            <Route path="com/propostas" element={<Protegido perfis={COMERCIAL}><ComPropostas /></Protegido>} />
+            <Route path="com/propostas/nova" element={<Protegido perfis={COMERCIAL}><PropostaNova /></Protegido>} />
+            <Route path="com/propostas/:id" element={<Protegido perfis={COMERCIAL}><PropostaDetalhe /></Protegido>} />
+            <Route path="com/propostas/:id/editar" element={<Protegido perfis={COMERCIAL}><PropostaEditar /></Protegido>} />
             <Route path="com/vendas" element={<Protegido perfis={COMERCIAL}><ComVendas /></Protegido>} />
             <Route path="com/vendas/nova" element={<Protegido perfis={COMERCIAL}><NovaVenda /></Protegido>} />
             <Route path="com/vendas/:id" element={<Protegido perfis={COMERCIAL}><VendaDetalhe /></Protegido>} />

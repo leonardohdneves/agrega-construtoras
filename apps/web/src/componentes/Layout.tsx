@@ -42,6 +42,7 @@ export const MODULOS: Modulo[] = [
     icone: <IconeVenda />,
     perfis: ['dono', 'gestor', 'vendedor'],
     itens: [
+      { rotulo: 'Propostas', para: '/com/propostas' },
       { rotulo: 'Nova venda', para: '/com/vendas/nova' },
       { rotulo: 'Vendas', para: '/com/vendas' },
       { rotulo: 'Relatórios', para: '/com/relatorios' },
@@ -92,7 +93,6 @@ export const MODULOS: Modulo[] = [
     itens: [
       { rotulo: 'Contas a pagar e receber', para: '/fin/pagar-receber' },
       { rotulo: 'Lançamentos', para: '/fin/lancamentos' },
-      { rotulo: 'Notas fiscais e XML', para: '/fin/notas' },
       { rotulo: 'Bancos e caixa', para: '/fin/contas' },
       { rotulo: 'Conciliação OFX', para: '/fin/conciliacao' },
       { rotulo: 'Plano de contas', para: '/fin/plano-contas' },

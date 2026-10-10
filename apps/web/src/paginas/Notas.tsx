@@ -32,7 +32,8 @@ function textoNota(n: NotaFiscal) {
 
 export const ORIGEM_NOTA: Record<NotaFiscal['origem'], string> = { xml: 'XML', manual: 'Digitada', ia_whatsapp: 'WhatsApp', pdf: 'PDF', chave: 'Código de barras' };
 
-export function Notas() {
+/** Notas fiscais e XML. Dentro de Lançamentos (embutida), a aba mantém o próprio título e os filtros. */
+export function Notas({ embutida = false }: { embutida?: boolean } = {}) {
   const [params, setParams] = useSearchParams();
   const mes = /^\d{4}-\d{2}$/.test(params.get('mes') ?? '') ? params.get('mes')! : hojeLocal().slice(0, 7);
   const filtro = (FILTROS.some((f) => f.id === params.get('situacao')) ? params.get('situacao') : 'todas') as Filtro;
@@ -68,7 +69,7 @@ export function Notas() {
     carregar();
   }, [carregar]);
 
-  const ir = (p: Record<string, string>) => setParams({ mes, situacao: filtro, ...p }, { replace: true });
+  const ir = (p: Record<string, string>) => setParams({ ...(embutida ? { aba: 'notas' } : {}), mes, situacao: filtro, ...p }, { replace: true });
 
   async function importar(arquivos: FileList | null) {
     if (!arquivos?.length) return;
@@ -170,10 +171,12 @@ export function Notas() {
   return (
     <>
       <div className="cabecalho">
-        <div className="titulo">
-          <h1>Notas fiscais</h1>
-          <span className="muted">Importe o XML ou o PDF, leia o código de barras ou lance a nota à mão. Depois de conferida, a nota vira despesa (ou receita) com as parcelas a pagar.</span>
-        </div>
+        {!embutida && (
+          <div className="titulo">
+            <h1>Notas fiscais</h1>
+            <span className="muted">Importe o XML ou o PDF, leia o código de barras ou lance a nota à mão. Depois de conferida, a nota vira despesa (ou receita) com as parcelas a pagar.</span>
+          </div>
+        )}
         <div className="acoes">
           <input
             ref={arquivo}

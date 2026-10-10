@@ -97,13 +97,21 @@ function deVenda(v: Venda): Dados {
   };
 }
 
-function FormVenda({ editando }: { editando?: Venda }) {
+/** Dados vindos de uma proposta aceita: o formulário de venda já abre preenchido. */
+export type PropostaBase = { propostaId: string; numero: number; clienteId: string; tracoId: string; obra: string | null; endereco: string | null; volume: number; precoM3: number; condicoes: string | null };
+
+function FormVenda({ editando, inicial }: { editando?: Venda; inicial?: PropostaBase }) {
   const navegar = useNavigate();
   const [op, setOp] = useState<Opcoes | null>(null);
   const [d, setD] = useState<Dados>(() =>
     editando
       ? deVenda(editando)
-      : { vendedorId: '', clienteId: '', obra: '', endereco: '', contato: '', tracoId: '', volume: '', dataEntrega: somarDias(hojeLocal(), 1), horaEntrega: '07:30', bombeamento: false, precoM3: '', taxaBomba: '', formaPagamento: 'boleto', prazos: '28', observacoes: '' },
+      : {
+          vendedorId: '', clienteId: inicial?.clienteId ?? '', obra: inicial?.obra ?? '', endereco: inicial?.endereco ?? '', contato: '', tracoId: inicial?.tracoId ?? '',
+          volume: inicial ? String(inicial.volume).replace('.', ',') : '', dataEntrega: somarDias(hojeLocal(), 1), horaEntrega: '07:30', bombeamento: false,
+          precoM3: inicial ? String(inicial.precoM3).replace('.', ',') : '', taxaBomba: '', formaPagamento: 'boleto', prazos: '28',
+          observacoes: inicial ? `Venda da proposta nº ${String(inicial.numero).padStart(4, '0')}.` : '',
+        },
   );
   const [novoCliente, setNovoCliente] = useState<{ razaoSocial: string; cnpjCpf: string; telefone: string; cidade: string; uf: string } | null>(null);
   const [erro, setErro] = useState('');
@@ -170,6 +178,7 @@ function FormVenda({ editando }: { editando?: Venda }) {
       const r = editando
         ? await api<{ venda: Venda }>(`/com/vendas/${editando.id}`, { metodo: 'PUT', corpo })
         : await api<{ venda: Venda }>('/com/vendas', { corpo });
+      if (!editando && inicial) await api(`/com/propostas/${inicial.propostaId}/vincular`, { corpo: { vendaId: r.venda.id } }).catch(() => {});
       navegar(`/com/vendas/${r.venda.id}`, {
         replace: true,
         state: { aviso: enviar ? `Venda nº ${String(r.venda.numero).padStart(4, '0')} enviada para aprovação.` : `Venda nº ${String(r.venda.numero).padStart(4, '0')} salva como rascunho.` },
@@ -345,15 +354,17 @@ function FormVenda({ editando }: { editando?: Venda }) {
 }
 
 export function NovaVenda() {
+  const local = useLocation();
+  const inicial = (local.state as { proposta?: PropostaBase } | null)?.proposta;
   return (
     <>
       <div className="cabecalho">
         <div className="titulo">
           <h1>Nova venda</h1>
-          <span className="muted">Cliente, concreto, data da entrega e preço.</span>
+          <span className="muted">{inicial ? `Criada a partir da proposta nº ${String(inicial.numero).padStart(4, '0')}. Confira a data da entrega.` : 'Cliente, concreto, data da entrega e preço.'}</span>
         </div>
       </div>
-      <FormVenda />
+      <FormVenda inicial={inicial} />
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
+import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda, hojeLocal, nomeMes, somarMeses, type LancamentoResumo } from '../api';
+import { Notas } from './Notas';
 
 type Filtro = 'todos' | 'despesa' | 'receita';
 
@@ -28,6 +29,32 @@ export function Lancamentos() {
   }, [carregar]);
 
   const ir = (p: Record<string, string>) => setParams({ mes, tipo: filtro, ...p }, { replace: true });
+  // Lançamentos tem duas abas: receitas e despesas lançadas à mão, e as notas fiscais e XML que viram lançamentos.
+  const aba = params.get('aba') === 'notas' ? 'notas' : 'manuais';
+  const abas = (
+    <div className="abas" role="tablist" style={{ marginBottom: 12 }}>
+      <button type="button" role="tab" aria-selected={aba === 'manuais'} className={aba === 'manuais' ? 'ativa' : ''} onClick={() => setParams({ mes, tipo: filtro }, { replace: true })}>
+        Receitas e despesas
+      </button>
+      <button type="button" role="tab" aria-selected={aba === 'notas'} className={aba === 'notas' ? 'ativa' : ''} onClick={() => setParams({ aba: 'notas' }, { replace: true })}>
+        Notas fiscais e XML
+      </button>
+    </div>
+  );
+  if (aba === 'notas') {
+    return (
+      <>
+        <div className="cabecalho">
+          <div className="titulo">
+            <h1>Lançamentos</h1>
+            <span className="muted">Receitas e despesas pela data de competência, e as notas fiscais e XML que viram lançamentos.</span>
+          </div>
+        </div>
+        {abas}
+        <Notas embutida />
+      </>
+    );
+  }
   const termo = busca.trim().toLowerCase();
   const visiveis = (lista ?? []).filter((l) => !termo || [l.descricao, l.pessoa, l.categorias, l.documento, l.veiculos].some((x) => (x ?? '').toLowerCase().includes(termo)));
   const receitas = visiveis.filter((l) => l.tipo === 'receita').reduce((s, l) => s + l.valorTotal, 0);
@@ -38,7 +65,7 @@ export function Lancamentos() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Lançamentos</h1>
-          <span className="muted">Receitas e despesas pela data de competência. Compras e vendas com nota entram por <Link to="/fin/notas">Notas fiscais</Link>.</span>
+          <span className="muted">Receitas e despesas pela data de competência. Compras e vendas com nota entram pela aba Notas fiscais e XML.</span>
         </div>
         <div className="acoes">
           <Link className="btn btn-secundario" to="/fin/lancamentos/novo?tipo=receita">
@@ -50,6 +77,7 @@ export function Lancamentos() {
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {abas}
 
       <div className="filtros">
         <div className="navegar-mes">
@@ -142,4 +170,10 @@ export function Lancamentos() {
       </div>
     </>
   );
+}
+
+/** Antigo endereço das notas fiscais: abre a aba dentro de Lançamentos, mantendo os filtros. */
+export function RedirecionaNotas() {
+  const l = useLocation();
+  return <Navigate to={{ pathname: '/fin/lancamentos', search: `?aba=notas${l.search ? `&${l.search.slice(1)}` : ''}` }} replace />;
 }
