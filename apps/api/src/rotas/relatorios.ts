@@ -340,6 +340,50 @@ export function rotasRelatorios(banco: Banco) {
     });
 
     // ======================= Indicadores =======================
+    // Comercial mês a mês: vendas aprovadas (pela data de entrega) e propostas emitidas × fechadas (pela data de criação).
+    app.get<{ Querystring: Record<string, string | undefined> }>('/comercial', async (req) => {
+      const empresaId = empresaDo(req);
+      const { meses, inicio, fim } = periodo(req.query, 6);
+      const vendas = (
+        await banco.query(
+          `SELECT to_char(data_entrega, 'YYYY-MM') AS mes, count(*)::int AS n, coalesce(sum(volume_m3), 0) AS m3,
+                  coalesce(sum(volume_m3 * preco_m3_centavos + coalesce(taxa_bomba_centavos, 0)), 0) AS valor
+             FROM vendas WHERE empresa_id = $1 AND status IN ('aprovada', 'concluida') AND data_entrega >= $2 AND data_entrega < $3 GROUP BY 1`,
+          [empresaId, inicio, fim],
+        )
+      ).rows;
+      const propostas = (
+        await banco.query(
+          `SELECT ${MES_TS('criado_em')} AS mes,
+                  count(*) FILTER (WHERE status <> 'rascunho')::int AS emitidas,
+                  count(*) FILTER (WHERE status = 'aceita')::int AS fechadas,
+                  count(*) FILTER (WHERE status = 'enviada')::int AS aguardando,
+                  count(*) FILTER (WHERE status = 'recusada')::int AS recusadas
+             FROM propostas WHERE empresa_id = $1 AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date >= $2::date AND (criado_em AT TIME ZONE 'America/Sao_Paulo')::date < $3::date GROUP BY 1`,
+          [empresaId, inicio, fim],
+        )
+      ).rows;
+      const linhas = meses.map((m) => {
+        const v = vendas.find((x) => x.mes === m);
+        const p = propostas.find((x) => x.mes === m);
+        const emitidas = p?.emitidas ?? 0;
+        const fechadas = p?.fechadas ?? 0;
+        return {
+          mes: m,
+          vendas: v?.n ?? 0,
+          m3: num(v?.m3),
+          valor: reais(v?.valor),
+          precoMedio: v && num(v.m3) ? Math.round((reais(v.valor) / num(v.m3)) * 100) / 100 : null,
+          emitidas,
+          aguardando: p?.aguardando ?? 0,
+          recusadas: p?.recusadas ?? 0,
+          fechadas,
+          taxa: emitidas ? fechadas / emitidas : null,
+        };
+      });
+      return { meses, linhas };
+    });
+
     app.get<{ Querystring: Record<string, string | undefined> }>('/indicadores', async (req) => {
       const empresaId = empresaDo(req);
       const { meses, inicio, fim, hoje } = periodo(req.query, 6);

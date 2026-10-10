@@ -2,6 +2,9 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda, lerNumero } from '../api';
+import { useSessao } from '../sessao';
+import { CabecalhoDocumento } from '../componentes/Documento';
+import { Assinatura } from '../componentes/Suprimentos';
 import type { PropostaBase } from './Comercial';
 
 type Status = 'rascunho' | 'enviada' | 'aceita' | 'recusada';
@@ -257,6 +260,7 @@ export function PropostaEditar() {
 
 export function PropostaDetalhe() {
   const { id } = useParams();
+  const { empresa } = useSessao();
   const local = useLocation();
   const navegar = useNavigate();
   const [p, setP] = useState<Proposta | null>(null);
@@ -316,17 +320,15 @@ export function PropostaDetalhe() {
 
   return (
     <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <Link to="/com/propostas" className="small">← Propostas</Link>
-          <h1 style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-            Proposta nº {numeroFmt(p.numero)} <span className={`selo ${SELO[p.status]}`}>{ROTULO[p.status]}</span>
-          </h1>
-          <span className="muted">{p.clienteNome}{p.obra ? ` · ${p.obra}` : ''}</span>
-        </div>
-      </div>
-      {aviso && <div className="alerta" role="status">{aviso}</div>}
-      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <Link to="/com/propostas" className="small nao-imprimir">← Propostas</Link>
+      <CabecalhoDocumento
+        modulo="Comercial"
+        titulo={`Proposta nº ${numeroFmt(p.numero)}`}
+        descricao={`Para ${p.clienteNome}${p.obra ? `, obra ${p.obra}` : ''}.`}
+        filtros={[`Situação: ${ROTULO[p.status]}`, `Vendedor: ${p.vendedorNome}`]}
+      />
+      {aviso && <div className="alerta nao-imprimir" role="status">{aviso}</div>}
+      {erro && <div className="alerta alerta-erro nao-imprimir" role="alert">{erro}</div>}
 
       <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
         <div><div className="small muted">Traço</div><b>{p.tracoCodigo}{p.tracoDescricao ? ` · ${p.tracoDescricao}` : ''}</b></div>
@@ -344,14 +346,20 @@ export function PropostaDetalhe() {
           <h2 style={{ margin: 0 }}>Texto da proposta</h2>
           {p.textoIa && <span className="small muted">redigido pela IA</span>}
         </div>
-        {editavel ? (
-          <textarea aria-label="Texto da proposta" rows={12} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ainda sem texto. Use Redigir com IA ou escreva o seu." style={{ width: '100%' }} />
-        ) : (
-          <p style={{ whiteSpace: 'pre-wrap', margin: 0 }}>{p.texto || '—'}</p>
+        {editavel && (
+          <textarea className="nao-imprimir" aria-label="Texto da proposta" rows={12} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ainda sem texto. Use Redigir com IA ou escreva o seu." style={{ width: '100%' }} />
         )}
+        <p className={editavel ? 'so-imprimir' : undefined} style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
+          {editavel ? texto || '—' : p.texto || '—'}
+        </p>
       </div>
 
-      <div className="acoes" style={{ marginTop: 12, flexWrap: 'wrap' }}>
+      <div className="so-imprimir assinaturas">
+        <Assinatura nome={empresa?.nomeFantasia || empresa?.razaoSocial || ''} papel="Concreteira (responsável comercial)" />
+        <Assinatura nome={p.clienteNome} papel="Aceite do cliente" />
+      </div>
+
+      <div className="acoes nao-imprimir" style={{ marginTop: 12, flexWrap: 'wrap' }}>
         {editavel && (
           <>
             <button className="btn btn-primario" type="button" disabled={ocupado} onClick={redigir}>{p.texto ? 'Redigir de novo com IA' : 'Redigir com IA'}</button>
