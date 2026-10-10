@@ -61,6 +61,22 @@
   }
 }
 
+/* Agrega Construtora: a mesma identidade, com o azul no lugar do laranja. Ativada pelo atributo data-tipo no <html>. */
+:root[data-tipo="construtora"] {
+  --brand-orange: #1f5fad;
+  --action: #1f5fad;
+  --action-hover: #174a8a;
+  --focus: #1f5fad;
+}
+@media (prefers-color-scheme: dark) {
+  :root[data-tipo="construtora"] {
+    --brand-orange: #5b92d6;
+    --action: #2f6fbf;
+    --action-hover: #5b92d6;
+    --focus: #5b92d6;
+  }
+}
+
 * { box-sizing: border-box; }
 html, body, #raiz { height: 100%; }
 body {

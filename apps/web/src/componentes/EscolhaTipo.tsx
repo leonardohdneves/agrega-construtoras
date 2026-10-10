@@ -15,6 +15,13 @@ export function lerEscolha(): TipoEmpresa | null {
   }
 }
 
+/** Aplica a identidade da empresa escolhida (azul na construtora). */
+export function aplicarTipo(t: TipoEmpresa | null) {
+  if (t) document.documentElement.dataset.tipo = t;
+  else delete document.documentElement.dataset.tipo;
+}
+aplicarTipo(lerEscolha());
+
 function guardarEscolha(t: TipoEmpresa) {
   try {
     sessionStorage.setItem(CHAVE, t);
@@ -30,6 +37,7 @@ export function PortaEntrada({ children }: { children: ReactNode }) {
 
   function escolher(t: TipoEmpresa) {
     guardarEscolha(t);
+    aplicarTipo(t);
     // A construtora entra direto em Obras; o roteador só lê o endereço ao montar, então ajusta antes.
     if (t === 'construtora') window.history.replaceState(null, '', '/eng/obras');
     setEscolhido(t);
