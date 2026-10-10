@@ -6,7 +6,7 @@ import { COR_CONCRETEIRA, COR_CONSTRUTORA, Simbolo } from './Logo';
 export type TipoEmpresa = 'concreteira' | 'construtora';
 const CHAVE = 'agrega.tipo';
 
-function lerEscolha(): TipoEmpresa | null {
+export function lerEscolha(): TipoEmpresa | null {
   try {
     const v = sessionStorage.getItem(CHAVE);
     return v === 'concreteira' || v === 'construtora' ? v : null;
