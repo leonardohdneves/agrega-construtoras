@@ -12,10 +12,10 @@ export type Obra = {
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
 };
-type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number };
-type No = { id: string; paiId: string | null; nivel: Exclude<Nivel, 'obra'>; codigo: string; descricao: string; itens: number; subtotal: number | null };
+export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number };
+export type No = { id: string; paiId: string | null; nivel: Exclude<Nivel, 'obra'>; codigo: string; descricao: string; itens: number; subtotal: number | null };
 type LinhaOrc = { id: string; eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null; itemId: string; tipo: string; codigo: string; descricao: string; unidade: string; editado: boolean; quantidade: number; precoUnitario: number | null; total: number };
-type Orcamento = { nivelApropriacao: Nivel; bdiPercentual: number; subtotal: number; bdi: number; total: number; linhas: LinhaOrc[] };
+export type Orcamento = { nivelApropriacao: Nivel; bdiPercentual: number; subtotal: number; bdi: number; total: number; linhas: LinhaOrc[] };
 type ItemCatalogo = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; preco: number | null };
 
 export const ROTULO_NIVEL: Record<Nivel, string> = { obra: 'Obra', etapa: 'Etapa', subetapa: 'Subetapa', tarefa: 'Tarefa' };
@@ -267,7 +267,6 @@ export function EngObraDetalhe() {
   const [itens, setItens] = useState<ItemObra[]>([]);
   const [nos, setNos] = useState<No[]>([]);
   const [orc, setOrc] = useState<Orcamento | null>(null);
-  const [aba, setAba] = useState<'dados' | 'insumos' | 'eap'>('dados');
   const [erro, setErro] = useState('');
 
   const recarregar = () =>
@@ -286,12 +285,6 @@ export function EngObraDetalhe() {
 
   if (!obra) return erro ? <div className="alerta alerta-erro" role="alert">{erro}</div> : <p className="muted">Carregando…</p>;
 
-  const abas: [typeof aba, string][] = [
-    ['dados', 'Dados'],
-    ['insumos', 'Insumos e serviços'],
-    ['eap', 'EAP e orçamento'],
-  ];
-
   return (
     <>
       <div className="cabecalho">
@@ -306,22 +299,12 @@ export function EngObraDetalhe() {
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      <div className="abas" role="tablist">
-        {abas.map(([v, r]) => (
-          <button key={v} type="button" role="tab" aria-selected={aba === v} className={aba === v ? 'ativa' : ''} onClick={() => setAba(v)}>{r}</button>
-        ))}
-      </div>
-
-      {aba === 'dados' && <FormObra inicial={obra} aoSalvar={() => recarregar()} />}
-
-      {aba === 'insumos' && <AbaInsumos obraId={obra.id} itens={itens} aoMudar={recarregar} setErro={setErro} />}
-
-      {aba === 'eap' && <AbaEap obra={obra} nos={nos} itens={itens} orc={orc} aoMudar={recarregar} setErro={setErro} />}
+      <FormObra inicial={obra} aoSalvar={() => recarregar()} />
     </>
   );
 }
 
-function AbaInsumos({ obraId, itens, aoMudar, setErro }: { obraId: string; itens: ItemObra[]; aoMudar: () => void; setErro: (m: string) => void }) {
+export function AbaInsumos({ obraId, itens, aoMudar, setErro }: { obraId: string; itens: ItemObra[]; aoMudar: () => void; setErro: (m: string) => void }) {
   const [tabelas, setTabelas] = useState<Tabela[]>([]);
   const [tabelaId, setTabelaId] = useState('');
   const [catalogo, setCatalogo] = useState<ItemCatalogo[]>([]);
@@ -503,7 +486,7 @@ function AbaInsumos({ obraId, itens, aoMudar, setErro }: { obraId: string; itens
   );
 }
 
-function AbaEap({ obra, nos, itens, orc, aoMudar, setErro }: { obra: Obra; nos: No[]; itens: ItemObra[]; orc: Orcamento | null; aoMudar: () => void; setErro: (m: string) => void }) {
+export function AbaEap({ obra, nos, itens, orc, aoMudar, setErro }: { obra: Obra; nos: No[]; itens: ItemObra[]; orc: Orcamento | null; aoMudar: () => void; setErro: (m: string) => void }) {
   const nivelObra = obra.nivelApropriacao;
   const semEap = nivelObra === 'obra';
   const [paiId, setPaiId] = useState('');

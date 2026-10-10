@@ -80,6 +80,9 @@ export const MODULOS: Modulo[] = [
     perfis: GESTAO,
     itens: [
       { rotulo: 'Obras', para: '/eng/obras' },
+      { rotulo: 'Insumos e serviços', para: '/eng/insumos' },
+      { rotulo: 'EAP e orçamento', para: '/eng/eap' },
+      { rotulo: 'Planejamento', para: '/eng/planejamento' },
       { rotulo: 'Tabelas de referência', para: '/eng/tabelas' },
     ],
   },

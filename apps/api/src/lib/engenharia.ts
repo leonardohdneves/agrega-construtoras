@@ -44,7 +44,52 @@ export function numeroBr(texto: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export type LinhaInsumo = { codigo: string; descricao: string; unidade: string; precoCentavos: number; grupo: string | null };
+// Planejamento (fase 2): datas em dias corridos. Uma atividade começa no seu início informado ou no dia seguinte ao fim da predecessora, o que for depois.
+export type AtividadeCalc = { id: string; inicio: string; duracaoDias: number; predecessoraId: string | null };
+const DIA_MS = 86_400_000;
+const paraMs = (iso: string) => Date.UTC(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)) - 1, Number(iso.slice(8, 10)));
+const paraIso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+
+/** Verdadeiro se alguma atividade depende de si mesma, direta ou indiretamente. */
+export function temCiclo(atividades: AtividadeCalc[]): boolean {
+  const predecessora = new Map(atividades.map((a) => [a.id, a.predecessoraId]));
+  for (const a of atividades) {
+    const vistos = new Set<string>();
+    let atual: string | null = a.id;
+    while (atual) {
+      if (vistos.has(atual)) return true;
+      vistos.add(atual);
+      atual = predecessora.get(atual) ?? null;
+    }
+  }
+  return false;
+}
+
+export function calcularDatas(atividades: AtividadeCalc[]): Map<string, { inicio: string; fim: string }> {
+  const porId = new Map(atividades.map((a) => [a.id, a]));
+  const prontas = new Map<string, { ini: number; fim: number }>();
+  const calcular = (a: AtividadeCalc, pilha: Set<string>): { ini: number; fim: number } => {
+    const pronta = prontas.get(a.id);
+    if (pronta) return pronta;
+    if (pilha.has(a.id)) throw new Error('Dependência circular no planejamento.');
+    pilha.add(a.id);
+    let ini = paraMs(a.inicio);
+    const p = a.predecessoraId ? porId.get(a.predecessoraId) : undefined;
+    if (p) ini = Math.max(ini, calcular(p, pilha).fim + DIA_MS);
+    const r = { ini, fim: ini + (a.duracaoDias - 1) * DIA_MS };
+    prontas.set(a.id, r);
+    pilha.delete(a.id);
+    return r;
+  };
+  const saida = new Map<string, { inicio: string; fim: string }>();
+  for (const a of atividades) {
+    const r = calcular(a, new Set());
+    saida.set(a.id, { inicio: paraIso(r.ini), fim: paraIso(r.fim) });
+  }
+  return saida;
+}
+
+export type LinhaInsumo ={ codigo: string; descricao: string; unidade: string; precoCentavos: number; grupo: string | null };
 export type LinhaComposicao = { codigo: string; descricao: string; unidade: string; grupo: string | null };
 export type LinhaComponente = { composicao: string; insumo: string; coeficiente: number };
 export type LeituraCsv = { insumos: LinhaInsumo[]; composicoes: LinhaComposicao[]; componentes: LinhaComponente[]; erros: string[] };
