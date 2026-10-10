@@ -4,8 +4,12 @@ import { NOMES_PERFIL, type Modulo as ModuloApp, type Perfil } from '../api';
 import { podeAcessar, temModulo } from '../acesso';
 import { useSessao } from '../sessao';
 import { Logo } from './Logo';
+import { lerEscolha } from './EscolhaTipo';
+
+const ORDEM_CONSTRUTORA = ['engenharia', 'suprimentos', 'financeiro', 'comercial', 'gerencial', 'administrativo', 'configuracoes'];
 import {
   IconeBetoneira,
+  IconeCapacete,
   IconeCarrinho,
   IconeFrasco,
   IconeBomba,
@@ -72,7 +76,7 @@ export const MODULOS: Modulo[] = [
   {
     id: 'engenharia',
     titulo: 'Engenharia',
-    icone: <IconeBetoneira />,
+    icone: <IconeCapacete />,
     perfis: GESTAO,
     itens: [
       { rotulo: 'Obras', para: '/eng/obras' },
@@ -204,7 +208,11 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
     if (i.arquivo) return permitido(i.perfis, perfil) && temModulo(usuario, 'configuracoes');
     return podeAcessar(usuario, i.perfis ?? m.perfis, i.para ?? '');
   };
+  // Construtora: menu próprio, nesta ordem; os módulos da concreteira não aparecem.
+  const construtora = lerEscolha() === 'construtora';
   const modulos = MODULOS.filter((m) => (m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || m.id === 'engenharia' || temModulo(usuario, m.id as ModuloApp)))
+    .filter((m) => !construtora || m.id === 'admin' || ORDEM_CONSTRUTORA.includes(m.id))
+    .sort((a, b) => (construtora ? ORDEM_CONSTRUTORA.indexOf(a.id) - ORDEM_CONSTRUTORA.indexOf(b.id) : 0))
     .map((m) => ({ ...m, itens: m.itens.filter((i) => itemOk(m, i)) }))
     .filter((m) => m.itens.length);
   const ehAtual = (m: Modulo) => m.itens.some((i) => i.para && (caminho === i.para || caminho.startsWith(`${i.para}/`)));
