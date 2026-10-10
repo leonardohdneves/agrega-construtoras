@@ -70,6 +70,16 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
+    id: 'engenharia',
+    titulo: 'Engenharia',
+    icone: <IconeBetoneira />,
+    perfis: GESTAO,
+    itens: [
+      { rotulo: 'Obras', para: '/eng/obras' },
+      { rotulo: 'Tabelas de referência', para: '/eng/tabelas' },
+    ],
+  },
+  {
     id: 'suprimentos',
     titulo: 'Suprimentos',
     icone: <IconeCarrinho />,
@@ -194,7 +204,7 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
     if (i.arquivo) return permitido(i.perfis, perfil) && temModulo(usuario, 'configuracoes');
     return podeAcessar(usuario, i.perfis ?? m.perfis, i.para ?? '');
   };
-  const modulos = MODULOS.filter((m) => (m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || temModulo(usuario, m.id as ModuloApp)))
+  const modulos = MODULOS.filter((m) => (m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || m.id === 'engenharia' || temModulo(usuario, m.id as ModuloApp)))
     .map((m) => ({ ...m, itens: m.itens.filter((i) => itemOk(m, i)) }))
     .filter((m) => m.itens.length);
   const ehAtual = (m: Modulo) => m.itens.some((i) => i.para && (caminho === i.para || caminho.startsWith(`${i.para}/`)));

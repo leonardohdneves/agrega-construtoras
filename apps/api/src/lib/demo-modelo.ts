@@ -180,7 +180,7 @@ export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
     'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'propostas', 'vendas_adicionais', 'vendas', 'regras_producao', 'avisos', 'insumos_produtos',
     'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
     'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
-    'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
+    'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'orcamento_itens', 'eap_nos', 'obra_composicao_insumos', 'obra_itens', 'obras', 'ref_composicao_insumos', 'ref_itens', 'ref_tabelas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
   ]) {
     await c.query(`DELETE FROM ${t} WHERE empresa_id = $1`, [empresaId]);
   }

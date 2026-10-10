@@ -8,6 +8,7 @@ import { ProvedorSessao, useSessao } from './sessao';
 import { podeAcessar } from './acesso';
 import { Layout } from './componentes/Layout';
 import { Entrar } from './paginas/Entrar';
+import { PortaEntrada } from './componentes/EscolhaTipo';
 import { Painel } from './paginas/Painel';
 import { Empresa } from './paginas/Empresa';
 import { Usuarios } from './paginas/Usuarios';
@@ -58,6 +59,8 @@ import { Indicadores } from './paginas/Indicadores';
 import { Conciliacao } from './paginas/Conciliacao';
 import { ComRelatorios, ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from './paginas/Comercial';
 import { ComPropostas, PropostaDetalhe, PropostaEditar, PropostaNova } from './paginas/Propostas';
+import { EngTabelas, EngTabelaDetalhe } from './paginas/EngTabelas';
+import { EngObras, EngObraNova, EngObraDetalhe } from './paginas/EngObras';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
 import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
 import { PaginaMinhasCargas } from './paginas/MinhasCargas';
@@ -91,6 +94,7 @@ function NaoEncontrado() {
 createRoot(document.getElementById('raiz')!).render(
   <StrictMode>
     <ProvedorSessao>
+      <PortaEntrada>
       <BrowserRouter>
         <Routes>
           <Route path="/entrar" element={<Entrar />} />
@@ -169,6 +173,11 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="com/propostas/nova" element={<Protegido perfis={COMERCIAL}><PropostaNova /></Protegido>} />
             <Route path="com/propostas/:id" element={<Protegido perfis={COMERCIAL}><PropostaDetalhe /></Protegido>} />
             <Route path="com/propostas/:id/editar" element={<Protegido perfis={COMERCIAL}><PropostaEditar /></Protegido>} />
+            <Route path="eng/tabelas" element={<Protegido perfis={['dono', 'gestor']}><EngTabelas /></Protegido>} />
+            <Route path="eng/tabelas/:id" element={<Protegido perfis={['dono', 'gestor']}><EngTabelaDetalhe /></Protegido>} />
+            <Route path="eng/obras" element={<Protegido perfis={['dono', 'gestor']}><EngObras /></Protegido>} />
+            <Route path="eng/obras/nova" element={<Protegido perfis={['dono', 'gestor']}><EngObraNova /></Protegido>} />
+            <Route path="eng/obras/:id" element={<Protegido perfis={['dono', 'gestor']}><EngObraDetalhe /></Protegido>} />
             <Route path="com/vendas" element={<Protegido perfis={COMERCIAL}><ComVendas /></Protegido>} />
             <Route path="com/vendas/nova" element={<Protegido perfis={COMERCIAL}><NovaVenda /></Protegido>} />
             <Route path="com/vendas/:id" element={<Protegido perfis={COMERCIAL}><VendaDetalhe /></Protegido>} />
@@ -198,6 +207,7 @@ createRoot(document.getElementById('raiz')!).render(
           </Route>
         </Routes>
       </BrowserRouter>
+      </PortaEntrada>
     </ProvedorSessao>
   </StrictMode>,
 );
