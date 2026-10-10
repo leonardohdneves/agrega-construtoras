@@ -7,7 +7,7 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
-import { bdiCalculado, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, temCiclo, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -22,6 +22,13 @@ const r2 = (n: number) => Math.round(n * 100) / 100;
 const POSICAO: Record<NivelEap, number> = { etapa: 1, subetapa: 2, tarefa: 3 };
 const texto = (max = 200) => z.string().trim().max(max).optional().nullable().transform((v) => v || null);
 const uf = z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'UF inválida.').optional().nullable().transform((v) => v || null);
+const esquemaAtividade = z.object({
+  descricao: z.string().trim().min(2, 'Descreva a atividade.').max(200),
+  eapNoId: z.string().regex(UUID).optional().nullable(),
+  inicio: z.string().regex(DATA, 'Data de início inválida.'),
+  duracaoDias: z.number().int('A duração é em dias inteiros.').min(1, 'Duração mínima de 1 dia.').max(3650),
+  predecessoraId: z.string().regex(UUID).optional().nullable(),
+});
 const pct = z.number().min(0, 'Os percentuais do BDI não podem ser negativos.').max(99.99, 'Percentual do BDI fora da faixa.');
 const mes = z.string().regex(/^\d{4}-\d{2}$/, 'Mês de referência no formato AAAA-MM.').optional().nullable().transform((v) => v || null);
 
@@ -576,6 +583,8 @@ export function rotasEngenharia(banco: Banco) {
           throw new ErroHttp(409, 'Este nó tem filhos. Exclua-os antes.');
         if ((await c.query('SELECT 1 FROM orcamento_itens WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
           throw new ErroHttp(409, 'Este nó tem itens no orçamento. Retire-os antes.');
+        if ((await c.query('SELECT 1 FROM obra_atividades WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
+          throw new ErroHttp(409, 'Este nó tem atividades no planejamento. Retire-as antes.');
         const n = (await c.query('DELETE FROM eap_nos WHERE id = $1 AND obra_id = $2', [req.params.noId, obra.id])).rowCount;
         if (!n) throw naoEncontrado('Nó da EAP');
       });
@@ -583,6 +592,104 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     // ---------------------------------------------------------------- orçamento
+
+    // ---------------------------------------------------------------- planejamento (fase 2)
+
+    /** Atividade no nível do orçamento: obra sem EAP, ou nó da EAP no nível de apropriação. */
+    async function validarNoDaAtividade(c: Cliente, obra: Record<string, any>, eapNoId: string | null) {
+      if (obra.nivel_apropriacao === 'obra') {
+        if (eapNoId) throw new ErroHttp(400, 'Esta obra planeja no nível da obra, sem nó da EAP.');
+        return;
+      }
+      if (!eapNoId) throw new ErroHttp(400, `Escolha o nó da EAP no nível ${obra.nivel_apropriacao}.`);
+      const no = (await c.query('SELECT nivel FROM eap_nos WHERE id = $1 AND obra_id = $2', [eapNoId, obra.id])).rows[0];
+      if (!no) throw naoEncontrado('Nó da EAP');
+      if (no.nivel !== obra.nivel_apropriacao) throw new ErroHttp(400, `O planejamento usa o nível ${obra.nivel_apropriacao}; este nó é ${no.nivel}.`);
+    }
+
+    const dataIso = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+
+    app.get<{ Params: { id: string } }>('/obras/:id/planejamento', async (req) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const r = await banco.query(
+        `SELECT a.*, n.codigo AS eap_codigo, n.descricao AS eap_descricao
+           FROM obra_atividades a LEFT JOIN eap_nos n ON n.id = a.eap_no_id
+          WHERE a.obra_id = $1 ORDER BY a.ordem, a.criado_em`,
+        [req.params.id],
+      );
+      const datas = calcularDatas(r.rows.map((a) => ({ id: a.id, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
+      return {
+        atividades: r.rows.map((a) => {
+          const d = datas.get(a.id)!;
+          return {
+            id: a.id, ordem: a.ordem, descricao: a.descricao, eapNoId: a.eap_no_id ?? null, eapCodigo: a.eap_codigo ?? null, eapDescricao: a.eap_descricao ?? null,
+            inicioInformado: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null, inicio: d.inicio, fim: d.fim,
+          };
+        }),
+      };
+    });
+
+    app.post<{ Params: { id: string } }>('/obras/:id/planejamento', async (req, reply) => {
+      const d = esquemaAtividade.parse(req.body);
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        await validarNoDaAtividade(c, obra, d.eapNoId ?? null);
+        if (d.predecessoraId && !(await c.query('SELECT 1 FROM obra_atividades WHERE id = $1 AND obra_id = $2', [d.predecessoraId, obra.id])).rowCount)
+          throw naoEncontrado('Atividade predecessora');
+        const ordem = (await c.query('SELECT coalesce(max(ordem), 0) + 1 AS n FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows[0].n;
+        const r = await c.query(
+          `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem)
+           VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+          [obra.id, d.eapNoId ?? null, d.descricao, d.inicio, d.duracaoDias, d.predecessoraId ?? null, ordem],
+        );
+        return r.rows[0].id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.put<{ Params: { id: string; atId: string } }>('/obras/:id/planejamento/:atId', async (req) => {
+      const d = esquemaAtividade.partial().parse(req.body);
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const atual = (await c.query('SELECT * FROM obra_atividades WHERE id = $1 AND obra_id = $2', [req.params.atId, obra.id])).rows[0];
+        if (!atual) throw naoEncontrado('Atividade');
+        const campos = {
+          descricao: d.descricao ?? atual.descricao,
+          eapNoId: d.eapNoId !== undefined ? d.eapNoId : atual.eap_no_id,
+          inicio: d.inicio ?? dataIso(atual.inicio),
+          duracaoDias: d.duracaoDias ?? Number(atual.duracao_dias),
+          predecessoraId: d.predecessoraId !== undefined ? d.predecessoraId : atual.predecessora_id,
+        };
+        await validarNoDaAtividade(c, obra, campos.eapNoId ?? null);
+        if (campos.predecessoraId) {
+          if (!(await c.query('SELECT 1 FROM obra_atividades WHERE id = $1 AND obra_id = $2', [campos.predecessoraId, obra.id])).rowCount)
+            throw naoEncontrado('Atividade predecessora');
+          const todas = (await c.query('SELECT id, predecessora_id, inicio, duracao_dias FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows;
+          const mudadas = todas.map((x) => ({ id: x.id as string, inicio: dataIso(x.inicio), duracaoDias: Number(x.duracao_dias), predecessoraId: (x.id === atual.id ? campos.predecessoraId : x.predecessora_id) as string | null }));
+          if (temCiclo(mudadas)) throw new ErroHttp(409, 'Essa predecessora cria um ciclo: a atividade depende dela mesma.');
+        }
+        await c.query(
+          `UPDATE obra_atividades SET descricao = $3, eap_no_id = $4, inicio = $5, duracao_dias = $6, predecessora_id = $7, atualizado_em = now()
+            WHERE id = $1 AND obra_id = $2`,
+          [atual.id, obra.id, campos.descricao, campos.eapNoId ?? null, campos.inicio, campos.duracaoDias, campos.predecessoraId ?? null],
+        );
+      });
+      return { ok: true };
+    });
+
+    app.delete<{ Params: { id: string; atId: string } }>('/obras/:id/planejamento/:atId', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const n = (await c.query('DELETE FROM obra_atividades WHERE id = $1 AND obra_id = $2', [req.params.atId, obra.id])).rowCount;
+        if (!n) throw naoEncontrado('Atividade');
+      });
+      return { ok: true };
+    });
 
     app.get<{ Params: { id: string } }>('/obras/:id/orcamento', async (req) => {
       const empresaId = empresaDo(req);

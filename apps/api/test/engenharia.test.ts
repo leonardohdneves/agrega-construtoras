@@ -1,6 +1,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bdiCalculado, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, numeroBr } from '../src/lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, numeroBr, temCiclo } from '../src/lib/engenharia.ts';
+
+test('planejamento: sucessora começa no dia seguinte ao fim da predecessora', () => {
+  const datas = calcularDatas([
+    { id: 'a', inicio: '2026-10-01', duracaoDias: 3, predecessoraId: null },
+    { id: 'b', inicio: '2026-09-20', duracaoDias: 2, predecessoraId: 'a' },
+    { id: 'c', inicio: '2026-10-10', duracaoDias: 1, predecessoraId: 'b' },
+  ]);
+  assert.deepEqual(datas.get('a'), { inicio: '2026-10-01', fim: '2026-10-03' });
+  // b começa em 04/10 (fim de a + 1), não no início informado.
+  assert.deepEqual(datas.get('b'), { inicio: '2026-10-04', fim: '2026-10-05' });
+  // c tem início informado depois de b, então prevalece.
+  assert.deepEqual(datas.get('c'), { inicio: '2026-10-10', fim: '2026-10-10' });
+});
+
+test('planejamento: detecta dependência circular', () => {
+  assert.equal(temCiclo([{ id: 'a', inicio: '2026-10-01', duracaoDias: 1, predecessoraId: 'b' }, { id: 'b', inicio: '2026-10-01', duracaoDias: 1, predecessoraId: 'a' }]), true);
+  assert.equal(temCiclo([{ id: 'a', inicio: '2026-10-01', duracaoDias: 1, predecessoraId: 'a' }]), true);
+  assert.equal(temCiclo([{ id: 'a', inicio: '2026-10-01', duracaoDias: 1, predecessoraId: null }, { id: 'b', inicio: '2026-10-01', duracaoDias: 1, predecessoraId: 'a' }]), false);
+});
 
 test('BDI calculado pela fórmula do TCU', () => {
   // (1+0,0668) x (1+0,0123) x (1+0,074) / (1-0,0665) - 1 = 24,24%
