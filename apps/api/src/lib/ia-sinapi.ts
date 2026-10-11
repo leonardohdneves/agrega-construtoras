@@ -1,20 +1,29 @@
-// Conversão de tabelas de composições (SINAPI ou própria) para o formato padrão, com a IA (API da Anthropic).
+// Conversão de tabelas de insumos e composições (SINAPI ou própria) para o formato padrão, com a IA (API da Anthropic).
 // A IA só descobre a estrutura do arquivo (em que coluna está cada campo); os dados são lidos e validados no código.
-// Planilhas .xlsx chegam aqui já convertidas em texto pelo navegador (uma aba, colunas separadas por ponto e vírgula).
+//
+// Fluxo: o navegador manda só as primeiras linhas para a IA (mapearColunasIa); com o mapa, recorta as colunas
+// úteis da planilha inteira e manda o texto recortado para a conversão (aplicarMapa), que valida, achata as
+// composições auxiliares em insumos e gera o CSV padrão.
 import { z } from 'zod';
 import { ErroIa } from './ia-nota.ts';
-import { lerCsvReferencia, numeroBr, type LeituraCsv } from './engenharia.ts';
+import { numeroBr } from './engenharia.ts';
 
-const CAMPOS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
-const LIMITE_AMOSTRA = 40;
+export const CAMPOS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
 const LIMITE_CARACTERES = 20_000;
 
 const indice = z.number().int().min(0).max(500).nullable();
-const valorTipo = z.string().trim().nullable();
+/** Texto exato da coluna de tipo; lista quando mais de um texto indica o mesmo tipo; "" para célula vazia. */
+const valorTipo = z.union([z.string(), z.array(z.string())]).nullable().optional().transform((v) => v ?? null);
 
-const esquemaMapa = z.object({
+export const esquemaValoresTipo = z.object({
+  insumo: valorTipo,
+  composicao: valorTipo,
+  componenteInsumo: valorTipo,
+  componenteComposicao: valorTipo,
+});
+export const esquemaMapa = z.object({
   separador: z.enum([';', ',', '\t', '|']),
-  linhaInicial: z.number().int().min(1).max(200),
+  linhaInicial: z.number().int().min(0).max(200),
   colunas: z.object({
     tipo: indice,
     codigo: indice,
@@ -26,62 +35,65 @@ const esquemaMapa = z.object({
     coeficiente: indice,
   }),
   tipoUnico: z.enum(['insumo', 'composicao']).nullable(),
-  valoresTipo: z.object({ insumo: valorTipo, composicao: valorTipo, componente: valorTipo }).nullable(),
+  valoresTipo: esquemaValoresTipo.nullable(),
 });
 export type MapaColunas = z.infer<typeof esquemaMapa>;
+export type ValoresTipo = z.infer<typeof esquemaValoresTipo>;
 
 export type Contexto = { uf: string | null; desonerado: boolean };
-export type Conversao = { csv: string; ignoradas: number; semPreco: number; componentesDescartados: number };
-export type ResultadoConversao = Conversao & { mapa: MapaColunas; leitura: LeituraCsv };
 
-const linhasUteis = (texto: string) => texto.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.replace(/[;,\t|]/g, '').trim() !== '');
+/** Itens que já estão na tabela de destino (importação para uma tabela existente). */
+export type Externos = { insumos: Set<string>; composicoes: Map<string, { insumo: string; coeficiente: number }[]> };
 
-/** Primeiras linhas do arquivo, com limite de tamanho, para a IA entender a estrutura. */
-function amostra(texto: string): string {
-  return linhasUteis(texto)
-    .slice(0, LIMITE_AMOSTRA)
-    .map((l, i) => `${i + 1}: ${l}`)
-    .join('\n')
-    .slice(0, LIMITE_CARACTERES);
-}
+export type Conversao = {
+  csv: string;
+  ignoradas: number;
+  semPreco: number;
+  componentesDescartados: number;
+  auxiliaresAchatadas: number;
+  composicoesSemInsumos: number;
+};
+
+/** Linhas com algum conteúdo (a mesma regra no navegador e aqui, para a numeração bater). */
+export const linhasUteis = (texto: string) => texto.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.replace(/[;,\t|]/g, '').trim() !== '');
 
 function prompt(ctx: Contexto): string {
   return (
     'Você recebe as primeiras linhas (numeradas) de um arquivo de insumos e/ou composições de engenharia (SINAPI da Caixa ou tabela própria). ' +
-    'Descubra a estrutura e responda somente com JSON, sem texto em volta, neste formato:\n' +
-    '{"separador": ";" | "," | "\\t" | "|", "linhaInicial": número da linha do cabeçalho de colunas (use 1 se não houver cabeçalho; os dados começam na linha seguinte), ' +
-    '"colunas": {"tipo": índice ou null, "codigo": índice, "descricao": índice, "unidade": índice, "preco": índice ou null, "grupo": índice ou null, "insumo": índice ou null, "coeficiente": índice ou null}, ' +
-    '"tipoUnico": "insumo" | "composicao" | null, ' +
-    '"valoresTipo": {"insumo": texto ou null, "composicao": texto ou null, "componente": texto ou null} ou null}\n\n' +
-    'Regras:\n' +
-    '- Os índices de coluna começam em 0, contando as colunas pelo separador.\n' +
-    '- Se o arquivo não tem coluna de tipo porque todas as linhas são do mesmo tipo (por exemplo, uma planilha só de insumos), use "tipo": null, "tipoUnico" com esse tipo e "valoresTipo": null.\n' +
-    '- Se há coluna de tipo, use "tipoUnico": null e informe em "valoresTipo" o texto exato da coluna para cada tipo; use "" quando o tipo é identificado pela célula vazia, e null quando o tipo não aparece.\n' +
-    '- "componente" é a linha de um insumo dentro de uma composição: o código da composição vai em "codigo", o código do insumo em "insumo" e a quantidade em "coeficiente".\n' +
-    '- "grupo" é a classificação ou família do item, se existir.\n' +
-    `- Se houver uma coluna de preço por UF, use a coluna da UF ${ctx.uf ?? '(não informada: escolha a primeira)'}.` +
-    ` Se houver preço com e sem desoneração na mesma linha, use o ${ctx.desonerado ? 'desonerado' : 'não desonerado'}.\n` +
-    '- Não invente colunas: use null quando a coluna não existir.'
+    'Descubra a estrutura e responda somente com um objeto JSON, sem texto em volta e sem markdown, neste formato:\n' +
+    '{"separador": ";", "linhaInicial": 3, ' +
+    '"colunas": {"tipo": 0, "codigo": 1, "descricao": 2, "unidade": 3, "preco": null, "grupo": null, "insumo": null, "coeficiente": null}, ' +
+    '"tipoUnico": null, ' +
+    '"valoresTipo": {"insumo": null, "composicao": "", "componenteInsumo": "INSUMO", "componenteComposicao": "COMPOSICAO"}}\n\n' +
+    'Significado:\n' +
+    '- separador: ";", ",", "\\t" ou "|".\n' +
+    '- linhaInicial: número da linha do cabeçalho de colunas; os dados começam na linha seguinte. Use 0 se não houver cabeçalho.\n' +
+    '- colunas: índice de cada campo, começando em 0, contando pelo separador; null quando o campo não existir. ' +
+    'Campos: tipo (coluna que diz o tipo da linha), codigo, descricao, unidade, preco, grupo (classificação ou família), ' +
+    'insumo (código do item dentro de uma composição) e coeficiente (quantidade do item por unidade da composição).\n' +
+    '- tipoUnico: "insumo" ou "composicao" quando todas as linhas são do mesmo tipo e não há coluna de tipo (por exemplo, uma planilha só de insumos); senão null.\n' +
+    '- valoresTipo: o texto exato da coluna de tipo para cada tipo de linha, uma lista de textos se houver mais de um, "" se a célula fica vazia, null se o tipo não aparece:\n' +
+    '  insumo = linha de cadastro de um insumo com preço; composicao = linha de cabeçalho de uma composição; ' +
+    'componenteInsumo = linha de um insumo dentro de uma composição; componenteComposicao = linha de uma composição auxiliar dentro de outra composição.\n' +
+    '- Nas linhas de componente, "codigo" é o código da composição a que a linha pertence e "insumo" é o código do item.\n\n' +
+    'Exemplo de SINAPI analítico: colunas "Grupo; Código da Composição; Tipo Item; Código do Item; Descrição; Unidade; Coeficiente", ' +
+    'com a linha da composição tendo "Tipo Item" vazio e as linhas dos itens com "INSUMO" ou "COMPOSICAO": ' +
+    'tipo = coluna Tipo Item, codigo = Código da Composição, insumo = Código do Item, composicao = "", componenteInsumo = "INSUMO", componenteComposicao = "COMPOSICAO".\n\n' +
+    `Se houver uma coluna de preço por UF, use a da UF ${ctx.uf ?? '(não informada: escolha a primeira)'}. ` +
+    `Se houver preço com e sem desoneração, use o ${ctx.desonerado ? 'desonerado' : 'não desonerado'}. ` +
+    'Não invente colunas.'
   );
 }
 
-/** Pede à IA o mapeamento de colunas. */
-export async function mapearColunasIa(texto: string, ctx: Contexto): Promise<MapaColunas> {
-  const chave = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!chave) throw new ErroIa('A IA não está configurada. Use o formato padrão do arquivo.');
+async function chamarIa(chave: string, conteudo: string): Promise<{ texto: string; parada: string }> {
   const modelo = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5';
-  const pedido = {
-    model: modelo,
-    max_tokens: 800,
-    messages: [{ role: 'user', content: `${prompt(ctx)}\n\nLinhas do arquivo:\n${amostra(texto)}` }],
-  };
   let resp: Response;
   try {
     resp = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: { 'content-type': 'application/json', 'x-api-key': chave, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify(pedido),
-      signal: AbortSignal.timeout(90_000),
+      body: JSON.stringify({ model: modelo, max_tokens: 4000, messages: [{ role: 'user', content: conteudo }] }),
+      signal: AbortSignal.timeout(120_000),
     });
   } catch {
     throw new ErroIa('Não consegui falar com o serviço de IA agora. Tente de novo em instantes.');
@@ -94,124 +106,180 @@ export async function mapearColunasIa(texto: string, ctx: Contexto): Promise<Map
     if (resp.status === 429 || resp.status === 529) throw new ErroIa('O serviço de IA está ocupado. Tente de novo em instantes.');
     throw new ErroIa(`A IA não leu a estrutura do arquivo (código ${resp.status}).`);
   }
-  const corpo = (await resp.json()) as { content?: { type: string; text?: string }[] };
-  const resposta = (corpo.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
-  const ini = resposta.indexOf('{');
-  const fim = resposta.lastIndexOf('}');
-  const falha = 'A IA não entendeu a estrutura do arquivo. Confira se escolheu a aba certa ou use o formato padrão.';
-  if (ini < 0 || fim < ini) {
-    console.error(`[ia-sinapi] resposta sem JSON: ${resposta.slice(0, 500)}`);
-    throw new ErroIa(falha);
-  }
-  let json: unknown;
-  try {
-    json = JSON.parse(resposta.slice(ini, fim + 1));
-  } catch {
-    console.error(`[ia-sinapi] JSON inválido: ${resposta.slice(0, 500)}`);
-    throw new ErroIa(falha);
-  }
-  const mapa = esquemaMapa.safeParse(json);
-  if (!mapa.success) {
-    console.error(`[ia-sinapi] mapa fora do esquema: ${JSON.stringify(json).slice(0, 500)} · ${mapa.error.message.slice(0, 300)}`);
-    throw new ErroIa(falha);
-  }
-  const m = mapa.data;
-  if (m.colunas.codigo === null || m.colunas.descricao === null || m.colunas.unidade === null) {
-    throw new ErroIa('A IA não encontrou as colunas de código, descrição ou unidade nesta aba.');
-  }
-  if (m.colunas.tipo === null && !m.tipoUnico) throw new ErroIa('A IA não identificou se as linhas são insumos ou composições.');
-  if (m.colunas.tipo !== null && !m.valoresTipo) throw new ErroIa('A IA não identificou os valores da coluna de tipo.');
-  return m;
+  const corpo = (await resp.json()) as { content?: { type: string; text?: string }[]; stop_reason?: string };
+  const texto = (corpo.content ?? []).filter((b) => b.type === 'text').map((b) => b.text ?? '').join('');
+  if (!texto.trim()) console.error(`[ia-sinapi] resposta vazia: stop_reason=${corpo.stop_reason} blocos=${(corpo.content ?? []).map((b) => b.type).join(',')}`);
+  return { texto, parada: corpo.stop_reason ?? '' };
 }
 
-type Tipo = 'insumo' | 'composicao' | 'componente';
+/** Pede à IA o mapeamento de colunas a partir das primeiras linhas do arquivo. */
+export async function mapearColunasIa(amostra: string, ctx: Contexto): Promise<MapaColunas> {
+  const chave = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!chave) throw new ErroIa('A IA não está configurada. Use o formato padrão do arquivo.');
+  const linhas = linhasUteis(amostra)
+    .slice(0, 40)
+    .map((l, i) => `${i + 1}: ${l.length > 700 ? `${l.slice(0, 700)}…` : l}`)
+    .join('\n')
+    .slice(0, LIMITE_CARACTERES);
+  const conteudo = `${prompt(ctx)}\n\nLinhas do arquivo:\n${linhas}`;
+  const falha = 'A IA não entendeu a estrutura do arquivo. Confira se escolheu a aba certa ou use o formato padrão.';
+
+  // Uma nova tentativa quando a resposta vem vazia ou sem JSON válido.
+  for (let tentativa = 1; tentativa <= 2; tentativa++) {
+    const { texto } = await chamarIa(chave, conteudo);
+    const ini = texto.indexOf('{');
+    const fim = texto.lastIndexOf('}');
+    if (ini < 0 || fim < ini) {
+      console.error(`[ia-sinapi] tentativa ${tentativa} sem JSON: ${texto.slice(0, 300)} · início do arquivo: ${linhas.slice(0, 600)}`);
+      continue;
+    }
+    let json: unknown;
+    try {
+      json = JSON.parse(texto.slice(ini, fim + 1));
+    } catch {
+      console.error(`[ia-sinapi] tentativa ${tentativa} JSON inválido: ${texto.slice(0, 300)}`);
+      continue;
+    }
+    const mapa = esquemaMapa.safeParse(json);
+    if (!mapa.success) {
+      console.error(`[ia-sinapi] tentativa ${tentativa} fora do esquema: ${JSON.stringify(json).slice(0, 500)} · ${mapa.error.message.slice(0, 300)}`);
+      continue;
+    }
+    const m = mapa.data;
+    if (m.colunas.codigo === null) throw new ErroIa('A IA não encontrou a coluna de código nesta aba.');
+    if (m.colunas.tipo === null && !m.tipoUnico) throw new ErroIa('A IA não identificou se as linhas são insumos ou composições.');
+    if (m.colunas.tipo !== null && !m.valoresTipo) throw new ErroIa('A IA não identificou os valores da coluna de tipo.');
+    return m;
+  }
+  throw new ErroIa(falha);
+}
+
+type Tipo = 'insumo' | 'composicao' | 'compInsumo' | 'compComposicao';
+
+const norm = (s: string) => s.trim().toLowerCase();
+const lista = (v: string | string[] | null) => (v === null ? null : (Array.isArray(v) ? v : [v]).map(norm));
+const numeroTexto = (n: number) => String(Number(n.toPrecision(12)));
 
 /**
- * Aplica o mapeamento ao arquivo inteiro e gera o CSV padrão.
- * Linhas que não são dados (títulos, totais, rodapés) e insumos sem preço são ignorados e contados.
- * Componentes que apontam para insumo ou composição fora do arquivo são descartados e contados.
+ * Aplica o mapeamento ao arquivo e gera o CSV padrão.
+ * - Linhas que não são dados (títulos, totais, rodapés) e insumos sem preço ficam de fora e são contados.
+ * - Composições auxiliares dentro de outras composições são achatadas: viram os insumos delas × coeficiente,
+ *   porque a tabela guarda composição como lista de insumos.
+ * - Itens de composição que não existem no arquivo nem na tabela de destino são descartados e contados.
  */
-export function aplicarMapa(texto: string, mapa: MapaColunas): Conversao {
+export function aplicarMapa(texto: string, mapa: MapaColunas, externos: Externos = { insumos: new Set(), composicoes: new Map() }): Conversao {
   const linhas = linhasUteis(texto).slice(mapa.linhaInicial);
-  const norm = (s: string | null | undefined) => (s ?? '').trim().toLowerCase();
   const vt = mapa.valoresTipo;
+  const valores: [Tipo, string[] | null][] = vt
+    ? [['insumo', lista(vt.insumo)], ['composicao', lista(vt.composicao)], ['compInsumo', lista(vt.componenteInsumo)], ['compComposicao', lista(vt.componenteComposicao)]]
+    : [];
   const tipoDe = (bruto: string): Tipo | null => {
     if (mapa.colunas.tipo === null) return mapa.tipoUnico;
     const b = norm(bruto);
-    if (vt?.insumo != null && b === norm(vt.insumo)) return 'insumo';
-    if (vt?.composicao != null && b === norm(vt.composicao)) return 'composicao';
-    if (vt?.componente != null && b === norm(vt.componente)) return 'componente';
+    for (const [tipo, vs] of valores) if (vs?.includes(b)) return tipo;
     return null;
   };
 
-  type Registro = { tipo: Tipo; codigo: string; descricao: string; unidade: string; preco: string; grupo: string; insumo: string; coeficiente: string };
-  const registros: Registro[] = [];
+  type Cadastro = { codigo: string; descricao: string; unidade: string; preco: string; grupo: string };
+  const insumos = new Map<string, Cadastro>();
+  const composicoes = new Map<string, Cadastro>();
+  const itens = new Map<string, { tipo: 'compInsumo' | 'compComposicao'; codigo: string; coeficiente: number }[]>();
   let ignoradas = 0;
   let semPreco = 0;
+
   for (const linha of linhas) {
-    const celulas = linha.split(mapa.separador).map((c) => c.trim().replace(/[;\r\n]/g, ','));
+    const celulas = linha.split(mapa.separador).map((c) => c.trim());
     const valor = (campo: (typeof CAMPOS)[number]) => {
       const idx = mapa.colunas[campo];
-      return idx === null ? '' : (celulas[idx] ?? '').trim();
+      return idx === null ? '' : (celulas[idx] ?? '').replace(/[;\r\n]/g, ',').trim();
     };
     const tipo = tipoDe(valor('tipo'));
-    const r: Registro = { tipo: tipo ?? 'insumo', codigo: valor('codigo'), descricao: valor('descricao'), unidade: valor('unidade'), preco: valor('preco'), grupo: valor('grupo'), insumo: valor('insumo'), coeficiente: valor('coeficiente') };
-    if (!tipo || !r.codigo) {
+    const codigo = valor('codigo');
+    if (!tipo || !codigo) {
       ignoradas++;
       continue;
     }
-    if (tipo === 'componente') {
-      if (!r.insumo || numeroBr(r.coeficiente) === null) {
+    if (tipo === 'compInsumo' || tipo === 'compComposicao') {
+      const item = valor('insumo');
+      const coeficiente = numeroBr(valor('coeficiente'));
+      if (!item || coeficiente === null || coeficiente < 0) {
         ignoradas++;
         continue;
       }
-    } else {
-      if (!r.descricao || !r.unidade) {
-        ignoradas++;
+      const l = itens.get(codigo) ?? [];
+      l.push({ tipo, codigo: item, coeficiente });
+      itens.set(codigo, l);
+      continue;
+    }
+    const cad: Cadastro = { codigo, descricao: valor('descricao'), unidade: valor('unidade'), preco: valor('preco'), grupo: valor('grupo') };
+    if (!cad.descricao || !cad.unidade) {
+      ignoradas++;
+      continue;
+    }
+    if (tipo === 'insumo') {
+      const p = numeroBr(cad.preco);
+      if (p === null || p < 0) {
+        semPreco++;
         continue;
       }
-      if (tipo === 'insumo') {
-        const p = numeroBr(r.preco);
-        if (p === null || p < 0) {
-          semPreco++;
-          continue;
-        }
+      if (!insumos.has(codigo)) insumos.set(codigo, cad);
+    } else if (!composicoes.has(codigo)) {
+      composicoes.set(codigo, cad);
+    }
+  }
+
+  // Achata cada composição em insumos (com memória e proteção contra ciclo).
+  let componentesDescartados = 0;
+  let auxiliaresAchatadas = 0;
+  const achatadas = new Map<string, Map<string, number>>();
+  const existeInsumo = (c: string) => insumos.has(c) || externos.insumos.has(c);
+  const achatar = (comp: string, pilha: Set<string>): Map<string, number> => {
+    const pronta = achatadas.get(comp);
+    if (pronta) return pronta;
+    const soma = new Map<string, number>();
+    const somar = (insumo: string, coef: number) => soma.set(insumo, (soma.get(insumo) ?? 0) + coef);
+    if (!composicoes.has(comp) && externos.composicoes.has(comp)) {
+      for (const k of externos.composicoes.get(comp)!) somar(k.insumo, k.coeficiente);
+    }
+    pilha.add(comp);
+    for (const k of itens.get(comp) ?? []) {
+      // Item marcado como insumo; ou sem marcação de tipo (arquivo padrão) e que existe como insumo.
+      if (k.tipo === 'compInsumo' && existeInsumo(k.codigo)) {
+        somar(k.codigo, k.coeficiente);
+      } else if ((k.tipo === 'compComposicao' || !existeInsumo(k.codigo)) && (composicoes.has(k.codigo) || externos.composicoes.has(k.codigo)) && !pilha.has(k.codigo)) {
+        auxiliaresAchatadas++;
+        for (const [ins, coef] of achatar(k.codigo, pilha)) somar(ins, coef * k.coeficiente);
+      } else {
+        componentesDescartados++;
       }
     }
-    registros.push(r);
-  }
-
-  // Sem códigos repetidos (o primeiro vale) e sem componentes órfãos.
-  const vistos = new Set<string>();
-  const unicos = registros.filter((r) => {
-    if (r.tipo === 'componente') return true;
-    const chave = `${r.tipo}:${r.codigo}`;
-    if (vistos.has(chave)) return false;
-    vistos.add(chave);
-    return true;
-  });
-  const insumos = new Set(unicos.filter((r) => r.tipo === 'insumo').map((r) => r.codigo));
-  const composicoes = new Set(unicos.filter((r) => r.tipo === 'composicao').map((r) => r.codigo));
-  let componentesDescartados = 0;
-  const finais = unicos.filter((r) => {
-    if (r.tipo !== 'componente') return true;
-    if (insumos.has(r.insumo) && composicoes.has(r.codigo)) return true;
-    componentesDescartados++;
-    return false;
-  });
+    pilha.delete(comp);
+    achatadas.set(comp, soma);
+    return soma;
+  };
 
   const saida = [CAMPOS.join(';')];
-  for (const r of finais) {
-    const preco = r.tipo === 'insumo' ? r.preco : '';
-    saida.push([r.tipo, r.codigo, r.descricao, r.unidade, preco, r.grupo, r.tipo === 'componente' ? r.insumo : '', r.tipo === 'componente' ? r.coeficiente : ''].join(';'));
+  for (const i of insumos.values()) saida.push(['insumo', i.codigo, i.descricao, i.unidade, i.preco, i.grupo, '', ''].join(';'));
+  let composicoesSemInsumos = 0;
+  for (const c of composicoes.values()) {
+    saida.push(['composicao', c.codigo, c.descricao, c.unidade, '', c.grupo, '', ''].join(';'));
+    const ins = achatar(c.codigo, new Set());
+    if (!ins.size) composicoesSemInsumos++;
+    for (const [insumo, coef] of ins) saida.push(['componente', c.codigo, '', '', '', '', insumo, numeroTexto(coef)].join(';'));
   }
-  return { csv: saida.join('\n'), ignoradas, semPreco, componentesDescartados };
+  // Itens de composições que não estão no arquivo nem na tabela de destino.
+  for (const [comp, l] of itens) if (!composicoes.has(comp)) componentesDescartados += l.length;
+
+  return { csv: saida.join('\n'), ignoradas, semPreco, componentesDescartados, auxiliaresAchatadas, composicoesSemInsumos };
 }
 
-/** Converte o arquivo com a IA. Sem IA configurada, lança ErroIa. */
-export async function converterTabelaComIa(texto: string, ctx: Contexto): Promise<ResultadoConversao> {
-  const mapa = await mapearColunasIa(texto, ctx);
-  const conv = aplicarMapa(texto, mapa);
-  const leitura = lerCsvReferencia(conv.csv);
-  return { ...conv, mapa, leitura };
+/** Mapa para texto já recortado pelo navegador: colunas na ordem de CAMPOS, sem cabeçalho. */
+export function mapaRecortado(tipoUnico: MapaColunas['tipoUnico'], valoresTipo: ValoresTipo | null): MapaColunas {
+  return {
+    separador: ';',
+    linhaInicial: 0,
+    colunas: { tipo: 0, codigo: 1, descricao: 2, unidade: 3, preco: 4, grupo: 5, insumo: 6, coeficiente: 7 },
+    tipoUnico,
+    valoresTipo,
+  };
 }

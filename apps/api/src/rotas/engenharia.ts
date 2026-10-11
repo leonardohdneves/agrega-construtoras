@@ -7,7 +7,7 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
-import { converterTabelaComIa } from '../lib/ia-sinapi.ts';
+import { aplicarMapa, esquemaValoresTipo, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { bdiCalculado, calcularDatas, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, temCiclo, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
 
@@ -123,11 +123,17 @@ export function rotasEngenharia(banco: Banco) {
       return o;
     }
 
-    /** Grava itens de referência em lote (unnest, de 500 em 500). */
-    async function gravarItensRef(c: Cliente, tabelaId: string, leitura: ReturnType<typeof lerCsvReferencia>) {
-      const ids = new Map<string, string>();
-      for (let i = 0; i < leitura.insumos.length; i += 500) {
-        const lote = leitura.insumos.slice(i, i + 500);
+    /**
+     * Grava itens de referência em lote (unnest, de 500 em 500).
+     * idsExistentes: itens que já estão na tabela (importação para tabela existente), chave "tipo:codigo".
+     */
+    async function gravarItensRef(c: Cliente, tabelaId: string, leitura: ReturnType<typeof lerCsvReferencia>, idsExistentes = new Map<string, string>()) {
+      const ids = new Map(idsExistentes);
+      const insumos = leitura.insumos.filter((x) => !ids.has(`insumo:${x.codigo}`));
+      const composicoes = leitura.composicoes.filter((x) => !ids.has(`composicao:${x.codigo}`));
+      const novasComposicoes = new Set(composicoes.map((x) => x.codigo));
+      for (let i = 0; i < insumos.length; i += 500) {
+        const lote = insumos.slice(i, i + 500);
         const r = await c.query(
           `INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos)
            SELECT $1, 'insumo', * FROM unnest($2::text[], $3::text[], $4::text[], $5::text[], $6::bigint[]) RETURNING id, codigo`,
@@ -135,8 +141,8 @@ export function rotasEngenharia(banco: Banco) {
         );
         for (const x of r.rows) ids.set(`insumo:${x.codigo}`, x.id);
       }
-      for (let i = 0; i < leitura.composicoes.length; i += 500) {
-        const lote = leitura.composicoes.slice(i, i + 500);
+      for (let i = 0; i < composicoes.length; i += 500) {
+        const lote = composicoes.slice(i, i + 500);
         const r = await c.query(
           `INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo)
            SELECT $1, 'composicao', * FROM unnest($2::text[], $3::text[], $4::text[], $5::text[]) RETURNING id, codigo`,
@@ -144,16 +150,50 @@ export function rotasEngenharia(banco: Banco) {
         );
         for (const x of r.rows) ids.set(`composicao:${x.codigo}`, x.id);
       }
-      const comp = leitura.componentes.filter((k) => ids.has(`composicao:${k.composicao}`) && ids.has(`insumo:${k.insumo}`));
-      for (let i = 0; i < comp.length; i += 500) {
-        const lote = comp.slice(i, i + 500);
+      // Só compõe as composições novas; o mesmo insumo repetido numa composição soma os coeficientes.
+      const somados = new Map<string, { composicaoId: string; insumoId: string; coeficiente: number }>();
+      for (const k of leitura.componentes) {
+        const composicaoId = ids.get(`composicao:${k.composicao}`);
+        const insumoId = ids.get(`insumo:${k.insumo}`);
+        if (!composicaoId || !insumoId || !novasComposicoes.has(k.composicao)) continue;
+        const chave = `${composicaoId}:${insumoId}`;
+        const atual = somados.get(chave);
+        if (atual) atual.coeficiente += k.coeficiente;
+        else somados.set(chave, { composicaoId, insumoId, coeficiente: k.coeficiente });
+      }
+      const comp = [...somados.values()];
+      for (let i = 0; i < comp.length; i += 1000) {
+        const lote = comp.slice(i, i + 1000);
         await c.query(
           `INSERT INTO ref_composicao_insumos (composicao_id, insumo_id, coeficiente)
            SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::numeric[]) ON CONFLICT (composicao_id, insumo_id) DO UPDATE SET coeficiente = excluded.coeficiente`,
-          [lote.map((k) => ids.get(`composicao:${k.composicao}`)), lote.map((k) => ids.get(`insumo:${k.insumo}`)), lote.map((k) => k.coeficiente)],
+          [lote.map((k) => k.composicaoId), lote.map((k) => k.insumoId), lote.map((k) => Math.round(k.coeficiente * 1e6) / 1e6)],
         );
       }
-      return { insumos: leitura.insumos.length, composicoes: leitura.composicoes.length, componentes: comp.length };
+      return {
+        insumos: insumos.length,
+        composicoes: composicoes.length,
+        componentes: comp.length,
+        jaExistiam: leitura.insumos.length - insumos.length + leitura.composicoes.length - composicoes.length,
+      };
+    }
+
+    /** Códigos e ids dos itens de uma tabela, e as composições com seus insumos (para importar mais itens nela). */
+    async function itensDaTabela(c: Cliente, tabelaId: string) {
+      const itens = (await c.query('SELECT id, tipo, codigo FROM ref_itens WHERE tabela_id = $1', [tabelaId])).rows as { id: string; tipo: string; codigo: string }[];
+      const ids = new Map(itens.map((i) => [`${i.tipo}:${i.codigo}`, i.id]));
+      const comps = (
+        await c.query(
+          `SELECT ci.codigo AS composicao, ii.codigo AS insumo, rc.coeficiente::float8 AS coeficiente
+             FROM ref_composicao_insumos rc JOIN ref_itens ci ON ci.id = rc.composicao_id JOIN ref_itens ii ON ii.id = rc.insumo_id
+            WHERE ci.tabela_id = $1`,
+          [tabelaId],
+        )
+      ).rows as { composicao: string; insumo: string; coeficiente: number }[];
+      const externos: Externos = { insumos: new Set(itens.filter((i) => i.tipo === 'insumo').map((i) => i.codigo)), composicoes: new Map() };
+      for (const i of itens) if (i.tipo === 'composicao') externos.composicoes.set(i.codigo, []);
+      for (const k of comps) externos.composicoes.get(k.composicao)?.push({ insumo: k.insumo, coeficiente: k.coeficiente });
+      return { ids, externos };
     }
 
     // ---------------------------------------------------------------- tabelas de referência
@@ -189,21 +229,68 @@ export function rotasEngenharia(banco: Banco) {
       return { tabela: tabelaPublica(await tabelaDetalhe(banco, empresaId, id)) };
     });
 
-    // Lê um arquivo de composições fora do formato padrão com a IA e devolve o CSV padrão para revisão.
-    // Não grava nada: a tabela só é criada no POST /tabelas, depois da conferência.
-    app.post('/tabelas/converter-ia', { bodyLimit: LIMITE_CORPO }, async (req) => {
-      const d = z.object({ texto: z.string().min(1).max(LIMITE_ARQUIVO), uf, desonerado: z.boolean().default(false) }).parse(req.body);
-      recusarBinario(d.texto);
+    // Leitura com IA, em dois passos e sem gravar nada:
+    // 1) mapear-ia: a IA vê só as primeiras linhas e diz em que coluna está cada campo;
+    // 2) converter: o navegador manda as colunas úteis da planilha inteira e o servidor gera o CSV padrão.
+    app.post('/tabelas/mapear-ia', async (req) => {
+      const d = z.object({ amostra: z.string().min(1).max(200_000), uf, desonerado: z.boolean().default(false) }).parse(req.body);
+      recusarBinario(d.amostra);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
       try {
-        const r = await converterTabelaComIa(d.texto, { uf: d.uf ?? null, desonerado: d.desonerado });
-        if (r.leitura.erros.length) throw new ErroHttp(422, 'A IA leu o arquivo, mas há linhas com erro. Confira o formato ou corrija o arquivo.', { erros: r.leitura.erros.slice(0, 50) });
-        if (!r.leitura.insumos.length && !r.leitura.composicoes.length) throw new ErroHttp(422, 'A IA leu a estrutura, mas nenhuma linha virou insumo ou composição. Confira a aba e a UF.');
-        return { csv: r.csv, ignoradas: r.ignoradas, semPreco: r.semPreco, componentesDescartados: r.componentesDescartados, contagem: { insumos: r.leitura.insumos.length, composicoes: r.leitura.composicoes.length, componentes: r.leitura.componentes.length } };
+        return { mapa: await mapearColunasIa(d.amostra, { uf: d.uf ?? null, desonerado: d.desonerado }) };
       } catch (e) {
         if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
         throw e;
       }
+    });
+
+    app.post('/tabelas/converter', { bodyLimit: LIMITE_CORPO }, async (req) => {
+      const d = z
+        .object({
+          texto: z.string().min(1).max(LIMITE_ARQUIVO),
+          tipoUnico: z.enum(['insumo', 'composicao']).nullable(),
+          valoresTipo: esquemaValoresTipo.nullable(),
+          tabelaId: z.string().uuid().optional().nullable(),
+        })
+        .parse(req.body);
+      recusarBinario(d.texto);
+      let externos: Externos | undefined;
+      if (d.tabelaId) {
+        await tabelaDaEmpresa(banco, empresaDo(req), d.tabelaId);
+        externos = (await itensDaTabela(banco, d.tabelaId)).externos;
+      }
+      const r = aplicarMapa(d.texto, mapaRecortado(d.tipoUnico, d.valoresTipo), externos);
+      const leitura = lerCsvReferencia(r.csv, externos?.insumos);
+      if (leitura.erros.length) throw new ErroHttp(422, 'O arquivo foi lido, mas há linhas com erro.', { erros: leitura.erros.slice(0, 50) });
+      if (!leitura.insumos.length && !leitura.composicoes.length) throw new ErroHttp(422, 'Nenhuma linha virou insumo ou composição. Confira a aba e a UF.');
+      return {
+        csv: r.csv,
+        ignoradas: r.ignoradas,
+        semPreco: r.semPreco,
+        componentesDescartados: r.componentesDescartados,
+        auxiliaresAchatadas: r.auxiliaresAchatadas,
+        composicoesSemInsumos: r.composicoesSemInsumos,
+        contagem: { insumos: leitura.insumos.length, composicoes: leitura.composicoes.length, componentes: leitura.componentes.length },
+      };
+    });
+
+    // Importa mais itens numa tabela existente (por exemplo, as composições da SINAPI na tabela dos insumos do mesmo mês).
+    // Itens com código já existente ficam como estão; as composições podem usar os insumos que já estão na tabela.
+    app.post<{ Params: { id: string } }>('/tabelas/:id/importar', { bodyLimit: LIMITE_CORPO }, async (req) => {
+      const d = z.object({ csv: z.string().min(1).max(LIMITE_ARQUIVO) }).parse(req.body);
+      recusarBinario(d.csv);
+      const empresaId = empresaDo(req);
+      const contagem = await emTransacao(banco, async (c) => {
+        await tabelaDaEmpresa(c, empresaId, req.params.id);
+        const { ids, externos } = await itensDaTabela(c, req.params.id);
+        const leitura = lerCsvReferencia(d.csv, externos.insumos);
+        if (leitura.erros.length) throw new ErroHttp(400, 'O arquivo tem erros. Corrija e envie de novo.', { erros: leitura.erros.slice(0, 50) });
+        const r = await gravarItensRef(c, req.params.id, leitura, ids);
+        await c.query('UPDATE ref_tabelas SET atualizado_em = now() WHERE id = $1', [req.params.id]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'ref_tabelas', entidadeId: req.params.id, depois: { importacao: r } });
+        return r;
+      });
+      return { contagem, tabela: tabelaPublica(await tabelaDetalhe(banco, empresaId, req.params.id)) };
     });
 
     app.get<{ Params: { id: string } }>('/tabelas/:id', async (req) => {
@@ -256,7 +343,7 @@ export function rotasEngenharia(banco: Banco) {
     app.post<{ Params: { id: string } }>('/tabelas/:id/itens', async (req, reply) => {
       const d = esquemaItemRef.parse(req.body);
       const empresaId = empresaDo(req);
-      await emTransacao(banco, async (c) => {
+      const id = await emTransacao(banco, async (c) => {
         const t = await tabelaDaEmpresa(c, empresaId, req.params.id);
         if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A tabela SINAPI é imutável. Para outra versão, importe uma nova tabela.');
         const preco = d.tipo === 'insumo' ? precoCentavos(d.preco) : null;
@@ -265,12 +352,13 @@ export function rotasEngenharia(banco: Banco) {
           await c.query(`INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [t.id, d.tipo, d.codigo, d.descricao, d.unidade, d.grupo, preco])
         ).rows[0];
         if (d.tipo === 'composicao') await gravarComponentes(c, t.id, x.id, d.componentes ?? []);
+        return x.id as string;
       }).catch((e: Error & { code?: string }) => {
         if (e.code === '23505') throw new ErroHttp(409, 'Já existe um item com esse código nesta tabela.');
         throw e;
       });
       reply.code(201);
-      return { ok: true };
+      return { ok: true, id };
     });
 
     app.put<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId', async (req) => {

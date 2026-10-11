@@ -96,7 +96,8 @@ export type LeituraCsv = { insumos: LinhaInsumo[]; composicoes: LinhaComposicao[
 
 const COLUNAS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
 
-export function lerCsvReferencia(texto: string): LeituraCsv {
+/** insumosExternos: códigos de insumos que já estão na tabela de destino (importação para tabela existente). */
+export function lerCsvReferencia(texto: string, insumosExternos: Set<string> = new Set()): LeituraCsv {
   const leitura: LeituraCsv = { insumos: [], composicoes: [], componentes: [], erros: [] };
   const linhas = texto.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim() !== '');
   if (!linhas.length) {
@@ -145,7 +146,7 @@ export function lerCsvReferencia(texto: string): LeituraCsv {
   const composicoes = new Set(leitura.composicoes.map((x) => x.codigo));
   for (const k of leitura.componentes) {
     if (!composicoes.has(k.composicao)) leitura.erros.push(`Componente: a composição ${k.composicao} não existe no arquivo.`);
-    if (!insumos.has(k.insumo)) leitura.erros.push(`Componente: o insumo ${k.insumo} não existe no arquivo.`);
+    if (!insumos.has(k.insumo) && !insumosExternos.has(k.insumo)) leitura.erros.push(`Componente: o insumo ${k.insumo} não existe no arquivo nem na tabela.`);
   }
   return leitura;
 }
