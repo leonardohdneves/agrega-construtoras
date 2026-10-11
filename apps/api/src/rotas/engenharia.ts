@@ -6,6 +6,8 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
+import { converterTabelaComIa } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { bdiCalculado, calcularDatas, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, temCiclo, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
 
@@ -173,6 +175,21 @@ export function rotasEngenharia(banco: Banco) {
       });
       reply.code(201);
       return { tabela: tabelaPublica(await tabelaDetalhe(banco, empresaId, id)) };
+    });
+
+    // Lê um arquivo de composições fora do formato padrão com a IA e devolve o CSV padrão para revisão.
+    // Não grava nada: a tabela só é criada no POST /tabelas, depois da conferência.
+    app.post('/tabelas/converter-ia', async (req) => {
+      const d = z.object({ texto: z.string().min(1).max(5_000_000) }).parse(req.body);
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
+      try {
+        const r = await converterTabelaComIa(d.texto);
+        if (r.leitura.erros.length) throw new ErroHttp(422, 'A IA leu o arquivo, mas há linhas com erro. Confira o formato ou corrija o arquivo.', { erros: r.leitura.erros.slice(0, 50) });
+        return { csv: r.csv, ignoradas: r.ignoradas, contagem: { insumos: r.leitura.insumos.length, composicoes: r.leitura.composicoes.length, componentes: r.leitura.componentes.length } };
+      } catch (e) {
+        if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
+        throw e;
+      }
     });
 
     app.get<{ Params: { id: string } }>('/tabelas/:id', async (req) => {
