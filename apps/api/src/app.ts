@@ -82,6 +82,8 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
       };
       return reply.code(409).send({ erro: MSG[restricao] ?? 'Já existe um cadastro com esses dados.' });
     }
+    // Regras garantidas por gatilho no banco (ex.: orçamento só com serviços da obra): a mensagem já é a do usuário.
+    if (e.code === '23514' && /^orcamento_/.test(String((e as { constraint?: string }).constraint ?? ''))) return reply.code(400).send({ erro: e.message });
     if (e.statusCode === 429) return reply.code(429).send({ erro: 'Muitas tentativas. Aguarde um minuto e tente de novo.' });
     if (e.statusCode && e.statusCode < 500) return reply.code(e.statusCode).send({ erro: e.message });
     req.log.error(erro);

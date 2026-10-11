@@ -157,3 +157,14 @@ export function lerCsvReferencia(texto: string, insumosExternos: Set<string> = n
   }
   return leitura;
 }
+
+/**
+ * Orçamento: só entram serviços (composições) que estão na obra. Insumo isolado não é orçado;
+ * ele entra pelos serviços ou é apropriado em "Apropriação de insumos".
+ * Devolve a mensagem de erro, ou null quando o item pode ser orçado.
+ */
+export function erroItemOrcamento(item: { tipo: string; obraId: string } | null | undefined, obraId: string): string | null {
+  if (!item || item.obraId !== obraId) return 'Este serviço não está na obra. Copie-o em Serviços antes de orçar.';
+  if (item.tipo !== 'composicao') return 'Só serviços (composições) da obra entram no orçamento. Insumos são lançados em Apropriação de insumos.';
+  return null;
+}

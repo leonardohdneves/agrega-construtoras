@@ -522,6 +522,8 @@ export function AbaEap({ obra, nos, itens, orc, aoMudar, setErro }: { obra: Obra
   const paiSel = nos.find((n) => n.id === paiId);
   const nivelNovo: Nivel = paiSel ? FILHO[paiSel.nivel] ?? 'tarefa' : 'etapa';
   const nosDoNivel = nos.filter((n) => n.nivel === nivelObra);
+  // Orçamento: só serviços (composições) que estão na obra.
+  const servicos = itens.filter((i) => i.tipo === 'composicao');
 
   async function criarNo(e: FormEvent) {
     e.preventDefault();
@@ -680,11 +682,15 @@ export function AbaEap({ obra, nos, itens, orc, aoMudar, setErro }: { obra: Obra
 
         <form onSubmit={lancar} style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, marginTop: 16 }}>
           <div className="campo" style={{ gridColumn: 'span 2' }}>
-            <label htmlFor="orc-item">Insumo ou serviço da obra</label>
-            <select id="orc-item" value={itemId} onChange={(e) => setItemId(e.target.value)}>
-              <option value="">Escolha…</option>
-              {itens.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+            <label htmlFor="orc-item">Serviço da obra</label>
+            <select id="orc-item" value={itemId} onChange={(e) => setItemId(e.target.value)} disabled={servicos.length === 0}>
+              <option value="">{servicos.length === 0 ? 'Nenhum serviço na obra' : 'Escolha…'}</option>
+              {servicos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao} ({i.unidade})</option>)}
             </select>
+            <span className="ajuda">
+              Só os serviços (composições) já incluídos na obra.{' '}
+              {servicos.length === 0 ? <Link to={`/eng/servicos?obra=${obra.id}`}>Incluir serviços na obra</Link> : <>Para outro serviço, inclua-o antes em <Link to={`/eng/servicos?obra=${obra.id}`}>Serviços</Link>.</>}
+            </span>
           </div>
           {!semEap && (
             <div className="campo" style={{ gridColumn: 'span 2' }}>

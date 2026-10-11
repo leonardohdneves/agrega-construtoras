@@ -84,3 +84,11 @@ test('CSV aponta erros de cabeçalho, linha incompleta e componente órfão', ()
   assert.ok(r.erros.some((e) => /composição X não existe/.test(e)));
   assert.ok(r.erros.some((e) => /insumo 9 não existe/.test(e)));
 });
+
+test('orçamento: só serviços (composições) que estão na obra', async () => {
+  const { erroItemOrcamento } = await import('../src/lib/engenharia.ts');
+  assert.equal(erroItemOrcamento({ tipo: 'composicao', obraId: 'o1' }, 'o1'), null);
+  assert.match(erroItemOrcamento({ tipo: 'insumo', obraId: 'o1' }, 'o1') ?? '', /Só serviços/);
+  assert.match(erroItemOrcamento({ tipo: 'composicao', obraId: 'o2' }, 'o1') ?? '', /não está na obra/);
+  assert.match(erroItemOrcamento(null, 'o1') ?? '', /não está na obra/);
+});

@@ -9,7 +9,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
-import { bdiCalculado, calcularDatas, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, temCiclo, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, temCiclo, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -989,8 +989,9 @@ export function rotasEngenharia(banco: Banco) {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        const item = (await c.query('SELECT id FROM obra_itens WHERE id = $1 AND obra_id = $2', [d.itemId, obra.id])).rows[0];
-        if (!item) throw naoEncontrado('Item da obra');
+        const item = (await c.query('SELECT id, tipo, obra_id FROM obra_itens WHERE id = $1 AND obra_id = $2', [d.itemId, obra.id])).rows[0];
+        const erroItem = erroItemOrcamento(item ? { tipo: item.tipo, obraId: item.obra_id } : null, obra.id);
+        if (erroItem) throw new ErroHttp(400, erroItem);
         if (obra.nivel_apropriacao === 'obra') {
           if (d.eapNoId) throw new ErroHttp(400, 'Esta obra lança o orçamento no nível da obra, sem nó da EAP.');
         } else {
