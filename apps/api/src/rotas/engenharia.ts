@@ -29,6 +29,13 @@ const esquemaAtividade = z.object({
   duracaoDias: z.number().int('A duração é em dias inteiros.').min(1, 'Duração mínima de 1 dia.').max(3650),
   predecessoraId: z.string().regex(UUID).optional().nullable(),
 });
+const esquemaNecessidade = z.object({
+  itemId: z.string().regex(UUID, 'Escolha o insumo.'),
+  eapNoId: z.string().regex(UUID).optional().nullable(),
+  quantidade: z.number().positive('A quantidade precisa ser maior que zero.'),
+  dataNecessaria: z.string().regex(DATA, 'Data inválida.').optional().nullable(),
+  observacao: z.string().trim().max(300).optional().nullable(),
+});
 const pct = z.number().min(0, 'Os percentuais do BDI não podem ser negativos.').max(99.99, 'Percentual do BDI fora da faixa.');
 const mes = z.string().regex(/^\d{4}-\d{2}$/, 'Mês de referência no formato AAAA-MM.').optional().nullable().transform((v) => v || null);
 
@@ -583,6 +590,8 @@ export function rotasEngenharia(banco: Banco) {
           throw new ErroHttp(409, 'Este nó tem filhos. Exclua-os antes.');
         if ((await c.query('SELECT 1 FROM orcamento_itens WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
           throw new ErroHttp(409, 'Este nó tem itens no orçamento. Retire-os antes.');
+        if ((await c.query('SELECT 1 FROM obra_necessidades WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
+          throw new ErroHttp(409, 'Este nó tem insumos apropriados. Retire-os antes.');
         if ((await c.query('SELECT 1 FROM obra_atividades WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
           throw new ErroHttp(409, 'Este nó tem atividades no planejamento. Retire-as antes.');
         const n = (await c.query('DELETE FROM eap_nos WHERE id = $1 AND obra_id = $2', [req.params.noId, obra.id])).rowCount;
@@ -687,6 +696,84 @@ export function rotasEngenharia(banco: Banco) {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
         const n = (await c.query('DELETE FROM obra_atividades WHERE id = $1 AND obra_id = $2', [req.params.atId, obra.id])).rowCount;
         if (!n) throw naoEncontrado('Atividade');
+      });
+      return { ok: true };
+    });
+
+    // ---------------------------------------------------------------- apropriação de insumos (fase 2)
+
+    app.get<{ Params: { id: string } }>('/obras/:id/necessidades', async (req) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const r = await banco.query(
+        `SELECT nec.*, oi.codigo, oi.descricao, oi.unidade, ${precoObra('oi')} AS preco, n.codigo AS eap_codigo, n.descricao AS eap_descricao
+           FROM obra_necessidades nec JOIN obra_itens oi ON oi.id = nec.obra_item_id LEFT JOIN eap_nos n ON n.id = nec.eap_no_id
+          WHERE nec.obra_id = $1 ORDER BY nec.criado_em`,
+        [req.params.id],
+      );
+      return {
+        necessidades: r.rows.map((x) => {
+          const preco = reais(x.preco)!;
+          const q = Number(x.quantidade);
+          return {
+            id: x.id, itemId: x.obra_item_id, codigo: x.codigo, descricao: x.descricao, unidade: x.unidade,
+            eapNoId: x.eap_no_id ?? null, eapCodigo: x.eap_codigo ?? null, eapDescricao: x.eap_descricao ?? null,
+            quantidade: q, dataNecessaria: x.data_necessaria ? dataIso(x.data_necessaria) : null, observacao: x.observacao ?? null,
+            status: x.status, precoUnitario: preco, total: r2(q * preco),
+          };
+        }),
+      };
+    });
+
+    app.post<{ Params: { id: string } }>('/obras/:id/necessidades', async (req, reply) => {
+      const d = esquemaNecessidade.parse(req.body);
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        if (!(await c.query(`SELECT 1 FROM obra_itens WHERE id = $1 AND obra_id = $2 AND tipo = 'insumo'`, [d.itemId, obra.id])).rowCount)
+          throw new ErroHttp(400, 'Só insumos da obra podem ser solicitados.');
+        await validarNoDaAtividade(c, obra, d.eapNoId ?? null);
+        const r = await c.query(
+          `INSERT INTO obra_necessidades (obra_id, obra_item_id, eap_no_id, quantidade, data_necessaria, observacao)
+           VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+          [obra.id, d.itemId, d.eapNoId ?? null, d.quantidade, d.dataNecessaria ?? null, d.observacao ?? null],
+        );
+        return r.rows[0].id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.put<{ Params: { id: string; necId: string } }>('/obras/:id/necessidades/:necId', async (req) => {
+      const d = esquemaNecessidade.omit({ itemId: true }).extend({ status: z.enum(['pendente', 'cancelada']).optional() }).partial().parse(req.body);
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const atual = (await c.query('SELECT * FROM obra_necessidades WHERE id = $1 AND obra_id = $2', [req.params.necId, obra.id])).rows[0];
+        if (!atual) throw naoEncontrado('Necessidade');
+        const campos = {
+          eapNoId: d.eapNoId !== undefined ? d.eapNoId : atual.eap_no_id,
+          quantidade: d.quantidade ?? Number(atual.quantidade),
+          dataNecessaria: d.dataNecessaria !== undefined ? d.dataNecessaria : atual.data_necessaria ? dataIso(atual.data_necessaria) : null,
+          observacao: d.observacao !== undefined ? d.observacao : atual.observacao,
+          status: d.status ?? atual.status,
+        };
+        await validarNoDaAtividade(c, obra, campos.eapNoId ?? null);
+        await c.query(
+          `UPDATE obra_necessidades SET eap_no_id = $3, quantidade = $4, data_necessaria = $5, observacao = $6, status = $7, atualizado_em = now()
+            WHERE id = $1 AND obra_id = $2`,
+          [atual.id, obra.id, campos.eapNoId ?? null, campos.quantidade, campos.dataNecessaria, campos.observacao ?? null, campos.status],
+        );
+      });
+      return { ok: true };
+    });
+
+    app.delete<{ Params: { id: string; necId: string } }>('/obras/:id/necessidades/:necId', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const n = (await c.query('DELETE FROM obra_necessidades WHERE id = $1 AND obra_id = $2', [req.params.necId, obra.id])).rowCount;
+        if (!n) throw naoEncontrado('Necessidade');
       });
       return { ok: true };
     });
