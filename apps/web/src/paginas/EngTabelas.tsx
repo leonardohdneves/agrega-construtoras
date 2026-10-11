@@ -2,6 +2,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
+import { abrirXlsx, linhasParaTexto, type Planilha } from '../lib/xlsx';
 
 export type Tabela = {
   id: string; fonte: 'sinapi' | 'proprio'; nome: string; uf: string | null; mesReferencia: string | null; desonerado: boolean; insumos: number; composicoes: number; editavel: boolean;
@@ -82,11 +83,51 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
   const [lendoIa, setLendoIa] = useState(false);
   const [resumoIa, setResumoIa] = useState('');
 
+  const [planilha, setPlanilha] = useState<Planilha | null>(null);
+  const [aba, setAba] = useState('');
+  const [lendoArquivo, setLendoArquivo] = useState(false);
+
   async function lerArquivo(f: File | undefined) {
     if (!f) return;
-    setCsv(await f.text());
-    setArquivo(f.name);
+    setErro('');
+    setErros([]);
     setResumoIa('');
+    setCsv('');
+    setPlanilha(null);
+    setAba('');
+    setArquivo(f.name);
+    const nome = f.name.toLowerCase();
+    if (nome.endsWith('.xls')) return setErro('Arquivo .xls antigo não é lido. No Excel, use Salvar como › Pasta de Trabalho do Excel (.xlsx).');
+    if (!nome.endsWith('.xlsx') && !nome.endsWith('.xlsm')) return setCsv(await f.text());
+    setLendoArquivo(true);
+    try {
+      const p = await abrirXlsx(await f.arrayBuffer());
+      if (!p.abas.length) throw new Error('A planilha não tem abas.');
+      setPlanilha(p);
+      await escolherAba(p, p.abas[0]);
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setLendoArquivo(false);
+    }
+  }
+
+  async function escolherAba(p: Planilha, nome: string) {
+    setAba(nome);
+    setResumoIa('');
+    setErro('');
+    setErros([]);
+    setLendoArquivo(true);
+    try {
+      const texto = linhasParaTexto(await p.ler(nome));
+      if (!texto) throw new Error(`A aba ${nome} está vazia.`);
+      setCsv(texto);
+    } catch (err) {
+      setCsv('');
+      setErro((err as Error).message);
+    } finally {
+      setLendoArquivo(false);
+    }
   }
 
   // Arquivo fora do formato padrão: a IA descobre as colunas e o sistema gera o CSV padrão para conferência.
@@ -96,11 +137,17 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
     setResumoIa('');
     setLendoIa(true);
     try {
-      const r = await api<{ csv: string; ignoradas: number; contagem: { insumos: number; composicoes: number; componentes: number } }>('/eng/tabelas/converter-ia', { corpo: { texto: csv } });
+      const r = await api<{ csv: string; ignoradas: number; semPreco: number; componentesDescartados: number; contagem: { insumos: number; composicoes: number; componentes: number } }>(
+        '/eng/tabelas/converter-ia',
+        { corpo: { texto: csv, uf: d.uf || null, desonerado: d.fonte === 'sinapi' ? d.desonerado : false } },
+      );
       setCsv(r.csv);
+      const n = (x: number) => x.toLocaleString('pt-BR');
       setResumoIa(
-        `A IA leu o arquivo: ${r.contagem.insumos} insumos, ${r.contagem.composicoes} composições e ${r.contagem.componentes} componentes.` +
-          (r.ignoradas ? ` ${r.ignoradas} linhas sem tipo reconhecido foram ignoradas.` : '') +
+        `A IA leu ${aba ? `a aba ${aba}` : 'o arquivo'}: ${n(r.contagem.insumos)} insumos, ${n(r.contagem.composicoes)} composições e ${n(r.contagem.componentes)} componentes.` +
+          (r.semPreco ? ` ${n(r.semPreco)} insumos sem preço ficaram de fora.` : '') +
+          (r.componentesDescartados ? ` ${n(r.componentesDescartados)} componentes apontam para itens fora do arquivo e ficaram de fora.` : '') +
+          (r.ignoradas ? ` ${n(r.ignoradas)} linhas que não são itens (títulos, totais) foram ignoradas.` : '') +
           ' Confira o nome e a referência e crie a tabela.',
       );
     } catch (err) {
@@ -174,22 +221,40 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
         )}
       </div>
       <div className="campo">
-        <label htmlFor="tb-csv">Arquivo CSV (opcional)</label>
-        <input id="tb-csv" type="file" accept=".csv,.txt,text/csv" onChange={(e) => lerArquivo(e.target.files?.[0])} />
+        <label htmlFor="tb-csv">Arquivo CSV ou Excel .xlsx (opcional)</label>
+        <input
+          id="tb-csv"
+          type="file"
+          accept=".csv,.txt,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          onChange={(e) => lerArquivo(e.target.files?.[0])}
+        />
         <span className="ajuda">
-          Colunas separadas por ponto e vírgula: <code>tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente</code>. Tipos: <b>insumo</b>, <b>composicao</b> e <b>componente</b> (um por insumo de cada composição).
+          Formato padrão: colunas separadas por ponto e vírgula, <code>tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente</code>. Tipos: <b>insumo</b>, <b>composicao</b> e <b>componente</b> (um por insumo de cada composição).
+          Planilhas da Caixa (.xlsx) e outros layouts são lidos com a IA.
           {arquivo && <> Arquivo: <b>{arquivo}</b>.</>}
         </span>
+        {planilha && planilha.abas.length > 1 && (
+          <div className="campo" style={{ maxWidth: 360, marginTop: 8 }}>
+            <label htmlFor="tb-aba">Aba da planilha</label>
+            <select id="tb-aba" value={aba} disabled={lendoArquivo || lendoIa} onChange={(e) => escolherAba(planilha, e.target.value)}>
+              {planilha.abas.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </div>
+        )}
+        {lendoArquivo && <p className="small muted" style={{ margin: '8px 0 0' }}>Lendo a planilha…</p>}
         {csv && !formatoPadrao && (
           <div className="alerta alerta-aviso" role="status" style={{ marginTop: 8 }}>
-            <p style={{ margin: '0 0 8px' }}>Este arquivo não está no formato padrão. A IA pode identificar as colunas e converter.</p>
-            <button className="btn btn-secundario" type="button" onClick={lerComIa} disabled={lendoIa}>{lendoIa ? 'Lendo com IA…' : 'Ler com IA'}</button>
+            <p style={{ margin: '0 0 8px' }}>
+              {planilha ? 'Planilha fora do formato padrão.' : 'Este arquivo não está no formato padrão.'} A IA identifica as colunas e o sistema converte as linhas.
+              {d.fonte === 'sinapi' && !d.uf && <> Informe a <b>UF</b> antes: a planilha da Caixa traz um preço por estado.</>}
+            </p>
+            <button className="btn btn-secundario" type="button" onClick={lerComIa} disabled={lendoIa || lendoArquivo}>{lendoIa ? 'Lendo com IA…' : 'Ler com IA'}</button>
           </div>
         )}
         {resumoIa && <div className="alerta alerta-ok" role="status" style={{ marginTop: 8 }}>{resumoIa}</div>}
       </div>
       <div className="acoes">
-        <button className="btn btn-primario" type="submit" disabled={ocupado || d.nome.trim().length < 2}>{ocupado ? 'Criando…' : 'Criar tabela'}</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado || lendoArquivo || lendoIa || d.nome.trim().length < 2 || (!!csv && !formatoPadrao)}>{ocupado ? 'Criando…' : 'Criar tabela'}</button>
       </div>
     </form>
   );
