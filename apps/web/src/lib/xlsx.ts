@@ -93,8 +93,16 @@ export async function abrirXlsx(buf: ArrayBuffer): Promise<Planilha> {
   let compartilhados: string[] | null = null;
   const textos = async () => {
     if (compartilhados) return compartilhados;
-    const doc = await ler('xl/sharedStrings.xml');
-    compartilhados = doc ? tags(doc, 'si').map((si) => tags(si, 't').filter((t) => !t.closest('rPh')).map((t) => t.textContent ?? '').join('')) : [];
+    const e = entradas.get('xl/sharedStrings.xml');
+    const bruto = e ? decodificar(await extrair(buf, e)) : '';
+    compartilhados = [];
+    // Cada <si> junta os seus <t>, sem os textos fonéticos (<rPh>).
+    for (const si of bruto.matchAll(/<(?:\w+:)?si\b[^>]*>([\s\S]*?)<\/(?:\w+:)?si>/g)) {
+      const corpo = si[1].replace(/<(?:\w+:)?rPh\b[\s\S]*?<\/(?:\w+:)?rPh>/g, '');
+      let t = '';
+      for (const m of corpo.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g)) t += m[1];
+      compartilhados.push(entidades(t));
+    }
     return compartilhados;
   };
 
@@ -102,22 +110,28 @@ export async function abrirXlsx(buf: ArrayBuffer): Promise<Planilha> {
     abas: abas.map((a) => a.nome),
     async ler(nome) {
       const aba = abas.find((a) => a.nome === nome);
-      const doc = aba ? await ler(aba.caminho) : null;
-      if (!doc) throw new Error(`Não encontrei a aba ${nome}.`);
+      const e = aba ? entradas.get(aba.caminho) : undefined;
+      if (!e) throw new Error(`Não encontrei a aba ${nome}.`);
       const ss = await textos();
+      // Leitura por expressões regulares: bem mais rápida que montar o XML inteiro (abas com dezenas de milhares de linhas).
+      const xmlAba = decodificar(await extrair(buf, e));
       const linhas: string[][] = [];
-      for (const row of tags(doc, 'row')) {
+      const reLinha = /<(?:\w+:)?row\b[^>]*?(?:\/>|>([\s\S]*?)<\/(?:\w+:)?row>)/g;
+      const reCelula = /<(?:\w+:)?c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/(?:\w+:)?c>)/g;
+      for (const row of xmlAba.matchAll(reLinha)) {
         const linha: string[] = [];
         let proxima = 0;
-        for (const c of tags(row, 'c')) {
-          const ref = c.getAttribute('r');
+        for (const c of (row[1] ?? '').matchAll(reCelula)) {
+          const attrs = c[1];
+          const corpo = c[2] ?? '';
+          const ref = /\br="([A-Z]+)\d*"/.exec(attrs)?.[1];
           const col = ref ? coluna(ref) : proxima;
           proxima = col + 1;
-          const t = c.getAttribute('t');
-          const v = tags(c, 'v')[0]?.textContent ?? '';
+          const t = /\bt="(\w+)"/.exec(attrs)?.[1];
+          const v = entidades(/<(?:\w+:)?v>([\s\S]*?)<\/(?:\w+:)?v>/.exec(corpo)?.[1] ?? '');
           let valor: string;
           if (t === 's') valor = ss[Number(v)] ?? '';
-          else if (t === 'inlineStr') valor = tags(c, 't').map((x) => x.textContent ?? '').join('');
+          else if (t === 'inlineStr') valor = entidades([...corpo.matchAll(/<(?:\w+:)?t\b[^>]*>([\s\S]*?)<\/(?:\w+:)?t>/g)].map((m) => m[1]).join(''));
           else if (t === 'b') valor = v === '1' ? 'VERDADEIRO' : 'FALSO';
           else if (t === 'str' || t === 'e') valor = v;
           else valor = v === '' ? '' : numero(v);
@@ -129,6 +143,20 @@ export async function abrirXlsx(buf: ArrayBuffer): Promise<Planilha> {
       return linhas;
     },
   };
+}
+
+/** Entidades do XML (&amp;, &lt;, &#233; …). */
+function entidades(s: string): string {
+  if (!s.includes('&')) return s;
+  return s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e: string) => {
+    const k = e.toLowerCase();
+    if (k === 'amp') return '&';
+    if (k === 'lt') return '<';
+    if (k === 'gt') return '>';
+    if (k === 'quot') return '"';
+    if (k === 'apos') return "'";
+    return String.fromCodePoint(k.startsWith('#x') ? parseInt(k.slice(2), 16) : parseInt(k.slice(1), 10));
+  });
 }
 
 /** Converte as linhas de uma aba em texto com ponto e vírgula, sem linhas vazias. */
