@@ -133,6 +133,7 @@ export function rotasEngenharia(banco: Banco) {
       leitura: ReturnType<typeof lerCsvReferencia>,
       idsExistentes = new Map<string, string>(),
       composicoesVazias = new Set<string>(),
+      composicoesSemEstrutura = new Set<string>(),
     ) {
       const ids = new Map(idsExistentes);
       const insumos = leitura.insumos.filter((x) => !ids.has(`insumo:${x.codigo}`));
@@ -175,6 +176,27 @@ export function rotasEngenharia(banco: Banco) {
           `INSERT INTO ref_composicao_insumos (composicao_id, insumo_id, coeficiente)
            SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::numeric[]) ON CONFLICT (composicao_id, insumo_id) DO UPDATE SET coeficiente = excluded.coeficiente`,
           [lote.map((k) => k.composicaoId), lote.map((k) => k.insumoId), lote.map((k) => Math.round(k.coeficiente * 1e6) / 1e6)],
+        );
+      }
+      // Estrutura para conferência: itens diretos (insumos e serviços auxiliares) das composições compostas agora.
+      const estrutura = new Map<string, { composicaoId: string; itemId: string; coeficiente: number }>();
+      for (const k of leitura.estrutura) {
+        if (!novasComposicoes.has(k.composicao) && !composicoesSemEstrutura.has(k.composicao)) continue;
+        const composicaoId = ids.get(`composicao:${k.composicao}`);
+        const itemId = ids.get(`${k.tipoItem}:${k.item}`);
+        if (!composicaoId || !itemId || composicaoId === itemId) continue;
+        const chave = `${composicaoId}:${itemId}`;
+        const atual = estrutura.get(chave);
+        if (atual) atual.coeficiente += k.coeficiente;
+        else estrutura.set(chave, { composicaoId, itemId, coeficiente: k.coeficiente });
+      }
+      const est = [...estrutura.values()];
+      for (let i = 0; i < est.length; i += 1000) {
+        const lote = est.slice(i, i + 1000);
+        await c.query(
+          `INSERT INTO ref_composicao_estrutura (composicao_id, item_id, coeficiente)
+           SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::numeric[]) ON CONFLICT (composicao_id, item_id) DO UPDATE SET coeficiente = excluded.coeficiente`,
+          [lote.map((k) => k.composicaoId), lote.map((k) => k.itemId), lote.map((k) => Math.round(k.coeficiente * 1e7) / 1e7)],
         );
       }
       return {
@@ -308,7 +330,16 @@ export function rotasEngenharia(banco: Banco) {
         const leitura = lerCsvReferencia(d.csv, externos.insumos);
         if (leitura.erros.length) throw new ErroHttp(400, 'O arquivo tem erros. Corrija e envie de novo.', { erros: leitura.erros.slice(0, 50) });
         const vazias = new Set([...externos.composicoes].filter(([, l]) => l.length === 0).map(([k]) => k));
-        const r = await gravarItensRef(c, req.params.id, leitura, ids, vazias);
+        const semEstrutura = new Set(
+          (
+            await c.query(
+              `SELECT i.codigo FROM ref_itens i WHERE i.tabela_id = $1 AND i.tipo = 'composicao'
+                  AND NOT EXISTS (SELECT 1 FROM ref_composicao_estrutura e WHERE e.composicao_id = i.id)`,
+              [req.params.id],
+            )
+          ).rows.map((x: { codigo: string }) => x.codigo),
+        );
+        const r = await gravarItensRef(c, req.params.id, leitura, ids, vazias, semEstrutura);
         await c.query('UPDATE ref_tabelas SET atualizado_em = now() WHERE id = $1', [req.params.id]);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'ref_tabelas', entidadeId: req.params.id, depois: { importacao: r } });
         return r;
@@ -356,9 +387,19 @@ export function rotasEngenharia(banco: Banco) {
           [i.id],
         )
       ).rows;
+      // Estrutura original (insumos e serviços auxiliares diretos). Sem ela (tabela antiga ou própria), os próprios insumos.
+      const est = (
+        await banco.query(
+          `SELECT ri.id, ri.tipo, ri.codigo, ri.descricao, ri.unidade, e.coeficiente, ${precoRef('ri')} AS preco
+             FROM ref_composicao_estrutura e JOIN ref_itens ri ON ri.id = e.item_id
+            WHERE e.composicao_id = $1 ORDER BY ri.tipo DESC, ri.codigo`,
+          [i.id],
+        )
+      ).rows;
       return {
         item: { id: i.id, tipo: i.tipo, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, grupo: i.grupo, preco: reais(i.preco) },
         componentes: comp.map((k) => ({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) })),
+        estrutura: est.map((k) => ({ id: k.id, tipo: k.tipo, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: k.preco === null ? null : Number(k.preco) / 100 })),
       };
     });
 

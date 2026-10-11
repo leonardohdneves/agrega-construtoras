@@ -92,13 +92,15 @@ export function calcularDatas(atividades: AtividadeCalc[]): Map<string, { inicio
 export type LinhaInsumo ={ codigo: string; descricao: string; unidade: string; precoCentavos: number; grupo: string | null };
 export type LinhaComposicao = { codigo: string; descricao: string; unidade: string; grupo: string | null };
 export type LinhaComponente = { composicao: string; insumo: string; coeficiente: number };
-export type LeituraCsv = { insumos: LinhaInsumo[]; composicoes: LinhaComposicao[]; componentes: LinhaComponente[]; erros: string[] };
+/** Estrutura original da composição (para conferência): itens diretos, insumos ou serviços auxiliares, com o multiplicador. */
+export type LinhaEstrutura = { composicao: string; item: string; tipoItem: 'insumo' | 'composicao'; coeficiente: number };
+export type LeituraCsv = { insumos: LinhaInsumo[]; composicoes: LinhaComposicao[]; componentes: LinhaComponente[]; estrutura: LinhaEstrutura[]; erros: string[] };
 
 const COLUNAS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
 
 /** insumosExternos: códigos de insumos que já estão na tabela de destino (importação para tabela existente). */
 export function lerCsvReferencia(texto: string, insumosExternos: Set<string> = new Set()): LeituraCsv {
-  const leitura: LeituraCsv = { insumos: [], composicoes: [], componentes: [], erros: [] };
+  const leitura: LeituraCsv = { insumos: [], composicoes: [], componentes: [], estrutura: [], erros: [] };
   const linhas = texto.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.trim() !== '');
   if (!linhas.length) {
     leitura.erros.push('O arquivo está vazio.');
@@ -137,6 +139,11 @@ export function lerCsvReferencia(texto: string, insumosExternos: Set<string> = n
       if (!codigo || !v('insumo')) return leitura.erros.push(`Linha ${n}: o componente precisa de composição e insumo.`);
       if (coeficiente === null || coeficiente < 0) return leitura.erros.push(`Linha ${n}: coeficiente inválido.`);
       leitura.componentes.push({ composicao: codigo, insumo: v('insumo'), coeficiente });
+    } else if (tipo === 'item_insumo' || tipo === 'item_composicao') {
+      // Estrutura da composição para conferência; o preço continua vindo dos componentes (insumos desdobrados).
+      const coeficiente = numeroBr(v('coeficiente'));
+      if (!codigo || !v('insumo') || coeficiente === null || coeficiente < 0) return leitura.erros.push(`Linha ${n}: item da estrutura inválido.`);
+      leitura.estrutura.push({ composicao: codigo, item: v('insumo'), tipoItem: tipo === 'item_insumo' ? 'insumo' : 'composicao', coeficiente });
     } else {
       leitura.erros.push(`Linha ${n}: tipo "${tipo || '(vazio)'}" desconhecido (use insumo, composicao ou componente).`);
     }

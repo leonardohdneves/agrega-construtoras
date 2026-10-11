@@ -3,7 +3,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
-import type { Tabela } from './EngTabelas';
+import { ConferenciaComposicao, type DetalheComposicao, type Tabela } from './EngTabelas';
 
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
@@ -313,6 +313,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   const [msg, setMsg] = useState('');
   const [editando, setEditando] = useState<string | null>(null);
   const [novoPreco, setNovoPreco] = useState('');
+  const [conferindo, setConferindo] = useState<string | null>(null);
 
   useEffect(() => {
     api<{ tabelas: Tabela[] }>('/eng/tabelas')
@@ -419,7 +420,11 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                     {!tipo && <td>{i.tipo === 'composicao' ? `Serviço (${i.componentes})` : 'Insumo'}</td>}
                     <td>{i.codigo}{i.tipo === 'composicao' && tipo && <div className="small muted">{i.componentes} insumos</div>}</td>
                     <td>
-                      {i.descricao}
+                      {i.tipo === 'composicao' ? (
+                        <button className="btn btn-link" type="button" style={{ padding: 0, minHeight: 0, textAlign: 'left' }} onClick={() => setConferindo(i.id)}>{i.descricao}</button>
+                      ) : (
+                        i.descricao
+                      )}
                       {i.editado && <span className="selo" style={{ marginLeft: 6 }}>editado</span>}
                       {i.origem && <div className="small muted">{i.origem}</div>}
                     </td>
@@ -449,6 +454,10 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
           </div>
         )}
       </div>
+
+      {conferindo && (
+        <ConferenciaComposicao inicial={conferindo} carregar={(itemId) => api<DetalheComposicao>(`/eng/obras/${obraId}/itens/${itemId}`)} aoFechar={() => setConferindo(null)} />
+      )}
 
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Copiar {tipo === 'insumo' ? 'insumos' : tipo === 'composicao' ? 'serviços' : 'itens'} da tabela de referência</h2>
