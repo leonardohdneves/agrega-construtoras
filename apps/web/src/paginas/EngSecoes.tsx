@@ -4,7 +4,7 @@ import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
 import { AbaEap, AbaInsumos, ROTULO_NIVEL, type ItemObra, type No, type Obra, type Orcamento } from './EngObras';
-import { NovoServico } from './EngTabelas';
+import { NovoItemProprio } from './EngTabelas';
 
 type Contexto = { obra: Obra; itens: ItemObra[]; nos: No[]; orc: Orcamento | null; recarregar: () => Promise<void>; setErro: (m: string) => void };
 
@@ -79,35 +79,45 @@ export function SecaoObra({ titulo, ajuda, children }: { titulo: string; ajuda?:
 
 export function EngInsumos() {
   return (
-    <SecaoObra titulo="Insumos" ajuda="Insumos copiados das tabelas de referência para a obra. Editar o preço aqui não altera a tabela. Insumo próprio é criado na tabela própria.">
-      {(c) => <AbaInsumos obraId={c.obra.id} itens={c.itens.filter((i) => i.tipo === 'insumo')} tipo="insumo" aoMudar={c.recarregar} setErro={c.setErro} />}
+    <SecaoObra titulo="Insumos" ajuda="Insumos da obra, copiados das tabelas de referência ou lançados manualmente. Editar o preço aqui não altera a tabela.">
+      {(c) => <ItensDaObra tipo="insumo" obraId={c.obra.id} itens={c.itens} aoMudar={c.recarregar} setErro={c.setErro} />}
     </SecaoObra>
   );
 }
 
 export function EngServicos() {
   return (
-    <SecaoObra titulo="Serviços" ajuda="Composições unitárias (SINAPI e próprias). Serviço próprio é criado na tabela própria, com seus insumos e coeficientes.">
-      {(c) => <ConteudoServicos obraId={c.obra.id} itens={c.itens} aoMudar={c.recarregar} setErro={c.setErro} />}
+    <SecaoObra titulo="Serviços" ajuda="Composições unitárias da obra (SINAPI ou próprias). Serviço próprio tem seus insumos e coeficientes.">
+      {(c) => <ItensDaObra tipo="composicao" obraId={c.obra.id} itens={c.itens} aoMudar={c.recarregar} setErro={c.setErro} />}
     </SecaoObra>
   );
 }
 
-function ConteudoServicos({ obraId, itens, aoMudar, setErro }: { obraId: string; itens: ItemObra[]; aoMudar: () => void; setErro: (m: string) => void }) {
+/** Lista só os itens do tipo da página (insumos ou serviços), com a entrada manual de item próprio. */
+function ItensDaObra({ tipo, obraId, itens, aoMudar, setErro }: { tipo: 'insumo' | 'composicao'; obraId: string; itens: ItemObra[]; aoMudar: () => void; setErro: (m: string) => void }) {
   const [novo, setNovo] = useState(false);
   const [msg, setMsg] = useState('');
+  const rotulo = tipo === 'insumo' ? 'Novo insumo' : 'Novo serviço';
   return (
     <>
       <div className="acoes" style={{ marginBottom: 12 }}>
-        <button className="btn btn-primario" type="button" onClick={() => { setMsg(''); setNovo(!novo); }} aria-expanded={novo}>{novo ? 'Fechar' : 'Novo serviço'}</button>
+        <button className="btn btn-primario" type="button" onClick={() => { setMsg(''); setNovo(!novo); }} aria-expanded={novo}>{novo ? 'Fechar' : rotulo}</button>
       </div>
       {msg && <div className="alerta alerta-ok" role="status" style={{ marginBottom: 12 }}>{msg}</div>}
       {novo && (
         <div style={{ marginBottom: 12 }}>
-          <NovoServico aoSalvar={(m) => { setNovo(false); setMsg(m); }} />
+          <NovoItemProprio
+            tipo={tipo}
+            obraId={obraId}
+            aoSalvar={(m) => {
+              setNovo(false);
+              setMsg(m);
+              aoMudar();
+            }}
+          />
         </div>
       )}
-      <AbaInsumos obraId={obraId} itens={itens.filter((i) => i.tipo === 'composicao')} tipo="composicao" aoMudar={aoMudar} setErro={setErro} />
+      <AbaInsumos obraId={obraId} itens={itens.filter((i) => i.tipo === tipo)} tipo={tipo} aoMudar={aoMudar} setErro={setErro} />
     </>
   );
 }

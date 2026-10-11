@@ -1,7 +1,7 @@
 // Engenharia · Tabelas de referência: SINAPI (importada, imutável) e tabela própria da empresa (editável).
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, formatarMoeda, lerNumero } from '../api';
+import { api, formatarMoeda, lerNumero, type ErroApi } from '../api';
 import { abrirXlsx, linhasParaTexto, type Planilha } from '../lib/xlsx';
 
 export type Tabela = {
@@ -73,33 +73,66 @@ export function EngTabelas() {
   );
 }
 
-function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
-  const [d, setD] = useState({ fonte: 'sinapi' as 'sinapi' | 'proprio', nome: '', uf: '', mesReferencia: '', desonerado: false });
-  const [csv, setCsv] = useState('');
-  const [arquivo, setArquivo] = useState('');
-  const [erros, setErros] = useState<string[]>([]);
-  const [erro, setErro] = useState('');
-  const [ocupado, setOcupado] = useState(false);
-  const [lendoIa, setLendoIa] = useState(false);
-  const [resumoIa, setResumoIa] = useState('');
+const CAMPOS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
+type ValoresTipo = Record<'insumo' | 'composicao' | 'componenteInsumo' | 'componenteComposicao', string | string[] | null>;
+type MapaIa = {
+  separador: string;
+  linhaInicial: number;
+  colunas: Record<(typeof CAMPOS)[number], number | null>;
+  tipoUnico: 'insumo' | 'composicao' | null;
+  valoresTipo: ValoresTipo | null;
+};
+type Conversao = {
+  csv: string;
+  ignoradas: number;
+  semPreco: number;
+  componentesDescartados: number;
+  auxiliaresAchatadas: number;
+  composicoesSemInsumos: number;
+  contagem: { insumos: number; composicoes: number; componentes: number };
+};
 
+/** Mesma regra do servidor: linhas com algum conteúdo além dos separadores. */
+const linhasUteis = (texto: string) => texto.replace(/^﻿/, '').split(/\r?\n/).filter((l) => l.replace(/[;,\t|]/g, '').trim() !== '');
+const ehFormatoPadrao = (texto: string) => {
+  const cab = linhasUteis(texto)[0]?.toLowerCase().split(';').map((c) => c.trim()) ?? [];
+  return CAMPOS.every((c) => cab.includes(c));
+};
+const errosDe = (err: unknown) => ((err as ErroApi).dados?.erros as string[] | undefined) ?? [];
+const fmt = (x: number) => x.toLocaleString('pt-BR');
+
+/**
+ * Escolha e leitura do arquivo (CSV ou .xlsx). No formato padrão, devolve o texto como está;
+ * fora dele, a IA identifica as colunas e o servidor converte. Devolve ao pai o CSV padrão pronto, ou '' enquanto não houver.
+ */
+function LeitorArquivo({ id, uf, desonerado, tabelaId, aoMudar }: { id: string; uf: string | null; desonerado: boolean; tabelaId?: string; aoMudar: (csv: string) => void }) {
+  const [arquivo, setArquivo] = useState('');
   const [planilha, setPlanilha] = useState<Planilha | null>(null);
   const [aba, setAba] = useState('');
-  const [lendoArquivo, setLendoArquivo] = useState(false);
+  const [texto, setTexto] = useState('');
+  const [lendo, setLendo] = useState<'' | 'arquivo' | 'ia'>('');
+  const [resumo, setResumo] = useState<{ texto: string; aviso: boolean } | null>(null);
+  const [erro, setErro] = useState('');
+  const [erros, setErros] = useState<string[]>([]);
+
+  function usarTexto(t: string) {
+    setTexto(t);
+    setResumo(null);
+    aoMudar(t && ehFormatoPadrao(t) ? t : '');
+  }
 
   async function lerArquivo(f: File | undefined) {
     if (!f) return;
     setErro('');
     setErros([]);
-    setResumoIa('');
-    setCsv('');
     setPlanilha(null);
     setAba('');
+    usarTexto('');
     setArquivo(f.name);
     const nome = f.name.toLowerCase();
     if (nome.endsWith('.xls')) return setErro('Arquivo .xls antigo não é lido. No Excel, use Salvar como › Pasta de Trabalho do Excel (.xlsx).');
-    if (!nome.endsWith('.xlsx') && !nome.endsWith('.xlsm')) return setCsv(await f.text());
-    setLendoArquivo(true);
+    if (!nome.endsWith('.xlsx') && !nome.endsWith('.xlsm')) return usarTexto(await f.text());
+    setLendo('arquivo');
     try {
       const p = await abrirXlsx(await f.arrayBuffer());
       if (!p.abas.length) throw new Error('A planilha não tem abas.');
@@ -108,61 +141,124 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
     } catch (err) {
       setErro((err as Error).message);
     } finally {
-      setLendoArquivo(false);
+      setLendo('');
     }
   }
 
   async function escolherAba(p: Planilha, nome: string) {
     setAba(nome);
-    setResumoIa('');
     setErro('');
     setErros([]);
-    setLendoArquivo(true);
+    setLendo('arquivo');
     try {
-      const texto = linhasParaTexto(await p.ler(nome));
-      if (!texto) throw new Error(`A aba ${nome} está vazia.`);
-      setCsv(texto);
+      const t = linhasParaTexto(await p.ler(nome));
+      if (!t) throw new Error(`A aba ${nome} está vazia.`);
+      usarTexto(t);
     } catch (err) {
-      setCsv('');
+      usarTexto('');
       setErro((err as Error).message);
     } finally {
-      setLendoArquivo(false);
+      setLendo('');
     }
   }
 
-  // Arquivo fora do formato padrão: a IA descobre as colunas e o sistema gera o CSV padrão para conferência.
+  // 1) a IA vê as primeiras linhas e devolve as colunas; 2) recortamos as colunas úteis da planilha inteira; 3) o servidor converte.
   async function lerComIa() {
     setErro('');
     setErros([]);
-    setResumoIa('');
-    setLendoIa(true);
+    setResumo(null);
+    setLendo('ia');
     try {
-      const r = await api<{ csv: string; ignoradas: number; semPreco: number; componentesDescartados: number; contagem: { insumos: number; composicoes: number; componentes: number } }>(
-        '/eng/tabelas/converter-ia',
-        { corpo: { texto: csv, uf: d.uf || null, desonerado: d.fonte === 'sinapi' ? d.desonerado : false } },
-      );
-      setCsv(r.csv);
-      const n = (x: number) => x.toLocaleString('pt-BR');
-      setResumoIa(
-        `A IA leu ${aba ? `a aba ${aba}` : 'o arquivo'}: ${n(r.contagem.insumos)} insumos, ${n(r.contagem.composicoes)} composições e ${n(r.contagem.componentes)} componentes.` +
-          (r.semPreco ? ` ${n(r.semPreco)} insumos sem preço ficaram de fora.` : '') +
-          (r.componentesDescartados ? ` ${n(r.componentesDescartados)} componentes apontam para itens fora do arquivo e ficaram de fora.` : '') +
-          (r.ignoradas ? ` ${n(r.ignoradas)} linhas que não são itens (títulos, totais) foram ignoradas.` : '') +
-          ' Confira o nome e a referência e crie a tabela.',
-      );
+      const linhas = linhasUteis(texto);
+      const { mapa } = await api<{ mapa: MapaIa }>('/eng/tabelas/mapear-ia', { corpo: { amostra: linhas.slice(0, 40).join('\n'), uf, desonerado } });
+      const recortado = linhas
+        .slice(mapa.linhaInicial)
+        .map((l) => {
+          const c = l.split(mapa.separador);
+          return CAMPOS.map((k) => {
+            const i = mapa.colunas[k];
+            return i === null ? '' : (c[i] ?? '').replace(/[;\r\n]/g, ',').trim();
+          }).join(';');
+        })
+        .join('\n');
+      const r = await api<Conversao>('/eng/tabelas/converter', { corpo: { texto: recortado, tipoUnico: mapa.tipoUnico, valoresTipo: mapa.valoresTipo, tabelaId: tabelaId ?? null } });
+      aoMudar(r.csv);
+      const partes = [
+        `A IA leu ${aba ? `a aba ${aba}` : 'o arquivo'}: ${fmt(r.contagem.insumos)} insumos e ${fmt(r.contagem.composicoes)} composições (${fmt(r.contagem.componentes)} itens de composição).`,
+        r.auxiliaresAchatadas ? `${fmt(r.auxiliaresAchatadas)} composições auxiliares foram desdobradas nos insumos delas.` : '',
+        r.semPreco ? `${fmt(r.semPreco)} insumos sem preço ficaram de fora.` : '',
+        r.componentesDescartados ? `${fmt(r.componentesDescartados)} itens de composição apontam para códigos que não existem ${tabelaId ? 'nem no arquivo nem na tabela' : 'no arquivo'} e ficaram de fora.` : '',
+        r.ignoradas ? `${fmt(r.ignoradas)} linhas que não são itens (títulos, totais) foram ignoradas.` : '',
+      ];
+      const semInsumos = r.composicoesSemInsumos > 0;
+      if (semInsumos) {
+        partes.push(
+          tabelaId
+            ? `${fmt(r.composicoesSemInsumos)} composições ficaram sem nenhum insumo.`
+            : `${fmt(r.composicoesSemInsumos)} composições ficaram sem insumos porque os insumos não estão neste arquivo. Para a SINAPI, crie primeiro a tabela com os insumos do mês e depois importe as composições nela (abra a tabela › Importar arquivo).`,
+        );
+      }
+      setResumo({ texto: partes.filter(Boolean).join(' '), aviso: semInsumos });
     } catch (err) {
-      const e2 = err as Error & { dados?: { erros?: string[] } };
-      setErro(e2.message);
-      setErros((e2 as unknown as { erros?: string[] }).erros ?? []);
+      setErro((err as Error).message);
+      setErros(errosDe(err));
     } finally {
-      setLendoIa(false);
+      setLendo('');
     }
   }
 
-  const formatoPadrao = (() => {
-    const cab = csv.replace(/^﻿/, '').split(/\r?\n/)[0]?.toLowerCase().split(';').map((c) => c.trim()) ?? [];
-    return ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'].every((c) => cab.includes(c));
-  })();
+  const foraDoPadrao = !!texto && !ehFormatoPadrao(texto);
+  return (
+    <div className="campo">
+      <label htmlFor={`${id}-arquivo`}>Arquivo CSV ou Excel .xlsx</label>
+      <input id={`${id}-arquivo`} type="file" accept=".csv,.txt,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" onChange={(e) => lerArquivo(e.target.files?.[0])} />
+      <span className="ajuda">
+        Planilhas da Caixa (.xlsx) e outros layouts são lidos com a IA. Formato padrão, sem IA: colunas separadas por ponto e vírgula,{' '}
+        <code>tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente</code>.{arquivo && <> Arquivo: <b>{arquivo}</b>.</>}
+      </span>
+      {planilha && planilha.abas.length > 1 && (
+        <div className="campo" style={{ maxWidth: 360, marginTop: 8 }}>
+          <label htmlFor={`${id}-aba`}>Aba da planilha</label>
+          <select id={`${id}-aba`} value={aba} disabled={!!lendo} onChange={(e) => escolherAba(planilha, e.target.value)}>
+            {planilha.abas.map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+        </div>
+      )}
+      {lendo === 'arquivo' && <p className="small muted" style={{ margin: '8px 0 0' }}>Lendo a planilha…</p>}
+      {erro && <div className="alerta alerta-erro" role="alert" style={{ marginTop: 8 }}>{erro}</div>}
+      {erros.length > 0 && (
+        <ul className="small" style={{ color: 'var(--status-danger-ink)', margin: '4px 0 0' }}>
+          {erros.slice(0, 20).map((x) => <li key={x}>{x}</li>)}
+        </ul>
+      )}
+      {foraDoPadrao && !resumo && (
+        <div className="alerta alerta-aviso" role="status" style={{ marginTop: 8 }}>
+          <p style={{ margin: '0 0 8px' }}>
+            {planilha ? 'Planilha fora do formato padrão.' : 'Este arquivo não está no formato padrão.'} A IA identifica as colunas e o sistema converte as linhas.
+            {!uf && <> Informe a <b>UF</b> antes, se a planilha trouxer um preço por estado.</>}
+          </p>
+          <button className="btn btn-secundario" type="button" onClick={lerComIa} disabled={!!lendo}>{lendo === 'ia' ? 'Lendo com IA…' : 'Ler com IA'}</button>
+        </div>
+      )}
+      {resumo && <div className={`alerta ${resumo.aviso ? 'alerta-aviso' : 'alerta-ok'}`} role="status" style={{ marginTop: 8 }}>{resumo.texto}</div>}
+    </div>
+  );
+}
+
+const MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+function nomeSugerido(d: { fonte: string; uf: string; mesReferencia: string; desonerado: boolean }) {
+  if (d.fonte !== 'sinapi') return 'Tabela própria';
+  const m = /^(\d{4})-(\d{2})$/.exec(d.mesReferencia);
+  return ['SINAPI', d.uf || null, m ? `${MESES[Number(m[2]) - 1] ?? m[2]}/${m[1]}` : null, d.desonerado ? 'desonerado' : 'não desonerado'].filter(Boolean).join(' ');
+}
+
+function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
+  const [d, setD] = useState({ fonte: 'sinapi' as 'sinapi' | 'proprio', nome: '', uf: '', mesReferencia: '', desonerado: false });
+  const [csv, setCsv] = useState('');
+  const [erros, setErros] = useState<string[]>([]);
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const nome = d.nome.trim() || nomeSugerido(d);
 
   async function criar(e: FormEvent) {
     e.preventDefault();
@@ -171,13 +267,12 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
     setOcupado(true);
     try {
       const r = await api<{ tabela: Tabela }>('/eng/tabelas', {
-        corpo: { fonte: d.fonte, nome: d.nome, uf: d.uf || null, mesReferencia: d.mesReferencia || null, desonerado: d.fonte === 'sinapi' ? d.desonerado : false, csv: csv || null },
+        corpo: { fonte: d.fonte, nome, uf: d.uf || null, mesReferencia: d.mesReferencia || null, desonerado: d.fonte === 'sinapi' ? d.desonerado : false, csv: csv || null },
       });
       aoCriar(r.tabela.id);
     } catch (err) {
-      const e2 = err as Error & { dados?: { erros?: string[] } };
-      setErro(e2.message);
-      setErros((e2 as unknown as { erros?: string[] }).erros ?? []);
+      setErro((err as Error).message);
+      setErros(errosDe(err));
     } finally {
       setOcupado(false);
     }
@@ -202,7 +297,8 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
         </div>
         <div className="campo">
           <label htmlFor="tb-nome">Nome</label>
-          <input id="tb-nome" value={d.nome} onChange={(e) => setD({ ...d, nome: e.target.value })} placeholder={d.fonte === 'sinapi' ? 'SINAPI TO set/2026' : 'Tabela própria'} />
+          <input id="tb-nome" value={d.nome} onChange={(e) => setD({ ...d, nome: e.target.value })} placeholder={nomeSugerido(d)} />
+          {!d.nome.trim() && <span className="ajuda">Em branco, a tabela se chama “{nomeSugerido(d)}”.</span>}
         </div>
         {d.fonte === 'sinapi' && (
           <>
@@ -220,43 +316,55 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
           </>
         )}
       </div>
-      <div className="campo">
-        <label htmlFor="tb-csv">Arquivo CSV ou Excel .xlsx (opcional)</label>
-        <input
-          id="tb-csv"
-          type="file"
-          accept=".csv,.txt,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-          onChange={(e) => lerArquivo(e.target.files?.[0])}
-        />
-        <span className="ajuda">
-          Formato padrão: colunas separadas por ponto e vírgula, <code>tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente</code>. Tipos: <b>insumo</b>, <b>composicao</b> e <b>componente</b> (um por insumo de cada composição).
-          Planilhas da Caixa (.xlsx) e outros layouts são lidos com a IA.
-          {arquivo && <> Arquivo: <b>{arquivo}</b>.</>}
-        </span>
-        {planilha && planilha.abas.length > 1 && (
-          <div className="campo" style={{ maxWidth: 360, marginTop: 8 }}>
-            <label htmlFor="tb-aba">Aba da planilha</label>
-            <select id="tb-aba" value={aba} disabled={lendoArquivo || lendoIa} onChange={(e) => escolherAba(planilha, e.target.value)}>
-              {planilha.abas.map((a) => <option key={a} value={a}>{a}</option>)}
-            </select>
-          </div>
-        )}
-        {lendoArquivo && <p className="small muted" style={{ margin: '8px 0 0' }}>Lendo a planilha…</p>}
-        {csv && !formatoPadrao && (
-          <div className="alerta alerta-aviso" role="status" style={{ marginTop: 8 }}>
-            <p style={{ margin: '0 0 8px' }}>
-              {planilha ? 'Planilha fora do formato padrão.' : 'Este arquivo não está no formato padrão.'} A IA identifica as colunas e o sistema converte as linhas.
-              {d.fonte === 'sinapi' && !d.uf && <> Informe a <b>UF</b> antes: a planilha da Caixa traz um preço por estado.</>}
-            </p>
-            <button className="btn btn-secundario" type="button" onClick={lerComIa} disabled={lendoIa || lendoArquivo}>{lendoIa ? 'Lendo com IA…' : 'Ler com IA'}</button>
-          </div>
-        )}
-        {resumoIa && <div className="alerta alerta-ok" role="status" style={{ marginTop: 8 }}>{resumoIa}</div>}
-      </div>
+      <LeitorArquivo id="tb" uf={d.uf || null} desonerado={d.fonte === 'sinapi' && d.desonerado} aoMudar={setCsv} />
       <div className="acoes">
-        <button className="btn btn-primario" type="submit" disabled={ocupado || lendoArquivo || lendoIa || d.nome.trim().length < 2 || (!!csv && !formatoPadrao)}>{ocupado ? 'Criando…' : 'Criar tabela'}</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado || nome.length < 2}>{ocupado ? 'Criando…' : csv ? 'Criar tabela com os itens lidos' : 'Criar tabela vazia'}</button>
       </div>
     </form>
+  );
+}
+
+/** Importa um arquivo numa tabela que já existe (ex.: as composições da SINAPI na tabela dos insumos do mesmo mês). */
+function ImportarNaTabela({ tabela, aoImportar }: { tabela: Tabela; aoImportar: (mensagem: string) => void }) {
+  const [csv, setCsv] = useState('');
+  const [erro, setErro] = useState('');
+  const [erros, setErros] = useState<string[]>([]);
+  const [ocupado, setOcupado] = useState(false);
+  async function importar() {
+    setErro('');
+    setErros([]);
+    setOcupado(true);
+    try {
+      const r = await api<{ contagem: { insumos: number; composicoes: number; componentes: number; jaExistiam: number } }>(`/eng/tabelas/${tabela.id}/importar`, { corpo: { csv } });
+      const c = r.contagem;
+      aoImportar(
+        `Importação concluída: ${fmt(c.insumos)} insumos e ${fmt(c.composicoes)} composições novas (${fmt(c.componentes)} itens de composição).` +
+          (c.jaExistiam ? ` ${fmt(c.jaExistiam)} itens já existiam na tabela e ficaram como estavam.` : ''),
+      );
+    } catch (err) {
+      setErro((err as Error).message);
+      setErros(errosDe(err));
+    } finally {
+      setOcupado(false);
+    }
+  }
+  return (
+    <div className="card form">
+      <h2 style={{ margin: 0 }}>Importar arquivo nesta tabela</h2>
+      <p className="small muted" style={{ margin: 0 }}>
+        Acrescenta insumos e composições. As composições podem usar os insumos que já estão na tabela; códigos que já existem ficam como estão.
+      </p>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {erros.length > 0 && (
+        <ul className="small" style={{ color: 'var(--status-danger-ink)', margin: 0 }}>
+          {erros.slice(0, 20).map((x) => <li key={x}>{x}</li>)}
+        </ul>
+      )}
+      <LeitorArquivo id="imp" uf={tabela.uf} desonerado={tabela.desonerado} tabelaId={tabela.id} aoMudar={setCsv} />
+      <div className="acoes">
+        <button className="btn btn-primario" type="button" onClick={importar} disabled={ocupado || !csv}>{ocupado ? 'Importando…' : 'Importar'}</button>
+      </div>
+    </div>
   );
 }
 
@@ -268,6 +376,8 @@ export function EngTabelaDetalhe() {
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<{ item: Item; componentes: Componente[] } | null>(null);
   const [novo, setNovo] = useState(false);
+  const [importar, setImportar] = useState(false);
+  const [msg, setMsg] = useState('');
   const [erro, setErro] = useState('');
 
   const carregarTabela = () => api<{ tabela: Tabela }>(`/eng/tabelas/${id}`).then((r) => setTabela(r.tabela)).catch((e) => setErro((e as Error).message));
@@ -313,16 +423,32 @@ export function EngTabelaDetalhe() {
             {tabela && ROTULO_FONTE[tabela.fonte]}
             {tabela?.uf ? ` · ${tabela.uf}` : ''}
             {tabela?.mesReferencia ? ` · referência ${tabela.mesReferencia}` : ''}
-            {tabela?.fonte === 'sinapi' ? ` · ${tabela.desonerado ? 'desonerado' : 'não desonerado'} · somente leitura` : ' · editável'}
+            {tabela?.fonte === 'sinapi' ? ` · ${tabela.desonerado ? 'desonerado' : 'não desonerado'} · itens não editáveis` : ' · editável'}
           </span>
         </div>
-        {tabela?.editavel && (
+        {tabela && (
           <div className="acoes">
-            <button className="btn btn-primario" type="button" onClick={() => setNovo(!novo)} aria-expanded={novo}>{novo ? 'Fechar' : 'Novo item'}</button>
+            <button className={`btn ${tabela.editavel ? 'btn-secundario' : 'btn-primario'}`} type="button" onClick={() => { setMsg(''); setNovo(false); setImportar(!importar); }} aria-expanded={importar}>
+              {importar ? 'Fechar importação' : 'Importar arquivo'}
+            </button>
+            {tabela.editavel && (
+              <button className="btn btn-primario" type="button" onClick={() => { setImportar(false); setNovo(!novo); }} aria-expanded={novo}>{novo ? 'Fechar' : 'Novo item'}</button>
+            )}
           </div>
         )}
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {msg && <div className="alerta alerta-ok" role="status">{msg}</div>}
+      {importar && tabela && (
+        <ImportarNaTabela
+          tabela={tabela}
+          aoImportar={async (m) => {
+            setImportar(false);
+            setMsg(m);
+            await Promise.all([carregarTabela(), carregarItens()]);
+          }}
+        />
+      )}
       {novo && tabela?.editavel && (
         <NovoItem
           tabelaId={tabela.id}
@@ -404,47 +530,84 @@ export function EngTabelaDetalhe() {
   );
 }
 
-/** Serviço próprio: composição unitária criada na tabela própria da empresa. */
-export function NovoServico({ aoSalvar }: { aoSalvar: (mensagem: string) => void }) {
+/**
+ * Entrada manual de insumo ou serviço (composição unitária) próprio: o item é criado na tabela própria da empresa
+ * e, quando há obra aberta, já é copiado para ela.
+ */
+export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | 'composicao'; obraId?: string; aoSalvar: (mensagem: string) => void }) {
   const [proprias, setProprias] = useState<Tabela[] | null>(null);
   const [tabelaId, setTabelaId] = useState('');
   const [erro, setErro] = useState('');
-  useEffect(() => {
+  const [criando, setCriando] = useState(false);
+  const carregar = () =>
     api<{ tabelas: Tabela[] }>('/eng/tabelas')
       .then((r) => {
         const p = r.tabelas.filter((t) => t.fonte === 'proprio' && t.editavel);
         setProprias(p);
-        setTabelaId(p[0]?.id ?? '');
+        setTabelaId((atual) => (p.some((t) => t.id === atual) ? atual : (p[0]?.id ?? '')));
       })
       .catch((e) => setErro((e as Error).message));
+  useEffect(() => {
+    carregar();
   }, []);
 
-  if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
+  async function criarTabelaPropria() {
+    setErro('');
+    setCriando(true);
+    try {
+      const r = await api<{ tabela: Tabela }>('/eng/tabelas', { corpo: { fonte: 'proprio', nome: 'Tabela própria', uf: null, mesReferencia: null, desonerado: false, csv: null } });
+      setTabelaId(r.tabela.id);
+      await carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setCriando(false);
+    }
+  }
+
+  async function salvo(itemId: string) {
+    const nome = tipo === 'insumo' ? 'Insumo' : 'Serviço';
+    const tabela = proprias?.find((t) => t.id === tabelaId)?.nome ?? 'própria';
+    if (!obraId) return aoSalvar(`${nome} criado na tabela ${tabela}.`);
+    try {
+      await api(`/eng/obras/${obraId}/importar`, {
+        corpo: { tabelaId, insumoIds: tipo === 'insumo' ? [itemId] : [], composicaoIds: tipo === 'composicao' ? [itemId] : [] },
+      });
+      aoSalvar(`${nome} criado na tabela ${tabela} e incluído nesta obra.`);
+    } catch (err) {
+      aoSalvar(`${nome} criado na tabela ${tabela}, mas não foi incluído na obra: ${(err as Error).message}`);
+    }
+  }
+
+  if (erro && proprias === null) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
   if (proprias === null) return <p className="muted">Carregando…</p>;
   if (proprias.length === 0)
     return (
       <div className="card">
-        <p className="muted" style={{ margin: 0 }}>
-          Antes, crie a tabela própria da empresa em <Link to="/eng/tabelas">Tabelas de referência</Link>. Os serviços próprios ficam nela.
+        {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+        <p className="muted" style={{ marginTop: 0 }}>
+          Os {tipo === 'insumo' ? 'insumos' : 'serviços'} próprios ficam na tabela própria da empresa, que ainda não existe.
         </p>
+        <button className="btn btn-primario" type="button" onClick={criarTabelaPropria} disabled={criando}>{criando ? 'Criando…' : 'Criar a tabela própria'}</button>
       </div>
     );
-  const nomeTabela = proprias.find((t) => t.id === tabelaId)?.nome ?? '';
   return (
     <div>
-      <div className="campo" style={{ maxWidth: 360, marginBottom: 8 }}>
-        <label htmlFor="ns-tabela">Tabela própria</label>
-        <select id="ns-tabela" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
-          {proprias.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-        </select>
-      </div>
-      <NovoItem key={tabelaId} tabelaId={tabelaId} soComposicao aoSalvar={() => aoSalvar(`Serviço criado na tabela ${nomeTabela}. Para usar nesta obra, copie-o pela lista abaixo.`)} />
+      {proprias.length > 1 && (
+        <div className="campo" style={{ maxWidth: 360, marginBottom: 8 }}>
+          <label htmlFor="np-tabela">Tabela própria</label>
+          <select id="np-tabela" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
+            {proprias.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+          </select>
+        </div>
+      )}
+      <NovoItem key={`${tabelaId}-${tipo}`} tabelaId={tabelaId} tipoFixo={tipo} aoSalvar={salvo} />
     </div>
   );
 }
 
-function NovoItem({ tabelaId, aoSalvar, soComposicao = false }: { tabelaId: string; aoSalvar: () => void; soComposicao?: boolean }) {
-  const [d, setD] = useState({ tipo: (soComposicao ? 'composicao' : 'insumo') as 'insumo' | 'composicao', codigo: '', descricao: '', unidade: '', grupo: '', preco: '' });
+function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar: (itemId: string) => void; tipoFixo?: 'insumo' | 'composicao' }) {
+  const [d, setD] = useState({ tipo: (tipoFixo ?? 'insumo') as 'insumo' | 'composicao', codigo: '', descricao: '', unidade: '', grupo: '', preco: '' });
   const [comp, setComp] = useState([{ insumoCodigo: '', coeficiente: '' }]);
   const [erro, setErro] = useState('');
   async function salvar(e: FormEvent) {
@@ -453,20 +616,20 @@ function NovoItem({ tabelaId, aoSalvar, soComposicao = false }: { tabelaId: stri
     const componentes = comp.filter((c) => c.insumoCodigo.trim()).map((c) => ({ insumoCodigo: c.insumoCodigo.trim(), coeficiente: lerNumero(c.coeficiente) ?? -1 }));
     if (d.tipo === 'composicao' && componentes.some((c) => c.coeficiente < 0)) return setErro('Confira os coeficientes dos insumos.');
     try {
-      await api(`/eng/tabelas/${tabelaId}/itens`, { corpo: { tipo: d.tipo, codigo: d.codigo, descricao: d.descricao, unidade: d.unidade, grupo: d.grupo || null, preco: d.tipo === 'insumo' ? d.preco : null, componentes } });
+      const r = await api<{ id: string }>(`/eng/tabelas/${tabelaId}/itens`, { corpo: { tipo: d.tipo, codigo: d.codigo, descricao: d.descricao, unidade: d.unidade, grupo: d.grupo || null, preco: d.tipo === 'insumo' ? d.preco : null, componentes } });
       setD({ tipo: d.tipo, codigo: '', descricao: '', unidade: '', grupo: '', preco: '' });
       setComp([{ insumoCodigo: '', coeficiente: '' }]);
-      aoSalvar();
+      aoSalvar(r.id);
     } catch (err) {
       setErro((err as Error).message);
     }
   }
   return (
     <form className="card form" onSubmit={salvar}>
-      <h2 style={{ margin: 0 }}>{soComposicao ? 'Novo serviço' : 'Novo item'}</h2>
+      <h2 style={{ margin: 0 }}>{tipoFixo === 'insumo' ? 'Novo insumo' : tipoFixo === 'composicao' ? 'Novo serviço' : 'Novo item'}</h2>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        {!soComposicao && (
+        {!tipoFixo && (
           <div className="campo">
             <label htmlFor="ni-tipo">Tipo</label>
             <select id="ni-tipo" value={d.tipo} onChange={(e) => setD({ ...d, tipo: e.target.value as 'insumo' | 'composicao' })}>
@@ -490,7 +653,7 @@ function NovoItem({ tabelaId, aoSalvar, soComposicao = false }: { tabelaId: stri
             </div>
           ))}
           <button className="btn btn-link" type="button" onClick={() => setComp([...comp, { insumoCodigo: '', coeficiente: '' }])}>+ insumo</button>
-          <span className="ajuda">Os insumos precisam existir nesta tabela. O preço da composição é a soma dos insumos × coeficiente.</span>
+          <span className="ajuda">Informe o código de cada insumo e a quantidade por unidade do serviço. Os insumos precisam existir na tabela própria (crie-os em Insumos › Novo insumo). O preço do serviço é a soma dos insumos × coeficiente.</span>
         </div>
       )}
       <div className="acoes"><button className="btn btn-primario" type="submit" disabled={d.codigo.trim() === '' || d.descricao.trim().length < 2 || d.unidade.trim() === ''}>Adicionar</button></div>

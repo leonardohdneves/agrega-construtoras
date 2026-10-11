@@ -324,15 +324,25 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   }, []);
 
   useEffect(() => {
-    if (!tabelaId) return;
     setSel(new Set());
-    api<{ itens: ItemCatalogo[] }>(`/eng/tabelas/${tabelaId}/itens`)
-      .then((r) => setCatalogo(r.itens))
-      .catch((e) => setErro((e as Error).message));
   }, [tabelaId]);
 
-  const termo = busca.trim().toLowerCase();
-  const filtrados = catalogo.filter((i) => (!tipo || i.tipo === tipo) && (!termo || i.codigo.toLowerCase().includes(termo) || i.descricao.toLowerCase().includes(termo)));
+  // Busca no servidor, já filtrada pelo tipo da página (tabelas SINAPI têm milhares de itens).
+  useEffect(() => {
+    if (!tabelaId) return;
+    const q = new URLSearchParams();
+    if (tipo) q.set('tipo', tipo);
+    if (busca.trim()) q.set('busca', busca.trim());
+    const t = setTimeout(() => {
+      api<{ itens: ItemCatalogo[] }>(`/eng/tabelas/${tabelaId}/itens?${q}`)
+        .then((r) => setCatalogo(r.itens))
+        .catch((e) => setErro((e as Error).message));
+    }, 250);
+    return () => clearTimeout(t);
+  }, [tabelaId, tipo, busca]);
+
+  const filtrados = catalogo.filter((i) => !tipo || i.tipo === tipo);
+  const rotulo = tipo === 'insumo' ? 'Insumos' : tipo === 'composicao' ? 'Serviços' : 'Insumos e serviços';
 
   function alternar(id: string) {
     const n = new Set(sel);
@@ -385,16 +395,16 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   return (
     <>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Insumos e serviços da obra</h2>
+        <h2 style={{ marginTop: 0 }}>{rotulo} da obra</h2>
         <span className="ajuda">Os itens são cópias da tabela de referência. Alterar o preço aqui não mexe na tabela.</span>
         {itens.length === 0 ? (
-          <p className="muted">Nenhum item copiado ainda. Escolha abaixo o que levar da tabela de referência.</p>
+          <p className="muted">Nenhum item ainda. Escolha abaixo o que levar da tabela de referência.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table className="tabela">
               <thead>
                 <tr>
-                  <th>Tipo</th>
+                  {!tipo && <th>Tipo</th>}
                   <th>Código</th>
                   <th>Descrição</th>
                   <th>Unid.</th>
@@ -406,8 +416,8 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
               <tbody>
                 {itens.map((i) => (
                   <tr key={i.id}>
-                    <td>{i.tipo === 'composicao' ? `Serviço (${i.componentes})` : 'Insumo'}</td>
-                    <td>{i.codigo}</td>
+                    {!tipo && <td>{i.tipo === 'composicao' ? `Serviço (${i.componentes})` : 'Insumo'}</td>}
+                    <td>{i.codigo}{i.tipo === 'composicao' && tipo && <div className="small muted">{i.componentes} insumos</div>}</td>
                     <td>
                       {i.descricao}
                       {i.editado && <span className="selo" style={{ marginLeft: 6 }}>editado</span>}
@@ -441,7 +451,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
       </div>
 
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Copiar da tabela de referência</h2>
+        <h2 style={{ marginTop: 0 }}>Copiar {tipo === 'insumo' ? 'insumos' : tipo === 'composicao' ? 'serviços' : 'itens'} da tabela de referência</h2>
         {msg && <div className="alerta" role="status">{msg}</div>}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
           <div className="campo">
@@ -468,7 +478,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                   <td style={{ width: 32 }}>
                     <input type="checkbox" aria-label={`Selecionar ${i.codigo}`} checked={sel.has(i.id)} onChange={() => alternar(i.id)} />
                   </td>
-                  <td>{i.tipo === 'composicao' ? 'Serviço' : 'Insumo'}</td>
+                  {!tipo && <td>{i.tipo === 'composicao' ? 'Serviço' : 'Insumo'}</td>}
                   <td>{i.codigo}</td>
                   <td>{i.descricao}</td>
                   <td>{i.unidade}</td>
