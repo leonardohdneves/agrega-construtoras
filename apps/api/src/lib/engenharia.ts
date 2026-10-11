@@ -168,3 +168,135 @@ export function erroItemOrcamento(item: { tipo: string; obraId: string } | null 
   if (item.tipo !== 'composicao') return 'Só serviços (composições) da obra entram no orçamento. Insumos são lançados em Apropriação de insumos.';
   return null;
 }
+
+// ---------------------------------------------------------------- planilha orçamentária (EAP e orçamento juntos)
+
+/** Níveis da planilha: 1 Obra, 2 Etapa, 3 Sub Etapa, 4 Tarefa. Serviço só na Tarefa. */
+export const NIVEIS_PLANILHA = ['obra', 'etapa', 'subetapa', 'tarefa'] as const;
+export type NivelPlanilha = (typeof NIVEIS_PLANILHA)[number];
+export const POSICAO_PLANILHA: Record<NivelPlanilha, number> = { obra: 1, etapa: 2, subetapa: 3, tarefa: 4 };
+export const ROTULO_PLANILHA: Record<NivelPlanilha, string> = { obra: 'Obra', etapa: 'Etapa', subetapa: 'Sub Etapa', tarefa: 'Tarefa' };
+
+/** Compara códigos hierárquicos numericamente (1.2 antes de 1.10). */
+export function compararCodigo(a: string, b: string): number {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? -1) - (y[i] ?? -1);
+    if (d) return d;
+  }
+  return 0;
+}
+
+/**
+ * Pai de uma linha acrescentada no fim da planilha: a última linha (na ordem da planilha) de nível acima do da nova.
+ * Sem nenhuma, a linha fica na raiz. Ex.: depois de "1 Obra / 1.1 Etapa / 1.1.1 Tarefa", uma Etapa vai para dentro de "1".
+ */
+export function paiAutomatico(linhas: { id: string; nivel: NivelPlanilha; codigo: string }[], nivel: NivelPlanilha): string | null {
+  const ordenadas = [...linhas].sort((a, b) => compararCodigo(a.codigo, b.codigo));
+  for (let i = ordenadas.length - 1; i >= 0; i--) if (POSICAO_PLANILHA[ordenadas[i].nivel] < POSICAO_PLANILHA[nivel]) return ordenadas[i].id;
+  return null;
+}
+
+/** O pai precisa ser de nível acima (Obra › Etapa › Sub Etapa › Tarefa); pode pular níveis. Devolve o erro ou null. */
+export function erroPaiPlanilha(nivelPai: NivelPlanilha | null, nivel: NivelPlanilha): string | null {
+  if (!nivelPai) return null;
+  if (POSICAO_PLANILHA[nivelPai] >= POSICAO_PLANILHA[nivel]) {
+    return `Uma linha de ${ROTULO_PLANILHA[nivel]} não pode ficar dentro de uma ${ROTULO_PLANILHA[nivelPai]}.`;
+  }
+  return null;
+}
+
+/** Serviço só entra em linha de Tarefa. Devolve o erro ou null. */
+export function erroServicoNaLinha(nivel: NivelPlanilha, temServico: boolean): string | null {
+  return temServico && nivel !== 'tarefa' ? 'Serviço só pode ser lançado numa linha de Tarefa.' : null;
+}
+
+/** Total de cada linha: o valor dela (serviço da tarefa) mais o de todas as linhas abaixo dela. */
+export function totaisPlanilha(linhas: { id: string; paiId: string | null; valor: number }[]): Map<string, number> {
+  const filhos = new Map<string | null, string[]>();
+  for (const l of linhas) filhos.set(l.paiId, [...(filhos.get(l.paiId) ?? []), l.id]);
+  const valor = new Map(linhas.map((l) => [l.id, l.valor]));
+  const total = new Map<string, number>();
+  const somar = (id: string, pilha: Set<string>): number => {
+    const pronto = total.get(id);
+    if (pronto !== undefined) return pronto;
+    if (pilha.has(id)) return 0;
+    pilha.add(id);
+    let t = valor.get(id) ?? 0;
+    for (const f of filhos.get(id) ?? []) t += somar(f, pilha);
+    t = Math.round(t * 100) / 100;
+    total.set(id, t);
+    return t;
+  };
+  for (const l of linhas) somar(l.id, new Set());
+  return total;
+}
+
+// ---------------------------------------------------------------- relatório de orçamento (sintético e analítico)
+
+export type LinhaPlanilhaRel = {
+  id: string;
+  paiId: string | null;
+  nivel: NivelPlanilha;
+  codigo: string;
+  descricao: string;
+  servico: { codigo: string; unidade: string; quantidade: number; custoUnitario: number; itemId: string } | null;
+};
+export type InsumoComposicaoRel = { codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number };
+export type LinhaRelatorio =
+  | { tipo: 'grupo'; nivel: NivelPlanilha; item: string; descricao: string; total: number; peso: number }
+  | { tipo: 'servico'; nivel: 'tarefa'; item: string; codigo: string; descricao: string; unidade: string; quantidade: number; custoUnitario: number; precoUnitario: number; total: number; peso: number }
+  | { tipo: 'insumo'; codigo: string; descricao: string; unidade: string; coeficiente: number; quantidade: number; custoUnitario: number; custoTotal: number }
+  | { tipo: 'tarefa'; nivel: 'tarefa'; item: string; descricao: string };
+
+const r2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Monta o relatório de orçamento, como nos modelos de mercado (SIENGE, planilhas do TCU):
+ * linhas da EAP com o total de cada grupo, serviços com custo unitário, preço unitário com BDI e preço total, e o peso (%).
+ * No analítico, abaixo de cada serviço, os insumos da composição com coeficiente, quantidade (coeficiente × quantidade do
+ * serviço), custo unitário e custo total.
+ */
+export function montarRelatorioOrcamento(
+  linhas: LinhaPlanilhaRel[],
+  bdiPercentual: number,
+  analitico: boolean,
+  composicoes: Map<string, InsumoComposicaoRel[]> = new Map(),
+): { linhas: LinhaRelatorio[]; custoTotal: number; precoTotal: number; bdiValor: number } {
+  const fator = 1 + bdiPercentual / 100;
+  const ordenadas = [...linhas].sort((a, b) => compararCodigo(a.codigo, b.codigo));
+  const precoLinha = new Map<string, number>();
+  let custoTotal = 0;
+  for (const l of ordenadas) {
+    if (!l.servico) continue;
+    const precoUnit = r2(l.servico.custoUnitario * fator);
+    precoLinha.set(l.id, r2(l.servico.quantidade * precoUnit));
+    custoTotal += r2(l.servico.quantidade * l.servico.custoUnitario);
+  }
+  const totais = totaisPlanilha(ordenadas.map((l) => ({ id: l.id, paiId: l.paiId, valor: precoLinha.get(l.id) ?? 0 })));
+  const precoTotal = r2([...ordenadas].filter((l) => !l.paiId || !ordenadas.some((o) => o.id === l.paiId)).reduce((s, l) => s + (totais.get(l.id) ?? 0), 0));
+  const peso = (v: number) => (precoTotal > 0 ? Math.round((v / precoTotal) * 10000) / 100 : 0);
+
+  const saida: LinhaRelatorio[] = [];
+  for (const l of ordenadas) {
+    if (l.servico) {
+      const precoUnit = r2(l.servico.custoUnitario * fator);
+      const total = precoLinha.get(l.id) ?? 0;
+      saida.push({ tipo: 'servico', nivel: 'tarefa', item: l.codigo, codigo: l.servico.codigo, descricao: l.descricao, unidade: l.servico.unidade, quantidade: l.servico.quantidade, custoUnitario: l.servico.custoUnitario, precoUnitario: precoUnit, total, peso: peso(total) });
+      if (analitico) {
+        for (const k of composicoes.get(l.servico.itemId) ?? []) {
+          const quantidade = Math.round(k.coeficiente * l.servico.quantidade * 1e6) / 1e6;
+          saida.push({ tipo: 'insumo', codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: k.coeficiente, quantidade, custoUnitario: k.precoUnitario, custoTotal: r2(quantidade * k.precoUnitario) });
+        }
+      }
+    } else if (l.nivel === 'tarefa') {
+      saida.push({ tipo: 'tarefa', nivel: 'tarefa', item: l.codigo, descricao: l.descricao });
+    } else {
+      const total = totais.get(l.id) ?? 0;
+      saida.push({ tipo: 'grupo', nivel: l.nivel, item: l.codigo, descricao: l.descricao, total, peso: peso(total) });
+    }
+  }
+  custoTotal = r2(custoTotal);
+  return { linhas: saida, custoTotal, precoTotal, bdiValor: r2(precoTotal - custoTotal) };
+}

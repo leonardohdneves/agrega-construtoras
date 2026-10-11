@@ -3,8 +3,9 @@
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
-import { AbaEap, AbaInsumos, ROTULO_NIVEL, type ItemObra, type No, type Obra, type Orcamento } from './EngObras';
+import { AbaInsumos, ROTULO_NIVEL, type ItemObra, type No, type Obra, type Orcamento } from './EngObras';
 import { NovoItemProprio } from './EngTabelas';
+import { PlanilhaOrcamentaria } from './EngPlanilha';
 
 type Contexto = { obra: Obra; itens: ItemObra[]; nos: No[]; orc: Orcamento | null; recarregar: () => Promise<void>; setErro: (m: string) => void };
 
@@ -124,8 +125,8 @@ function ItensDaObra({ tipo, obraId, itens, aoMudar, setErro }: { tipo: 'insumo'
 
 export function EngEap() {
   return (
-    <SecaoObra titulo="EAP e orçamento" ajuda="A EAP organiza a obra nos níveis escolhidos; o orçamento é lançado nos nós desse nível.">
-      {(c) => <AbaEap obra={c.obra} nos={c.nos} itens={c.itens} orc={c.orc} aoMudar={c.recarregar} setErro={c.setErro} />}
+    <SecaoObra titulo="EAP e orçamento" ajuda="A EAP e o orçamento são montados juntos, linha a linha: 1 Obra, 2 Etapa, 3 Sub Etapa e 4 Tarefa. O serviço é lançado na Tarefa; as linhas acima somam o que está abaixo delas.">
+      {(c) => <PlanilhaOrcamentaria obra={c.obra} itens={c.itens} setErro={c.setErro} />}
     </SecaoObra>
   );
 }
