@@ -9,7 +9,18 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
-import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, temCiclo, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
+import {
+  compararCodigo,
+  erroPaiPlanilha,
+  erroServicoNaLinha,
+  montarRelatorioOrcamento,
+  NIVEIS_PLANILHA,
+  paiAutomatico,
+  totaisPlanilha,
+  type InsumoComposicaoRel,
+  type NivelPlanilha,
+} from '../lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -21,7 +32,6 @@ const precoCentavos = (v: unknown): number | null => {
   return n === null || !Number.isFinite(n) || n < 0 ? null : cent(n);
 };
 const r2 = (n: number) => Math.round(n * 100) / 100;
-const POSICAO: Record<NivelEap, number> = { etapa: 1, subetapa: 2, tarefa: 3 };
 const texto = (max = 200) => z.string().trim().max(max).optional().nullable().transform((v) => v || null);
 const uf = z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'UF inválida.').optional().nullable().transform((v) => v || null);
 const esquemaAtividade = z.object({
@@ -330,7 +340,7 @@ export function rotasEngenharia(banco: Banco) {
         const leitura = lerCsvReferencia(d.csv, externos.insumos);
         if (leitura.erros.length) throw new ErroHttp(400, 'O arquivo tem erros. Corrija e envie de novo.', { erros: leitura.erros.slice(0, 50) });
         const vazias = new Set([...externos.composicoes].filter(([, l]) => l.length === 0).map(([k]) => k));
-        const semEstrutura = new Set(
+        const semEstrutura = new Set<string>(
           (
             await c.query(
               `SELECT i.codigo FROM ref_itens i WHERE i.tabela_id = $1 AND i.tipo = 'composicao'
@@ -542,11 +552,14 @@ export function rotasEngenharia(banco: Banco) {
         const atual = await obraDaEmpresa(c, empresaId, req.params.id);
         const novoNivel = d.nivelApropriacao ?? atual.nivel_apropriacao;
         if (novoNivel !== atual.nivel_apropriacao) {
-          const orc = (await c.query('SELECT count(*)::int AS n FROM orcamento_itens WHERE obra_id = $1', [atual.id])).rows[0].n;
-          if (orc) throw new ErroHttp(409, 'Esta obra já tem itens no orçamento. Remova-os antes de mudar o nível de apropriação.');
-          const niveis = (await c.query('SELECT DISTINCT nivel FROM eap_nos WHERE obra_id = $1', [atual.id])).rows.map((x) => x.nivel as NivelEap);
-          const sobra = niveis.some((n) => novoNivel === 'obra' || POSICAO[n] > POSICAO[novoNivel as NivelEap]);
-          if (sobra) throw new ErroHttp(409, 'A EAP tem níveis acima do novo nível de apropriação. Exclua esses nós antes.');
+          // A planilha (EAP e orçamento) vale para qualquer nível; o nível de apropriação só guia a apropriação de insumos e o planejamento.
+          const usados = (
+            await c.query(
+              `SELECT (SELECT count(*) FROM obra_necessidades WHERE obra_id = $1)::int + (SELECT count(*) FROM obra_atividades WHERE obra_id = $1)::int AS n`,
+              [atual.id],
+            )
+          ).rows[0].n;
+          if (usados) throw new ErroHttp(409, 'Esta obra já tem insumos apropriados ou atividades no planejamento. Retire-os antes de mudar o nível de apropriação.');
         }
         // Campo ausente mantém o valor atual; campo vazio vira null.
         const nome = d.nome ?? atual.nome;
@@ -729,58 +742,6 @@ export function rotasEngenharia(banco: Banco) {
         [req.params.id],
       );
       return { nos: r.rows.map((n) => ({ id: n.id, paiId: n.pai_id, nivel: n.nivel, codigo: n.codigo, descricao: n.descricao, itens: n.itens, subtotal: reais(n.subtotal) })) };
-    });
-
-    app.post<{ Params: { id: string } }>('/obras/:id/eap', async (req, reply) => {
-      const d = z.object({ paiId: z.string().regex(UUID).optional().nullable(), descricao: z.string().trim().min(2, 'Descreva o nó.').max(200) }).parse(req.body);
-      const empresaId = empresaDo(req);
-      const id = await emTransacao(banco, async (c) => {
-        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        let pai: { id: string; nivel: NivelEap; codigo: string } | null = null;
-        if (d.paiId) {
-          const p = (await c.query('SELECT id, nivel, codigo FROM eap_nos WHERE id = $1 AND obra_id = $2', [d.paiId, obra.id])).rows[0];
-          if (!p) throw naoEncontrado('Nó pai');
-          pai = { id: p.id, nivel: p.nivel, codigo: p.codigo };
-        }
-        const nivel = nivelDoNovoNo(obra.nivel_apropriacao, pai?.nivel ?? null);
-        if (!nivel) throw new ErroHttp(400, obra.nivel_apropriacao === 'obra' ? 'Esta obra lança o orçamento no nível da obra, sem EAP.' : 'Este nível não está disponível: a EAP vai até o nível de apropriação da obra.');
-        const irmaos = (await c.query('SELECT count(*)::int AS n FROM eap_nos WHERE obra_id = $1 AND pai_id IS NOT DISTINCT FROM $2', [obra.id, pai?.id ?? null])).rows[0].n;
-        const x = (
-          await c.query(`INSERT INTO eap_nos (obra_id, pai_id, nivel, codigo, descricao) VALUES ($1,$2,$3,$4,$5) RETURNING id`, [obra.id, pai?.id ?? null, nivel, codigoDoNo(pai?.codigo ?? null, irmaos), d.descricao])
-        ).rows[0];
-        return x.id as string;
-      });
-      reply.code(201);
-      return { id };
-    });
-
-    app.put<{ Params: { id: string; noId: string } }>('/obras/:id/eap/:noId', async (req) => {
-      const d = z.object({ descricao: z.string().trim().min(2).max(200) }).parse(req.body);
-      const empresaId = empresaDo(req);
-      await emTransacao(banco, async (c) => {
-        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        const n = (await c.query('UPDATE eap_nos SET descricao = $3 WHERE id = $1 AND obra_id = $2 RETURNING id', [req.params.noId, obra.id, d.descricao])).rowCount;
-        if (!n) throw naoEncontrado('Nó da EAP');
-      });
-      return { ok: true };
-    });
-
-    app.delete<{ Params: { id: string; noId: string } }>('/obras/:id/eap/:noId', async (req) => {
-      const empresaId = empresaDo(req);
-      await emTransacao(banco, async (c) => {
-        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        if ((await c.query('SELECT 1 FROM eap_nos WHERE pai_id = $1 LIMIT 1', [req.params.noId])).rowCount)
-          throw new ErroHttp(409, 'Este nó tem filhos. Exclua-os antes.');
-        if ((await c.query('SELECT 1 FROM orcamento_itens WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
-          throw new ErroHttp(409, 'Este nó tem itens no orçamento. Retire-os antes.');
-        if ((await c.query('SELECT 1 FROM obra_necessidades WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
-          throw new ErroHttp(409, 'Este nó tem insumos apropriados. Retire-os antes.');
-        if ((await c.query('SELECT 1 FROM obra_atividades WHERE eap_no_id = $1 LIMIT 1', [req.params.noId])).rowCount)
-          throw new ErroHttp(409, 'Este nó tem atividades no planejamento. Retire-as antes.');
-        const n = (await c.query('DELETE FROM eap_nos WHERE id = $1 AND obra_id = $2', [req.params.noId, obra.id])).rowCount;
-        if (!n) throw naoEncontrado('Nó da EAP');
-      });
-      return { ok: true };
     });
 
     // ---------------------------------------------------------------- orçamento
@@ -984,48 +945,191 @@ export function rotasEngenharia(banco: Banco) {
       return { nivelApropriacao: obra.nivel_apropriacao, bdiPercentual: Number(obra.bdi_percentual), subtotal, bdi, total: r2(subtotal + bdi), linhas };
     });
 
-    app.post<{ Params: { id: string } }>('/obras/:id/orcamento/itens', async (req, reply) => {
-      const d = z.object({ eapNoId: z.string().regex(UUID).optional().nullable(), itemId: z.string().regex(UUID), quantidade: z.number().positive('A quantidade precisa ser maior que zero.') }).parse(req.body);
+    // ---------------------------------------------------------------- planilha orçamentária (EAP e orçamento juntos)
+    // Cada linha é um nó da EAP (Obra, Etapa, Sub Etapa ou Tarefa); a Tarefa pode ter um serviço da obra com quantidade.
+
+    /** Linhas da planilha com o serviço de cada Tarefa e o custo (sem BDI). */
+    async function linhasPlanilha(c: Cliente, obraId: string) {
+      const r = await c.query(
+        `SELECT n.id, n.pai_id, n.nivel, n.codigo, n.descricao,
+                oq.id AS linha_id, oq.quantidade, oi.id AS item_id, oi.codigo AS item_codigo, oi.descricao AS item_descricao,
+                oi.unidade, ${precoObra('oi')} AS custo
+           FROM eap_nos n
+           LEFT JOIN orcamento_itens oq ON oq.eap_no_id = n.id
+           LEFT JOIN obra_itens oi ON oi.id = oq.obra_item_id
+          WHERE n.obra_id = $1`,
+        [obraId],
+      );
+      return r.rows
+        .map((x) => ({
+          id: x.id as string,
+          paiId: (x.pai_id as string | null) ?? null,
+          nivel: x.nivel as NivelPlanilha,
+          codigo: x.codigo as string,
+          descricao: x.descricao as string,
+          servico: x.linha_id
+            ? {
+                linhaId: x.linha_id as string,
+                itemId: x.item_id as string,
+                codigo: x.item_codigo as string,
+                descricaoServico: x.item_descricao as string,
+                unidade: x.unidade as string,
+                quantidade: Number(x.quantidade),
+                custoUnitario: reais(x.custo) ?? 0,
+              }
+            : null,
+        }))
+        .sort((a, b) => compararCodigo(a.codigo, b.codigo));
+    }
+
+    app.get<{ Params: { id: string } }>('/obras/:id/planilha', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const linhas = await linhasPlanilha(banco, obra.id);
+      const bdi = Number(obra.bdi_percentual);
+      const rel = montarRelatorioOrcamento(linhas.map((l) => ({ ...l, servico: l.servico && { ...l.servico } })), bdi, false);
+      const totais = totaisPlanilha(linhas.map((l) => ({ id: l.id, paiId: l.paiId, valor: l.servico ? r2(l.servico.quantidade * l.servico.custoUnitario) : 0 })));
+      return {
+        bdiPercentual: bdi,
+        custoTotal: rel.custoTotal,
+        bdiValor: rel.bdiValor,
+        precoTotal: rel.precoTotal,
+        linhas: linhas.map((l) => ({ ...l, custoTotal: totais.get(l.id) ?? 0 })),
+      };
+    });
+
+    const esquemaLinhaPlanilha = z.object({
+      nivel: z.enum(NIVEIS_PLANILHA),
+      // null: raiz; ausente: automático (última linha acima de nível mais alto).
+      paiId: z.string().regex(UUID).nullable().optional(),
+      descricao: z.string().trim().max(200).optional().default(''),
+      itemId: z.string().regex(UUID).nullable().optional(),
+      quantidade: z.number().positive('A quantidade precisa ser maior que zero.').nullable().optional(),
+    });
+
+    /** Confere o serviço (da obra, composição) e devolve a descrição dele. */
+    async function servicoDaObra(c: Cliente, obraId: string, itemId: string) {
+      const item = (await c.query('SELECT id, tipo, obra_id, descricao FROM obra_itens WHERE id = $1', [itemId])).rows[0];
+      const erro = erroItemOrcamento(item ? { tipo: item.tipo, obraId: item.obra_id } : null, obraId);
+      if (erro) throw new ErroHttp(400, erro);
+      return item.descricao as string;
+    }
+
+    app.post<{ Params: { id: string } }>('/obras/:id/planilha', async (req, reply) => {
+      const d = esquemaLinhaPlanilha.parse(req.body);
       const empresaId = empresaDo(req);
-      await emTransacao(banco, async (c) => {
+      const id = await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        const item = (await c.query('SELECT id, tipo, obra_id FROM obra_itens WHERE id = $1 AND obra_id = $2', [d.itemId, obra.id])).rows[0];
-        const erroItem = erroItemOrcamento(item ? { tipo: item.tipo, obraId: item.obra_id } : null, obra.id);
-        if (erroItem) throw new ErroHttp(400, erroItem);
-        if (obra.nivel_apropriacao === 'obra') {
-          if (d.eapNoId) throw new ErroHttp(400, 'Esta obra lança o orçamento no nível da obra, sem nó da EAP.');
-        } else {
-          if (!d.eapNoId) throw new ErroHttp(400, `Escolha o nó da EAP no nível ${obra.nivel_apropriacao}.`);
-          const no = (await c.query('SELECT nivel FROM eap_nos WHERE id = $1 AND obra_id = $2', [d.eapNoId, obra.id])).rows[0];
-          if (!no) throw naoEncontrado('Nó da EAP');
-          if (no.nivel !== obra.nivel_apropriacao) throw new ErroHttp(400, `O orçamento é lançado no nível ${obra.nivel_apropriacao}; este nó é ${no.nivel}.`);
+        const erroServ = erroServicoNaLinha(d.nivel, !!d.itemId);
+        if (erroServ) throw new ErroHttp(400, erroServ);
+        if (d.itemId && !d.quantidade) throw new ErroHttp(400, 'Informe a quantidade do serviço.');
+        const existentes = (await c.query('SELECT id, nivel, codigo FROM eap_nos WHERE obra_id = $1', [obra.id])).rows as { id: string; nivel: NivelPlanilha; codigo: string }[];
+        const paiId = d.paiId === undefined ? paiAutomatico(existentes, d.nivel) : d.paiId;
+        const pai = paiId ? existentes.find((n) => n.id === paiId) : null;
+        if (paiId && !pai) throw naoEncontrado('Linha de cima');
+        const erroPai = erroPaiPlanilha(pai?.nivel ?? null, d.nivel);
+        if (erroPai) throw new ErroHttp(400, erroPai);
+        let descricao = d.descricao;
+        if (d.itemId) {
+          const descServico = await servicoDaObra(c, obra.id, d.itemId);
+          if (!descricao) descricao = descServico;
         }
-        const ordem = (await c.query('SELECT coalesce(max(ordem), 0) + 1 AS n FROM orcamento_itens WHERE obra_id = $1', [obra.id])).rows[0].n;
-        await c.query('INSERT INTO orcamento_itens (obra_id, eap_no_id, obra_item_id, quantidade, ordem) VALUES ($1,$2,$3,$4,$5)', [obra.id, d.eapNoId ?? null, d.itemId, d.quantidade, ordem]);
+        if (descricao.length < 2) throw new ErroHttp(400, 'Descreva a linha.');
+        const irmaos = (await c.query('SELECT codigo FROM eap_nos WHERE obra_id = $1 AND pai_id IS NOT DISTINCT FROM $2', [obra.id, pai?.id ?? null])).rows as { codigo: string }[];
+        const maior = irmaos.reduce((m, x) => Math.max(m, Number(x.codigo.split('.').pop())), 0);
+        const no = (
+          await c.query('INSERT INTO eap_nos (obra_id, pai_id, nivel, codigo, descricao) VALUES ($1,$2,$3,$4,$5) RETURNING id', [obra.id, pai?.id ?? null, d.nivel, codigoDoNo(pai?.codigo ?? null, maior), descricao])
+        ).rows[0];
+        if (d.itemId && d.quantidade) {
+          const ordem = (await c.query('SELECT coalesce(max(ordem), 0) + 1 AS n FROM orcamento_itens WHERE obra_id = $1', [obra.id])).rows[0].n;
+          await c.query('INSERT INTO orcamento_itens (obra_id, eap_no_id, obra_item_id, quantidade, ordem) VALUES ($1,$2,$3,$4,$5)', [obra.id, no.id, d.itemId, d.quantidade, ordem]);
+        }
+        return no.id as string;
       });
       reply.code(201);
-      return { ok: true };
+      return { id };
     });
 
-    app.patch<{ Params: { id: string; linhaId: string } }>('/obras/:id/orcamento/itens/:linhaId', async (req) => {
-      const d = z.object({ quantidade: z.number().positive('A quantidade precisa ser maior que zero.') }).parse(req.body);
+    app.put<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId', async (req) => {
+      const d = z
+        .object({
+          descricao: z.string().trim().min(2, 'Descreva a linha.').max(200).optional(),
+          // null retira o serviço da Tarefa.
+          itemId: z.string().regex(UUID).nullable().optional(),
+          quantidade: z.number().positive('A quantidade precisa ser maior que zero.').optional(),
+        })
+        .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        const n = (await c.query('UPDATE orcamento_itens SET quantidade = $3 WHERE id = $1 AND obra_id = $2', [req.params.linhaId, obra.id, d.quantidade])).rowCount;
-        if (!n) throw naoEncontrado('Linha do orçamento');
+        const no = (await c.query('SELECT id, nivel FROM eap_nos WHERE id = $1 AND obra_id = $2', [req.params.noId, obra.id])).rows[0];
+        if (!no) throw naoEncontrado('Linha da planilha');
+        if (d.descricao !== undefined) await c.query('UPDATE eap_nos SET descricao = $2 WHERE id = $1', [no.id, d.descricao]);
+        const linha = (await c.query('SELECT id, quantidade FROM orcamento_itens WHERE eap_no_id = $1', [no.id])).rows[0];
+        if (d.itemId === null) {
+          if (linha) await c.query('DELETE FROM orcamento_itens WHERE id = $1', [linha.id]);
+        } else if (d.itemId) {
+          const erroServ = erroServicoNaLinha(no.nivel, true);
+          if (erroServ) throw new ErroHttp(400, erroServ);
+          await servicoDaObra(c, obra.id, d.itemId);
+          const quantidade = d.quantidade ?? (linha ? Number(linha.quantidade) : null);
+          if (!quantidade) throw new ErroHttp(400, 'Informe a quantidade do serviço.');
+          if (linha) await c.query('UPDATE orcamento_itens SET obra_item_id = $2, quantidade = $3 WHERE id = $1', [linha.id, d.itemId, quantidade]);
+          else {
+            const ordem = (await c.query('SELECT coalesce(max(ordem), 0) + 1 AS n FROM orcamento_itens WHERE obra_id = $1', [obra.id])).rows[0].n;
+            await c.query('INSERT INTO orcamento_itens (obra_id, eap_no_id, obra_item_id, quantidade, ordem) VALUES ($1,$2,$3,$4,$5)', [obra.id, no.id, d.itemId, quantidade, ordem]);
+          }
+        } else if (d.quantidade !== undefined) {
+          if (!linha) throw new ErroHttp(400, 'Esta linha não tem serviço.');
+          await c.query('UPDATE orcamento_itens SET quantidade = $2 WHERE id = $1', [linha.id, d.quantidade]);
+        }
       });
       return { ok: true };
     });
 
-    app.delete<{ Params: { id: string; linhaId: string } }>('/obras/:id/orcamento/itens/:linhaId', async (req) => {
+    app.delete<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId', async (req) => {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        const n = (await c.query('DELETE FROM orcamento_itens WHERE id = $1 AND obra_id = $2', [req.params.linhaId, obra.id])).rowCount;
-        if (!n) throw naoEncontrado('Linha do orçamento');
+        const no = (await c.query('SELECT id FROM eap_nos WHERE id = $1 AND obra_id = $2', [req.params.noId, obra.id])).rows[0];
+        if (!no) throw naoEncontrado('Linha da planilha');
+        if ((await c.query('SELECT 1 FROM eap_nos WHERE pai_id = $1 LIMIT 1', [no.id])).rowCount) throw new ErroHttp(409, 'Esta linha tem linhas abaixo dela. Exclua-as antes.');
+        if ((await c.query('SELECT 1 FROM obra_necessidades WHERE eap_no_id = $1 LIMIT 1', [no.id])).rowCount) throw new ErroHttp(409, 'Esta linha tem insumos apropriados. Retire-os antes.');
+        if ((await c.query('SELECT 1 FROM obra_atividades WHERE eap_no_id = $1 LIMIT 1', [no.id])).rowCount) throw new ErroHttp(409, 'Esta linha tem atividades no planejamento. Retire-as antes.');
+        // O serviço da Tarefa sai junto (orcamento_itens apaga em cascata com o nó).
+        await c.query('DELETE FROM eap_nos WHERE id = $1', [no.id]);
       });
       return { ok: true };
+    });
+
+    // ---------------------------------------------------------------- relatório de orçamento
+
+    app.get<{ Params: { id: string }; Querystring: { tipo?: string } }>('/obras/:id/relatorio-orcamento', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const analitico = req.query.tipo === 'analitico';
+      const linhas = await linhasPlanilha(banco, obra.id);
+      const composicoes = new Map<string, InsumoComposicaoRel[]>();
+      if (analitico) {
+        const ids = [...new Set(linhas.flatMap((l) => (l.servico ? [l.servico.itemId] : [])))];
+        if (ids.length) {
+          const r = await banco.query(
+            `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos
+               FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id
+              WHERE ci.composicao_id = ANY($1::uuid[]) ORDER BY ii.descricao`,
+            [ids],
+          );
+          for (const k of r.rows) {
+            const l = composicoes.get(k.composicao_id) ?? [];
+            l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0 });
+            composicoes.set(k.composicao_id, l);
+          }
+        }
+      }
+      const rel = montarRelatorioOrcamento(linhas, Number(obra.bdi_percentual), analitico, composicoes);
+      return {
+        tipo: analitico ? 'analitico' : 'sintetico',
+        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
+        ...rel,
+      };
     });
   };
 }

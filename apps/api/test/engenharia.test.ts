@@ -92,3 +92,83 @@ test('orçamento: só serviços (composições) que estão na obra', async () =>
   assert.match(erroItemOrcamento({ tipo: 'composicao', obraId: 'o2' }, 'o1') ?? '', /não está na obra/);
   assert.match(erroItemOrcamento(null, 'o1') ?? '', /não está na obra/);
 });
+
+test('planilha: pai automático é a última linha acima de nível mais alto', async () => {
+  const { paiAutomatico } = await import('../src/lib/engenharia.ts');
+  const linhas = [
+    { id: 'obra', nivel: 'obra' as const, codigo: '1' },
+    { id: 'etapaA', nivel: 'etapa' as const, codigo: '1.1' },
+    { id: 'tarefa1', nivel: 'tarefa' as const, codigo: '1.1.1' },
+    { id: 'etapaB', nivel: 'etapa' as const, codigo: '1.2' },
+    { id: 'sub', nivel: 'subetapa' as const, codigo: '1.2.1' },
+  ];
+  assert.equal(paiAutomatico(linhas, 'tarefa'), 'sub');
+  assert.equal(paiAutomatico(linhas, 'subetapa'), 'etapaB');
+  assert.equal(paiAutomatico(linhas, 'etapa'), 'obra');
+  assert.equal(paiAutomatico(linhas, 'obra'), null);
+  assert.equal(paiAutomatico([], 'tarefa'), null);
+  // A ordem é a da planilha (código), não a da lista: 1.10 vem depois de 1.9.
+  assert.equal(paiAutomatico([{ id: 'e10', nivel: 'etapa', codigo: '1.10' }, { id: 'e9', nivel: 'etapa', codigo: '1.9' }], 'tarefa'), 'e10');
+});
+
+test('planilha: hierarquia Obra › Etapa › Sub Etapa › Tarefa e serviço só na Tarefa', async () => {
+  const { erroPaiPlanilha, erroServicoNaLinha } = await import('../src/lib/engenharia.ts');
+  assert.equal(erroPaiPlanilha(null, 'tarefa'), null);
+  assert.equal(erroPaiPlanilha('obra', 'tarefa'), null, 'pode pular níveis');
+  assert.equal(erroPaiPlanilha('etapa', 'subetapa'), null);
+  assert.match(erroPaiPlanilha('tarefa', 'tarefa') ?? '', /não pode ficar dentro/);
+  assert.match(erroPaiPlanilha('subetapa', 'etapa') ?? '', /não pode ficar dentro/);
+  assert.match(erroPaiPlanilha('obra', 'obra') ?? '', /não pode ficar dentro/);
+  assert.equal(erroServicoNaLinha('tarefa', true), null);
+  assert.equal(erroServicoNaLinha('etapa', false), null);
+  assert.match(erroServicoNaLinha('etapa', true) ?? '', /Tarefa/);
+  assert.match(erroServicoNaLinha('obra', true) ?? '', /Tarefa/);
+});
+
+test('planilha: total de cada linha soma as linhas abaixo dela', async () => {
+  const { totaisPlanilha } = await import('../src/lib/engenharia.ts');
+  const t = totaisPlanilha([
+    { id: 'obra', paiId: null, valor: 0 },
+    { id: 'etapa', paiId: 'obra', valor: 0 },
+    { id: 't1', paiId: 'etapa', valor: 100.1 },
+    { id: 't2', paiId: 'etapa', valor: 50.2 },
+    { id: 't3', paiId: 'obra', valor: 10 },
+  ]);
+  assert.equal(t.get('etapa'), 150.3);
+  assert.equal(t.get('obra'), 160.3);
+  assert.equal(t.get('t3'), 10);
+});
+
+test('relatório de orçamento: sintético com BDI e peso; analítico com insumos da composição', async () => {
+  const { montarRelatorioOrcamento } = await import('../src/lib/engenharia.ts');
+  const linhas = [
+    { id: 'o', paiId: null, nivel: 'obra' as const, codigo: '1', descricao: 'Casa', servico: null },
+    { id: 'e', paiId: 'o', nivel: 'etapa' as const, codigo: '1.1', descricao: 'Alvenaria', servico: null },
+    { id: 't', paiId: 'e', nivel: 'tarefa' as const, codigo: '1.1.1', descricao: 'Parede de bloco', servico: { codigo: '103324', unidade: 'm2', quantidade: 10, custoUnitario: 80, itemId: 's1' } },
+    { id: 'v', paiId: 'e', nivel: 'tarefa' as const, codigo: '1.1.2', descricao: 'A definir', servico: null },
+  ];
+  const sint = montarRelatorioOrcamento(linhas, 25, false);
+  assert.equal(sint.custoTotal, 800);
+  assert.equal(sint.precoTotal, 1000);
+  assert.equal(sint.bdiValor, 200);
+  const serv = sint.linhas.find((l) => l.tipo === 'servico');
+  assert.ok(serv && serv.tipo === 'servico');
+  assert.equal(serv.precoUnitario, 100);
+  assert.equal(serv.total, 1000);
+  assert.equal(serv.peso, 100);
+  const grupo = sint.linhas.find((l) => l.tipo === 'grupo' && l.item === '1.1');
+  assert.ok(grupo && grupo.tipo === 'grupo' && grupo.total === 1000);
+  assert.ok(sint.linhas.some((l) => l.tipo === 'tarefa' && l.item === '1.1.2'), 'tarefa sem serviço aparece');
+  assert.ok(!sint.linhas.some((l) => l.tipo === 'insumo'), 'sintético não lista insumos');
+
+  const ana = montarRelatorioOrcamento(linhas, 25, true, new Map([['s1', [{ codigo: '7271', descricao: 'BLOCO', unidade: 'un', coeficiente: 12.5, precoUnitario: 4 }, { codigo: '88309', descricao: 'PEDREIRO', unidade: 'h', coeficiente: 1, precoUnitario: 30 }]]]));
+  const insumos = ana.linhas.filter((l) => l.tipo === 'insumo');
+  assert.equal(insumos.length, 2);
+  const bloco = insumos[0];
+  assert.ok(bloco.tipo === 'insumo');
+  assert.equal(bloco.quantidade, 125);
+  assert.equal(bloco.custoTotal, 500);
+  // Os insumos vêm logo abaixo do serviço, na ordem da planilha.
+  const iServ = ana.linhas.findIndex((l) => l.tipo === 'servico');
+  assert.equal(ana.linhas[iServ + 1].tipo, 'insumo');
+});
