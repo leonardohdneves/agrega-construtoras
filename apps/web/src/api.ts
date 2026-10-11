@@ -10,6 +10,18 @@ export class ErroApi extends Error {
   }
 }
 
+// Pacote JS desta tela (muda a cada deploy). A API devolve o pacote atual no cabeçalho x-versao-web;
+// se for diferente, a tela está desatualizada e avisamos para recarregar.
+const MEU_PACOTE =
+  typeof document === 'undefined' ? '' : (document.querySelector<HTMLScriptElement>('script[type="module"][src*="/assets/index-"]')?.src.match(/index-[^/]+\.js/)?.[0] ?? '');
+let versaoAvisada = false;
+function conferirVersao(resp: Response) {
+  const atual = resp.headers.get('x-versao-web');
+  if (!MEU_PACOTE || !atual || atual === MEU_PACOTE || versaoAvisada) return;
+  versaoAvisada = true;
+  window.dispatchEvent(new CustomEvent('agrega:nova-versao'));
+}
+
 export async function api<T = any>(caminho: string, opcoes: { metodo?: string; corpo?: unknown } = {}): Promise<T> {
   let resp: Response;
   try {
@@ -22,6 +34,7 @@ export async function api<T = any>(caminho: string, opcoes: { metodo?: string; c
   } catch {
     throw new ErroApi(0, 'Sem conexão com o servidor. Verifique a internet e tente de novo.');
   }
+  conferirVersao(resp);
   const dados = await resp.json().catch(() => ({}));
   if (!resp.ok) throw new ErroApi(resp.status, dados?.erro ?? 'Não foi possível concluir. Tente de novo.', dados ?? {});
   return dados as T;

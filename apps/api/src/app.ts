@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import Fastify, { type FastifyError } from 'fastify';
 import cookie from '@fastify/cookie';
@@ -44,6 +44,17 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   instalarSessao(app);
+
+  // Versão das telas: o nome do pacote JS do build, que muda a cada deploy. Vai em toda resposta da API
+  // para a tela aberta perceber que ficou desatualizada e pedir para recarregar.
+  const temWeb = existsSync(path.join(PASTA_WEB, 'index.html'));
+  const versaoWeb = temWeb ? (readFileSync(path.join(PASTA_WEB, 'index.html'), 'utf8').match(/\/assets\/(index-[^"']+\.js)/)?.[1] ?? '') : '';
+  if (versaoWeb) {
+    app.addHook('onSend', async (req, reply, payload) => {
+      if (req.url.startsWith('/api/')) reply.header('x-versao-web', versaoWeb);
+      return payload;
+    });
+  }
 
   app.setErrorHandler((erro: FastifyError | Error, req, reply) => {
     if (erro instanceof ZodError) {
@@ -110,15 +121,23 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   if (config.seedDemo) await app.register(rotasDemo(banco), { prefix: '/api/demo' });
 
   // Telas (app React já compilado). Qualquer rota que não seja /api cai no index.html.
-  const temWeb = existsSync(path.join(PASTA_WEB, 'index.html'));
   if (temWeb) {
-    await app.register(fastifyStatic, { root: PASTA_WEB, prefix: '/', wildcard: false });
+    // index.html sempre revalidado (aponta para o build atual); pacotes com hash no nome podem ficar em cache.
+    await app.register(fastifyStatic, {
+      root: PASTA_WEB,
+      prefix: '/',
+      wildcard: false,
+      cacheControl: false,
+      setHeaders: (res, caminho) => {
+        res.setHeader('Cache-Control', caminho.includes(`${path.sep}assets${path.sep}`) ? 'public, max-age=31536000, immutable' : 'no-cache');
+      },
+    });
   }
   app.setNotFoundHandler((req, reply) => {
     if (req.url.startsWith('/api/') || !temWeb || req.method !== 'GET') {
       return reply.code(404).send({ erro: 'Endereço não encontrado.' });
     }
-    return reply.sendFile('index.html');
+    return reply.header('Cache-Control', 'no-cache').sendFile('index.html');
   });
 
   return app;

@@ -2,6 +2,7 @@ import { StrictMode, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter, Link, Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { registerSW } from 'virtual:pwa-register';
+import { AvisoVersao } from './componentes/AvisoVersao';
 import './estilos.css';
 import type { Perfil } from './api';
 import { ProvedorSessao, useSessao } from './sessao';
@@ -69,7 +70,13 @@ import { QualDemandas, QualRastreabilidade } from './paginas/QualRastreabilidade
 import { MuralAvisos } from './paginas/Mural';
 import { ImprimirEtiquetas, ImprimirKit, ImprimirRomaneios, ProdRomaneios } from './paginas/ProdRomaneios';
 
-registerSW({ immediate: true });
+// Service worker: confere de hora em hora se há build novo (a aba pode ficar aberta o dia todo).
+registerSW({
+  immediate: true,
+  onRegisteredSW(_url, reg) {
+    if (reg) setInterval(() => reg.update().catch(() => undefined), 60 * 60 * 1000);
+  },
+});
 
 const COMERCIAL: Perfil[] = ['dono', 'gestor', 'vendedor'];
 
@@ -214,6 +221,7 @@ createRoot(document.getElementById('raiz')!).render(
         </Routes>
       </BrowserRouter>
       </PortaEntrada>
+      <AvisoVersao />
     </ProvedorSessao>
   </StrictMode>,
 );
