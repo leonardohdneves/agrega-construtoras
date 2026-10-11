@@ -9,6 +9,12 @@ export type Tabela = {
 };
 type Item = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo: string | null; preco: number | null; componentes: number };
 type Componente = { codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null };
+type ItemEstrutura = Componente & { id: string; tipo: 'insumo' | 'composicao' };
+export type DetalheComposicao = {
+  item: { id: string; codigo: string; descricao: string; unidade: string; preco: number | null };
+  componentes: Componente[];
+  estrutura?: ItemEstrutura[];
+};
 
 const ROTULO_FONTE = { sinapi: 'SINAPI', proprio: 'Própria' } as const;
 
@@ -379,7 +385,7 @@ export function EngTabelaDetalhe() {
   const [itens, setItens] = useState<Item[] | null>(null);
   const [tipo, setTipo] = useState<'' | 'insumo' | 'composicao'>('');
   const [busca, setBusca] = useState('');
-  const [aberto, setAberto] = useState<{ item: Item; componentes: Componente[] } | null>(null);
+  const [aberto, setAberto] = useState<{ item: { id: string } } | null>(null);
   const [novo, setNovo] = useState(false);
   const [importar, setImportar] = useState(false);
   const [msg, setMsg] = useState('');
@@ -400,10 +406,8 @@ export function EngTabelaDetalhe() {
     return () => clearTimeout(t);
   }, [id, tipo, busca]);
 
-  async function abrir(item: Item) {
-    if (item.tipo !== 'composicao') return setAberto(null);
-    const r = await api<{ item: Item; componentes: Componente[] }>(`/eng/tabelas/${id}/itens/${item.id}`);
-    setAberto(r);
+  function abrir(item: Item) {
+    setAberto(item.tipo === 'composicao' ? { item } : null);
   }
 
   async function excluir(item: Item) {
@@ -506,31 +510,7 @@ export function EngTabelaDetalhe() {
           {itens.length === 0 && <p className="muted" style={{ padding: 12 }}>Nenhum item encontrado.</p>}
         </div>
       )}
-      {aberto && (
-        <div className="card" style={{ marginTop: 12 }}>
-          <div className="cabecalho" style={{ marginBottom: 8 }}>
-            <h2 style={{ margin: 0 }}>Composição {aberto.item.codigo}: {aberto.item.descricao}</h2>
-            <button className="btn btn-link" type="button" onClick={() => setAberto(null)}>Fechar</button>
-          </div>
-          <table className="tabela">
-            <thead>
-              <tr><th>Insumo</th><th>Unidade</th><th className="num">Coeficiente</th><th className="num">Preço</th><th className="num">Custo</th></tr>
-            </thead>
-            <tbody>
-              {aberto.componentes.map((k) => (
-                <tr key={k.codigo}>
-                  <td>{k.codigo} · {k.descricao}</td>
-                  <td>{k.unidade}</td>
-                  <td className="num">{k.coeficiente.toLocaleString('pt-BR', { maximumFractionDigits: 6 })}</td>
-                  <td className="num">{k.precoUnitario === null ? '—' : formatarMoeda(k.precoUnitario)}</td>
-                  <td className="num">{k.precoUnitario === null ? '—' : formatarMoeda(k.precoUnitario * k.coeficiente)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="small muted" style={{ marginBottom: 0 }}>Preço unitário da composição: {formatarMoeda(aberto.item.preco)} por {aberto.item.unidade}.</p>
-        </div>
-      )}
+      {aberto && <ConferenciaComposicao inicial={aberto.item.id} carregar={(itemId) => api<DetalheComposicao>(`/eng/tabelas/${id}/itens/${itemId}`)} aoFechar={() => setAberto(null)} />}
     </>
   );
 }
@@ -663,5 +643,124 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
       )}
       <div className="acoes"><button className="btn btn-primario" type="submit" disabled={d.codigo.trim() === '' || d.descricao.trim().length < 2 || d.unidade.trim() === ''}>Adicionar</button></div>
     </form>
+  );
+}
+
+/**
+ * Conferência de uma composição: os itens diretos (insumos e serviços auxiliares) com multiplicador, preço e custo,
+ * e os insumos desdobrados que formam o preço. Serviço auxiliar abre a composição dele (com caminho de volta).
+ */
+export function ConferenciaComposicao({ inicial, carregar, aoFechar }: { inicial: string; carregar: (itemId: string) => Promise<DetalheComposicao>; aoFechar: () => void }) {
+  const [pilha, setPilha] = useState<DetalheComposicao[]>([]);
+  const [visao, setVisao] = useState<'estrutura' | 'insumos'>('estrutura');
+  const [erro, setErro] = useState('');
+  const [carregando, setCarregando] = useState(false);
+
+  async function abrir(itemId: string, empilhar: boolean) {
+    setErro('');
+    setCarregando(true);
+    try {
+      const d = await carregar(itemId);
+      setPilha((p) => (empilhar ? [...p, d] : [d]));
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setCarregando(false);
+    }
+  }
+  useEffect(() => {
+    setVisao('estrutura');
+    abrir(inicial, false);
+  }, [inicial]);
+
+  const atual = pilha[pilha.length - 1];
+  const temEstrutura = !!atual?.estrutura?.length;
+  const linhas: ItemEstrutura[] =
+    visao === 'estrutura' && temEstrutura ? atual!.estrutura! : (atual?.componentes ?? []).map((k) => ({ ...k, id: '', tipo: 'insumo' as const }));
+  const total = linhas.reduce((soma, k) => soma + (k.precoUnitario ?? 0) * k.coeficiente, 0);
+  const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 7 });
+
+  return (
+    <div className="card" style={{ marginTop: 12 }} role="region" aria-label="Composição">
+      <div className="cabecalho" style={{ marginBottom: 8 }}>
+        <div className="titulo">
+          {pilha.length > 1 && (
+            <span className="small">
+              {pilha.slice(0, -1).map((p, i) => (
+                <span key={p.item.id}>
+                  <button className="btn btn-link" type="button" style={{ padding: 0, minHeight: 0 }} onClick={() => setPilha(pilha.slice(0, i + 1))}>{p.item.codigo}</button>
+                  {' › '}
+                </span>
+              ))}
+              {atual?.item.codigo}
+            </span>
+          )}
+          <h2 style={{ margin: 0 }}>{atual ? `Composição ${atual.item.codigo}: ${atual.item.descricao}` : 'Composição'}</h2>
+          {atual && <span className="muted small">Preço unitário: {formatarMoeda(atual.item.preco)} por {atual.item.unidade}</span>}
+        </div>
+        <button className="btn btn-link" type="button" onClick={aoFechar}>Fechar</button>
+      </div>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {carregando && !atual && <p className="muted">Carregando…</p>}
+      {atual && (
+        <>
+          {temEstrutura && (
+            <div className="segmentado" role="group" aria-label="Visão" style={{ marginBottom: 8 }}>
+              <button type="button" aria-pressed={visao === 'estrutura'} className={visao === 'estrutura' ? 'ativo' : ''} onClick={() => setVisao('estrutura')}>Insumos e serviços</button>
+              <button type="button" aria-pressed={visao === 'insumos'} className={visao === 'insumos' ? 'ativo' : ''} onClick={() => setVisao('insumos')}>Só insumos (desdobrado)</button>
+            </div>
+          )}
+          {linhas.length === 0 ? (
+            <p className="muted">Esta composição não tem itens. Reimporte o arquivo da tabela para completar.</p>
+          ) : (
+            <div style={{ overflowX: 'auto' }}>
+              <table className="tabela">
+                <thead>
+                  <tr>
+                    <th>Tipo</th>
+                    <th>Código</th>
+                    <th>Descrição</th>
+                    <th>Unid.</th>
+                    <th className="num">Multiplicador</th>
+                    <th className="num">Preço unitário</th>
+                    <th className="num">Custo</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {linhas.map((k) => (
+                    <tr key={`${k.tipo}:${k.codigo}`}>
+                      <td>{k.tipo === 'composicao' ? <span className="selo">Serviço</span> : 'Insumo'}</td>
+                      <td className="mono">{k.codigo}</td>
+                      <td>
+                        {k.tipo === 'composicao' && k.id ? (
+                          <button className="btn btn-link" type="button" style={{ padding: 0, minHeight: 0, textAlign: 'left' }} disabled={carregando} onClick={() => abrir(k.id, true)}>{k.descricao}</button>
+                        ) : (
+                          k.descricao
+                        )}
+                      </td>
+                      <td>{k.unidade}</td>
+                      <td className="num">{num(k.coeficiente)}</td>
+                      <td className="num">{k.precoUnitario === null ? '—' : formatarMoeda(k.precoUnitario)}</td>
+                      <td className="num">{k.precoUnitario === null ? '—' : formatarMoeda(k.precoUnitario * k.coeficiente)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={6} className="num"><b>Total</b></td>
+                    <td className="num"><b>{formatarMoeda(total)}</b></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+          <p className="small muted" style={{ marginBottom: 0 }}>
+            {visao === 'estrutura' && temEstrutura
+              ? 'Clique num serviço para ver a composição dele. O preço do serviço é a soma dos custos dos seus itens.'
+              : 'Insumos finais, com os serviços auxiliares já desdobrados (multiplicadores acumulados).'}
+          </p>
+        </>
+      )}
+    </div>
   );
 }

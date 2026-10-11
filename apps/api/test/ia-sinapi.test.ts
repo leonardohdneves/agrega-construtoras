@@ -1,7 +1,7 @@
 // Aplicação do mapeamento de colunas (dado pela IA) ao arquivo: o código faz a leitura, a IA só indica as colunas.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { aplicarMapa, mapaRecortado, type MapaColunas } from '../src/lib/ia-sinapi.ts';
+import { aplicarMapa, completarMapa, mapaRecortado, type MapaColunas } from '../src/lib/ia-sinapi.ts';
 import { lerCsvReferencia } from '../src/lib/engenharia.ts';
 
 const mapa: MapaColunas = {
@@ -142,4 +142,34 @@ test('uma linha por item com dados do insumo na linha: cadastra os insumos e o p
   const preco = new Map(leitura.insumos.map((i) => [i.codigo, i.precoCentavos / 100]));
   const piso = leitura.componentes.filter((k) => k.composicao === '104658').reduce((s, k) => s + k.coeficiente * (preco.get(k.insumo) ?? 0), 0);
   assert.equal(Math.round(piso * 100) / 100, Math.round((1.279 * 22.14 + 6.4375 * 21.95) * 100) / 100);
+});
+
+test('completa o mapa quando a IA não indica as colunas do item', () => {
+  const linhas = [
+    '<codigo>;<descricao>',
+    'Composição;;;Insumos associados',
+    'Código;Descrição;Unidade;Preço;Serviço;Código;Multiplicador;Tabela;Tipo Item;Unidade;Descrição;Preço',
+    '104658;PISO;m²;201.92;Acessibilidade;88316;1.279;SINAPI;COMPOSICAO;h;SERVENTE;22.14',
+    '104658;PISO;m²;201.92;Acessibilidade;36178;6.4375;SINAPI;INSUMO;un;PISO TATIL;21.95',
+  ];
+  const m = completarMapa(
+    { separador: ';', linhaInicial: 3, colunas: { tipo: null, codigo: 0, descricao: 1, unidade: 2, preco: null, grupo: 4, insumo: 5, coeficiente: 6, tipoItem: null, descricaoItem: null, unidadeItem: null, precoItem: null }, tipoUnico: 'composicao', valoresTipo: null },
+    linhas,
+  );
+  assert.deepEqual([m.colunas.tipoItem, m.colunas.unidadeItem, m.colunas.descricaoItem, m.colunas.precoItem], [8, 9, 10, 11]);
+  assert.equal(m.valoresTipo?.componenteInsumo, 'insumo');
+  assert.equal(m.valoresTipo?.componenteComposicao, 'composicao');
+});
+
+test('guarda a estrutura original (insumos e serviços auxiliares) para conferência', () => {
+  const texto = [
+    ';104658;PISO PODOTÁTIL;m²;;Acessibilidade;88316;1.279;COMPOSICAO;SERVENTE;h;22.14',
+    ';104658;PISO PODOTÁTIL;m²;;Acessibilidade;36178;6.4375;INSUMO;PISO TATIL;un;21.95',
+    ';88316;SERVENTE COM ENCARGOS;h;;Mão de obra;6111;1;INSUMO;SERVENTE (HORA);h;22.14',
+  ].join('\n');
+  const r = aplicarMapa(texto, mapaRecortado('composicao', { insumo: null, composicao: null, componenteInsumo: 'INSUMO', componenteComposicao: 'COMPOSICAO' }));
+  const leitura = lerCsvReferencia(r.csv);
+  assert.deepEqual(leitura.erros, []);
+  const piso = leitura.estrutura.filter((k) => k.composicao === '104658').map((k) => [k.tipoItem, k.item, k.coeficiente]);
+  assert.deepEqual(piso, [['composicao', '88316', 1.279], ['insumo', '36178', 6.4375]]);
 });

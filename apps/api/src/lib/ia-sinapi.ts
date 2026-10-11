@@ -166,9 +166,37 @@ export async function mapearColunasIa(amostra: string, ctx: Contexto): Promise<M
     if (m.colunas.codigo === null) throw new ErroIa('A IA não encontrou a coluna de código nesta aba.');
     if (m.colunas.tipo === null && !m.tipoUnico) throw new ErroIa('A IA não identificou se as linhas são insumos ou composições.');
     if (m.colunas.tipo !== null && !m.valoresTipo) throw new ErroIa('A IA não identificou os valores da coluna de tipo.');
-    return m;
+    return completarMapa(m, linhasUteis(amostra));
   }
   throw new ErroIa(falha);
+}
+
+/**
+ * Completa o mapa no layout "uma linha por item" quando a IA não indicou os dados do item:
+ * procura no cabeçalho, depois da coluna do código do item, as colunas de tipo, descrição, unidade e preço,
+ * e nos dados os textos que marcam insumo e composição. Sem isso as composições ficariam sem preço.
+ */
+export function completarMapa(m: MapaColunas, linhas: string[]): MapaColunas {
+  const col = m.colunas;
+  if (m.tipoUnico !== 'composicao' || col.insumo === null || col.tipoItem !== null) return m;
+  const cab = (linhas[m.linhaInicial - 1] ?? '').split(m.separador).map((c) => norm(c));
+  if (!cab.length) return m;
+  const depois = (re: RegExp) => {
+    for (let i = col.insumo! + 1; i < cab.length; i++) if (re.test(cab[i])) return i;
+    return null;
+  };
+  const tipoItem = depois(/tipo/);
+  if (tipoItem === null) return m;
+  const dados = linhas.slice(m.linhaInicial, m.linhaInicial + 40).map((l) => norm(l.split(m.separador)[tipoItem] ?? ''));
+  const achar = (re: RegExp) => dados.find((v) => re.test(v)) ?? null;
+  const insumo = achar(/insumo/);
+  const composicao = achar(/composi/);
+  if (!insumo && !composicao) return m;
+  return {
+    ...m,
+    colunas: { ...col, tipoItem, unidadeItem: depois(/unid/), descricaoItem: depois(/descri/), precoItem: depois(/pre[cç]o|valor|custo/) },
+    valoresTipo: { insumo: null, composicao: null, componenteInsumo: insumo, componenteComposicao: composicao },
+  };
 }
 
 type Tipo = 'insumo' | 'composicao' | 'compInsumo' | 'compComposicao';
@@ -303,6 +331,19 @@ export function aplicarMapa(texto: string, mapa: MapaColunas, externos: Externos
     const ins = achatar(c.codigo, new Set());
     if (!ins.size) composicoesSemInsumos++;
     for (const [insumo, coef] of ins) saida.push(['componente', c.codigo, '', '', '', '', insumo, numeroTexto(coef)].join(';'));
+    // Estrutura original (itens diretos), para conferir insumos e serviços auxiliares com os multiplicadores.
+    const diretos = new Map<string, { tipo: 'item_insumo' | 'item_composicao'; codigo: string; coef: number }>();
+    for (const k of itens.get(c.codigo) ?? []) {
+      const ehInsumo = k.tipo === 'compInsumo' && existeInsumo(k.codigo);
+      const ehComposicao = !ehInsumo && (composicoes.has(k.codigo) || externos.composicoes.has(k.codigo)) && k.codigo !== c.codigo;
+      if (!ehInsumo && !ehComposicao) continue;
+      const tipo = ehInsumo ? 'item_insumo' : 'item_composicao';
+      const chave = `${tipo}:${k.codigo}`;
+      const atual = diretos.get(chave);
+      if (atual) atual.coef += k.coeficiente;
+      else diretos.set(chave, { tipo, codigo: k.codigo, coef: k.coeficiente });
+    }
+    for (const k of diretos.values()) saida.push([k.tipo, c.codigo, '', '', '', '', k.codigo, numeroTexto(k.coef)].join(';'));
   }
   // Itens de composições que não estão no arquivo nem na tabela de destino.
   for (const [comp, l] of itens) if (!composicoes.has(comp)) componentesDescartados += l.length;
