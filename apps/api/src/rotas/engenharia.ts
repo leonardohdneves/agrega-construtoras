@@ -48,13 +48,17 @@ const precoObra = (a: string) =>
 const precoRef = (a: string) =>
   `(CASE WHEN ${a}.tipo = 'insumo' THEN ${a}.preco_centavos::numeric ELSE coalesce((SELECT sum(rc.coeficiente * ri.preco_centavos) FROM ref_composicao_insumos rc JOIN ref_itens ri ON ri.id = rc.insumo_id WHERE rc.composicao_id = ${a}.id), 0) END)`;
 
+// Tabelas SINAPI em texto passam de 2 MB (limite geral do servidor).
+const LIMITE_ARQUIVO = 20_000_000;
+const LIMITE_CORPO = 25 * 1024 * 1024;
+
 const esquemaTabela = z.object({
   fonte: z.enum(['sinapi', 'proprio']),
   nome: z.string().trim().min(2, 'Dê um nome à tabela.').max(120),
   uf,
   mesReferencia: mes,
   desonerado: z.boolean().optional().default(false),
-  csv: z.string().max(5_000_000).optional().nullable(),
+  csv: z.string().max(LIMITE_ARQUIVO).optional().nullable(),
 });
 
 const esquemaItemRef = z.object({
@@ -157,7 +161,7 @@ export function rotasEngenharia(banco: Banco) {
       return { tabelas: r.rows.map(tabelaPublica) };
     });
 
-    app.post('/tabelas', async (req, reply) => {
+    app.post('/tabelas', { bodyLimit: LIMITE_CORPO }, async (req, reply) => {
       const d = esquemaTabela.parse(req.body);
       const empresaId = empresaDo(req);
       const leitura = d.csv ? lerCsvReferencia(d.csv) : null;
@@ -179,13 +183,14 @@ export function rotasEngenharia(banco: Banco) {
 
     // Lê um arquivo de composições fora do formato padrão com a IA e devolve o CSV padrão para revisão.
     // Não grava nada: a tabela só é criada no POST /tabelas, depois da conferência.
-    app.post('/tabelas/converter-ia', async (req) => {
-      const d = z.object({ texto: z.string().min(1).max(5_000_000) }).parse(req.body);
+    app.post('/tabelas/converter-ia', { bodyLimit: LIMITE_CORPO }, async (req) => {
+      const d = z.object({ texto: z.string().min(1).max(LIMITE_ARQUIVO), uf, desonerado: z.boolean().default(false) }).parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
       try {
-        const r = await converterTabelaComIa(d.texto);
+        const r = await converterTabelaComIa(d.texto, { uf: d.uf ?? null, desonerado: d.desonerado });
         if (r.leitura.erros.length) throw new ErroHttp(422, 'A IA leu o arquivo, mas há linhas com erro. Confira o formato ou corrija o arquivo.', { erros: r.leitura.erros.slice(0, 50) });
-        return { csv: r.csv, ignoradas: r.ignoradas, contagem: { insumos: r.leitura.insumos.length, composicoes: r.leitura.composicoes.length, componentes: r.leitura.componentes.length } };
+        if (!r.leitura.insumos.length && !r.leitura.composicoes.length) throw new ErroHttp(422, 'A IA leu a estrutura, mas nenhuma linha virou insumo ou composição. Confira a aba e a UF.');
+        return { csv: r.csv, ignoradas: r.ignoradas, semPreco: r.semPreco, componentesDescartados: r.componentesDescartados, contagem: { insumos: r.leitura.insumos.length, composicoes: r.leitura.composicoes.length, componentes: r.leitura.componentes.length } };
       } catch (e) {
         if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
         throw e;
