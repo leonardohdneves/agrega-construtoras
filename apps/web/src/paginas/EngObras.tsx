@@ -304,7 +304,7 @@ export function EngObraDetalhe() {
   );
 }
 
-export function AbaInsumos({ obraId, itens, aoMudar, setErro }: { obraId: string; itens: ItemObra[]; aoMudar: () => void; setErro: (m: string) => void }) {
+export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: string; itens: ItemObra[]; aoMudar: () => void; setErro: (m: string) => void; tipo?: 'insumo' | 'composicao' }) {
   const [tabelas, setTabelas] = useState<Tabela[]>([]);
   const [tabelaId, setTabelaId] = useState('');
   const [catalogo, setCatalogo] = useState<ItemCatalogo[]>([]);
@@ -332,7 +332,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro }: { obraId: string
   }, [tabelaId]);
 
   const termo = busca.trim().toLowerCase();
-  const filtrados = catalogo.filter((i) => !termo || i.codigo.toLowerCase().includes(termo) || i.descricao.toLowerCase().includes(termo));
+  const filtrados = catalogo.filter((i) => (!tipo || i.tipo === tipo) && (!termo || i.codigo.toLowerCase().includes(termo) || i.descricao.toLowerCase().includes(termo)));
 
   function alternar(id: string) {
     const n = new Set(sel);

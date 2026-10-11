@@ -2,7 +2,7 @@
 // Cada seção escolhe a obra (seletor, ou ?obra= na URL) e carrega os dados dela.
 import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { api, lerNumero } from '../api';
+import { api, formatarMoeda, lerNumero } from '../api';
 import { AbaEap, AbaInsumos, ROTULO_NIVEL, type ItemObra, type No, type Obra, type Orcamento } from './EngObras';
 
 type Contexto = { obra: Obra; itens: ItemObra[]; nos: No[]; orc: Orcamento | null; recarregar: () => Promise<void>; setErro: (m: string) => void };
@@ -78,8 +78,16 @@ export function SecaoObra({ titulo, ajuda, children }: { titulo: string; ajuda?:
 
 export function EngInsumos() {
   return (
-    <SecaoObra titulo="Insumos e serviços" ajuda="Itens copiados das tabelas de referência. Editar o preço aqui não altera a tabela.">
-      {(c) => <AbaInsumos obraId={c.obra.id} itens={c.itens} aoMudar={c.recarregar} setErro={c.setErro} />}
+    <SecaoObra titulo="Insumos" ajuda="Insumos copiados das tabelas de referência para a obra. Editar o preço aqui não altera a tabela. Insumo próprio é criado na tabela própria.">
+      {(c) => <AbaInsumos obraId={c.obra.id} itens={c.itens.filter((i) => i.tipo === 'insumo')} tipo="insumo" aoMudar={c.recarregar} setErro={c.setErro} />}
+    </SecaoObra>
+  );
+}
+
+export function EngServicos() {
+  return (
+    <SecaoObra titulo="Serviços" ajuda="Composições unitárias (SINAPI e próprias). Serviço próprio é criado na tabela própria, com seus insumos e coeficientes.">
+      {(c) => <AbaInsumos obraId={c.obra.id} itens={c.itens.filter((i) => i.tipo === 'composicao')} tipo="composicao" aoMudar={c.recarregar} setErro={c.setErro} />}
     </SecaoObra>
   );
 }
@@ -262,6 +270,187 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
           {editando && <button className="btn" type="button" onClick={cancelar}>Cancelar edição</button>}
           <button className="btn btn-primario" type="submit" disabled={ocupado || d.descricao.trim().length < 2 || !d.inicio || !d.duracaoDias || (nivel !== 'obra' && !d.eapNoId)}>
             {ocupado ? 'Salvando…' : editando ? 'Salvar atividade' : 'Adicionar atividade'}
+          </button>
+        </div>
+      </form>
+    </>
+  );
+}
+
+export function EngApropriacao() {
+  return (
+    <SecaoObra titulo="Apropriação de insumos" ajuda="Insumos que a obra precisa, apropriados ao nível de apropriação escolhido no cadastro da obra. Ainda não geram solicitação de compra.">
+      {(c) => <PainelApropriacao obra={c.obra} itens={c.itens.filter((i) => i.tipo === 'insumo')} nos={c.nos} setErro={c.setErro} />}
+    </SecaoObra>
+  );
+}
+
+type Necessidade = {
+  id: string; itemId: string; codigo: string; descricao: string; unidade: string; eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null;
+  quantidade: number; dataNecessaria: string | null; observacao: string | null; status: string; precoUnitario: number | null; total: number | null;
+};
+const VAZIO_NEC = { itemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', observacao: '' };
+
+function PainelApropriacao({ obra, itens, nos, setErro }: { obra: Obra; itens: ItemObra[]; nos: No[]; setErro: (m: string) => void }) {
+  const [lista, setLista] = useState<Necessidade[] | null>(null);
+  const [d, setD] = useState(VAZIO_NEC);
+  const [ocupado, setOcupado] = useState(false);
+  const nivel = obra.nivelApropriacao;
+  const nosDoNivel = nos.filter((n) => n.nivel === nivel);
+
+  async function carregar() {
+    try {
+      const r = await api<{ necessidades: Necessidade[] }>(`/eng/obras/${obra.id}/necessidades`);
+      setLista(r.necessidades);
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
+  useEffect(() => {
+    setLista(null);
+    setD(VAZIO_NEC);
+    carregar();
+  }, [obra.id]);
+
+  async function adicionar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    const q = lerNumero(d.quantidade);
+    if (q === null || q <= 0) return setErro('Informe uma quantidade maior que zero.');
+    setOcupado(true);
+    try {
+      await api(`/eng/obras/${obra.id}/necessidades`, {
+        metodo: 'POST',
+        corpo: { itemId: d.itemId, eapNoId: nivel === 'obra' ? null : d.eapNoId || null, quantidade: q, dataNecessaria: d.dataNecessaria || null, observacao: d.observacao.trim() || null },
+      });
+      setD(VAZIO_NEC);
+      await carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function cancelar(n: Necessidade) {
+    setErro('');
+    try {
+      await api(`/eng/obras/${obra.id}/necessidades/${n.id}`, { metodo: 'PUT', corpo: { status: 'cancelada' } });
+      await carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+  }
+
+  async function excluir(n: Necessidade) {
+    setErro('');
+    try {
+      await api(`/eng/obras/${obra.id}/necessidades/${n.id}`, { metodo: 'DELETE' });
+      await carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+  }
+
+  // Total apropriado por nó (só o que não foi cancelado).
+  const porNo = new Map<string, { rotulo: string; total: number }>();
+  for (const n of (lista ?? []).filter((x) => x.status !== 'cancelada')) {
+    const chave = n.eapNoId ?? 'obra';
+    const rotulo = nivel === 'obra' ? 'Obra' : `${n.eapCodigo ?? ''} ${n.eapDescricao ?? ''}`;
+    const atual = porNo.get(chave) ?? { rotulo, total: 0 };
+    porNo.set(chave, { rotulo, total: atual.total + (n.total ?? 0) });
+  }
+
+  return (
+    <>
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Necessidades</h2>
+        {lista === null ? (
+          <p className="muted">Carregando…</p>
+        ) : lista.length === 0 ? (
+          <p className="muted" style={{ margin: 0 }}>Nenhum insumo apropriado ainda.</p>
+        ) : (
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tabela">
+              <thead>
+                <tr>
+                  <th>{nivel === 'obra' ? 'Nível' : 'Nó da EAP'}</th>
+                  <th>Insumo</th>
+                  <th>Unid.</th>
+                  <th className="num">Qtd.</th>
+                  <th>Necessário em</th>
+                  <th className="num">Preço</th>
+                  <th className="num">Total</th>
+                  <th>Situação</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {lista.map((n) => (
+                  <tr key={n.id}>
+                    <td>{nivel === 'obra' ? 'Obra' : `${n.eapCodigo ?? ''} ${n.eapDescricao ?? ''}`}</td>
+                    <td>{n.codigo} · {n.descricao}{n.observacao && <div className="small muted">{n.observacao}</div>}</td>
+                    <td>{n.unidade}</td>
+                    <td className="num">{n.quantidade}</td>
+                    <td>{n.dataNecessaria ? n.dataNecessaria.split('-').reverse().join('/') : '—'}</td>
+                    <td className="num">{formatarMoeda(n.precoUnitario)}</td>
+                    <td className="num">{formatarMoeda(n.total)}</td>
+                    <td>{n.status === 'cancelada' ? 'Cancelada' : 'Pendente'}</td>
+                    <td className="acoes">
+                      {n.status !== 'cancelada' && <button className="btn" type="button" onClick={() => cancelar(n)}>Cancelar</button>}
+                      <button className="btn" type="button" onClick={() => excluir(n)}>Excluir</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        {porNo.size > 0 && (
+          <div style={{ marginTop: 12, display: 'grid', gap: 4, justifyContent: 'end' }}>
+            {[...porNo.entries()].map(([chave, v]) => (
+              <div key={chave}>{v.rotulo.trim() || 'Obra'}: <b>{formatarMoeda(v.total)}</b></div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <form className="card form" onSubmit={adicionar}>
+        <h2 style={{ margin: 0 }}>Apropriar insumo</h2>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+          <div className="campo" style={{ gridColumn: 'span 2' }}>
+            <label htmlFor="ap-item">Insumo</label>
+            <select id="ap-item" value={d.itemId} onChange={(e) => setD({ ...d, itemId: e.target.value })}>
+              <option value="">Escolha…</option>
+              {itens.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+            </select>
+          </div>
+          {nivel !== 'obra' && (
+            <div className="campo" style={{ gridColumn: 'span 2' }}>
+              <label htmlFor="ap-eap">Nó da EAP ({ROTULO_NIVEL[nivel]})</label>
+              <select id="ap-eap" value={d.eapNoId} onChange={(e) => setD({ ...d, eapNoId: e.target.value })}>
+                <option value="">Escolha…</option>
+                {nosDoNivel.map((n) => <option key={n.id} value={n.id}>{n.codigo} {n.descricao}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="campo">
+            <label htmlFor="ap-qtd">Quantidade</label>
+            <input id="ap-qtd" inputMode="decimal" value={d.quantidade} onChange={(e) => setD({ ...d, quantidade: e.target.value })} />
+          </div>
+          <div className="campo">
+            <label htmlFor="ap-data">Necessário em</label>
+            <input id="ap-data" type="date" value={d.dataNecessaria} onChange={(e) => setD({ ...d, dataNecessaria: e.target.value })} />
+          </div>
+          <div className="campo" style={{ gridColumn: 'span 2' }}>
+            <label htmlFor="ap-obs">Observação</label>
+            <input id="ap-obs" value={d.observacao} onChange={(e) => setD({ ...d, observacao: e.target.value })} />
+          </div>
+        </div>
+        <div className="acoes">
+          <button className="btn btn-primario" type="submit" disabled={ocupado || !d.itemId || !d.quantidade || (nivel !== 'obra' && !d.eapNoId)}>
+            {ocupado ? 'Salvando…' : 'Apropriar'}
           </button>
         </div>
       </form>
