@@ -7,7 +7,7 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
-import { aplicarMapa, esquemaValoresTipo, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
+import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { bdiCalculado, calcularDatas, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, NIVEIS_OBRA, numeroBr, temCiclo, type NivelEap, type ParametrosBdi } from '../lib/engenharia.ts';
 
@@ -237,7 +237,9 @@ export function rotasEngenharia(banco: Banco) {
       recusarBinario(d.amostra);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
       try {
-        return { mapa: await mapearColunasIa(d.amostra, { uf: d.uf ?? null, desonerado: d.desonerado }) };
+        const mapa = await mapearColunasIa(d.amostra, { uf: d.uf ?? null, desonerado: d.desonerado });
+        req.log.info({ mapa, inicio: linhasUteis(d.amostra).slice(0, 6) }, '[ia-sinapi] mapa');
+        return { mapa };
       } catch (e) {
         if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
         throw e;
@@ -262,7 +264,19 @@ export function rotasEngenharia(banco: Banco) {
       const r = aplicarMapa(d.texto, mapaRecortado(d.tipoUnico, d.valoresTipo), externos);
       const leitura = lerCsvReferencia(r.csv, externos?.insumos);
       if (leitura.erros.length) throw new ErroHttp(422, 'O arquivo foi lido, mas há linhas com erro.', { erros: leitura.erros.slice(0, 50) });
-      if (!leitura.insumos.length && !leitura.composicoes.length) throw new ErroHttp(422, 'Nenhuma linha virou insumo ou composição. Confira a aba e a UF.');
+      if (!leitura.insumos.length && !leitura.composicoes.length) {
+        // Mostra o que foi lido nas primeiras linhas, para entender o que a IA indicou.
+        const exemplo = linhasUteis(d.texto)
+          .slice(0, 3)
+          .map((l) => {
+            const c = l.split(';');
+            return `tipo "${c[0] ?? ''}", código "${c[1] ?? ''}", descrição "${(c[2] ?? '').slice(0, 40)}", unidade "${c[3] ?? ''}", item "${c[6] ?? ''}", coeficiente "${c[7] ?? ''}"`;
+          });
+        req.log.warn({ tipoUnico: d.tipoUnico, valoresTipo: d.valoresTipo, exemplo }, '[ia-sinapi] conversão vazia');
+        throw new ErroHttp(422, 'Nenhuma linha virou insumo ou composição. Confira a aba.', {
+          erros: [`Tipos esperados pela IA: ${JSON.stringify(d.valoresTipo ?? d.tipoUnico)}`, ...exemplo.map((e, i) => `Linha ${i + 1} lida: ${e}`)],
+        });
+      }
       return {
         csv: r.csv,
         ignoradas: r.ignoradas,

@@ -171,6 +171,8 @@ function LeitorArquivo({ id, uf, desonerado, tabelaId, aoMudar }: { id: string; 
     try {
       const linhas = linhasUteis(texto);
       const { mapa } = await api<{ mapa: MapaIa }>('/eng/tabelas/mapear-ia', { corpo: { amostra: linhas.slice(0, 40).join('\n'), uf, desonerado } });
+      // Planilha .xlsx vira texto com ponto e vírgula aqui no navegador: o separador é sempre esse.
+      if (planilha) mapa.separador = ';';
       const recortado = linhas
         .slice(mapa.linhaInicial)
         .map((l) => {

@@ -103,3 +103,27 @@ test('texto recortado pelo navegador usa as colunas na ordem padrão', () => {
   assert.equal(r.componentesDescartados, 0);
   assert.match(r.csv, /componente;10;;;;;5;2/);
 });
+
+test('planilha com uma linha por item (composição repetida + item), via texto recortado do navegador', () => {
+  // Colunas recortadas: tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente (tipo vazio: não há coluna de tipo).
+  const texto = [
+    ';104658;PISO PODOTÁTIL;m²;;Acessibilidade;88316;1.279',
+    ';104658;PISO PODOTÁTIL;m²;;Acessibilidade;36178;6.4375',
+    ';88316;SERVENTE COM ENCARGOS;h;;Mão de obra;6111;1',
+    ';105002;RAMPA;un;;Acessibilidade;104658;0.48',
+  ].join('\n');
+  const r = aplicarMapa(texto, mapaRecortado('composicao', null), { insumos: new Set(['36178', '6111']), composicoes: new Map() });
+  assert.equal(r.ignoradas, 0);
+  assert.equal(r.auxiliaresAchatadas, 2);
+  const leitura = lerCsvReferencia(r.csv, new Set(['36178', '6111']));
+  assert.deepEqual(leitura.erros, []);
+  assert.equal(leitura.composicoes.length, 3);
+  const rampa = Object.fromEntries(leitura.componentes.filter((k) => k.composicao === '105002').map((k) => [k.insumo, k.coeficiente]));
+  assert.deepEqual(rampa, { '6111': 0.61392, '36178': 3.09 });
+});
+
+test('planilha só de insumos via texto recortado: a coluna de tipo vazia não é lida', () => {
+  const r = aplicarMapa(';1;CIMENTO;KG;0.85;MATERIAL;;', mapaRecortado('insumo', null));
+  assert.equal(r.ignoradas, 0);
+  assert.equal(lerCsvReferencia(r.csv).insumos.length, 1);
+});
