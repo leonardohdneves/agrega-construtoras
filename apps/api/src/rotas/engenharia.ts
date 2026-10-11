@@ -52,6 +52,13 @@ const precoRef = (a: string) =>
 const LIMITE_ARQUIVO = 20_000_000;
 const LIMITE_CORPO = 25 * 1024 * 1024;
 
+/** Planilha Excel lida como texto (tela antiga, sem o leitor de .xlsx): o conteúdo começa com a assinatura do zip. */
+function recusarBinario(texto: string) {
+  if (texto.startsWith('PK\u0003\u0004') || texto.slice(0, 2000).includes('\uFFFD\uFFFD')) {
+    throw new ErroHttp(400, 'O arquivo chegou como planilha Excel não convertida: esta tela está desatualizada. Recarregue a página (F5) e envie o arquivo de novo.');
+  }
+}
+
 const esquemaTabela = z.object({
   fonte: z.enum(['sinapi', 'proprio']),
   nome: z.string().trim().min(2, 'Dê um nome à tabela.').max(120),
@@ -163,6 +170,7 @@ export function rotasEngenharia(banco: Banco) {
 
     app.post('/tabelas', { bodyLimit: LIMITE_CORPO }, async (req, reply) => {
       const d = esquemaTabela.parse(req.body);
+      if (d.csv) recusarBinario(d.csv);
       const empresaId = empresaDo(req);
       const leitura = d.csv ? lerCsvReferencia(d.csv) : null;
       if (leitura && leitura.erros.length) throw new ErroHttp(400, 'O arquivo tem erros. Corrija e envie de novo.', { erros: leitura.erros.slice(0, 50) });
@@ -185,6 +193,7 @@ export function rotasEngenharia(banco: Banco) {
     // Não grava nada: a tabela só é criada no POST /tabelas, depois da conferência.
     app.post('/tabelas/converter-ia', { bodyLimit: LIMITE_CORPO }, async (req) => {
       const d = z.object({ texto: z.string().min(1).max(LIMITE_ARQUIVO), uf, desonerado: z.boolean().default(false) }).parse(req.body);
+      recusarBinario(d.texto);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
       try {
         const r = await converterTabelaComIa(d.texto, { uf: d.uf ?? null, desonerado: d.desonerado });
