@@ -74,11 +74,13 @@ export function EngTabelas() {
 }
 
 const CAMPOS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
+/** Ordem das colunas recortadas para o servidor: os campos padrão e os dados do item na mesma linha (tipo, descrição, unidade, preço). */
+const COLUNAS_RECORTE = [...CAMPOS, 'tipoItem', 'descricaoItem', 'unidadeItem', 'precoItem'] as const;
 type ValoresTipo = Record<'insumo' | 'composicao' | 'componenteInsumo' | 'componenteComposicao', string | string[] | null>;
 type MapaIa = {
   separador: string;
   linhaInicial: number;
-  colunas: Record<(typeof CAMPOS)[number], number | null>;
+  colunas: Partial<Record<(typeof COLUNAS_RECORTE)[number], number | null>>;
   tipoUnico: 'insumo' | 'composicao' | null;
   valoresTipo: ValoresTipo | null;
 };
@@ -177,9 +179,9 @@ function LeitorArquivo({ id, uf, desonerado, tabelaId, aoMudar }: { id: string; 
         .slice(mapa.linhaInicial)
         .map((l) => {
           const c = l.split(mapa.separador);
-          return CAMPOS.map((k) => {
+          return COLUNAS_RECORTE.map((k) => {
             const i = mapa.colunas[k];
-            return i === null ? '' : (c[i] ?? '').replace(/[;\r\n]/g, ',').trim();
+            return i === null || i === undefined ? '' : (c[i] ?? '').replace(/[;\r\n]/g, ',').trim();
           }).join(';');
         })
         .join('\n');
@@ -337,10 +339,11 @@ function ImportarNaTabela({ tabela, aoImportar }: { tabela: Tabela; aoImportar: 
     setErros([]);
     setOcupado(true);
     try {
-      const r = await api<{ contagem: { insumos: number; composicoes: number; componentes: number; jaExistiam: number } }>(`/eng/tabelas/${tabela.id}/importar`, { corpo: { csv } });
+      const r = await api<{ contagem: { insumos: number; composicoes: number; componentes: number; jaExistiam: number; completadas: number } }>(`/eng/tabelas/${tabela.id}/importar`, { corpo: { csv } });
       const c = r.contagem;
       aoImportar(
         `Importação concluída: ${fmt(c.insumos)} insumos e ${fmt(c.composicoes)} composições novas (${fmt(c.componentes)} itens de composição).` +
+          (c.completadas ? ` ${fmt(c.completadas)} composições que estavam sem insumos foram completadas.` : '') +
           (c.jaExistiam ? ` ${fmt(c.jaExistiam)} itens já existiam na tabela e ficaram como estavam.` : ''),
       );
     } catch (err) {

@@ -127,3 +127,19 @@ test('planilha só de insumos via texto recortado: a coluna de tipo vazia não �
   assert.equal(r.ignoradas, 0);
   assert.equal(lerCsvReferencia(r.csv).insumos.length, 1);
 });
+
+test('uma linha por item com dados do insumo na linha: cadastra os insumos e o preço sai certo', () => {
+  // Recorte: tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente;tipoItem;descricaoItem;unidadeItem;precoItem
+  const texto = [
+    ';104658;PISO PODOTÁTIL;m²;;Acessibilidade;88316;1.279;COMPOSICAO;SERVENTE;h;22.14',
+    ';104658;PISO PODOTÁTIL;m²;;Acessibilidade;36178;6.4375;INSUMO;PISO TATIL;un;21.95',
+    ';88316;SERVENTE COM ENCARGOS;h;;Mão de obra;6111;1;INSUMO;SERVENTE (HORA);h;22.14',
+  ].join('\n');
+  const r = aplicarMapa(texto, mapaRecortado('composicao', { insumo: null, composicao: null, componenteInsumo: 'INSUMO', componenteComposicao: 'COMPOSICAO' }));
+  const leitura = lerCsvReferencia(r.csv);
+  assert.deepEqual(leitura.erros, []);
+  assert.equal(leitura.insumos.length, 2);
+  const preco = new Map(leitura.insumos.map((i) => [i.codigo, i.precoCentavos / 100]));
+  const piso = leitura.componentes.filter((k) => k.composicao === '104658').reduce((s, k) => s + k.coeficiente * (preco.get(k.insumo) ?? 0), 0);
+  assert.equal(Math.round(piso * 100) / 100, Math.round((1.279 * 22.14 + 6.4375 * 21.95) * 100) / 100);
+});
