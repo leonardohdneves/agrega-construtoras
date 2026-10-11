@@ -9,9 +9,14 @@ import { ErroIa } from './ia-nota.ts';
 import { numeroBr } from './engenharia.ts';
 
 export const CAMPOS = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'] as const;
+/** Dados do item na mesma linha da composição (planilhas com uma linha por item). */
+export const CAMPOS_ITEM = ['tipoItem', 'descricaoItem', 'unidadeItem', 'precoItem'] as const;
+/** Ordem das colunas no texto recortado pelo navegador. */
+export const COLUNAS_RECORTE = [...CAMPOS, ...CAMPOS_ITEM] as const;
 const LIMITE_CARACTERES = 20_000;
 
 const indice = z.number().int().min(0).max(500).nullable();
+const indiceOpcional = indice.optional().transform((v) => v ?? null);
 /** Texto exato da coluna de tipo; lista quando mais de um texto indica o mesmo tipo; "" para célula vazia. */
 const valorTipo = z.union([z.string(), z.array(z.string())]).nullable().optional().transform((v) => v ?? null);
 
@@ -33,6 +38,10 @@ export const esquemaMapa = z.object({
     grupo: indice,
     insumo: indice,
     coeficiente: indice,
+    tipoItem: indiceOpcional,
+    descricaoItem: indiceOpcional,
+    unidadeItem: indiceOpcional,
+    precoItem: indiceOpcional,
   }),
   tipoUnico: z.enum(['insumo', 'composicao']).nullable(),
   valoresTipo: esquemaValoresTipo.nullable(),
@@ -77,10 +86,13 @@ function prompt(ctx: Contexto): string {
     'componenteInsumo = linha de um insumo dentro de uma composição; componenteComposicao = linha de uma composição auxiliar dentro de outra composição.\n' +
     '- Nas linhas de componente, "codigo" é o código da composição a que a linha pertence e "insumo" é o código do item.\n' +
     '- Se cada linha repete a composição (código, descrição, unidade) e traz um item dela na mesma linha (código do item e coeficiente ou multiplicador), ' +
-    'use "tipo": null, "tipoUnico": "composicao", "valoresTipo": null, e preencha "insumo" e "coeficiente" com as colunas do item.\n' +
+    'use "tipo": null e "tipoUnico": "composicao", e preencha "insumo" e "coeficiente" com as colunas do item. ' +
+    'Se a linha também traz o tipo do item (INSUMO ou COMPOSICAO), a descrição, a unidade e o preço do item, preencha "tipoItem", "descricaoItem", "unidadeItem" e "precoItem" ' +
+    'e use "valoresTipo": {"insumo": null, "composicao": null, "componenteInsumo": texto do tipo insumo, "componenteComposicao": texto do tipo composição}; senão "valoresTipo": null.\n' +
     '- Linhas de instrução antes do cabeçalho (como "<codigo>", "Obrigatório", títulos de grupo) não são o cabeçalho: o cabeçalho é a linha com os nomes das colunas logo antes dos dados.\n\n' +
-    'Exemplo de planilha de importação com uma linha por item: linha 4 = "Código;Descrição;Unidade;Referência;Cód. Referencia;Preço;P.E.;FIC;FIT;Macro serviço;Serviço;Código;Multiplicador;Tabela" ' +
-    '→ {"separador": ";", "linhaInicial": 4, "colunas": {"tipo": null, "codigo": 0, "descricao": 1, "unidade": 2, "preco": null, "grupo": 10, "insumo": 11, "coeficiente": 12}, "tipoUnico": "composicao", "valoresTipo": null}.\n\n' +
+    'Exemplo de planilha de importação com uma linha por item: linha 4 = "Código;Descrição;Unidade;Referência;Cód. Referencia;Preço;P.E.;FIC;FIT;Macro serviço;Serviço;Código;Multiplicador;Tabela;Tipo Item;Unidade;Descrição;Preço" ' +
+    '→ {"separador": ";", "linhaInicial": 4, "colunas": {"tipo": null, "codigo": 0, "descricao": 1, "unidade": 2, "preco": null, "grupo": 10, "insumo": 11, "coeficiente": 12, ' +
+    '"tipoItem": 14, "unidadeItem": 15, "descricaoItem": 16, "precoItem": 17}, "tipoUnico": "composicao", "valoresTipo": {"insumo": null, "composicao": null, "componenteInsumo": "INSUMO", "componenteComposicao": "COMPOSICAO"}}.\n\n' +
     'Exemplo de SINAPI analítico: colunas "Grupo; Código da Composição; Tipo Item; Código do Item; Descrição; Unidade; Coeficiente", ' +
     'com a linha da composição tendo "Tipo Item" vazio e as linhas dos itens com "INSUMO" ou "COMPOSICAO": ' +
     'tipo = coluna Tipo Item, codigo = Código da Composição, insumo = Código do Item, composicao = "", componenteInsumo = "INSUMO", componenteComposicao = "COMPOSICAO".\n\n' +
@@ -194,9 +206,9 @@ export function aplicarMapa(texto: string, mapa: MapaColunas, externos: Externos
 
   for (const linha of linhas) {
     const celulas = linha.split(mapa.separador).map((c) => c.trim());
-    const valor = (campo: (typeof CAMPOS)[number]) => {
+    const valor = (campo: (typeof COLUNAS_RECORTE)[number]) => {
       const idx = mapa.colunas[campo];
-      return idx === null ? '' : (celulas[idx] ?? '').replace(/[;\r\n]/g, ',').trim();
+      return idx === null || idx === undefined ? '' : (celulas[idx] ?? '').replace(/[;\r\n]/g, ',').trim();
     };
     const tipo = tipoDe(valor('tipo'));
     const codigo = valor('codigo');
@@ -226,9 +238,19 @@ export function aplicarMapa(texto: string, mapa: MapaColunas, externos: Externos
       const item = valor('insumo');
       const coeficiente = numeroBr(valor('coeficiente'));
       if (item && coeficiente !== null && coeficiente >= 0) {
+        // Tipo do item na mesma linha, quando a planilha traz (INSUMO ou COMPOSICAO); sem ele, decide pelo cadastro.
+        const tipoItem = norm(valor('tipoItem'));
+        const ehComposicao = !!tipoItem && !!lista(vt?.componenteComposicao ?? null)?.includes(tipoItem);
         const l = itens.get(codigo) ?? [];
-        l.push({ tipo: 'compInsumo', codigo: item, coeficiente });
+        l.push({ tipo: ehComposicao ? 'compComposicao' : 'compInsumo', codigo: item, coeficiente });
         itens.set(codigo, l);
+        // A planilha traz descrição, unidade e preço do insumo: cadastra o insumo também (o preço da composição sai dele).
+        const ehInsumo = !!tipoItem && !!lista(vt?.componenteInsumo ?? null)?.includes(tipoItem);
+        if (ehInsumo && !insumos.has(item)) {
+          const ins: Cadastro = { codigo: item, descricao: valor('descricaoItem'), unidade: valor('unidadeItem'), preco: valor('precoItem'), grupo: '' };
+          const p = numeroBr(ins.preco);
+          if (ins.descricao && ins.unidade && p !== null && p >= 0) insumos.set(item, ins);
+        }
       }
     }
     if (tipo === 'insumo') {
@@ -294,7 +316,7 @@ export function mapaRecortado(tipoUnico: MapaColunas['tipoUnico'], valoresTipo: 
     separador: ';',
     linhaInicial: 0,
     // Sem coluna de tipo (tipoUnico), a coluna 0 do texto recortado vem vazia e não deve ser lida como tipo.
-    colunas: { tipo: tipoUnico ? null : 0, codigo: 1, descricao: 2, unidade: 3, preco: 4, grupo: 5, insumo: 6, coeficiente: 7 },
+    colunas: { tipo: tipoUnico ? null : 0, codigo: 1, descricao: 2, unidade: 3, preco: 4, grupo: 5, insumo: 6, coeficiente: 7, tipoItem: 8, descricaoItem: 9, unidadeItem: 10, precoItem: 11 },
     tipoUnico,
     valoresTipo,
   };

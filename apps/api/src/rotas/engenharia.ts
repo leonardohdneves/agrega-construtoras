@@ -49,8 +49,8 @@ const precoRef = (a: string) =>
   `(CASE WHEN ${a}.tipo = 'insumo' THEN ${a}.preco_centavos::numeric ELSE coalesce((SELECT sum(rc.coeficiente * ri.preco_centavos) FROM ref_composicao_insumos rc JOIN ref_itens ri ON ri.id = rc.insumo_id WHERE rc.composicao_id = ${a}.id), 0) END)`;
 
 // Tabelas SINAPI em texto passam de 2 MB (limite geral do servidor).
-const LIMITE_ARQUIVO = 20_000_000;
-const LIMITE_CORPO = 25 * 1024 * 1024;
+const LIMITE_ARQUIVO = 60_000_000;
+const LIMITE_CORPO = 64 * 1024 * 1024;
 
 /** Planilha Excel lida como texto (tela antiga, sem o leitor de .xlsx): o conteúdo começa com a assinatura do zip. */
 function recusarBinario(texto: string) {
@@ -127,11 +127,18 @@ export function rotasEngenharia(banco: Banco) {
      * Grava itens de referência em lote (unnest, de 500 em 500).
      * idsExistentes: itens que já estão na tabela (importação para tabela existente), chave "tipo:codigo".
      */
-    async function gravarItensRef(c: Cliente, tabelaId: string, leitura: ReturnType<typeof lerCsvReferencia>, idsExistentes = new Map<string, string>()) {
+    async function gravarItensRef(
+      c: Cliente,
+      tabelaId: string,
+      leitura: ReturnType<typeof lerCsvReferencia>,
+      idsExistentes = new Map<string, string>(),
+      composicoesVazias = new Set<string>(),
+    ) {
       const ids = new Map(idsExistentes);
       const insumos = leitura.insumos.filter((x) => !ids.has(`insumo:${x.codigo}`));
       const composicoes = leitura.composicoes.filter((x) => !ids.has(`composicao:${x.codigo}`));
-      const novasComposicoes = new Set(composicoes.map((x) => x.codigo));
+      // Recebem itens: as composições novas e as que já existiam sem nenhum insumo (importação anterior incompleta).
+      const novasComposicoes = new Set([...composicoes.map((x) => x.codigo), ...leitura.composicoes.filter((x) => composicoesVazias.has(x.codigo)).map((x) => x.codigo)]);
       for (let i = 0; i < insumos.length; i += 500) {
         const lote = insumos.slice(i, i + 500);
         const r = await c.query(
@@ -175,6 +182,7 @@ export function rotasEngenharia(banco: Banco) {
         composicoes: composicoes.length,
         componentes: comp.length,
         jaExistiam: leitura.insumos.length - insumos.length + leitura.composicoes.length - composicoes.length,
+        completadas: [...novasComposicoes].filter((k) => composicoesVazias.has(k)).length,
       };
     }
 
@@ -299,7 +307,8 @@ export function rotasEngenharia(banco: Banco) {
         const { ids, externos } = await itensDaTabela(c, req.params.id);
         const leitura = lerCsvReferencia(d.csv, externos.insumos);
         if (leitura.erros.length) throw new ErroHttp(400, 'O arquivo tem erros. Corrija e envie de novo.', { erros: leitura.erros.slice(0, 50) });
-        const r = await gravarItensRef(c, req.params.id, leitura, ids);
+        const vazias = new Set([...externos.composicoes].filter(([, l]) => l.length === 0).map(([k]) => k));
+        const r = await gravarItensRef(c, req.params.id, leitura, ids, vazias);
         await c.query('UPDATE ref_tabelas SET atualizado_em = now() WHERE id = $1', [req.params.id]);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'ref_tabelas', entidadeId: req.params.id, depois: { importacao: r } });
         return r;
