@@ -79,12 +79,43 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
   const [erros, setErros] = useState<string[]>([]);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [lendoIa, setLendoIa] = useState(false);
+  const [resumoIa, setResumoIa] = useState('');
 
   async function lerArquivo(f: File | undefined) {
     if (!f) return;
     setCsv(await f.text());
     setArquivo(f.name);
+    setResumoIa('');
   }
+
+  // Arquivo fora do formato padrão: a IA descobre as colunas e o sistema gera o CSV padrão para conferência.
+  async function lerComIa() {
+    setErro('');
+    setErros([]);
+    setResumoIa('');
+    setLendoIa(true);
+    try {
+      const r = await api<{ csv: string; ignoradas: number; contagem: { insumos: number; composicoes: number; componentes: number } }>('/eng/tabelas/converter-ia', { corpo: { texto: csv } });
+      setCsv(r.csv);
+      setResumoIa(
+        `A IA leu o arquivo: ${r.contagem.insumos} insumos, ${r.contagem.composicoes} composições e ${r.contagem.componentes} componentes.` +
+          (r.ignoradas ? ` ${r.ignoradas} linhas sem tipo reconhecido foram ignoradas.` : '') +
+          ' Confira o nome e a referência e crie a tabela.',
+      );
+    } catch (err) {
+      const e2 = err as Error & { dados?: { erros?: string[] } };
+      setErro(e2.message);
+      setErros((e2 as unknown as { erros?: string[] }).erros ?? []);
+    } finally {
+      setLendoIa(false);
+    }
+  }
+
+  const formatoPadrao = (() => {
+    const cab = csv.replace(/^﻿/, '').split(/\r?\n/)[0]?.toLowerCase().split(';').map((c) => c.trim()) ?? [];
+    return ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'].every((c) => cab.includes(c));
+  })();
 
   async function criar(e: FormEvent) {
     e.preventDefault();
@@ -149,6 +180,13 @@ function NovaTabela({ aoCriar }: { aoCriar: (id: string) => void }) {
           Colunas separadas por ponto e vírgula: <code>tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente</code>. Tipos: <b>insumo</b>, <b>composicao</b> e <b>componente</b> (um por insumo de cada composição).
           {arquivo && <> Arquivo: <b>{arquivo}</b>.</>}
         </span>
+        {csv && !formatoPadrao && (
+          <div className="alerta alerta-aviso" role="status" style={{ marginTop: 8 }}>
+            <p style={{ margin: '0 0 8px' }}>Este arquivo não está no formato padrão. A IA pode identificar as colunas e converter.</p>
+            <button className="btn btn-secundario" type="button" onClick={lerComIa} disabled={lendoIa}>{lendoIa ? 'Lendo com IA…' : 'Ler com IA'}</button>
+          </div>
+        )}
+        {resumoIa && <div className="alerta alerta-ok" role="status" style={{ marginTop: 8 }}>{resumoIa}</div>}
       </div>
       <div className="acoes">
         <button className="btn btn-primario" type="submit" disabled={ocupado || d.nome.trim().length < 2}>{ocupado ? 'Criando…' : 'Criar tabela'}</button>
@@ -301,8 +339,47 @@ export function EngTabelaDetalhe() {
   );
 }
 
-function NovoItem({ tabelaId, aoSalvar }: { tabelaId: string; aoSalvar: () => void }) {
-  const [d, setD] = useState({ tipo: 'insumo' as 'insumo' | 'composicao', codigo: '', descricao: '', unidade: '', grupo: '', preco: '' });
+/** Serviço próprio: composição unitária criada na tabela própria da empresa. */
+export function NovoServico({ aoSalvar }: { aoSalvar: (mensagem: string) => void }) {
+  const [proprias, setProprias] = useState<Tabela[] | null>(null);
+  const [tabelaId, setTabelaId] = useState('');
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    api<{ tabelas: Tabela[] }>('/eng/tabelas')
+      .then((r) => {
+        const p = r.tabelas.filter((t) => t.fonte === 'proprio' && t.editavel);
+        setProprias(p);
+        setTabelaId(p[0]?.id ?? '');
+      })
+      .catch((e) => setErro((e as Error).message));
+  }, []);
+
+  if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
+  if (proprias === null) return <p className="muted">Carregando…</p>;
+  if (proprias.length === 0)
+    return (
+      <div className="card">
+        <p className="muted" style={{ margin: 0 }}>
+          Antes, crie a tabela própria da empresa em <Link to="/eng/tabelas">Tabelas de referência</Link>. Os serviços próprios ficam nela.
+        </p>
+      </div>
+    );
+  const nomeTabela = proprias.find((t) => t.id === tabelaId)?.nome ?? '';
+  return (
+    <div>
+      <div className="campo" style={{ maxWidth: 360, marginBottom: 8 }}>
+        <label htmlFor="ns-tabela">Tabela própria</label>
+        <select id="ns-tabela" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
+          {proprias.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+        </select>
+      </div>
+      <NovoItem key={tabelaId} tabelaId={tabelaId} soComposicao aoSalvar={() => aoSalvar(`Serviço criado na tabela ${nomeTabela}. Para usar nesta obra, copie-o pela lista abaixo.`)} />
+    </div>
+  );
+}
+
+function NovoItem({ tabelaId, aoSalvar, soComposicao = false }: { tabelaId: string; aoSalvar: () => void; soComposicao?: boolean }) {
+  const [d, setD] = useState({ tipo: (soComposicao ? 'composicao' : 'insumo') as 'insumo' | 'composicao', codigo: '', descricao: '', unidade: '', grupo: '', preco: '' });
   const [comp, setComp] = useState([{ insumoCodigo: '', coeficiente: '' }]);
   const [erro, setErro] = useState('');
   async function salvar(e: FormEvent) {
@@ -321,16 +398,18 @@ function NovoItem({ tabelaId, aoSalvar }: { tabelaId: string; aoSalvar: () => vo
   }
   return (
     <form className="card form" onSubmit={salvar}>
-      <h2 style={{ margin: 0 }}>Novo item</h2>
+      <h2 style={{ margin: 0 }}>{soComposicao ? 'Novo serviço' : 'Novo item'}</h2>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
-        <div className="campo">
-          <label htmlFor="ni-tipo">Tipo</label>
-          <select id="ni-tipo" value={d.tipo} onChange={(e) => setD({ ...d, tipo: e.target.value as 'insumo' | 'composicao' })}>
-            <option value="insumo">Insumo</option>
-            <option value="composicao">Composição (serviço)</option>
-          </select>
-        </div>
+        {!soComposicao && (
+          <div className="campo">
+            <label htmlFor="ni-tipo">Tipo</label>
+            <select id="ni-tipo" value={d.tipo} onChange={(e) => setD({ ...d, tipo: e.target.value as 'insumo' | 'composicao' })}>
+              <option value="insumo">Insumo</option>
+              <option value="composicao">Composição (serviço)</option>
+            </select>
+          </div>
+        )}
         <div className="campo"><label htmlFor="ni-cod">Código</label><input id="ni-cod" value={d.codigo} onChange={(e) => setD({ ...d, codigo: e.target.value })} /></div>
         <div className="campo" style={{ gridColumn: 'span 2' }}><label htmlFor="ni-desc">Descrição</label><input id="ni-desc" value={d.descricao} onChange={(e) => setD({ ...d, descricao: e.target.value })} /></div>
         <div className="campo"><label htmlFor="ni-un">Unidade</label><input id="ni-un" value={d.unidade} onChange={(e) => setD({ ...d, unidade: e.target.value })} /></div>
