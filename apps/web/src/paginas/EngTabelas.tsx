@@ -623,7 +623,17 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
             </select>
           </div>
         )}
-        <div className="campo"><label htmlFor="ni-cod">Código</label><input id="ni-cod" value={d.codigo} onChange={(e) => setD({ ...d, codigo: e.target.value })} /></div>
+        <div className="campo">
+          <label htmlFor="ni-cod">Código</label>
+          {d.tipo === 'composicao' ? (
+            <>
+              <input id="ni-cod" value="Automático" disabled />
+              <span className="ajuda">Serviço novo recebe o próximo número da tabela própria.</span>
+            </>
+          ) : (
+            <input id="ni-cod" value={d.codigo} onChange={(e) => setD({ ...d, codigo: e.target.value })} />
+          )}
+        </div>
         <div className="campo" style={{ gridColumn: 'span 2' }}><label htmlFor="ni-desc">Descrição</label><input id="ni-desc" value={d.descricao} onChange={(e) => setD({ ...d, descricao: e.target.value })} /></div>
         <div className="campo"><label htmlFor="ni-un">Unidade</label><input id="ni-un" value={d.unidade} onChange={(e) => setD({ ...d, unidade: e.target.value })} /></div>
         {d.tipo === 'insumo' && <div className="campo"><label htmlFor="ni-preco">Preço (R$)</label><input id="ni-preco" inputMode="decimal" value={d.preco} onChange={(e) => setD({ ...d, preco: e.target.value })} /></div>}
@@ -641,7 +651,7 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
           <span className="ajuda">Informe o código de cada insumo e a quantidade por unidade do serviço. Os insumos precisam existir na tabela própria (crie-os em Insumos › Novo insumo). O preço do serviço é a soma dos insumos × coeficiente.</span>
         </div>
       )}
-      <div className="acoes"><button className="btn btn-primario" type="submit" disabled={d.codigo.trim() === '' || d.descricao.trim().length < 2 || d.unidade.trim() === ''}>Adicionar</button></div>
+      <div className="acoes"><button className="btn btn-primario" type="submit" disabled={(d.tipo === 'insumo' && d.codigo.trim() === '') || d.descricao.trim().length < 2 || d.unidade.trim() === ''}>Adicionar</button></div>
     </form>
   );
 }

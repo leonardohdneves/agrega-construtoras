@@ -71,6 +71,8 @@ export type Empresa = {
   nomeFantasia: string | null;
   cnpj: string;
   regimeTributario: 'simples' | 'presumido' | 'real';
+  simplesAnexo: 'I' | 'II' | 'III' | 'IV' | 'V' | null;
+  simplesFaixa: number | null;
   aliquotasDre: Record<string, number>;
   telefone: string | null;
   email: string | null;

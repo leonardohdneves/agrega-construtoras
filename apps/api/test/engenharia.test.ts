@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bdiCalculado, calcularDatas, codigoDoNo, folhasDaEap, lerCsvReferencia, nivelDoNovoNo, numeroBr, temCiclo } from '../src/lib/engenharia.ts';
+import { aliquotaSimples, bdiCalculado, calcularDatas, codigoDoNo, folhasDaEap, formacaoPreco, lerCsvReferencia, nivelDoNovoNo, numeroBr, temCiclo } from '../src/lib/engenharia.ts';
 
 test('planejamento: sucessora começa no dia seguinte ao fim da predecessora', () => {
   const datas = calcularDatas([
@@ -269,4 +269,35 @@ test('planejamento pela EAP: as folhas da planilha viram atividades, na ordem da
   ];
   assert.deepEqual(folhasDaEap(linhas).map((l) => l.id), ['tarefa1', 'tarefa2', 'tarefa9', 'tarefa10']);
   assert.deepEqual(folhasDaEap([]), []);
+});
+
+test('formação do preço: adm/imprevistos/financeiro sobre direto+indireto; impostos e lucro sobre a nova base', () => {
+  const f = formacaoPreco(1000, 200, { administracao: 10, imprevistos: 2, financeiro: 1, lucro: 10 }, [6, 2]);
+  assert.equal(f.base1, 1200);
+  assert.equal(f.administracao, 120);
+  assert.equal(f.imprevistos, 24);
+  assert.equal(f.financeiro, 12);
+  assert.equal(f.base2, 1356);
+  assert.equal(f.impostos, 108.48);
+  assert.equal(f.lucro, 135.6);
+  assert.equal(f.precoVenda, 1600.08);
+});
+
+test('formação do preço sem percentuais devolve o próprio custo', () => {
+  const f = formacaoPreco(500, 0, { administracao: 0, imprevistos: 0, financeiro: 0, lucro: 0 }, []);
+  assert.equal(f.precoVenda, 500);
+});
+
+test('BDI calculado é preço de venda sobre custo direto, menos 1', () => {
+  const f = formacaoPreco(1000, 200, { administracao: 10, imprevistos: 2, financeiro: 1, lucro: 10 }, [6, 2]);
+  assert.equal(f.bdi, 60.01);
+  assert.equal(formacaoPreco(0, 0, { administracao: 5, imprevistos: 0, financeiro: 0, lucro: 0 }, []).bdi, 0);
+});
+
+test('Simples Nacional: alíquota nominal da faixa escolhida por anexo', () => {
+  assert.equal(aliquotaSimples('IV', 1), 4.5);
+  assert.equal(aliquotaSimples('III', 6), 33);
+  assert.equal(aliquotaSimples('V', 3), 19.5);
+  assert.equal(aliquotaSimples(null, 2), null);
+  assert.equal(aliquotaSimples('IV', 7), null);
 });

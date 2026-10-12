@@ -703,6 +703,20 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .etiqueta-cp { outline: none !important; }
   .etiqueta-cp.vazia { background: none !important; }
 }
+/* Orçamento sintético e analítico: A4 retrato com as mesmas margens e rodapé do padrão. */
+@page relatorio-retrato {
+  size: A4 portrait;
+  margin: 12mm 10mm 16mm;
+  @bottom-left { content: "agrega · ERP para concreteiras"; font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
+  @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
+}
+@media print {
+  .relatorio-retrato { page: relatorio-retrato; }
+  .relatorio-retrato .card { overflow: visible !important; }
+  .relatorio-retrato .tabela th, .relatorio-retrato .tabela td { font-size: 7.5pt; padding: 1.2mm 1mm; }
+  .relatorio-retrato .tabela th { white-space: normal; }
+  .relatorio-retrato .tabela td.mono { white-space: normal; }
+}
 /* Página própria (A4 retrato, sem margem) para romaneios e etiquetas: vale mesmo com o padrão em paisagem. */
 @page folha-a4 { size: A4 portrait; margin: 0; }
 @media print { .folha { page: folha-a4; } }

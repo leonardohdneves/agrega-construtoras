@@ -26,9 +26,9 @@ export function rotasEmpresa(banco: Banco) {
         const depois = (
           await c.query(
             `UPDATE empresas SET razao_social = $2, nome_fantasia = $3, cnpj = $4, regime_tributario = $5,
-                    aliquotas_dre = $6, telefone = $7, email = $8, cidade = $9, uf = $10, atualizado_em = now()
+                    aliquotas_dre = $6, telefone = $7, email = $8, cidade = $9, uf = $10, simples_anexo = $11, simples_faixa = $12, atualizado_em = now()
               WHERE id = $1 RETURNING *`,
-            [id, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, JSON.stringify(d.aliquotasDre), d.telefone, d.email ?? null, d.cidade, d.uf ?? null],
+            [id, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, JSON.stringify(d.aliquotasDre), d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.simplesAnexo ?? null, d.simplesFaixa ?? null],
           )
         ).rows[0];
         await auditar(c, { empresaId: id, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas', entidadeId: id, antes, depois });

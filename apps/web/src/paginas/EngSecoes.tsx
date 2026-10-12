@@ -126,7 +126,7 @@ function ItensDaObra({ tipo, obraId, itens, aoMudar, setErro }: { tipo: 'insumo'
 export function EngEap() {
   return (
     <SecaoObra titulo="EAP e orçamento" ajuda="A EAP e o orçamento são montados juntos, linha a linha: 1 Obra, 2 Etapa, 3 Sub Etapa e 4 Tarefa. O serviço é lançado na Tarefa; as linhas acima somam o que está abaixo delas.">
-      {(c) => <EapComBotao obra={c.obra} itens={c.itens} setErro={c.setErro} />}
+      {(c) => <AbasCustos obra={c.obra} itens={c.itens} setErro={c.setErro} />}
     </SecaoObra>
   );
 }
@@ -528,5 +528,240 @@ function PainelApropriacao({ obra, itens, nos, setErro }: { obra: Obra; itens: I
         </div>
       </form>
     </>
+  );
+}
+
+type AbaCusto = 'direto' | 'indireto' | 'acessorios' | 'impostos' | 'lucro';
+const ABAS_CUSTO: { id: AbaCusto; texto: string }[] = [
+  { id: 'direto', texto: 'Custo direto' },
+  { id: 'indireto', texto: 'Custo indireto' },
+  { id: 'acessorios', texto: 'Custos acessórios' },
+  { id: 'impostos', texto: 'Impostos' },
+  { id: 'lucro', texto: 'Lucratividade' },
+];
+
+/** Abas da planilha: custo direto (EAP e orçamento) e a formação do preço de venda. */
+function AbasCustos({ obra, itens, setErro }: { obra: Obra; itens: ItemObra[]; setErro: (m: string) => void }) {
+  const [aba, setAba] = useState<AbaCusto>('direto');
+  return (
+    <>
+      <div className="abas" role="tablist" aria-label="Planilhas de custo" style={{ marginBottom: 12 }}>
+        {ABAS_CUSTO.map((a) => (
+          <button key={a.id} type="button" role="tab" aria-selected={aba === a.id} className={aba === a.id ? 'ativa' : ''} onClick={() => setAba(a.id)}>
+            {a.texto}
+          </button>
+        ))}
+      </div>
+      {aba === 'direto' ? (
+        <EapComBotao obra={obra} itens={itens} setErro={setErro} />
+      ) : (
+        <ComposicaoPreco obra={obra} aba={aba} setErro={setErro} />
+      )}
+    </>
+  );
+}
+
+type Composicao = {
+  direto: number;
+  percentuais: { administracao: number; imprevistos: number; cdi: number; lucro: number };
+  indiretos: { descricao: string; valor: number }[];
+  impostos: { descricao: string; percentual: number; automatico: boolean }[];
+};
+type LinhaCampo = { descricao: string; valor: string };
+type LinhaImposto = { descricao: string; percentual: string };
+const numTexto = (v: number | null | undefined) => (v === null || v === undefined || v === 0 ? '' : String(v).replace('.', ','));
+const pctTexto = (v: number) => `${String(Number(v.toFixed(2))).replace('.', ',')}%`;
+
+/** Prévia da formação do preço, igual à do servidor. Custo financeiro = CDI. */
+function previaPreco(direto: number, indiretos: number, pct: { administracao: number; imprevistos: number; cdi: number; lucro: number }, impostos: number[]) {
+  const base1 = direto + indiretos;
+  const administracao = (base1 * pct.administracao) / 100;
+  const imprevistos = (base1 * pct.imprevistos) / 100;
+  const financeiro = (base1 * pct.cdi) / 100;
+  const base2 = base1 + administracao + imprevistos + financeiro;
+  const valorImpostos = (base2 * impostos.reduce((s, p) => s + p, 0)) / 100;
+  const lucro = (base2 * pct.lucro) / 100;
+  const precoVenda = base2 + valorImpostos + lucro;
+  const bdi = direto > 0 ? (precoVenda / direto - 1) * 100 : 0;
+  return { base1, administracao, imprevistos, financeiro, base2, impostos: valorImpostos, lucro, precoVenda, bdi };
+}
+
+function ComposicaoPreco({ obra, aba, setErro }: { obra: Obra; aba: Exclude<AbaCusto, 'direto'>; setErro: (m: string) => void }) {
+  const [dados, setDados] = useState<Composicao | null>(null);
+  const [pct, setPct] = useState({ administracao: '', imprevistos: '', cdi: '', lucro: '' });
+  const [indiretos, setIndiretos] = useState<LinhaCampo[]>([]);
+  const [impostos, setImpostos] = useState<LinhaImposto[]>([]);
+  const [ocupado, setOcupado] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  function aplicar(c: Composicao) {
+    setDados(c);
+    setPct({ administracao: numTexto(c.percentuais.administracao), imprevistos: numTexto(c.percentuais.imprevistos), cdi: numTexto(c.percentuais.cdi), lucro: numTexto(c.percentuais.lucro) });
+    setIndiretos(c.indiretos.map((x) => ({ descricao: x.descricao, valor: numTexto(x.valor) })));
+    setImpostos(c.impostos.filter((x) => !x.automatico).map((x) => ({ descricao: x.descricao, percentual: numTexto(x.percentual) })));
+  }
+
+  useEffect(() => {
+    setDados(null);
+    setMsg('');
+    api<Composicao>(`/eng/obras/${obra.id}/composicao`).then(aplicar).catch((e) => setErro((e as Error).message));
+  }, [obra.id]);
+
+  if (!dados) return <p className="muted">Carregando…</p>;
+
+  const pctLidos = { administracao: lerNumero(pct.administracao) ?? 0, imprevistos: lerNumero(pct.imprevistos) ?? 0, cdi: lerNumero(pct.cdi) ?? 0, lucro: lerNumero(pct.lucro) ?? 0 };
+  const somaIndiretos = indiretos.reduce((s, x) => s + (lerNumero(x.valor) ?? 0), 0);
+  const das = dados.impostos.find((x) => x.automatico);
+  const impostosLidos = impostos.map((x) => lerNumero(x.percentual) ?? 0);
+  const todosImpostos = [das?.percentual ?? 0, ...impostosLidos];
+  const previa = previaPreco(dados.direto, somaIndiretos, pctLidos, todosImpostos);
+
+  async function salvar(e?: FormEvent) {
+    e?.preventDefault();
+    setErro('');
+    setMsg('');
+    const corpo = {
+      administracao: pctLidos.administracao,
+      imprevistos: pctLidos.imprevistos,
+      cdi: pctLidos.cdi,
+      lucro: pctLidos.lucro,
+      indiretos: indiretos.filter((x) => x.descricao.trim() || x.valor.trim()).map((x) => ({ descricao: x.descricao.trim(), valor: lerNumero(x.valor) ?? 0 })),
+      impostos: impostos.filter((x) => x.descricao.trim() || x.percentual.trim()).map((x) => ({ descricao: x.descricao.trim(), percentual: lerNumero(x.percentual) ?? 0 })),
+    };
+    setOcupado(true);
+    try {
+      const r = await api<Composicao>(`/eng/obras/${obra.id}/composicao`, { metodo: 'PUT', corpo });
+      aplicar(r);
+      setMsg('Composição salva. BDI da obra atualizado.');
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  const linhaPct = (texto: string, campo: 'administracao' | 'imprevistos' | 'cdi', sobre: string) => (
+    <tr>
+      <td>{texto}</td>
+      <td className="num"><input aria-label={texto} inputMode="decimal" style={{ width: 90 }} value={pct[campo]} onChange={(e) => setPct({ ...pct, [campo]: e.target.value })} /> %</td>
+      <td className="small muted">{sobre}</td>
+    </tr>
+  );
+
+  return (
+    <form className="card" onSubmit={salvar}>
+      <div className="cartao-topo">
+        <h2 style={{ margin: 0 }}>{ABAS_CUSTO.find((a) => a.id === aba)!.texto}</h2>
+        {msg && <span className="small muted">{msg}</span>}
+      </div>
+      <p className="muted small" style={{ marginTop: 4 }}>Custo direto da obra: <strong>{formatarMoeda(dados.direto)}</strong>. Salve a composição ao final de cada aba.</p>
+
+      {aba === 'indireto' && (
+        <>
+          <div className="tabela-caixa">
+            <table className="tabela">
+              <thead><tr><th>Custo indireto</th><th className="num">Valor (R$)</th><th /></tr></thead>
+              <tbody>
+                {indiretos.length === 0 && <tr><td colSpan={3} className="muted">Nenhum custo indireto. Ex.: canteiro, mobilização, projetos, ligações provisórias.</td></tr>}
+                {indiretos.map((x, i) => (
+                  <tr key={i}>
+                    <td><input aria-label={`Custo indireto ${i + 1}`} value={x.descricao} onChange={(e) => setIndiretos(indiretos.map((y, n) => (n === i ? { ...y, descricao: e.target.value } : y)))} style={{ width: '100%' }} /></td>
+                    <td className="num"><input aria-label={`Valor do custo indireto ${i + 1}`} inputMode="decimal" style={{ width: 130 }} value={x.valor} onChange={(e) => setIndiretos(indiretos.map((y, n) => (n === i ? { ...y, valor: e.target.value } : y)))} /></td>
+                    <td><button className="btn btn-link" type="button" onClick={() => setIndiretos(indiretos.filter((_, n) => n !== i))}>Remover</button></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr><td>Total dos custos indiretos</td><td className="num">{formatarMoeda(somaIndiretos)}</td><td /></tr></tfoot>
+            </table>
+          </div>
+          <div><button className="btn" type="button" onClick={() => setIndiretos([...indiretos, { descricao: '', valor: '' }])}>+ Custo indireto</button></div>
+        </>
+      )}
+
+      {aba === 'acessorios' && (
+        <>
+          <div className="tabela-caixa">
+            <table className="tabela">
+              <thead><tr><th>Custo acessório</th><th className="num">Percentual</th><th>Incide sobre</th></tr></thead>
+              <tbody>
+                {linhaPct('Administração de obra', 'administracao', 'Custo direto + indireto')}
+                {linhaPct('Imprevistos e contingências', 'imprevistos', 'Custo direto + indireto')}
+                {linhaPct('CDI (taxa do custo financeiro)', 'cdi', 'Informe o CDI aplicável')}
+                <tr>
+                  <td>Custo financeiro</td>
+                  <td className="num">{pctTexto(pctLidos.cdi)}</td>
+                  <td className="small muted">Mesma alíquota do CDI · Direto + indireto · {formatarMoeda(previa.financeiro)}</td>
+                </tr>
+              </tbody>
+              <tfoot><tr><td>Total dos acessórios</td><td /><td className="num">{formatarMoeda(previa.administracao + previa.imprevistos + previa.financeiro)}</td></tr></tfoot>
+            </table>
+          </div>
+        </>
+      )}
+
+      {aba === 'impostos' && (
+        <>
+          <p className="small muted" style={{ margin: 0 }}>
+            O DAS vem do enquadramento da empresa (anexo e faixa do cadastro). Os demais impostos são digitados aqui. Todos incidem sobre a base de impostos e lucro.
+          </p>
+          <div className="tabela-caixa">
+            <table className="tabela">
+              <thead><tr><th>Imposto</th><th className="num">Percentual</th><th>Origem</th><th /></tr></thead>
+              <tbody>
+                {das && (
+                  <tr>
+                    <td>{das.descricao}</td>
+                    <td className="num">{pctTexto(das.percentual)}</td>
+                    <td className="small muted">Cadastro da empresa</td>
+                    <td />
+                  </tr>
+                )}
+                {impostos.map((x, i) => (
+                  <tr key={i}>
+                    <td><input aria-label={`Imposto ${i + 1}`} value={x.descricao} onChange={(e) => setImpostos(impostos.map((y, n) => (n === i ? { ...y, descricao: e.target.value } : y)))} style={{ width: '100%' }} /></td>
+                    <td className="num"><input aria-label={`Percentual do imposto ${i + 1}`} inputMode="decimal" style={{ width: 90 }} value={x.percentual} onChange={(e) => setImpostos(impostos.map((y, n) => (n === i ? { ...y, percentual: e.target.value } : y)))} /> %</td>
+                    <td className="small muted">Digitado</td>
+                    <td><button className="btn btn-link" type="button" onClick={() => setImpostos(impostos.filter((_, n) => n !== i))}>Remover</button></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot><tr><td>Total dos impostos</td><td className="num">{pctTexto(todosImpostos.reduce((s, p) => s + p, 0))}</td><td colSpan={2} className="num">{formatarMoeda(previa.impostos)}</td></tr></tfoot>
+            </table>
+          </div>
+          <div><button className="btn" type="button" onClick={() => setImpostos([...impostos, { descricao: '', percentual: '' }])}>+ Imposto</button></div>
+        </>
+      )}
+
+      {aba === 'lucro' && (
+        <>
+          <div className="tabela-caixa">
+            <table className="tabela">
+              <thead><tr><th>Formação do preço de venda</th><th className="num">Valor</th></tr></thead>
+              <tbody>
+                <tr><td>Custo direto</td><td className="num">{formatarMoeda(dados.direto)}</td></tr>
+                <tr><td>Custos indiretos</td><td className="num">{formatarMoeda(somaIndiretos)}</td></tr>
+                <tr><td>Administração de obra ({pctTexto(pctLidos.administracao)})</td><td className="num">{formatarMoeda(previa.administracao)}</td></tr>
+                <tr><td>Imprevistos e contingências ({pctTexto(pctLidos.imprevistos)})</td><td className="num">{formatarMoeda(previa.imprevistos)}</td></tr>
+                <tr><td>Custo financeiro (CDI {pctTexto(pctLidos.cdi)})</td><td className="num">{formatarMoeda(previa.financeiro)}</td></tr>
+                <tr><td>Impostos ({pctTexto(todosImpostos.reduce((s, p) => s + p, 0))} sobre a base de impostos e lucro)</td><td className="num">{formatarMoeda(previa.impostos)}</td></tr>
+                <tr>
+                  <td>Lucratividade almejada <input aria-label="Lucratividade almejada" inputMode="decimal" style={{ width: 90, marginLeft: 8 }} value={pct.lucro} onChange={(e) => setPct({ ...pct, lucro: e.target.value })} /> %</td>
+                  <td className="num">{formatarMoeda(previa.lucro)}</td>
+                </tr>
+              </tbody>
+              <tfoot><tr><td>Preço de venda</td><td className="num">{formatarMoeda(previa.precoVenda)}</td></tr></tfoot>
+            </table>
+          </div>
+          <p className="small muted" style={{ margin: 0 }}>
+            Preço de venda = custo direto + custos indiretos + administração + imprevistos + custo financeiro + impostos + lucro.
+            BDI calculado = preço de venda ÷ custo direto − 1: <strong>{pctTexto(previa.bdi)}</strong>.
+          </p>
+        </>
+      )}
+
+      <div className="acoes" style={{ marginTop: 12 }}>
+        <button className="btn btn-primario" type="submit" disabled={ocupado}>{ocupado ? 'Salvando…' : 'Salvar composição'}</button>
+      </div>
+    </form>
   );
 }

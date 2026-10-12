@@ -440,3 +440,39 @@ export function moverLinha(nos: NoOrdem[], id: string, direcao: 'cima' | 'baixo'
   [irmaos[i], irmaos[j]] = [irmaos[j], irmaos[i]];
   return renumerar(nos, filhos);
 }
+
+// Formação do preço: administração, imprevistos e custo financeiro incidem sobre custo direto + indireto;
+// impostos e lucratividade incidem sobre essa base somada àqueles três.
+export type PercentuaisPreco = { administracao: number; imprevistos: number; financeiro: number; lucro: number };
+export function formacaoPreco(direto: number, indiretos: number, pct: PercentuaisPreco, impostos: number[]) {
+  const r = (n: number) => Math.round(n * 100) / 100;
+  const base1 = direto + indiretos;
+  const administracao = r((base1 * pct.administracao) / 100);
+  const imprevistos = r((base1 * pct.imprevistos) / 100);
+  const financeiro = r((base1 * pct.financeiro) / 100);
+  const base2 = r(base1 + administracao + imprevistos + financeiro);
+  const percImpostos = impostos.reduce((s, p) => s + p, 0);
+  const valorImpostos = r((base2 * percImpostos) / 100);
+  const lucro = r((base2 * pct.lucro) / 100);
+  const precoVenda = r(base2 + valorImpostos + lucro);
+  // BDI calculado: preço de venda sobre custo direto, menos 1, em percentual.
+  const bdi = direto > 0 ? Math.round((precoVenda / direto - 1) * 10000) / 100 : 0;
+  return { base1: r(base1), administracao, imprevistos, financeiro, base2, impostos: valorImpostos, lucro, precoVenda, bdi };
+}
+
+// Simples Nacional (LC 123/2006): alíquota nominal de cada faixa (1 a 6) por anexo.
+export const ANEXOS_SIMPLES = ['I', 'II', 'III', 'IV', 'V'] as const;
+export type AnexoSimples = (typeof ANEXOS_SIMPLES)[number];
+const ALIQUOTAS_SIMPLES: Record<AnexoSimples, number[]> = {
+  I: [4, 7.3, 9.5, 10.7, 14.3, 19],
+  II: [4.5, 7.8, 10, 11.2, 14.7, 30],
+  III: [6, 11.2, 13.5, 16, 21, 33],
+  IV: [4.5, 9, 10.2, 14, 22, 33],
+  V: [15.5, 18, 19.5, 20.5, 23, 30.5],
+};
+/** Alíquota nominal (%) da faixa escolhida no cadastro da empresa; null se não houver enquadramento. */
+export function aliquotaSimples(anexo: string | null | undefined, faixa: number | null | undefined): number | null {
+  if (!anexo || !faixa) return null;
+  const lista = ALIQUOTAS_SIMPLES[anexo as AnexoSimples];
+  return lista && faixa >= 1 && faixa <= 6 ? lista[faixa - 1] : null;
+}
