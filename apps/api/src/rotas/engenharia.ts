@@ -510,6 +510,66 @@ export function rotasEngenharia(banco: Banco) {
       return { obras: r.rows.map((o) => ({ ...obraPublica(o), itens: o.itens, linhasOrcamento: o.linhas_orcamento, total: r2(reais(o.subtotal)! * (1 + Number(o.bdi_percentual) / 100)) })) };
     });
 
+    /** Panorama da construtora: indicadores de todas as obras ativas (orçado, prazo, atividades, necessidades pendentes). */
+    app.get('/panorama', async (req) => {
+      const empresaId = empresaDo(req);
+      const dIso = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : null);
+      const hoje = new Date().toISOString().slice(0, 10);
+      const obras = await banco.query(
+        `SELECT o.id, o.codigo, o.nome, o.status, o.data_inicio, o.data_previsao, o.bdi_percentual,
+                (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_id = o.id) AS linhas_orcamento,
+                (SELECT coalesce(sum(oq.quantidade * ${precoObra('oi')}), 0) FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id WHERE oq.obra_id = o.id) AS subtotal,
+                (SELECT count(*)::int FROM obra_necessidades nec WHERE nec.obra_id = o.id AND nec.status = 'pendente') AS necessidades_pendentes,
+                (SELECT coalesce(sum(nec.quantidade * ${precoObra('oi')}), 0) FROM obra_necessidades nec JOIN obra_itens oi ON oi.id = nec.obra_item_id WHERE nec.obra_id = o.id AND nec.status = 'pendente') AS necessidades_valor
+           FROM obras o WHERE o.empresa_id = $1 AND o.ativo ORDER BY o.codigo`,
+        [empresaId],
+      );
+      const atividades = await banco.query(
+        `SELECT a.id, a.obra_id, a.inicio, a.duracao_dias, a.predecessora_id
+           FROM obra_atividades a JOIN obras o ON o.id = a.obra_id WHERE o.empresa_id = $1 AND o.ativo`,
+        [empresaId],
+      );
+      const porObra = new Map<string, Record<string, any>[]>();
+      for (const a of atividades.rows) porObra.set(a.obra_id, [...(porObra.get(a.obra_id) ?? []), a]);
+
+      const lista = obras.rows.map((o) => {
+        const ats = porObra.get(o.id) ?? [];
+        const datas = calcularDatas(ats.map((a) => ({ id: a.id, inicio: dIso(a.inicio)!, duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
+        const fimPlanejado = ats.length ? [...datas.values()].map((d) => d.fim).sort().at(-1)! : null;
+        const previsao = dIso(o.data_previsao);
+        const concluida = o.status === 'concluida';
+        return {
+          id: o.id as string,
+          codigo: o.codigo as string,
+          nome: o.nome as string,
+          status: o.status as string,
+          dataInicio: dIso(o.data_inicio),
+          dataPrevisao: previsao,
+          orcado: r2(reais(o.subtotal)! * (1 + Number(o.bdi_percentual) / 100)),
+          linhasOrcamento: o.linhas_orcamento as number,
+          atividades: ats.length,
+          fimPlanejado,
+          atrasada: !concluida && !!previsao && previsao < hoje,
+          estourandoPrazo: !!previsao && !!fimPlanejado && fimPlanejado > previsao,
+          necessidadesPendentes: o.necessidades_pendentes as number,
+          necessidadesValor: r2(reais(o.necessidades_valor)!),
+        };
+      });
+      const ativas = lista.filter((o) => o.status !== 'concluida');
+      return {
+        hoje,
+        resumo: {
+          obras: lista.length,
+          emAndamento: lista.filter((o) => o.status === 'em_andamento').length,
+          orcadoTotal: r2(lista.reduce((s, o) => s + o.orcado, 0)),
+          atrasadas: lista.filter((o) => o.atrasada).length,
+          necessidadesPendentes: lista.reduce((s, o) => s + o.necessidadesPendentes, 0),
+          ativas: ativas.length,
+        },
+        obras: lista,
+      };
+    });
+
     app.post('/obras', async (req, reply) => {
       const d0 = esquemaObra.parse(req.body);
       if (!d0.nome) throw new ErroHttp(400, 'Dê um nome à obra.');
