@@ -133,7 +133,7 @@ export function EngEap() {
 
 export function EngPlanejamento() {
   return (
-    <SecaoObra titulo="Planejamento" ajuda="Atividades ligadas à EAP. Sem predecessora, a atividade começa na data informada; com predecessora, começa no dia seguinte ao fim dela, se esse dia for depois.">
+    <SecaoObra titulo="Planejamento" ajuda="A estrutura é a EAP da planilha do orçamento: cada atividade fica numa linha da EAP. Sem predecessora, começa na data informada; com predecessora, começa no dia seguinte ao fim dela, se esse dia for depois.">
       {(c) => <PainelPlanejamento obra={c.obra} nos={c.nos} setErro={c.setErro} />}
     </SecaoObra>
   );
@@ -147,13 +147,15 @@ type FormAtividade = { descricao: string; eapNoId: string; inicio: string; durac
 const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
 const dataBr = (iso: string) => iso.split('-').reverse().join('/');
 
+const indentoEap = (codigo: string) => codigo.split('.').length - 1;
+
 function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; setErro: (m: string) => void }) {
   const [lista, setLista] = useState<Atividade[] | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
   const [d, setD] = useState<FormAtividade>(VAZIO);
   const [ocupado, setOcupado] = useState(false);
-  const nivel = obra.nivelApropriacao;
-  const nosDoNivel = nos.filter((n) => n.nivel === nivel);
+  const [aviso, setAviso] = useState('');
+  const nosPorId = new Map(nos.map((n) => [n.id, n]));
 
   async function carregar() {
     try {
@@ -190,7 +192,7 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
     if (dias === null || dias < 1) return setErro('Informe a duração em dias (mínimo 1).');
     const corpo = {
       descricao: d.descricao.trim(),
-      eapNoId: nivel === 'obra' ? null : d.eapNoId || null,
+      eapNoId: d.eapNoId || null,
       inicio: d.inicio,
       duracaoDias: Math.round(dias),
       predecessoraId: d.predecessoraId || null,
@@ -200,6 +202,21 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
       if (editando) await api(`/eng/obras/${obra.id}/planejamento/${editando}`, { metodo: 'PUT', corpo });
       else await api(`/eng/obras/${obra.id}/planejamento`, { metodo: 'POST', corpo });
       cancelar();
+      await carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function gerarDaEap() {
+    setErro('');
+    setAviso('');
+    setOcupado(true);
+    try {
+      const r = await api<{ criadas: number }>(`/eng/obras/${obra.id}/planejamento/gerar-da-eap`, { metodo: 'POST' });
+      setAviso(r.criadas ? `${r.criadas} atividade(s) criada(s) a partir das linhas da EAP. Ajuste início e duração.` : 'Todas as linhas da EAP já têm atividade.');
       await carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -222,7 +239,11 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
   return (
     <>
       <div className="card">
-        <h2 style={{ marginTop: 0 }}>Atividades</h2>
+        <div className="acoes" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+          <h2 style={{ margin: 0 }}>Atividades</h2>
+          <button className="btn" type="button" onClick={gerarDaEap} disabled={ocupado || !nos.length} title="Cria uma atividade para cada linha final da EAP que ainda não tem atividade">Gerar atividades pela EAP</button>
+        </div>
+        {aviso && <p className="small muted" style={{ marginTop: 8 }}>{aviso}</p>}
         {lista === null ? (
           <p className="muted">Carregando…</p>
         ) : lista.length === 0 ? (
@@ -233,7 +254,7 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
               <thead>
                 <tr>
                   <th>Atividade</th>
-                  <th>{nivel === 'obra' ? 'Nível' : 'Nó da EAP'}</th>
+                  <th>Linha da EAP</th>
                   <th>Predecessora</th>
                   <th>Início</th>
                   <th>Fim</th>
@@ -242,10 +263,17 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
                 </tr>
               </thead>
               <tbody>
-                {lista.map((a) => (
+                {lista.map((a) => {
+                  const no = a.eapNoId ? nosPorId.get(a.eapNoId) : undefined;
+                  return (
                   <tr key={a.id}>
                     <td>{a.descricao}</td>
-                    <td>{nivel === 'obra' ? 'Obra' : `${a.eapCodigo ?? ''} ${a.eapDescricao ?? ''}`}</td>
+                    <td style={{ paddingLeft: 12 + indentoEap(a.eapCodigo ?? '') * 16 }}>
+                      {a.eapCodigo ? <>
+                        <span className="mono small">{a.eapCodigo}</span> <span className="small muted">{no ? ROTULO_NIVEL[no.nivel] : ''}</span>
+                        <div className="small">{a.eapDescricao}</div>
+                      </> : <span className="muted">Sem linha da EAP</span>}
+                    </td>
                     <td>{nomeDe(a.predecessoraId)}</td>
                     <td>
                       {dataBr(a.inicio)}
@@ -258,7 +286,8 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
                       <button className="btn" type="button" onClick={() => excluir(a)}>Excluir</button>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -272,15 +301,13 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
             <label htmlFor="at-desc">Atividade</label>
             <input id="at-desc" value={d.descricao} onChange={(e) => setD({ ...d, descricao: e.target.value })} />
           </div>
-          {nivel !== 'obra' && (
-            <div className="campo" style={{ gridColumn: 'span 2' }}>
-              <label htmlFor="at-eap">Nó da EAP ({ROTULO_NIVEL[nivel]})</label>
-              <select id="at-eap" value={d.eapNoId} onChange={(e) => setD({ ...d, eapNoId: e.target.value })}>
-                <option value="">Escolha…</option>
-                {nosDoNivel.map((n) => <option key={n.id} value={n.id}>{n.codigo} {n.descricao}</option>)}
-              </select>
-            </div>
-          )}
+          <div className="campo" style={{ gridColumn: 'span 2' }}>
+            <label htmlFor="at-eap">Linha da EAP</label>
+            <select id="at-eap" value={d.eapNoId} onChange={(e) => setD({ ...d, eapNoId: e.target.value })}>
+              <option value="">Escolha…</option>
+              {nos.map((n) => <option key={n.id} value={n.id}>{'\u2003'.repeat(indentoEap(n.codigo))}{n.codigo} {ROTULO_NIVEL[n.nivel]} · {n.descricao}</option>)}
+            </select>
+          </div>
           <div className="campo">
             <label htmlFor="at-ini">Início informado</label>
             <input id="at-ini" type="date" value={d.inicio} onChange={(e) => setD({ ...d, inicio: e.target.value })} />
@@ -299,7 +326,7 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
         </div>
         <div className="acoes">
           {editando && <button className="btn" type="button" onClick={cancelar}>Cancelar edição</button>}
-          <button className="btn btn-primario" type="submit" disabled={ocupado || d.descricao.trim().length < 2 || !d.inicio || !d.duracaoDias || (nivel !== 'obra' && !d.eapNoId)}>
+          <button className="btn btn-primario" type="submit" disabled={ocupado || d.descricao.trim().length < 2 || !d.inicio || !d.duracaoDias || !d.eapNoId}>
             {ocupado ? 'Salvando…' : editando ? 'Salvar atividade' : 'Adicionar atividade'}
           </button>
         </div>
