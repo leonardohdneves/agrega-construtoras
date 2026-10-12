@@ -189,6 +189,15 @@ export function compararCodigo(a: string, b: string): number {
 }
 
 /**
+ * Folhas da EAP (linhas sem nenhuma linha abaixo delas), na ordem da planilha.
+ * O planejamento gera uma atividade por folha: é onde os serviços da obra ficam.
+ */
+export function folhasDaEap<T extends { id: string; paiId: string | null; codigo: string }>(linhas: T[]): T[] {
+  const pais = new Set(linhas.map((l) => l.paiId).filter((x): x is string => !!x));
+  return [...linhas].sort((a, b) => compararCodigo(a.codigo, b.codigo)).filter((l) => !pais.has(l.id));
+}
+
+/**
  * Pai de uma linha acrescentada no fim da planilha: a última linha (na ordem da planilha) de nível acima do da nova.
  * Sem nenhuma, a linha fica na raiz. Ex.: depois de "1 Obra / 1.1 Etapa / 1.1.1 Tarefa", uma Etapa vai para dentro de "1".
  */

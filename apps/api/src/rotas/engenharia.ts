@@ -27,7 +27,7 @@ import {
   type InsumoComposicaoRel,
   type NivelPlanilha,
 } from '../lib/engenharia.ts';
-import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, folhasDaEap, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -755,7 +755,13 @@ export function rotasEngenharia(banco: Banco) {
 
     // ---------------------------------------------------------------- planejamento (fase 2)
 
-    /** Atividade no nível do orçamento: obra sem EAP, ou nó da EAP no nível de apropriação. */
+    /** Atividade do planejamento: sempre ligada a uma linha da EAP (planilha) desta obra, de qualquer nível. */
+    async function validarLinhaPlanejamento(c: Cliente, obra: Record<string, any>, eapNoId: string | null | undefined) {
+      if (!eapNoId) throw new ErroHttp(400, 'Escolha a linha da EAP da atividade.');
+      if (!(await c.query('SELECT 1 FROM eap_nos WHERE id = $1 AND obra_id = $2', [eapNoId, obra.id])).rowCount) throw naoEncontrado('Linha da EAP');
+    }
+
+    /** Atividade no nível de apropriação (usada pelas necessidades de insumo). */
     async function validarNoDaAtividade(c: Cliente, obra: Record<string, any>, eapNoId: string | null) {
       if (obra.nivel_apropriacao === 'obra') {
         if (eapNoId) throw new ErroHttp(400, 'Esta obra planeja no nível da obra, sem nó da EAP.');
@@ -779,8 +785,13 @@ export function rotasEngenharia(banco: Banco) {
         [req.params.id],
       );
       const datas = calcularDatas(r.rows.map((a) => ({ id: a.id, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
+      // Na ordem da EAP (planilha): a estrutura do planejamento é a da planilha.
+      const porEap = [...r.rows].sort((x, y) => {
+        if (!x.eap_codigo || !y.eap_codigo) return x.eap_codigo ? -1 : y.eap_codigo ? 1 : 0;
+        return compararCodigo(x.eap_codigo, y.eap_codigo);
+      });
       return {
-        atividades: r.rows.map((a) => {
+        atividades: porEap.map((a) => {
           const d = datas.get(a.id)!;
           return {
             id: a.id, ordem: a.ordem, descricao: a.descricao, eapNoId: a.eap_no_id ?? null, eapCodigo: a.eap_codigo ?? null, eapDescricao: a.eap_descricao ?? null,
@@ -795,7 +806,7 @@ export function rotasEngenharia(banco: Banco) {
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        await validarNoDaAtividade(c, obra, d.eapNoId ?? null);
+        await validarLinhaPlanejamento(c, obra, d.eapNoId);
         if (d.predecessoraId && !(await c.query('SELECT 1 FROM obra_atividades WHERE id = $1 AND obra_id = $2', [d.predecessoraId, obra.id])).rowCount)
           throw naoEncontrado('Atividade predecessora');
         const ordem = (await c.query('SELECT coalesce(max(ordem), 0) + 1 AS n FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows[0].n;
@@ -824,7 +835,7 @@ export function rotasEngenharia(banco: Banco) {
           duracaoDias: d.duracaoDias ?? Number(atual.duracao_dias),
           predecessoraId: d.predecessoraId !== undefined ? d.predecessoraId : atual.predecessora_id,
         };
-        await validarNoDaAtividade(c, obra, campos.eapNoId ?? null);
+        await validarLinhaPlanejamento(c, obra, campos.eapNoId);
         if (campos.predecessoraId) {
           if (!(await c.query('SELECT 1 FROM obra_atividades WHERE id = $1 AND obra_id = $2', [campos.predecessoraId, obra.id])).rowCount)
             throw naoEncontrado('Atividade predecessora');
@@ -839,6 +850,30 @@ export function rotasEngenharia(banco: Banco) {
         );
       });
       return { ok: true };
+    });
+
+    /** Cria uma atividade por folha da EAP que ainda não tem atividade. Início: data de início da obra (ou hoje); duração 1 dia. */
+    app.post<{ Params: { id: string } }>('/obras/:id/planejamento/gerar-da-eap', async (req) => {
+      const empresaId = empresaDo(req);
+      return emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const linhas = (await c.query('SELECT id, pai_id, codigo, descricao FROM eap_nos WHERE obra_id = $1', [obra.id])).rows;
+        const comAtividade = new Set((await c.query('SELECT eap_no_id FROM obra_atividades WHERE obra_id = $1 AND eap_no_id IS NOT NULL', [obra.id])).rows.map((r) => r.eap_no_id as string));
+        const folhas = folhasDaEap(linhas.map((l) => ({ id: l.id as string, paiId: (l.pai_id ?? null) as string | null, codigo: l.codigo as string, descricao: l.descricao as string })))
+          .filter((l) => !comAtividade.has(l.id));
+        if (!folhas.length) return { criadas: 0 };
+        const inicio = obra.data_inicio ? dataIso(obra.data_inicio) : new Date().toISOString().slice(0, 10);
+        let ordem = (await c.query('SELECT coalesce(max(ordem), 0) AS n FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows[0].n as number;
+        for (const folha of folhas) {
+          ordem += 1;
+          await c.query(
+            `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem)
+             VALUES ($1,$2,$3,$4,1,NULL,$5)`,
+            [obra.id, folha.id, folha.descricao.slice(0, 200), inicio, ordem],
+          );
+        }
+        return { criadas: folhas.length };
+      });
     });
 
     app.delete<{ Params: { id: string; atId: string } }>('/obras/:id/planejamento/:atId', async (req) => {

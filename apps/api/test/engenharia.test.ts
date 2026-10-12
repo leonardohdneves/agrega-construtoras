@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { bdiCalculado, calcularDatas, codigoDoNo, lerCsvReferencia, nivelDoNovoNo, numeroBr, temCiclo } from '../src/lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, folhasDaEap, lerCsvReferencia, nivelDoNovoNo, numeroBr, temCiclo } from '../src/lib/engenharia.ts';
 
 test('planejamento: sucessora começa no dia seguinte ao fim da predecessora', () => {
   const datas = calcularDatas([
@@ -255,4 +255,18 @@ test('planilha: mover Etapa leva as linhas de baixo junto e renumera tudo', asyn
     { id: 'e', paiId: 'c', codigo: '1.3.9' },
   ]);
   assert.deepEqual(Object.fromEntries(r), { a: '1', b: '1.1', c: '1.2', e: '1.2.1', d: '1.2.2' });
+});
+
+test('planejamento pela EAP: as folhas da planilha viram atividades, na ordem da planilha', () => {
+  const linhas = [
+    { id: 'obra', paiId: null, codigo: '1' },
+    { id: 'etapa2', paiId: 'obra', codigo: '1.2' },
+    { id: 'tarefa10', paiId: 'etapa2', codigo: '1.2.10' },
+    { id: 'etapa1', paiId: 'obra', codigo: '1.1' },
+    { id: 'tarefa1', paiId: 'etapa1', codigo: '1.1.1' },
+    { id: 'tarefa2', paiId: 'etapa1', codigo: '1.1.2' },
+    { id: 'tarefa9', paiId: 'etapa2', codigo: '1.2.9' },
+  ];
+  assert.deepEqual(folhasDaEap(linhas).map((l) => l.id), ['tarefa1', 'tarefa2', 'tarefa9', 'tarefa10']);
+  assert.deepEqual(folhasDaEap([]), []);
 });
