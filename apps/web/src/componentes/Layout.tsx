@@ -82,7 +82,6 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Obras', para: '/eng/obras' },
       { rotulo: 'Insumos', para: '/eng/insumos' },
       { rotulo: 'Serviços', para: '/eng/servicos' },
-      { rotulo: 'Apropriação de insumos', para: '/eng/apropriacao' },
       { rotulo: 'EAP e orçamento', para: '/eng/eap' },
       { rotulo: 'Planejamento', para: '/eng/planejamento' },
       { rotulo: 'Tabelas de referência', para: '/eng/tabelas' },

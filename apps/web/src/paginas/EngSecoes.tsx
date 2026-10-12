@@ -126,8 +126,23 @@ function ItensDaObra({ tipo, obraId, itens, aoMudar, setErro }: { tipo: 'insumo'
 export function EngEap() {
   return (
     <SecaoObra titulo="EAP e orçamento" ajuda="A EAP e o orçamento são montados juntos, linha a linha: 1 Obra, 2 Etapa, 3 Sub Etapa e 4 Tarefa. O serviço é lançado na Tarefa; as linhas acima somam o que está abaixo delas.">
-      {(c) => <PlanilhaOrcamentaria obra={c.obra} itens={c.itens} setErro={c.setErro} />}
+      {(c) => <EapComBotao obra={c.obra} itens={c.itens} setErro={c.setErro} />}
     </SecaoObra>
+  );
+}
+
+/** Botão "Orçamento": a planilha só aparece depois de clicar. */
+function EapComBotao({ obra, itens, setErro }: { obra: Obra; itens: ItemObra[]; setErro: (m: string) => void }) {
+  const [aberta, setAberta] = useState(false);
+  return (
+    <>
+      <div className="acoes" style={{ marginBottom: 12 }}>
+        <button className="btn btn-primario" type="button" onClick={() => setAberta(!aberta)} aria-expanded={aberta}>
+          {aberta ? 'Ocultar orçamento' : 'Orçamento'}
+        </button>
+      </div>
+      {aberta && <PlanilhaOrcamentaria obra={obra} itens={itens} setErro={setErro} />}
+    </>
   );
 }
 
