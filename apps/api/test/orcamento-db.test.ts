@@ -146,3 +146,13 @@ test('banco recusa tirar do nível Tarefa a linha que tem serviço (0032) e acei
   assert.equal(await tentar(`UPDATE eap_nos SET nivel = 'obra' WHERE id = $1`, [ids.etapaAntiga]), '');
   assert.equal(await contar(`SELECT count(*)::int AS n FROM eap_nos WHERE id = $1 AND nivel = 'obra'`, [ids.etapaAntiga]), 1);
 });
+
+test('renumeração em dois passos não esbarra no código único da obra', { skip: pular }, async () => {
+  const a = await um(`INSERT INTO eap_nos (obra_id, nivel, codigo, descricao) VALUES ($1, 'etapa', '50', 'A') RETURNING id`, [ids.obra]);
+  const b = await um(`INSERT INTO eap_nos (obra_id, nivel, codigo, descricao) VALUES ($1, 'etapa', '51', 'B') RETURNING id`, [ids.obra]);
+  // Troca 50 e 51 (o mesmo SQL de gravarCodigos).
+  await banco.query(`UPDATE eap_nos SET codigo = 'tmp-' || id::text WHERE id = ANY($1::uuid[])`, [[a, b]]);
+  await banco.query('UPDATE eap_nos n SET codigo = x.codigo FROM unnest($1::uuid[], $2::text[]) AS x(id, codigo) WHERE n.id = x.id', [[a, b], ['51', '50']]);
+  const r = (await banco.query('SELECT id, codigo FROM eap_nos WHERE id = ANY($1::uuid[]) ORDER BY codigo', [[a, b]])).rows;
+  assert.deepEqual(r.map((x: { id: string }) => x.id), [b, a]);
+});
