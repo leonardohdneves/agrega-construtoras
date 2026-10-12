@@ -27,7 +27,7 @@ import {
   type InsumoComposicaoRel,
   type NivelPlanilha,
 } from '../lib/engenharia.ts';
-import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, folhasDaEap, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, aliquotaSimples, folhasDaEap, formacaoPreco, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -85,9 +85,20 @@ const esquemaTabela = z.object({
   csv: z.string().max(LIMITE_ARQUIVO).optional().nullable(),
 });
 
+/** Próximo código de serviço numa tabela própria. A sequência só anda para frente: apagar não libera número. */
+async function proximoCodigoServico(c: Cliente, tabelaId: string, obraId?: string): Promise<string> {
+  for (;;) {
+    const n = (await c.query('UPDATE ref_tabelas SET proximo_codigo = proximo_codigo + 1 WHERE id = $1 RETURNING proximo_codigo - 1 AS n', [tabelaId])).rows[0].n as number;
+    const codigo = String(n);
+    if ((await c.query(`SELECT 1 FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao' AND codigo = $2`, [tabelaId, codigo])).rowCount) continue;
+    if (obraId && (await c.query(`SELECT 1 FROM obra_itens WHERE obra_id = $1 AND tipo = 'composicao' AND codigo = $2`, [obraId, codigo])).rowCount) continue;
+    return codigo;
+  }
+}
+
 const esquemaItemRef = z.object({
   tipo: z.enum(['insumo', 'composicao']),
-  codigo: z.string().trim().min(1, 'Informe o código.').max(40),
+  codigo: z.string().trim().max(40).optional().default(''),
   descricao: z.string().trim().min(2, 'Descreva o item.').max(300),
   unidade: z.string().trim().min(1, 'Informe a unidade.').max(20),
   grupo: texto(80),
@@ -429,17 +440,21 @@ export function rotasEngenharia(banco: Banco) {
         if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A tabela SINAPI é imutável. Para outra versão, importe uma nova tabela.');
         const preco = d.tipo === 'insumo' ? precoCentavos(d.preco) : null;
         if (d.tipo === 'insumo' && preco === null) throw new ErroHttp(400, 'Informe um preço válido para o insumo.');
+        // Serviço novo na tabela própria leva o próximo código da sequência; insumo mantém o código informado.
+        let codigo = d.codigo;
+        if (d.tipo === 'composicao') codigo = await proximoCodigoServico(c, t.id);
+        else if (!codigo) throw new ErroHttp(400, 'Informe o código.');
         const x = (
-          await c.query(`INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [t.id, d.tipo, d.codigo, d.descricao, d.unidade, d.grupo, preco])
+          await c.query(`INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, codigo`, [t.id, d.tipo, codigo, d.descricao, d.unidade, d.grupo, preco])
         ).rows[0];
         if (d.tipo === 'composicao') await gravarComponentes(c, t.id, x.id, d.componentes ?? []);
-        return x.id as string;
+        return { id: x.id as string, codigo: x.codigo as string };
       }).catch((e: Error & { code?: string }) => {
         if (e.code === '23505') throw new ErroHttp(409, 'Já existe um item com esse código nesta tabela.');
         throw e;
       });
       reply.code(201);
-      return { ok: true, id };
+      return { ok: true, id: id.id, codigo: id.codigo };
     });
 
     app.put<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId', async (req) => {
@@ -507,7 +522,10 @@ export function rotasEngenharia(banco: Banco) {
           WHERE o.empresa_id = $1 AND o.ativo ORDER BY o.codigo`,
         [empresaId],
       );
-      return { obras: r.rows.map((o) => ({ ...obraPublica(o), itens: o.itens, linhasOrcamento: o.linhas_orcamento, total: r2(reais(o.subtotal)! * (1 + Number(o.bdi_percentual) / 100)) })) };
+      const obras = await Promise.all(
+        r.rows.map(async (o) => ({ ...obraPublica(o), itens: o.itens, linhasOrcamento: o.linhas_orcamento, total: r2(reais(o.subtotal)! * (1 + (await bdiDaObra(banco, o)) / 100)) })),
+      );
+      return { obras };
     });
 
     /** Panorama da construtora: indicadores de todas as obras ativas (orçado, prazo, atividades, necessidades pendentes). */
@@ -532,7 +550,7 @@ export function rotasEngenharia(banco: Banco) {
       const porObra = new Map<string, Record<string, any>[]>();
       for (const a of atividades.rows) porObra.set(a.obra_id, [...(porObra.get(a.obra_id) ?? []), a]);
 
-      const lista = obras.rows.map((o) => {
+      const lista = await Promise.all(obras.rows.map(async (o) => {
         const ats = porObra.get(o.id) ?? [];
         const datas = calcularDatas(ats.map((a) => ({ id: a.id, inicio: dIso(a.inicio)!, duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
         const fimPlanejado = ats.length ? [...datas.values()].map((d) => d.fim).sort().at(-1)! : null;
@@ -545,7 +563,7 @@ export function rotasEngenharia(banco: Banco) {
           status: o.status as string,
           dataInicio: dIso(o.data_inicio),
           dataPrevisao: previsao,
-          orcado: r2(reais(o.subtotal)! * (1 + Number(o.bdi_percentual) / 100)),
+          orcado: r2(reais(o.subtotal)! * (1 + (await bdiDaObra(banco, o)) / 100)),
           linhasOrcamento: o.linhas_orcamento as number,
           atividades: ats.length,
           fimPlanejado,
@@ -554,7 +572,7 @@ export function rotasEngenharia(banco: Banco) {
           necessidadesPendentes: o.necessidades_pendentes as number,
           necessidadesValor: r2(reais(o.necessidades_valor)!),
         };
-      });
+      }));
       const ativas = lista.filter((o) => o.status !== 'concluida');
       return {
         hoje,
@@ -795,7 +813,7 @@ export function rotasEngenharia(banco: Banco) {
           modo: z.enum(['copia', 'edicao']),
           itemId: z.string().regex(UUID),
           tabelaId: z.string().regex(UUID, 'Escolha a tabela própria onde o serviço será salvo.'),
-          codigo: z.string().trim().min(1, 'Informe o código do serviço.').max(40),
+          codigo: z.string().trim().max(40).optional().default(''),
           descricao: z.string().trim().min(2, 'Dê um nome ao serviço.').max(300),
           unidade: z.string().trim().min(1, 'Informe a unidade.').max(20),
           componentes: z
@@ -811,13 +829,9 @@ export function rotasEngenharia(banco: Banco) {
         const origem = (await c.query(`SELECT * FROM obra_itens WHERE id = $1 AND obra_id = $2 AND tipo = 'composicao'`, [d.itemId, obra.id])).rows[0];
         if (!origem) throw naoEncontrado('Serviço');
 
-        const codigo = d.modo === 'edicao' ? (origem.codigo as string) : d.codigo;
-        if (d.modo === 'copia') {
-          if ((await c.query(`SELECT 1 FROM obra_itens WHERE obra_id = $1 AND tipo = 'composicao' AND codigo = $2`, [obra.id, codigo])).rowCount)
-            throw new ErroHttp(409, `Já existe um serviço com o código ${codigo} nesta obra.`);
-          if ((await c.query(`SELECT 1 FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao' AND codigo = $2`, [tabela.id, codigo])).rowCount)
-            throw new ErroHttp(409, `A tabela ${tabela.nome} já tem um serviço com o código ${codigo}.`);
-        }
+        // Serviço que entra na tabela própria recebe o próximo código dela, exceto quando já é um serviço dessa tabela.
+        const jaNaTabela = origem.origem_tabela_id === tabela.id;
+        const codigo = d.modo === 'edicao' && jaNaTabela ? (origem.codigo as string) : await proximoCodigoServico(c, tabela.id, obra.id);
 
         const ids = d.componentes.map((k) => k.insumoId);
         if (new Set(ids).size !== ids.length) throw new ErroHttp(400, 'Um insumo aparece mais de uma vez no serviço.');
@@ -850,8 +864,8 @@ export function rotasEngenharia(banco: Banco) {
           obraItemId = r.rows[0].id as string;
         } else {
           await c.query(
-            `UPDATE obra_itens SET descricao = $2, unidade = $3, origem_tabela_id = $4, origem_fonte = 'proprio', origem_versao = 'Própria', editado = true WHERE id = $1`,
-            [origem.id, d.descricao, d.unidade, tabela.id],
+            `UPDATE obra_itens SET codigo = $5, descricao = $2, unidade = $3, origem_tabela_id = $4, origem_fonte = 'proprio', origem_versao = 'Própria', editado = true WHERE id = $1`,
+            [origem.id, d.descricao, d.unidade, tabela.id, codigo],
           );
           obraItemId = origem.id as string;
         }
@@ -885,9 +899,9 @@ export function rotasEngenharia(banco: Banco) {
         }
 
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: d.modo === 'copia' ? 'criar' : 'alterar', entidade: 'obra_itens', entidadeId: obraItemId, depois: { tabela: tabela.nome, codigo, descricao: d.descricao, insumos: d.componentes.length } });
-        return obraItemId;
+        return { id: obraItemId, codigo };
       });
-      return { id };
+      return id;
     });
 
     app.delete<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', async (req) => {
@@ -1149,8 +1163,9 @@ export function rotasEngenharia(banco: Banco) {
         };
       });
       const subtotal = r2(linhas.reduce((s, l) => s + l.total, 0));
-      const bdi = r2((subtotal * Number(obra.bdi_percentual)) / 100);
-      return { nivelApropriacao: obra.nivel_apropriacao, bdiPercentual: Number(obra.bdi_percentual), subtotal, bdi, total: r2(subtotal + bdi), linhas };
+      const bdiPct = await bdiDaObra(banco, obra);
+      const bdi = r2((subtotal * bdiPct) / 100);
+      return { nivelApropriacao: obra.nivel_apropriacao, bdiPercentual: bdiPct, subtotal, bdi, total: r2(subtotal + bdi), linhas };
     });
 
     // ---------------------------------------------------------------- planilha orçamentária (EAP e orçamento juntos)
@@ -1193,7 +1208,7 @@ export function rotasEngenharia(banco: Banco) {
     app.get<{ Params: { id: string } }>('/obras/:id/planilha', async (req) => {
       const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
       const linhas = await linhasPlanilha(banco, obra.id);
-      const bdi = Number(obra.bdi_percentual);
+      const bdi = await bdiDaObra(banco, obra);
       const rel = montarRelatorioOrcamento(linhas.map((l) => ({ ...l, servico: l.servico && { ...l.servico } })), bdi, false);
       const totais = totaisPlanilha(linhas.map((l) => ({ id: l.id, paiId: l.paiId, valor: l.servico ? r2(l.servico.quantidade * l.servico.custoUnitario) : 0 })));
       return {
@@ -1372,11 +1387,94 @@ export function rotasEngenharia(banco: Banco) {
     }
 
     // Curva ABC: serviços (preço com BDI) ou insumos (custo direto), do maior para o menor valor, com classes A, B e C.
+    // ---------------------------------------------------------------- composição do preço (indiretos, acessórios, impostos, lucratividade)
+
+    const pctCampo = z.number().min(0, 'O percentual não pode ser negativo.').max(99.99, 'Percentual alto demais.');
+    const esquemaComposicao = z.object({
+      administracao: pctCampo,
+      imprevistos: pctCampo,
+      cdi: pctCampo,
+      lucro: pctCampo,
+      indiretos: z.array(z.object({ descricao: z.string().trim().min(2, 'Descreva o custo indireto.').max(200), valor: z.number().min(0, 'O valor não pode ser negativo.') })),
+      // Só os impostos digitados; o DAS é calculado pelo enquadramento da empresa.
+      impostos: z.array(z.object({ descricao: z.string().trim().min(2, 'Descreva o imposto.').max(200), percentual: pctCampo })),
+    });
+
+    /**
+     * Formação do preço da obra. Impostos: DAS pela faixa do Simples cadastrada na empresa + impostos digitados.
+     * Custo financeiro = alíquota do CDI informada. BDI = preço de venda / custo direto - 1.
+     */
+    async function lerComposicao(c: Cliente, obra: Record<string, any>) {
+      const linhas = await linhasPlanilha(c, obra.id);
+      const direto = montarRelatorioOrcamento(linhas.map((l) => ({ ...l, servico: l.servico && { ...l.servico } })), 0, false).custoTotal;
+      const p = (await c.query('SELECT * FROM obra_composicao_preco WHERE obra_id = $1', [obra.id])).rows[0];
+      const emp = (await c.query('SELECT simples_anexo, simples_faixa FROM empresas WHERE id = $1', [obra.empresa_id])).rows[0];
+      const ind = (await c.query('SELECT id, descricao, valor_centavos FROM obra_custos_indiretos WHERE obra_id = $1 ORDER BY ordem, criado_em', [obra.id])).rows;
+      const imp = (await c.query('SELECT id, descricao, percentual FROM obra_impostos WHERE obra_id = $1 ORDER BY ordem, criado_em', [obra.id])).rows;
+      const percentuais = {
+        administracao: Number(p?.administracao_pct ?? 0),
+        imprevistos: Number(p?.imprevistos_pct ?? 0),
+        cdi: Number(p?.cdi_pct ?? 0),
+        lucro: Number(p?.lucro_pct ?? 0),
+      };
+      const aliquota = aliquotaSimples(emp?.simples_anexo, emp?.simples_faixa === null || emp?.simples_faixa === undefined ? null : Number(emp.simples_faixa));
+      const das = {
+        descricao: aliquota === null ? 'Simples Nacional (DAS): enquadre a empresa no cadastro' : `Simples Nacional (DAS), anexo ${emp.simples_anexo}, faixa ${emp.simples_faixa}`,
+        percentual: aliquota ?? 0,
+        automatico: true,
+      };
+      const digitados = (imp.length ? imp : [{ descricao: 'ISS (quando devido na nota)', percentual: 0 }]).map((x) => ({ descricao: x.descricao as string, percentual: Number(x.percentual), automatico: false }));
+      const impostos = [das, ...digitados];
+      const indiretos = ind.map((x) => ({ descricao: x.descricao as string, valor: reais(x.valor_centavos)! }));
+      const formacao = formacaoPreco(direto, indiretos.reduce((s, x) => s + x.valor, 0), { administracao: percentuais.administracao, imprevistos: percentuais.imprevistos, financeiro: percentuais.cdi, lucro: percentuais.lucro }, impostos.map((x) => x.percentual));
+      return { direto: r2(direto), percentuais, indiretos, impostos, formacao };
+    }
+
+    /** BDI que vale para a obra: o da composição quando ela existe; senão, o cadastrado. */
+    async function bdiDaObra(c: Cliente, obra: Record<string, any>): Promise<number> {
+      if (!(await c.query('SELECT 1 FROM obra_composicao_preco WHERE obra_id = $1', [obra.id])).rowCount) return Number(obra.bdi_percentual);
+      return (await lerComposicao(c, obra)).formacao.bdi;
+    }
+
+    app.get<{ Params: { id: string } }>('/obras/:id/composicao', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      return lerComposicao(banco, obra);
+    });
+
+    /** Substitui a composição da obra e guarda o BDI resultante no cadastro. */
+    app.put<{ Params: { id: string } }>('/obras/:id/composicao', async (req) => {
+      const d = esquemaComposicao.parse(req.body);
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        await c.query(
+          `INSERT INTO obra_composicao_preco (obra_id, administracao_pct, imprevistos_pct, cdi_pct, lucro_pct) VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT (obra_id) DO UPDATE SET administracao_pct = EXCLUDED.administracao_pct, imprevistos_pct = EXCLUDED.imprevistos_pct,
+             cdi_pct = EXCLUDED.cdi_pct, lucro_pct = EXCLUDED.lucro_pct, atualizado_em = now()`,
+          [obra.id, d.administracao, d.imprevistos, d.cdi, d.lucro],
+        );
+        await c.query('DELETE FROM obra_custos_indiretos WHERE obra_id = $1', [obra.id]);
+        for (const [n, x] of d.indiretos.entries()) {
+          await c.query('INSERT INTO obra_custos_indiretos (obra_id, descricao, valor_centavos, ordem) VALUES ($1,$2,$3,$4)', [obra.id, x.descricao, cent(x.valor), n]);
+        }
+        await c.query('DELETE FROM obra_impostos WHERE obra_id = $1', [obra.id]);
+        for (const [n, x] of d.impostos.entries()) {
+          await c.query('INSERT INTO obra_impostos (obra_id, descricao, percentual, ordem) VALUES ($1,$2,$3,$4)', [obra.id, x.descricao, x.percentual, n]);
+        }
+        const atual = await lerComposicao(c, obra);
+        await c.query('UPDATE obras SET bdi_percentual = $2 WHERE id = $1', [obra.id, atual.formacao.bdi]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'obras', entidadeId: obra.id, depois: { composicaoPreco: true, bdi: atual.formacao.bdi } });
+      });
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      return lerComposicao(banco, obra);
+    });
+
     app.get<{ Params: { id: string }; Querystring: { tipo?: string } }>('/obras/:id/relatorio-abc', async (req) => {
       const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
       const insumos = req.query.tipo === 'insumos';
       const linhas = await linhasPlanilha(banco, obra.id);
-      const itens = insumos ? abcInsumos(linhas, await composicoesDaPlanilha(linhas)) : abcServicos(linhas, Number(obra.bdi_percentual));
+      const bdiPct = await bdiDaObra(banco, obra);
+      const itens = insumos ? abcInsumos(linhas, await composicoesDaPlanilha(linhas)) : abcServicos(linhas, bdiPct);
       return {
         tipo: insumos ? 'insumos' : 'servicos',
         obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
@@ -1390,7 +1488,8 @@ export function rotasEngenharia(banco: Banco) {
       const analitico = req.query.tipo === 'analitico';
       const linhas = await linhasPlanilha(banco, obra.id);
       const composicoes = analitico ? await composicoesDaPlanilha(linhas) : new Map<string, InsumoComposicaoRel[]>();
-      const rel = montarRelatorioOrcamento(linhas, Number(obra.bdi_percentual), analitico, composicoes);
+      const bdiPct = await bdiDaObra(banco, obra);
+      const rel = montarRelatorioOrcamento(linhas, bdiPct, analitico, composicoes);
       return {
         tipo: analitico ? 'analitico' : 'sintetico',
         obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },

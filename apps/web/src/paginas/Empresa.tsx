@@ -28,6 +28,8 @@ type Formulario = {
   nomeFantasia: string;
   cnpj: string;
   regimeTributario: TEmpresa['regimeTributario'];
+  simplesAnexo: string;
+  simplesFaixa: string;
   aliquotas: Record<string, string>;
   telefone: string;
   email: string;
@@ -41,6 +43,8 @@ function paraFormulario(e: TEmpresa): Formulario {
     nomeFantasia: e.nomeFantasia ?? '',
     cnpj: formatarCnpj(e.cnpj),
     regimeTributario: e.regimeTributario,
+    simplesAnexo: e.simplesAnexo ?? '',
+    simplesFaixa: e.simplesFaixa ? String(e.simplesFaixa) : '',
     aliquotas: Object.fromEntries(Object.entries(e.aliquotasDre ?? {}).map(([k, v]) => [k, String(v).replace('.', ',')])),
     telefone: e.telefone ?? '',
     email: e.email ?? '',
@@ -84,7 +88,7 @@ export function Empresa() {
       }
       const r = await api<{ empresa: TEmpresa }>('/empresa', {
         metodo: 'PUT',
-        corpo: { ...f, aliquotas: undefined, aliquotasDre },
+        corpo: { ...f, aliquotas: undefined, aliquotasDre, simplesAnexo: f.simplesAnexo || null, simplesFaixa: f.simplesFaixa ? Number(f.simplesFaixa) : null },
       });
       setF(paraFormulario(r.empresa));
       setOk('Dados da empresa salvos.');
@@ -155,6 +159,25 @@ export function Empresa() {
                   <option value="real">Lucro Real</option>
                 </select>
               </div>
+              {f.regimeTributario === 'simples' && (
+                <>
+                  <div className="campo">
+                    <label htmlFor="emp-anexo">Anexo do Simples</label>
+                    <select id="emp-anexo" value={f.simplesAnexo} onChange={(e) => mudar('simplesAnexo', e.target.value)}>
+                      <option value="">Não definido</option>
+                      {['I', 'II', 'III', 'IV', 'V'].map((a) => <option key={a} value={a}>Anexo {a}</option>)}
+                    </select>
+                  </div>
+                  <div className="campo">
+                    <label htmlFor="emp-faixa">Faixa de alíquota</label>
+                    <select id="emp-faixa" value={f.simplesFaixa} onChange={(e) => mudar('simplesFaixa', e.target.value)}>
+                      <option value="">Não definida</option>
+                      {[1, 2, 3, 4, 5, 6].map((n) => <option key={n} value={n}>Faixa {n}</option>)}
+                    </select>
+                    <span className="ajuda">Define a alíquota do DAS que entra nos impostos da nota de cada obra.</span>
+                  </div>
+                </>
+              )}
               {CAMPOS_ALIQUOTA[f.regimeTributario].map((c) => (
                 <div className="campo" key={c.chave}>
                   <label htmlFor={`emp-aliq-${c.chave}`}>{c.rotulo}</label>

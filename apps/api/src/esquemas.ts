@@ -48,6 +48,8 @@ export const esquemaEmpresa = z.object({
   cnpj: esquemaCnpj,
   regimeTributario: z.enum(['simples', 'presumido', 'real'], { message: 'Escolha o regime tributário.' }),
   aliquotasDre: esquemaAliquotas,
+  simplesAnexo: z.enum(['I', 'II', 'III', 'IV', 'V']).nullable().optional(),
+  simplesFaixa: z.number().int().min(1, 'Faixa de 1 a 6.').max(6, 'Faixa de 1 a 6.').nullable().optional(),
   telefone: opcional,
   email: z
     .string()

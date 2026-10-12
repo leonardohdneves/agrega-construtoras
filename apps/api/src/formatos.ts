@@ -27,6 +27,8 @@ export function empresaPublica(r: Record<string, any>) {
     cnpj: (r.cnpj ?? '').trim(),
     regimeTributario: r.regime_tributario,
     aliquotasDre: r.aliquotas_dre ?? {},
+    simplesAnexo: r.simples_anexo ?? null,
+    simplesFaixa: r.simples_faixa === null || r.simples_faixa === undefined ? null : Number(r.simples_faixa),
     telefone: r.telefone,
     email: r.email,
     cidade: r.cidade,

@@ -73,7 +73,7 @@ export function EngRelatorios() {
   const local = obraRel ? [obraRel.endereco, [obraRel.cidade, obraRel.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') : '';
 
   return (
-    <div className="relatorio">
+    <div className={`relatorio${ehAbc ? '' : ' relatorio-retrato'}`}>
       <CabecalhoDocumento
         modulo="Engenharia"
         titulo={TIPOS.find((t) => t.id === tipo)!.titulo}

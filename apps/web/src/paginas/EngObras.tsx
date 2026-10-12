@@ -603,7 +603,6 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
 }) {
   const [carregando, setCarregando] = useState(true);
   const [nome, setNome] = useState(item.descricao);
-  const [codigo, setCodigo] = useState(modo === 'copia' ? `${item.codigo}-C` : item.codigo);
   const [unidade, setUnidade] = useState(item.unidade);
   const [tabelaId, setTabelaId] = useState(tabelas[0]?.id ?? '');
   const [comps, setComps] = useState<CompEditor[]>([]);
@@ -657,12 +656,12 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
     }
     setOcupado(true);
     try {
-      await api(`/eng/obras/${obraId}/servicos/salvar`, {
+      const r = await api<{ id: string; codigo: string }>(`/eng/obras/${obraId}/servicos/salvar`, {
         metodo: 'POST',
-        corpo: { modo, itemId: item.id, tabelaId, codigo: codigo.trim(), descricao: nome.trim(), unidade: unidade.trim(), componentes },
+        corpo: { modo, itemId: item.id, tabelaId, descricao: nome.trim(), unidade: unidade.trim(), componentes },
       });
       const nomeTabela = tabelas.find((t) => t.id === tabelaId)?.nome ?? 'tabela própria';
-      aoSalvo(modo === 'copia' ? `Cópia criada na obra e salva em ${nomeTabela}. O serviço original não mudou.` : `Serviço editado na obra e salvo em ${nomeTabela}.`);
+      aoSalvo(modo === 'copia' ? `Cópia criada com o código ${r?.codigo ?? '—'} e salva em ${nomeTabela}. O serviço original não mudou.` : `Serviço editado na obra e salvo em ${nomeTabela}${r?.codigo ? ` com o código ${r.codigo}` : ''}.`);
     } catch (err) {
       setErro((err as Error).message);
     } finally {
@@ -685,7 +684,8 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
             </div>
             <div className="campo">
               <label htmlFor="es-codigo">Código</label>
-              <input id="es-codigo" value={codigo} onChange={(e) => setCodigo(e.target.value)} disabled={modo === 'edicao'} />
+              <input id="es-codigo" value={modo === 'edicao' ? item.codigo : 'Automático'} disabled />
+              <span className="ajuda">Sequência da tabela própria. Apagar um serviço não libera o número.</span>
             </div>
             <div className="campo">
               <label htmlFor="es-unid">Unidade</label>
