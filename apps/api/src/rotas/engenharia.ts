@@ -784,6 +784,112 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true };
     });
 
+    /**
+     * Cria uma cópia editável de um serviço da obra ("copia") ou edita o próprio serviço ("edicao").
+     * A composição é gravada na tabela própria escolhida pelo operador; tabelas SINAPI nunca são alteradas.
+     * Preço informado para um insumo vale para a obra e para a tabela própria.
+     */
+    app.post<{ Params: { id: string } }>('/obras/:id/servicos/salvar', async (req) => {
+      const d = z
+        .object({
+          modo: z.enum(['copia', 'edicao']),
+          itemId: z.string().regex(UUID),
+          tabelaId: z.string().regex(UUID, 'Escolha a tabela própria onde o serviço será salvo.'),
+          codigo: z.string().trim().min(1, 'Informe o código do serviço.').max(40),
+          descricao: z.string().trim().min(2, 'Dê um nome ao serviço.').max(300),
+          unidade: z.string().trim().min(1, 'Informe a unidade.').max(20),
+          componentes: z
+            .array(z.object({ insumoId: z.string().regex(UUID), coeficiente: z.number().positive('O coeficiente precisa ser maior que zero.'), precoUnitario: z.union([z.number(), z.string()]).nullable().optional() }))
+            .min(1, 'O serviço precisa de pelo menos um insumo.'),
+        })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const tabela = await tabelaDaEmpresa(c, empresaId, d.tabelaId);
+        if (tabela.fonte !== 'proprio') throw new ErroHttp(409, 'Copie ou edite serviços só numa tabela própria. As tabelas SINAPI não são alteradas.');
+        const origem = (await c.query(`SELECT * FROM obra_itens WHERE id = $1 AND obra_id = $2 AND tipo = 'composicao'`, [d.itemId, obra.id])).rows[0];
+        if (!origem) throw naoEncontrado('Serviço');
+
+        const codigo = d.modo === 'edicao' ? (origem.codigo as string) : d.codigo;
+        if (d.modo === 'copia') {
+          if ((await c.query(`SELECT 1 FROM obra_itens WHERE obra_id = $1 AND tipo = 'composicao' AND codigo = $2`, [obra.id, codigo])).rowCount)
+            throw new ErroHttp(409, `Já existe um serviço com o código ${codigo} nesta obra.`);
+          if ((await c.query(`SELECT 1 FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao' AND codigo = $2`, [tabela.id, codigo])).rowCount)
+            throw new ErroHttp(409, `A tabela ${tabela.nome} já tem um serviço com o código ${codigo}.`);
+        }
+
+        const ids = d.componentes.map((k) => k.insumoId);
+        if (new Set(ids).size !== ids.length) throw new ErroHttp(400, 'Um insumo aparece mais de uma vez no serviço.');
+        const insumos = (await c.query(`SELECT * FROM obra_itens WHERE obra_id = $1 AND tipo = 'insumo' AND id = ANY($2::uuid[])`, [obra.id, ids])).rows;
+        if (insumos.length !== ids.length) throw new ErroHttp(400, 'Algum insumo não está nesta obra.');
+        const porId = new Map(insumos.map((x) => [x.id as string, x]));
+
+        // Preço novo de insumo: atualiza o insumo da obra; o mesmo preço vai para a tabela própria.
+        const precoFinal = new Map<string, number | null>();
+        for (const k of d.componentes) {
+          const ins = porId.get(k.insumoId)!;
+          const novo = k.precoUnitario === undefined || k.precoUnitario === null ? null : precoCentavos(k.precoUnitario);
+          if (k.precoUnitario !== undefined && k.precoUnitario !== null && novo === null) throw new ErroHttp(400, `Preço inválido para ${ins.descricao}.`);
+          if (novo !== null && novo !== Number(ins.preco_centavos)) {
+            await c.query('UPDATE obra_itens SET preco_centavos = $2, editado = true WHERE id = $1', [ins.id, novo]);
+            precoFinal.set(ins.id, novo);
+          } else {
+            precoFinal.set(ins.id, ins.preco_centavos === null ? null : Number(ins.preco_centavos));
+          }
+        }
+
+        // Serviço na obra.
+        let obraItemId: string;
+        if (d.modo === 'copia') {
+          const r = await c.query(
+            `INSERT INTO obra_itens (obra_id, tipo, codigo, descricao, unidade, grupo, preco_centavos, origem_tabela_id, origem_fonte, origem_versao, editado)
+             VALUES ($1,'composicao',$2,$3,$4,$5,NULL,$6,'proprio','Própria',true) RETURNING id`,
+            [obra.id, codigo, d.descricao, d.unidade, origem.grupo ?? null, tabela.id],
+          );
+          obraItemId = r.rows[0].id as string;
+        } else {
+          await c.query(
+            `UPDATE obra_itens SET descricao = $2, unidade = $3, origem_tabela_id = $4, origem_fonte = 'proprio', origem_versao = 'Própria', editado = true WHERE id = $1`,
+            [origem.id, d.descricao, d.unidade, tabela.id],
+          );
+          obraItemId = origem.id as string;
+        }
+        await c.query('DELETE FROM obra_composicao_insumos WHERE composicao_id = $1', [obraItemId]);
+        for (const k of d.componentes) {
+          await c.query('INSERT INTO obra_composicao_insumos (composicao_id, insumo_id, coeficiente) VALUES ($1,$2,$3)', [obraItemId, k.insumoId, k.coeficiente]);
+        }
+
+        // Gravação na tabela própria: o serviço e os insumos usados nele, com o preço da obra.
+        const comp = (
+          await c.query(
+            `INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo) VALUES ($1,'composicao',$2,$3,$4,$5)
+             ON CONFLICT (tabela_id, tipo, codigo) DO UPDATE SET descricao = EXCLUDED.descricao, unidade = EXCLUDED.unidade
+             RETURNING id`,
+            [tabela.id, codigo, d.descricao, d.unidade, origem.grupo ?? null],
+          )
+        ).rows[0].id as string;
+        const idRef = new Map<string, string>();
+        for (const ins of insumos) {
+          const r = await c.query(
+            `INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos) VALUES ($1,'insumo',$2,$3,$4,$5,$6)
+             ON CONFLICT (tabela_id, tipo, codigo) DO UPDATE SET descricao = EXCLUDED.descricao, unidade = EXCLUDED.unidade, preco_centavos = EXCLUDED.preco_centavos
+             RETURNING id`,
+            [tabela.id, ins.codigo, ins.descricao, ins.unidade, ins.grupo ?? null, precoFinal.get(ins.id) ?? null],
+          );
+          idRef.set(ins.id as string, r.rows[0].id as string);
+        }
+        await c.query('DELETE FROM ref_composicao_insumos WHERE composicao_id = $1', [comp]);
+        for (const k of d.componentes) {
+          await c.query('INSERT INTO ref_composicao_insumos (composicao_id, insumo_id, coeficiente) VALUES ($1,$2,$3)', [comp, idRef.get(k.insumoId), k.coeficiente]);
+        }
+
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: d.modo === 'copia' ? 'criar' : 'alterar', entidade: 'obra_itens', entidadeId: obraItemId, depois: { tabela: tabela.nome, codigo, descricao: d.descricao, insumos: d.componentes.length } });
+        return obraItemId;
+      });
+      return { id };
+    });
+
     app.delete<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', async (req) => {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {

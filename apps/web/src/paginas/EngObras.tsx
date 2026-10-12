@@ -311,15 +311,34 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   const [editando, setEditando] = useState<string | null>(null);
   const [novoPreco, setNovoPreco] = useState('');
   const [conferindo, setConferindo] = useState<string | null>(null);
+  const [editor, setEditor] = useState<{ modo: 'copia' | 'edicao'; item: ItemObra } | null>(null);
+  const [semTabela, setSemTabela] = useState<{ modo: 'copia' | 'edicao'; item: ItemObra } | null>(null);
+  const proprias = tabelas.filter((t) => t.fonte === 'proprio');
+
+  async function recarregarTabelas() {
+    const r = await api<{ tabelas: Tabela[] }>('/eng/tabelas');
+    setTabelas(r.tabelas);
+    return r.tabelas;
+  }
 
   useEffect(() => {
-    api<{ tabelas: Tabela[] }>('/eng/tabelas')
-      .then((r) => {
-        setTabelas(r.tabelas);
-        if (r.tabelas[0]) setTabelaId(r.tabelas[0].id);
+    recarregarTabelas()
+      .then((lista) => {
+        if (lista[0]) setTabelaId(lista[0].id);
       })
       .catch((e) => setErro((e as Error).message));
   }, []);
+
+  /** Editar ou copiar um serviço grava numa tabela própria. Se não existe, avisa antes de começar. */
+  function abrirEdicao(modo: 'copia' | 'edicao', item: ItemObra) {
+    setMsg('');
+    setEditor(null);
+    if (proprias.length === 0) setSemTabela({ modo, item });
+    else {
+      setSemTabela(null);
+      setEditor({ modo, item });
+    }
+  }
 
   useEffect(() => {
     setSel(new Set());
@@ -442,6 +461,12 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                       {i.tipo === 'insumo' && editando !== i.id && (
                         <button className="btn" type="button" onClick={() => { setEditando(i.id); setNovoPreco(String(i.preco ?? '').replace('.', ',')); }}>Editar preço</button>
                       )}
+                      {i.tipo === 'composicao' && (
+                        <>
+                          <button className="btn" type="button" onClick={() => abrirEdicao('edicao', i)}>Editar</button>
+                          <button className="btn" type="button" onClick={() => abrirEdicao('copia', i)}>Criar cópia</button>
+                        </>
+                      )}
                       <button className="btn" type="button" onClick={() => excluir(i)}>Excluir</button>
                     </td>
                   </tr>
@@ -451,6 +476,36 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
           </div>
         )}
       </div>
+
+      {semTabela && (
+        <AvisoTabelaPropria
+          modo={semTabela.modo}
+          setErro={setErro}
+          aoCriada={async () => {
+            const item = semTabela.item;
+            const modo = semTabela.modo;
+            const lista = await recarregarTabelas();
+            setSemTabela(null);
+            if (lista.some((t) => t.fonte === 'proprio')) setEditor({ modo, item });
+          }}
+          aoCancelar={() => setSemTabela(null)}
+        />
+      )}
+      {editor && (
+        <EditorServico
+          obraId={obraId}
+          modo={editor.modo}
+          item={editor.item}
+          tabelas={proprias}
+          setErro={setErro}
+          aoFechar={() => setEditor(null)}
+          aoSalvo={(m) => {
+            setEditor(null);
+            setMsg(m);
+            aoMudar();
+          }}
+        />
+      )}
 
       {conferindo && (
         <ConferenciaComposicao inicial={conferindo} carregar={(itemId) => api<DetalheComposicao>(`/eng/obras/${obraId}/itens/${itemId}`)} aoFechar={() => setConferindo(null)} />
@@ -499,5 +554,210 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
         </div>
       </div>
     </>
+  );
+}
+
+/** Aviso antes de copiar ou editar um serviço: é preciso uma tabela própria. As tabelas SINAPI não mudam. */
+function AvisoTabelaPropria({ modo, setErro, aoCriada, aoCancelar }: { modo: 'copia' | 'edicao'; setErro: (m: string) => void; aoCriada: () => Promise<void>; aoCancelar: () => void }) {
+  const [nome, setNome] = useState('Serviços da construtora');
+  const [ocupado, setOcupado] = useState(false);
+
+  async function criar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    setOcupado(true);
+    try {
+      await api('/eng/tabelas', { corpo: { fonte: 'proprio', nome: nome.trim(), uf: null, mesReferencia: null, desonerado: false, csv: null } });
+      await aoCriada();
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={criar} role="alert">
+      <h2 style={{ margin: 0 }}>Antes de {modo === 'copia' ? 'criar a cópia' : 'editar o serviço'}: crie uma tabela própria</h2>
+      <p className="muted" style={{ margin: 0 }}>
+        {modo === 'copia' ? 'A cópia' : 'A versão editada'} é salva numa tabela própria, que você escolhe. Ainda não existe nenhuma. As tabelas importadas (como o SINAPI) não são alteradas.
+      </p>
+      <div className="campo">
+        <label htmlFor="tp-nome">Nome da tabela própria</label>
+        <input id="tp-nome" value={nome} onChange={(e) => setNome(e.target.value)} />
+      </div>
+      <div className="acoes">
+        <button className="btn" type="button" onClick={aoCancelar}>Cancelar</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado || nome.trim().length < 2}>{ocupado ? 'Criando…' : 'Criar tabela e continuar'}</button>
+      </div>
+    </form>
+  );
+}
+
+type CompEditor = { insumoId: string; codigo: string; descricao: string; unidade: string; coeficiente: string; preco: string };
+const numCampo = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
+
+/** Editor de composição: renomear, trocar insumos, coeficientes e preços. Salva na tabela própria escolhida. */
+function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo }: {
+  obraId: string; modo: 'copia' | 'edicao'; item: ItemObra; tabelas: Tabela[]; setErro: (m: string) => void; aoFechar: () => void; aoSalvo: (m: string) => void;
+}) {
+  const [carregando, setCarregando] = useState(true);
+  const [nome, setNome] = useState(item.descricao);
+  const [codigo, setCodigo] = useState(modo === 'copia' ? `${item.codigo}-C` : item.codigo);
+  const [unidade, setUnidade] = useState(item.unidade);
+  const [tabelaId, setTabelaId] = useState(tabelas[0]?.id ?? '');
+  const [comps, setComps] = useState<CompEditor[]>([]);
+  const [insumos, setInsumos] = useState<ItemObra[]>([]);
+  const [novo, setNovo] = useState({ insumoId: '', coeficiente: '' });
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    Promise.all([
+      api<{ componentes: { id: string; codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null }[] }>(`/eng/obras/${obraId}/itens/${item.id}`),
+      api<{ itens: ItemObra[] }>(`/eng/obras/${obraId}/itens?tipo=insumo`),
+    ])
+      .then(([det, ins]) => {
+        setComps(det.componentes.map((k) => ({ insumoId: k.id, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: numCampo(k.coeficiente), preco: numCampo(k.precoUnitario) })));
+        setInsumos(ins.itens.filter((i) => i.tipo === 'insumo'));
+      })
+      .catch((e) => setErro((e as Error).message))
+      .finally(() => setCarregando(false));
+  }, [obraId, item.id]);
+
+  const custo = comps.reduce((s, k) => s + (lerNumero(k.coeficiente) ?? 0) * (lerNumero(k.preco) ?? 0), 0);
+  const disponiveis = insumos.filter((i) => !comps.some((k) => k.insumoId === i.id));
+
+  function incluir() {
+    const ins = insumos.find((i) => i.id === novo.insumoId);
+    const q = lerNumero(novo.coeficiente);
+    if (!ins) return setErro('Escolha o insumo.');
+    if (q === null || q <= 0) return setErro('Informe o coeficiente do insumo.');
+    setErro('');
+    setComps([...comps, { insumoId: ins.id, codigo: ins.codigo, descricao: ins.descricao, unidade: ins.unidade, coeficiente: numCampo(q), preco: numCampo(ins.preco) }]);
+    setNovo({ insumoId: '', coeficiente: '' });
+  }
+
+  function atualizar(i: number, campo: 'coeficiente' | 'preco', valor: string) {
+    setComps(comps.map((k, n) => (n === i ? { ...k, [campo]: valor } : k)));
+  }
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    if (nome.trim().length < 2) return setErro('Dê um nome ao serviço.');
+    if (!tabelaId) return setErro('Escolha a tabela própria.');
+    if (!comps.length) return setErro('O serviço precisa de pelo menos um insumo.');
+    const componentes: { insumoId: string; coeficiente: number; precoUnitario?: number }[] = [];
+    for (const k of comps) {
+      const q = lerNumero(k.coeficiente);
+      if (q === null || q <= 0) return setErro(`Coeficiente inválido em ${k.descricao}.`);
+      const p = k.preco.trim() ? lerNumero(k.preco) : null;
+      if (k.preco.trim() && (p === null || p < 0)) return setErro(`Preço inválido em ${k.descricao}.`);
+      componentes.push({ insumoId: k.insumoId, coeficiente: q, ...(p !== null ? { precoUnitario: p } : {}) });
+    }
+    setOcupado(true);
+    try {
+      await api(`/eng/obras/${obraId}/servicos/salvar`, {
+        metodo: 'POST',
+        corpo: { modo, itemId: item.id, tabelaId, codigo: codigo.trim(), descricao: nome.trim(), unidade: unidade.trim(), componentes },
+      });
+      const nomeTabela = tabelas.find((t) => t.id === tabelaId)?.nome ?? 'tabela própria';
+      aoSalvo(modo === 'copia' ? `Cópia criada na obra e salva em ${nomeTabela}. O serviço original não mudou.` : `Serviço editado na obra e salvo em ${nomeTabela}.`);
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={salvar}>
+      <h2 style={{ margin: 0 }}>{modo === 'copia' ? 'Cópia editável do serviço' : 'Editar serviço'}</h2>
+      <p className="muted" style={{ margin: 0 }}>
+        {modo === 'copia' ? `Copiando ${item.codigo}. ` : ''}Altere o nome, a unidade, os insumos, os coeficientes e os preços. Ao salvar, a composição vai para a tabela própria escolhida.
+      </p>
+      {carregando ? <p className="muted">Carregando composição…</p> : (
+        <>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+            <div className="campo" style={{ gridColumn: 'span 2' }}>
+              <label htmlFor="es-nome">Nome do serviço</label>
+              <input id="es-nome" value={nome} onChange={(e) => setNome(e.target.value)} />
+            </div>
+            <div className="campo">
+              <label htmlFor="es-codigo">Código</label>
+              <input id="es-codigo" value={codigo} onChange={(e) => setCodigo(e.target.value)} disabled={modo === 'edicao'} />
+            </div>
+            <div className="campo">
+              <label htmlFor="es-unid">Unidade</label>
+              <input id="es-unid" value={unidade} onChange={(e) => setUnidade(e.target.value)} />
+            </div>
+            <div className="campo" style={{ gridColumn: 'span 2' }}>
+              <label htmlFor="es-tab">Tabela própria onde será salvo</label>
+              <select id="es-tab" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
+                {tabelas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tabela">
+              <thead>
+                <tr>
+                  <th>Código</th>
+                  <th>Insumo</th>
+                  <th>Unid.</th>
+                  <th className="num">Coeficiente</th>
+                  <th className="num">Preço unit.</th>
+                  <th className="num">Subtotal</th>
+                  <th />
+                </tr>
+              </thead>
+              <tbody>
+                {comps.map((k, i) => (
+                  <tr key={k.insumoId}>
+                    <td>{k.codigo}</td>
+                    <td>{k.descricao}</td>
+                    <td>{k.unidade}</td>
+                    <td className="num"><input aria-label={`Coeficiente de ${k.descricao}`} style={{ width: 110 }} inputMode="decimal" value={k.coeficiente} onChange={(e) => atualizar(i, 'coeficiente', e.target.value)} /></td>
+                    <td className="num"><input aria-label={`Preço de ${k.descricao}`} style={{ width: 110 }} inputMode="decimal" value={k.preco} onChange={(e) => atualizar(i, 'preco', e.target.value)} /></td>
+                    <td className="num">{formatarMoeda((lerNumero(k.coeficiente) ?? 0) * (lerNumero(k.preco) ?? 0))}</td>
+                    <td><button className="btn btn-link" type="button" onClick={() => setComps(comps.filter((_, n) => n !== i))}>Remover</button></td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={5} className="forte">Custo unitário do serviço</td>
+                  <td className="num forte">{formatarMoeda(custo)}</td>
+                  <td />
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, alignItems: 'end' }}>
+            <div className="campo" style={{ gridColumn: 'span 2' }}>
+              <label htmlFor="es-novo">Incluir insumo da obra</label>
+              <select id="es-novo" value={novo.insumoId} onChange={(e) => setNovo({ ...novo, insumoId: e.target.value })}>
+                <option value="">Escolha…</option>
+                {disponiveis.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+              </select>
+            </div>
+            <div className="campo">
+              <label htmlFor="es-novo-coef">Coeficiente</label>
+              <input id="es-novo-coef" inputMode="decimal" value={novo.coeficiente} onChange={(e) => setNovo({ ...novo, coeficiente: e.target.value })} />
+            </div>
+            <div>
+              <button className="btn" type="button" onClick={incluir}>Incluir insumo</button>
+            </div>
+          </div>
+          <p className="small muted" style={{ margin: 0 }}>Insumo novo que não esteja na obra: cadastre antes em Insumos.</p>
+        </>
+      )}
+      <div className="acoes">
+        <button className="btn" type="button" onClick={aoFechar}>Cancelar</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado || carregando || !tabelaId}>{ocupado ? 'Salvando…' : 'Salvar serviço na tabela própria'}</button>
+      </div>
+    </form>
   );
 }
