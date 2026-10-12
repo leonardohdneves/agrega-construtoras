@@ -109,12 +109,15 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
   const [descricao, setDescricao] = useState(linha.descricao);
   const [itemId, setItemId] = useState(linha.servico?.itemId ?? '');
   const [quantidade, setQuantidade] = useState(linha.servico ? String(linha.servico.quantidade).replace('.', ',') : '');
-  const tarefa = linha.nivel === 'tarefa';
+  const [nivel, setNivel] = useState<NivelPlanilha>(linha.nivel);
+  const tarefa = nivel === 'tarefa';
 
   async function salvar(e?: FormEvent) {
     e?.preventDefault();
     setErro('');
     const corpo: Record<string, unknown> = { descricao: descricao.trim() };
+    if (nivel !== linha.nivel) corpo.nivel = nivel;
+    if (!tarefa && linha.servico) corpo.itemId = null;
     if (tarefa) {
       if (itemId) {
         const q = lerNumero(quantidade);
@@ -136,7 +139,12 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
   return (
     <tr style={{ background: 'var(--surface-sunken)' }}>
       <td className="mono">{linha.codigo}</td>
-      <td className="small">{ROTULO[linha.nivel]}</td>
+      <td>
+        <select aria-label="Nível" value={nivel} onChange={(e) => setNivel(e.target.value as NivelPlanilha)}>
+          {NIVEIS.map((n) => <option key={n} value={n}>{POSICAO[n]} · {ROTULO[n]}</option>)}
+        </select>
+        {nivel !== 'tarefa' && linha.servico && <div className="small tom-aviso">O serviço sai da linha.</div>}
+      </td>
       <td>
         <input aria-label="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && salvar()} style={{ width: '100%' }} autoFocus />
       </td>
