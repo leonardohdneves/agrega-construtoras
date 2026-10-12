@@ -300,3 +300,16 @@ export function montarRelatorioOrcamento(
   custoTotal = r2(custoTotal);
   return { linhas: saida, custoTotal, precoTotal, bdiValor: r2(precoTotal - custoTotal) };
 }
+
+/**
+ * Troca do nível de uma linha da planilha. O novo nível precisa ficar abaixo do da linha de cima e acima do das linhas
+ * de baixo; linha com serviço continua Tarefa. Devolve o erro ou null.
+ */
+export function erroMudarNivel(nivelPai: NivelPlanilha | null, novo: NivelPlanilha, niveisFilhos: NivelPlanilha[], temServico: boolean): string | null {
+  const erroPai = erroPaiPlanilha(nivelPai, novo);
+  if (erroPai) return erroPai;
+  const filho = niveisFilhos.find((f) => POSICAO_PLANILHA[f] <= POSICAO_PLANILHA[novo]);
+  if (filho) return `Esta linha tem ${ROTULO_PLANILHA[filho]} abaixo dela; ela não pode virar ${ROTULO_PLANILHA[novo]}.`;
+  if (temServico && novo !== 'tarefa') return 'Esta linha tem serviço lançado. Retire o serviço antes de mudar o nível.';
+  return null;
+}

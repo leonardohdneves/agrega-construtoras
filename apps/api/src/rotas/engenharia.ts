@@ -11,6 +11,7 @@ import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColu
 import { empresaDo, exigir } from '../sessao.ts';
 import {
   compararCodigo,
+  erroMudarNivel,
   erroPaiPlanilha,
   erroServicoNaLinha,
   montarRelatorioOrcamento,
@@ -1053,6 +1054,7 @@ export function rotasEngenharia(banco: Banco) {
       const d = z
         .object({
           descricao: z.string().trim().min(2, 'Descreva a linha.').max(200).optional(),
+          nivel: z.enum(NIVEIS_PLANILHA).optional(),
           // null retira o serviço da Tarefa.
           itemId: z.string().regex(UUID).nullable().optional(),
           quantidade: z.number().positive('A quantidade precisa ser maior que zero.').optional(),
@@ -1061,12 +1063,24 @@ export function rotasEngenharia(banco: Banco) {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        const no = (await c.query('SELECT id, nivel FROM eap_nos WHERE id = $1 AND obra_id = $2', [req.params.noId, obra.id])).rows[0];
+        const no = (await c.query('SELECT id, nivel, pai_id FROM eap_nos WHERE id = $1 AND obra_id = $2', [req.params.noId, obra.id])).rows[0];
         if (!no) throw naoEncontrado('Linha da planilha');
         if (d.descricao !== undefined) await c.query('UPDATE eap_nos SET descricao = $2 WHERE id = $1', [no.id, d.descricao]);
-        const linha = (await c.query('SELECT id, quantidade FROM orcamento_itens WHERE eap_no_id = $1', [no.id])).rows[0];
+        let linha = (await c.query('SELECT id, quantidade FROM orcamento_itens WHERE eap_no_id = $1', [no.id])).rows[0];
+        if (d.itemId === null && linha) {
+          await c.query('DELETE FROM orcamento_itens WHERE id = $1', [linha.id]);
+          linha = undefined;
+        }
+        if (d.nivel && d.nivel !== no.nivel) {
+          const pai = no.pai_id ? (await c.query('SELECT nivel FROM eap_nos WHERE id = $1', [no.pai_id])).rows[0] : null;
+          const filhos = (await c.query('SELECT DISTINCT nivel FROM eap_nos WHERE pai_id = $1', [no.id])).rows.map((x) => x.nivel as NivelPlanilha);
+          const erroNivel = erroMudarNivel(pai?.nivel ?? null, d.nivel, filhos, !!linha && !d.itemId);
+          if (erroNivel) throw new ErroHttp(400, erroNivel);
+          await c.query('UPDATE eap_nos SET nivel = $2 WHERE id = $1', [no.id, d.nivel]);
+          no.nivel = d.nivel;
+        }
         if (d.itemId === null) {
-          if (linha) await c.query('DELETE FROM orcamento_itens WHERE id = $1', [linha.id]);
+          // serviço já retirado acima
         } else if (d.itemId) {
           const erroServ = erroServicoNaLinha(no.nivel, true);
           if (erroServ) throw new ErroHttp(400, erroServ);

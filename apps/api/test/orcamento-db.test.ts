@@ -137,3 +137,12 @@ test('estrutura de composição (0029) recusa composição dentro dela mesma', {
   assert.notEqual(await tentar('INSERT INTO ref_composicao_estrutura (composicao_id, item_id, coeficiente) VALUES ($1, $1, 1)', [c]), '');
   assert.equal(await contar('SELECT count(*)::int AS n FROM ref_composicao_estrutura'), 0);
 });
+
+test('banco recusa tirar do nível Tarefa a linha que tem serviço (0032) e aceita mudar Etapa para Obra', { skip: pular }, async () => {
+  const t = await novaTarefa(ids.obra, '5');
+  assert.equal(await lancar(ids.obra, t, ids.servico2), '');
+  assert.match(await tentar(`UPDATE eap_nos SET nivel = 'subetapa' WHERE id = $1`, [t]), /serviço lançado/);
+  assert.equal(await contar(`SELECT count(*)::int AS n FROM eap_nos WHERE id = $1 AND nivel = 'tarefa'`, [t]), 1);
+  assert.equal(await tentar(`UPDATE eap_nos SET nivel = 'obra' WHERE id = $1`, [ids.etapaAntiga]), '');
+  assert.equal(await contar(`SELECT count(*)::int AS n FROM eap_nos WHERE id = $1 AND nivel = 'obra'`, [ids.etapaAntiga]), 1);
+});

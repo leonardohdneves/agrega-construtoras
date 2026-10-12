@@ -172,3 +172,16 @@ test('relatório de orçamento: sintético com BDI e peso; analítico com insumo
   const iServ = ana.linhas.findIndex((l) => l.tipo === 'servico');
   assert.equal(ana.linhas[iServ + 1].tipo, 'insumo');
 });
+
+test('planilha: troca de nível respeita a linha de cima, as de baixo e o serviço', async () => {
+  const { erroMudarNivel } = await import('../src/lib/engenharia.ts');
+  // O caso da obra: "Casa Leo e Marcela" na raiz, com uma Sub Etapa abaixo, passa de Etapa a Obra.
+  assert.equal(erroMudarNivel(null, 'obra', ['subetapa'], false), null);
+  assert.equal(erroMudarNivel(null, 'etapa', ['subetapa'], false), null);
+  assert.match(erroMudarNivel(null, 'subetapa', ['subetapa'], false) ?? '', /Sub Etapa abaixo/);
+  assert.match(erroMudarNivel(null, 'tarefa', ['subetapa'], false) ?? '', /abaixo dela/);
+  assert.match(erroMudarNivel('obra', 'obra', [], false) ?? '', /não pode ficar dentro/);
+  assert.equal(erroMudarNivel('obra', 'etapa', ['tarefa'], false), null);
+  assert.match(erroMudarNivel('etapa', 'subetapa', [], true) ?? '', /serviço lançado/);
+  assert.equal(erroMudarNivel('etapa', 'tarefa', [], true), null);
+});
