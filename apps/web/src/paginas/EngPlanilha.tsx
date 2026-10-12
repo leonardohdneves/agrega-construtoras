@@ -168,7 +168,7 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
         {nivel !== 'tarefa' && linha.servico && <div className="small tom-aviso">O serviço sai da linha.</div>}
       </td>
       <td>
-        <input aria-label="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && salvar()} style={{ width: '100%', minWidth: 200 }} autoFocus />
+        <input aria-label="Descrição" maxLength={200} value={descricao} onChange={(e) => setDescricao(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && salvar()} style={{ width: '100%', minWidth: 200 }} autoFocus />
       </td>
       <td colSpan={2}>
         {tarefa ? (
@@ -211,7 +211,7 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
   function escolherServico(id: string) {
     setItemId(id);
     const s = servicos.find((x) => x.id === id);
-    if (s && !descricao.trim()) setDescricao(s.descricao);
+    if (s && !descricao.trim()) setDescricao(s.descricao.slice(0, 200));
   }
 
   async function incluir(e: FormEvent) {
@@ -282,7 +282,7 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
         )}
         <div className="campo" style={{ gridColumn: '1 / -1' }}>
           <label htmlFor="pl-desc">Descrição</label>
-          <input id="pl-desc" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder={nivel === 'tarefa' ? 'Escolha o serviço ou descreva a tarefa' : `Nome da ${ROTULO[nivel]}`} />
+          <input id="pl-desc" maxLength={200} value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder={nivel === 'tarefa' ? 'Escolha o serviço ou descreva a tarefa' : `Nome da ${ROTULO[nivel]}`} />
           {nivel === 'tarefa' && itemId && <span className="ajuda">A descrição começa com a do serviço e pode ser mudada.</span>}
         </div>
       </div>
