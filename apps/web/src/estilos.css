@@ -363,6 +363,10 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .periodo-manual { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .periodo-manual input { height: 40px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--surface-card); color: var(--ink); padding: 0 8px; font: inherit; font-size: 14px; }
 .tabela .num { text-align: right; white-space: nowrap; }
+/* Planilha: descrição quebra linha; ações ficam sempre numa linha só. */
+.tabela td.descricao-linha { white-space: normal; overflow-wrap: anywhere; min-width: 200px; max-width: 420px; }
+.tabela td.acoes-celula { white-space: nowrap; width: 1%; }
+.acoes-linha { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; white-space: nowrap; }
 .tabela .forte { font-weight: 600; }
 .negativo { color: var(--status-danger-ink); }
 .tabela-dre { min-width: 560px; }

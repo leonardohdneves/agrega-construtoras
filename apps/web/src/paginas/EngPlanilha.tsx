@@ -76,7 +76,7 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
             <tr>
               <th>Item</th>
               <th>Nível</th>
-              <th style={{ minWidth: 260 }}>Descrição</th>
+              <th style={{ minWidth: 220 }}>Descrição</th>
               <th>Serviço</th>
               <th>Unid.</th>
               <th className="num">Quant.</th>
@@ -98,19 +98,21 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
                 <tr key={l.id} className={`nivel-${l.nivel}`} style={l.nivel !== 'tarefa' ? { fontWeight: l.nivel === 'obra' ? 700 : 600, background: 'var(--surface-sunken)' } : undefined}>
                   <td className="mono">{l.codigo}</td>
                   <td className="small">{ROTULO[l.nivel]}</td>
-                  <td style={{ paddingLeft: 12 + profundidade(l.codigo) * 16 }}>{l.descricao}</td>
+                  <td className="descricao-linha" style={{ paddingLeft: 12 + profundidade(l.codigo) * 16 }}>{l.descricao}</td>
                   <td className="mono small">{l.servico?.codigo ?? ''}</td>
                   <td>{l.servico?.unidade ?? ''}</td>
                   <td className="num">{l.servico ? qtd(l.servico.quantidade) : ''}</td>
                   <td className="num">{l.servico ? formatarMoeda(l.servico.custoUnitario) : ''}</td>
                   <td className="num">{l.servico || l.nivel !== 'tarefa' ? formatarMoeda(l.custoTotal) : <span className="small muted">sem serviço</span>}</td>
-                  <td className="acoes nao-imprimir">
+                  <td className="acoes-celula nao-imprimir">
+                    <div className="acoes-linha">
                     <span className="setas" style={{ display: 'inline-flex', gap: 2, marginRight: 4 }}>
                       <button className="btn btn-link" type="button" title="Subir (leva junto as linhas de baixo)" aria-label={`Subir ${l.codigo}`} disabled={movendo || irmas(l)[0]?.id === l.id} onClick={() => mover(l, 'cima')} style={{ padding: '0 6px' }}>▲</button>
                       <button className="btn btn-link" type="button" title="Descer (leva junto as linhas de baixo)" aria-label={`Descer ${l.codigo}`} disabled={movendo || irmas(l).at(-1)?.id === l.id} onClick={() => mover(l, 'baixo')} style={{ padding: '0 6px' }}>▼</button>
                     </span>
                     <button className="btn btn-link" type="button" onClick={() => setEditando(l.id)}>Editar</button>
                     <button className="btn btn-link" type="button" onClick={() => excluir(l)}>Excluir</button>
+                    </div>
                   </td>
                 </tr>
               ),
@@ -166,7 +168,7 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
         {nivel !== 'tarefa' && linha.servico && <div className="small tom-aviso">O serviço sai da linha.</div>}
       </td>
       <td>
-        <input aria-label="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && salvar()} style={{ width: '100%' }} autoFocus />
+        <input aria-label="Descrição" value={descricao} onChange={(e) => setDescricao(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && salvar()} style={{ width: '100%', minWidth: 200 }} autoFocus />
       </td>
       <td colSpan={2}>
         {tarefa ? (
@@ -180,9 +182,11 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
         {tarefa && itemId ? <input aria-label="Quantidade" inputMode="decimal" value={quantidade} onChange={(e) => setQuantidade(e.target.value)} style={{ width: 90 }} /> : null}
       </td>
       <td colSpan={2} />
-      <td className="acoes">
-        <button className="btn btn-primario" type="button" onClick={() => salvar()} disabled={descricao.trim().length < 2}>Salvar</button>
-        <button className="btn" type="button" onClick={() => aoFechar(false)}>Cancelar</button>
+      <td className="acoes-celula">
+        <div className="acoes-linha">
+          <button className="btn btn-primario" type="button" onClick={() => salvar()} disabled={descricao.trim().length < 2}>Salvar</button>
+          <button className="btn" type="button" onClick={() => aoFechar(false)}>Cancelar</button>
+        </div>
       </td>
     </tr>
   );
