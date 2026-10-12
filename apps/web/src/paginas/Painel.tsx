@@ -26,6 +26,7 @@ import { mesCurto } from '../componentes/Periodo';
 import { MinhaEscala } from './ProdMotoristas';
 import { InicioLaboratorio } from './Qualidade';
 import { CardAprovacoes } from './SupAprovacoes';
+import { lerEscolha } from '../componentes/EscolhaTipo';
 
 const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
@@ -46,13 +47,26 @@ type ResumoFin = { financeiroVisivel?: boolean; saldoTotal: number; contas: Cont
 type CustoManut = { veiculoId: string; codigo: string; ordens: number; total: number; pecas: number };
 type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: ConsumoVeiculo[]; manut: CustoManut[]; erro: string; carregado?: boolean };
 
-type Aba = 'geral' | 'frota' | 'financeiro' | 'indicadores';
-const ABAS: { id: Aba; texto: string; soDono?: boolean }[] = [
+type Aba = 'geral' | 'frota' | 'financeiro' | 'indicadores' | 'obras';
+const ABAS: { id: Aba; texto: string; soDono?: boolean; soConstrutora?: boolean }[] = [
   { id: 'geral', texto: 'Geral' },
+  { id: 'obras', texto: 'Obras', soDono: true, soConstrutora: true },
   { id: 'frota', texto: 'Frota' },
   { id: 'financeiro', texto: 'Financeiro' },
   { id: 'indicadores', texto: 'Indicadores', soDono: true },
 ];
+
+type PanoramaObra = {
+  id: string; codigo: string; nome: string; status: string; dataInicio: string | null; dataPrevisao: string | null; orcado: number;
+  linhasOrcamento: number; atividades: number; fimPlanejado: string | null; atrasada: boolean; estourandoPrazo: boolean;
+  necessidadesPendentes: number; necessidadesValor: number;
+};
+type Panorama = {
+  hoje: string;
+  resumo: { obras: number; emAndamento: number; orcadoTotal: number; atrasadas: number; necessidadesPendentes: number; ativas: number };
+  obras: PanoramaObra[];
+};
+const ROTULO_STATUS_OBRA: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída' };
 
 // ---------- Peças visuais ----------
 function Kpi({ rotulo, valor, detalhe, para, tom }: { rotulo: string; valor: ReactNode; detalhe?: ReactNode; para?: string; tom?: 'perigo' | 'aviso' | 'ok' }) {
@@ -542,10 +556,13 @@ function PainelGestao() {
   const [params, setParams] = useSearchParams();
   const { usuario } = useSessao();
   const dono = usuario?.perfil === 'dono';
-  const frotaOk = temModulo(usuario, 'frota');
+  // Na construtora o painel do dono mostra Obras no lugar de Frota; por isso o módulo frota não entra nele.
+  const construtora = lerEscolha() === 'construtora';
+  const frotaOk = temModulo(usuario, 'frota') && !construtora;
   const finOk = temModulo(usuario, 'financeiro');
-  const abas = ABAS.filter((a) => (!a.soDono || dono) && (a.id !== 'frota' || frotaOk) && (a.id !== 'financeiro' || finOk));
-  const aba = (abas.some((a) => a.id === params.get('aba')) ? params.get('aba') : 'geral') as Aba;
+  const abas = ABAS.filter((a) => (!a.soDono || dono) && (!a.soConstrutora || (construtora && dono)) && (a.id !== 'frota' || frotaOk) && (a.id !== 'financeiro' || finOk));
+  const padrao: Aba = construtora && dono ? 'obras' : 'geral';
+  const aba = (abas.some((a) => a.id === params.get('aba')) ? params.get('aba') : padrao) as Aba;
   const [d, setD] = useState<Dados>({ frota: null, fin: null, consumo: [], manut: [], erro: '' });
 
   const carregar = useCallback(async () => {
@@ -572,7 +589,7 @@ function PainelGestao() {
             role="tab"
             aria-selected={aba === a.id}
             className={aba === a.id ? 'ativa' : ''}
-            onClick={() => setParams(a.id === 'geral' ? {} : { aba: a.id }, { replace: true })}
+            onClick={() => setParams(a.id === padrao ? {} : { aba: a.id }, { replace: true })}
           >
             {a.texto}
           </button>
@@ -584,6 +601,80 @@ function PainelGestao() {
       {aba === 'frota' && <AbaFrota d={d} />}
       {aba === 'financeiro' && <AbaFinanceiro d={d} />}
       {aba === 'indicadores' && dono && <AbaIndicadores />}
+      {aba === 'obras' && dono && construtora && <AbaObras />}
+    </>
+  );
+}
+
+/** Painel da construtora: panorama de todas as obras com seus indicadores e as aprovações pendentes. */
+function AbaObras() {
+  const { usuario } = useSessao();
+  const [p, setP] = useState<Panorama | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    api<Panorama>('/eng/panorama').then(setP).catch((e) => setErro((e as Error).message));
+  }, []);
+  const r = p?.resumo;
+  return (
+    <>
+      {(usuario?.perfil === 'dono' || usuario?.perfil === 'gestor' || usuario?.administrador) && temModulo(usuario, 'gerencial') && <CardAprovacoes />}
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {!p && !erro && carregando}
+      {p && r && (
+        <>
+          <div className="grade">
+            <Kpi rotulo="Obras cadastradas" valor={formatarNumero(r.obras)} detalhe={`${formatarNumero(r.emAndamento)} em andamento`} />
+            <Kpi rotulo="Orçado total" valor={formatarMoeda(r.orcadoTotal)} detalhe="com BDI" />
+            <Kpi rotulo="Com prazo vencido" valor={formatarNumero(r.atrasadas)} tom={r.atrasadas ? 'perigo' : 'ok'} detalhe="previsão passou e não concluída" />
+            <Kpi rotulo="Necessidades pendentes" valor={formatarNumero(r.necessidadesPendentes)} detalhe="insumos apropriados sem solicitação" />
+          </div>
+          <section className="card">
+            <div className="cartao-topo"><h2>Obras</h2></div>
+            {p.obras.length === 0 ? (
+              <p className="muted" style={{ margin: 0 }}>Nenhuma obra cadastrada.</p>
+            ) : (
+              <div className="tabela-caixa">
+                <table className="tabela">
+                  <thead>
+                    <tr>
+                      <th>Obra</th>
+                      <th>Situação</th>
+                      <th>Início</th>
+                      <th>Previsão</th>
+                      <th>Fim planejado</th>
+                      <th className="num">Orçado</th>
+                      <th className="num">Atividades</th>
+                      <th className="num">Necessidades pendentes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {p.obras.map((o) => (
+                      <tr key={o.id}>
+                        <td><Link to={`/eng/obras/${o.id}`}>{o.codigo} · {o.nome}</Link></td>
+                        <td>
+                          <span>{ROTULO_STATUS_OBRA[o.status] ?? o.status}</span>
+                          {o.atrasada && <span className="selo selo-perigo" style={{ marginLeft: 6 }}>Atrasada</span>}
+                        </td>
+                        <td>{formatarData(o.dataInicio)}</td>
+                        <td>{formatarData(o.dataPrevisao)}</td>
+                        <td>
+                          {o.fimPlanejado ? formatarData(o.fimPlanejado) : <span className="muted">—</span>}
+                          {o.estourandoPrazo && <span className="selo selo-aviso" style={{ marginLeft: 6 }}>Passa da previsão</span>}
+                        </td>
+                        <td className="num">{formatarMoeda(o.orcado)}</td>
+                        <td className="num">{o.atividades}</td>
+                        <td className="num">
+                          {o.necessidadesPendentes ? <>{formatarNumero(o.necessidadesPendentes)}<div className="small muted">{formatarMoeda(o.necessidadesValor)}</div></> : <span className="muted">0</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        </>
+      )}
     </>
   );
 }
