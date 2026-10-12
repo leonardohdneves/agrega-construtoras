@@ -1,5 +1,5 @@
 // Engenharia · Relatórios: orçamento sintético e analítico, no formato usual de mercado (SIENGE, planilhas do TCU).
-// Sintético: EAP com o total de cada grupo e os serviços com quantidade, custo unitário, preço unitário com BDI,
+// Sintético: EAP com o total de cada grupo e os serviços com quantidade, preço unitário (já com BDI),
 // preço total e peso (%). Analítico: o mesmo, com os insumos de cada composição abaixo do serviço.
 import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
@@ -78,7 +78,7 @@ export function EngRelatorios() {
         modulo="Engenharia"
         titulo={TIPOS.find((t) => t.id === tipo)!.titulo}
         descricao={obraRel ? `Obra ${obraRel.codigo} · ${obraRel.nome}` : undefined}
-        filtros={obraRel ? [local, obraRel.responsavel ? `Responsável técnico: ${obraRel.responsavel}` : '', `BDI: ${pct(obraRel.bdiPercentual)}`] : []}
+        filtros={obraRel ? [local, obraRel.responsavel ? `Responsável técnico: ${obraRel.responsavel}` : ''] : []}
       />
 
       <div className="card nao-imprimir" style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
@@ -108,19 +108,12 @@ export function EngRelatorios() {
   );
 }
 
+/** Rodapé: só o preço de venda. O BDI já está embutido nos preços unitários e nos totais, sem linha própria. */
 function Rodape({ rel, colunas }: { rel: Relatorio; colunas: number }) {
   return (
     <tfoot>
       <tr>
-        <td colSpan={colunas - 1} className="num">Custo direto total</td>
-        <td className="num">{formatarMoeda(rel.custoTotal)}</td>
-      </tr>
-      <tr>
-        <td colSpan={colunas - 1} className="num">BDI ({pct(rel.obra.bdiPercentual)})</td>
-        <td className="num">{formatarMoeda(rel.bdiValor)}</td>
-      </tr>
-      <tr>
-        <td colSpan={colunas - 1} className="num"><b>Preço total do orçamento</b></td>
+        <td colSpan={colunas - 1} className="num"><b>Preço de venda do orçamento</b></td>
         <td className="num"><b>{formatarMoeda(rel.precoTotal)}</b></td>
       </tr>
     </tfoot>
@@ -140,8 +133,7 @@ function Sintetico({ rel }: { rel: Relatorio }) {
             <th>Descrição</th>
             <th>Unid.</th>
             <th className="num">Quant.</th>
-            <th className="num">Custo unit.</th>
-            <th className="num">Preço unit. c/ BDI</th>
+            <th className="num">Preço unit.</th>
             <th className="num">Peso</th>
             <th className="num">Preço total</th>
           </tr>
@@ -152,7 +144,7 @@ function Sintetico({ rel }: { rel: Relatorio }) {
               <tr key={i} style={estiloGrupo(l.nivel)}>
                 <td className="mono">{l.item}</td>
                 <td className="small">{ROTULO[l.nivel]}</td>
-                <td colSpan={5}>{l.descricao}</td>
+                <td colSpan={4}>{l.descricao}</td>
                 <td className="num">{pct(l.peso)}</td>
                 <td className="num">{formatarMoeda(l.total)}</td>
               </tr>
@@ -163,7 +155,6 @@ function Sintetico({ rel }: { rel: Relatorio }) {
                 <td>{l.descricao}</td>
                 <td>{l.unidade}</td>
                 <td className="num">{num(l.quantidade)}</td>
-                <td className="num">{formatarMoeda(l.custoUnitario)}</td>
                 <td className="num">{formatarMoeda(l.precoUnitario)}</td>
                 <td className="num">{pct(l.peso)}</td>
                 <td className="num">{formatarMoeda(l.total)}</td>
@@ -173,12 +164,12 @@ function Sintetico({ rel }: { rel: Relatorio }) {
                 <td className="mono">{l.item}</td>
                 <td />
                 <td>{l.descricao}</td>
-                <td colSpan={6} className="small muted">sem serviço</td>
+                <td colSpan={5} className="small muted">sem serviço</td>
               </tr>
             ) : null,
           )}
         </tbody>
-        <Rodape rel={rel} colunas={9} />
+        <Rodape rel={rel} colunas={8} />
       </table>
     </div>
   );
@@ -197,7 +188,7 @@ function Analitico({ rel }: { rel: Relatorio }) {
             <th className="num">Coef.</th>
             <th className="num">Quant.</th>
             <th className="num">Custo unit.</th>
-            <th className="num">Preço unit. c/ BDI</th>
+            <th className="num">Preço unit.</th>
             <th className="num">Total</th>
           </tr>
         </thead>
@@ -218,7 +209,7 @@ function Analitico({ rel }: { rel: Relatorio }) {
                 <td>{l.unidade}</td>
                 <td />
                 <td className="num">{num(l.quantidade)}</td>
-                <td className="num">{formatarMoeda(l.custoUnitario)}</td>
+                <td />
                 <td className="num">{formatarMoeda(l.precoUnitario)}</td>
                 <td className="num">{formatarMoeda(l.total)}</td>
               </tr>
@@ -247,7 +238,7 @@ function Analitico({ rel }: { rel: Relatorio }) {
         <Rodape rel={rel} colunas={9} />
       </table>
       <p className="small muted" style={{ padding: '0 12px' }}>
-        Nos insumos: quantidade = coeficiente × quantidade do serviço; total = custo direto do insumo (sem BDI). Na linha do serviço, total com BDI.
+        Nos insumos: quantidade = coeficiente × quantidade do serviço; total = custo do insumo. Na linha do serviço, o preço unitário e o total já são o preço de venda.
       </p>
     </div>
   );
@@ -275,7 +266,7 @@ function CurvaAbc({ rel }: { rel: RelatorioAbc }) {
         <div>
           <div className="small muted">Total</div>
           <div style={{ fontSize: 20, fontWeight: 700 }}>{formatarMoeda(rel.total)}</div>
-          <div className="small">{rel.linhas.length} {insumos ? 'insumos' : 'serviços'} · {insumos ? 'custo direto' : 'preço com BDI'}</div>
+          <div className="small">{rel.linhas.length} {insumos ? 'insumos' : 'serviços'} · {insumos ? 'custo direto' : 'preço de venda'}</div>
         </div>
       </div>
       <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
@@ -288,7 +279,7 @@ function CurvaAbc({ rel }: { rel: RelatorioAbc }) {
               <th>Descrição</th>
               <th>Unid.</th>
               <th className="num">Quant.</th>
-              <th className="num">{insumos ? 'Custo unit.' : 'Preço unit. c/ BDI'}</th>
+              <th className="num">{insumos ? 'Custo unit.' : 'Preço unit.'}</th>
               <th className="num">Total</th>
               <th className="num">%</th>
               <th className="num">% acum.</th>
@@ -322,7 +313,7 @@ function CurvaAbc({ rel }: { rel: RelatorioAbc }) {
       </div>
       <p className="small muted">
         Classe pelo valor acumulado antes de cada item: A até {rel.limites.A}%, B até {rel.limites.B}%, C o restante.{' '}
-        {insumos ? 'Quantidade de cada insumo = coeficiente × quantidade dos serviços que o usam; valores sem BDI.' : 'O mesmo serviço lançado em várias tarefas aparece somado.'}
+        {insumos ? 'Quantidade de cada insumo = coeficiente × quantidade dos serviços que o usam; valores de custo.' : 'O mesmo serviço lançado em várias tarefas aparece somado.'}
       </p>
     </>
   );

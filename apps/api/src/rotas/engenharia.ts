@@ -1209,14 +1209,18 @@ export function rotasEngenharia(banco: Banco) {
       const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
       const linhas = await linhasPlanilha(banco, obra.id);
       const bdi = await bdiDaObra(banco, obra);
+      const fator = 1 + bdi / 100;
+      // O BDI fica embutido no preço unitário de cada serviço e nos totais: a planilha mostra só o preço de venda.
+      const precoUnit = (l: (typeof linhas)[number]) => (l.servico ? r2(l.servico.custoUnitario * fator) : 0);
       const rel = montarRelatorioOrcamento(linhas.map((l) => ({ ...l, servico: l.servico && { ...l.servico } })), bdi, false);
-      const totais = totaisPlanilha(linhas.map((l) => ({ id: l.id, paiId: l.paiId, valor: l.servico ? r2(l.servico.quantidade * l.servico.custoUnitario) : 0 })));
+      const totais = totaisPlanilha(linhas.map((l) => ({ id: l.id, paiId: l.paiId, valor: l.servico ? r2(l.servico.quantidade * precoUnit(l)) : 0 })));
       return {
-        bdiPercentual: bdi,
-        custoTotal: rel.custoTotal,
-        bdiValor: rel.bdiValor,
         precoTotal: rel.precoTotal,
-        linhas: linhas.map((l) => ({ ...l, custoTotal: totais.get(l.id) ?? 0 })),
+        linhas: linhas.map((l) => ({
+          ...l,
+          servico: l.servico && { ...l.servico, precoUnitario: precoUnit(l) },
+          precoTotal: totais.get(l.id) ?? 0,
+        })),
       };
     });
 

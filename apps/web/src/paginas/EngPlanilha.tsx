@@ -11,9 +11,9 @@ export const NIVEIS: NivelPlanilha[] = ['obra', 'etapa', 'subetapa', 'tarefa'];
 export const ROTULO: Record<NivelPlanilha, string> = { obra: 'Obra', etapa: 'Etapa', subetapa: 'Sub Etapa', tarefa: 'Tarefa' };
 const POSICAO: Record<NivelPlanilha, number> = { obra: 1, etapa: 2, subetapa: 3, tarefa: 4 };
 
-type Servico = { linhaId: string; itemId: string; codigo: string; descricaoServico: string; unidade: string; quantidade: number; custoUnitario: number };
-type Linha = { id: string; paiId: string | null; nivel: NivelPlanilha; codigo: string; descricao: string; servico: Servico | null; custoTotal: number };
-type Planilha = { bdiPercentual: number; custoTotal: number; bdiValor: number; precoTotal: number; linhas: Linha[] };
+type Servico = { linhaId: string; itemId: string; codigo: string; descricaoServico: string; unidade: string; quantidade: number; custoUnitario: number; precoUnitario: number };
+type Linha = { id: string; paiId: string | null; nivel: NivelPlanilha; codigo: string; descricao: string; servico: Servico | null; precoTotal: number };
+type Planilha = { precoTotal: number; linhas: Linha[] };
 
 const qtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 const profundidade = (codigo: string) => codigo.split('.').length - 1;
@@ -62,9 +62,7 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
   return (
     <>
       <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap' }}>
-        <div>Custo direto: <b>{formatarMoeda(p.custoTotal)}</b></div>
-        <div>BDI ({String(p.bdiPercentual).replace('.', ',')}%): <b>{formatarMoeda(p.bdiValor)}</b></div>
-        <div>Preço total: <b>{formatarMoeda(p.precoTotal)}</b></div>
+        <div>Preço de venda: <b>{formatarMoeda(p.precoTotal)}</b></div>
         <div className="small muted" style={{ marginLeft: 'auto', alignSelf: 'center' }}>
           <Link to={`/eng/relatorios?obra=${obra.id}`}>Emitir relatório do orçamento</Link>
         </div>
@@ -80,8 +78,8 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
               <th>Serviço</th>
               <th>Unid.</th>
               <th className="num">Quant.</th>
-              <th className="num">Custo unit.</th>
-              <th className="num">Custo total</th>
+              <th className="num">Preço unit.</th>
+              <th className="num">Preço total</th>
               <th className="nao-imprimir"><span style={{ position: 'absolute', left: -9999 }}>Ações</span></th>
             </tr>
           </thead>
@@ -102,8 +100,8 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
                   <td className="mono small">{l.servico?.codigo ?? ''}</td>
                   <td>{l.servico?.unidade ?? ''}</td>
                   <td className="num">{l.servico ? qtd(l.servico.quantidade) : ''}</td>
-                  <td className="num">{l.servico ? formatarMoeda(l.servico.custoUnitario) : ''}</td>
-                  <td className="num">{l.servico || l.nivel !== 'tarefa' ? formatarMoeda(l.custoTotal) : <span className="small muted">sem serviço</span>}</td>
+                  <td className="num">{l.servico ? formatarMoeda(l.servico.precoUnitario) : ''}</td>
+                  <td className="num">{l.servico || l.nivel !== 'tarefa' ? formatarMoeda(l.precoTotal) : <span className="small muted">sem serviço</span>}</td>
                   <td className="acoes-celula nao-imprimir">
                     <div className="acoes-linha">
                     <span className="setas" style={{ display: 'inline-flex', gap: 2, marginRight: 4 }}>
