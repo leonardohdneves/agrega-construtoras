@@ -120,6 +120,8 @@ const esquemaObra = z.object({
   nivelApropriacao: z.enum(NIVEIS_OBRA).optional(),
   bdiModo: z.enum(['calculado', 'informado']).optional(),
   bdiPercentual: z.number().min(0).max(99.99).optional(),
+  // Empresa do grupo que executa a obra (define o regime de impostos). Nulo: a própria empresa logada.
+  empresaGrupoId: z.string().uuid('Escolha uma empresa válida.').nullable().optional(),
   bdiParametros: z
     .object({ ac: pct, s: pct, r: pct, g: pct, df: pct, l: pct, i: pct })
     .partial()
@@ -145,6 +147,14 @@ export function rotasEngenharia(banco: Banco) {
       if (!t) throw naoEncontrado('Tabela de referência');
       return t;
     }
+    /** Empresa do grupo escolhida para a obra: tem de ser desta empresa. Nulo: usa a empresa logada. */
+    async function grupoDaEmpresa(c: Cliente, empresaId: string, id: string | null | undefined): Promise<string | null> {
+      if (!id) return null;
+      if (!(await c.query('SELECT 1 FROM empresas_grupo WHERE id = $1 AND empresa_id = $2 AND ativo', [id, empresaId])).rowCount)
+        throw new ErroHttp(400, 'Escolha uma empresa do grupo cadastrada e ativa.');
+      return id;
+    }
+
     async function obraDaEmpresa(c: Cliente, empresaId: string, id: string) {
       const o = (await c.query('SELECT o.*, cc.nome AS centro_nome FROM obras o JOIN centros_custo cc ON cc.id = o.centro_custo_id WHERE o.id = $1 AND o.empresa_id = $2', [id, empresaId])).rows[0];
       if (!o) throw naoEncontrado('Obra');
@@ -534,7 +544,7 @@ export function rotasEngenharia(banco: Banco) {
       const dIso = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : null);
       const hoje = new Date().toISOString().slice(0, 10);
       const obras = await banco.query(
-        `SELECT o.id, o.codigo, o.nome, o.status, o.data_inicio, o.data_previsao, o.bdi_percentual,
+        `SELECT o.id, o.codigo, o.nome, o.status, o.data_inicio, o.data_previsao, o.bdi_percentual, o.empresa_grupo_id, o.empresa_id,
                 (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_id = o.id) AS linhas_orcamento,
                 (SELECT coalesce(sum(oq.quantidade * ${precoObra('oi')}), 0) FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id WHERE oq.obra_id = o.id) AS subtotal,
                 (SELECT count(*)::int FROM obra_necessidades nec WHERE nec.obra_id = o.id AND nec.status = 'pendente') AS necessidades_pendentes,
@@ -612,11 +622,12 @@ export function rotasEngenharia(banco: Banco) {
         const centro = (
           await c.query(`INSERT INTO centros_custo (empresa_id, nome) VALUES ($1, $2) RETURNING id`, [empresaId, `Obra ${codigo} - ${d.nome}`.slice(0, 120)])
         ).rows[0];
+        const grupoId = await grupoDaEmpresa(c, empresaId, d.empresaGrupoId);
         const o = (
           await c.query(
-            `INSERT INTO obras (empresa_id, codigo, nome, endereco, cidade, uf, responsavel, status, data_inicio, data_previsao, nivel_apropriacao, bdi_percentual, bdi_modo, bdi_parametros, centro_custo_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15) RETURNING id`,
-            [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id],
+            `INSERT INTO obras (empresa_id, codigo, nome, endereco, cidade, uf, responsavel, status, data_inicio, data_previsao, nivel_apropriacao, bdi_percentual, bdi_modo, bdi_parametros, centro_custo_id, empresa_grupo_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16) RETURNING id`,
+            [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id, grupoId],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obras', entidadeId: o.id, depois: { ...d, codigo } });
@@ -659,12 +670,13 @@ export function rotasEngenharia(banco: Banco) {
           dataPrevisao: d.dataPrevisao !== undefined ? d.dataPrevisao : atual.data_previsao,
           nivel: novoNivel,
           bdi: resolverBdi(d, atual),
+          grupoId: d.empresaGrupoId !== undefined ? await grupoDaEmpresa(c, empresaId, d.empresaGrupoId) : (atual.empresa_grupo_id ?? null),
         };
         await c.query(
           `UPDATE obras SET nome = $3, endereco = $4, cidade = $5, uf = $6, responsavel = $7, status = $8, data_inicio = $9, data_previsao = $10,
-                  nivel_apropriacao = $11, bdi_percentual = $12, bdi_modo = $13, bdi_parametros = $14::jsonb, atualizado_em = now()
+                  nivel_apropriacao = $11, bdi_percentual = $12, bdi_modo = $13, bdi_parametros = $14::jsonb, empresa_grupo_id = $15, atualizado_em = now()
             WHERE id = $1 AND empresa_id = $2`,
-          [atual.id, empresaId, campos.nome, campos.endereco, campos.cidade, campos.uf, campos.responsavel, campos.status, campos.dataInicio, campos.dataPrevisao, campos.nivel, campos.bdi.percentual, campos.bdi.modo, JSON.stringify(campos.bdi.parametros)],
+          [atual.id, empresaId, campos.nome, campos.endereco, campos.cidade, campos.uf, campos.responsavel, campos.status, campos.dataInicio, campos.dataPrevisao, campos.nivel, campos.bdi.percentual, campos.bdi.modo, JSON.stringify(campos.bdi.parametros), campos.grupoId],
         );
         await c.query('UPDATE centros_custo SET nome = $2 WHERE id = $1', [atual.centro_custo_id, `Obra ${atual.codigo} - ${nome}`.slice(0, 120)]);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'obras', entidadeId: atual.id, depois: d });
@@ -1412,7 +1424,11 @@ export function rotasEngenharia(banco: Banco) {
       const linhas = await linhasPlanilha(c, obra.id);
       const direto = montarRelatorioOrcamento(linhas.map((l) => ({ ...l, servico: l.servico && { ...l.servico } })), 0, false).custoTotal;
       const p = (await c.query('SELECT * FROM obra_composicao_preco WHERE obra_id = $1', [obra.id])).rows[0];
-      const emp = (await c.query('SELECT simples_anexo, simples_faixa FROM empresas WHERE id = $1', [obra.empresa_id])).rows[0];
+      // Impostos pela empresa escolhida para a obra (grupo); sem escolha, pela empresa logada.
+      const emp = obra.empresa_grupo_id
+        ? (await c.query('SELECT regime_tributario, simples_anexo, simples_faixa FROM empresas_grupo WHERE id = $1', [obra.empresa_grupo_id])).rows[0]
+        : (await c.query('SELECT regime_tributario, simples_anexo, simples_faixa FROM empresas WHERE id = $1', [obra.empresa_id])).rows[0];
+      const simples = !emp || emp.regime_tributario === 'simples';
       const ind = (await c.query('SELECT id, descricao, valor_centavos FROM obra_custos_indiretos WHERE obra_id = $1 ORDER BY ordem, criado_em', [obra.id])).rows;
       const imp = (await c.query('SELECT id, descricao, percentual FROM obra_impostos WHERE obra_id = $1 ORDER BY ordem, criado_em', [obra.id])).rows;
       const percentuais = {
@@ -1428,7 +1444,8 @@ export function rotasEngenharia(banco: Banco) {
         automatico: true,
       };
       const digitados = (imp.length ? imp : [{ descricao: 'ISS (quando devido na nota)', percentual: 0 }]).map((x) => ({ descricao: x.descricao as string, percentual: Number(x.percentual), automatico: false }));
-      const impostos = [das, ...digitados];
+      // Fora do Simples não há DAS automático: valem só os impostos digitados.
+      const impostos = simples ? [das, ...digitados] : digitados;
       const indiretos = ind.map((x) => ({ descricao: x.descricao as string, valor: reais(x.valor_centavos)! }));
       const formacao = formacaoPreco(direto, indiretos.reduce((s, x) => s + x.valor, 0), { administracao: percentuais.administracao, imprevistos: percentuais.imprevistos, financeiro: percentuais.cdi, lucro: percentuais.lucro }, impostos.map((x) => x.percentual));
       return { direto: r2(direto), percentuais, indiretos, impostos, formacao };
@@ -1517,7 +1534,14 @@ async function tabelaDetalhe(c: Cliente | Banco, empresaId: string, id: string) 
 }
 
 async function obraDetalhe(c: Cliente | Banco, empresaId: string, id: string) {
-  const r = (await c.query('SELECT o.*, cc.nome AS centro_nome FROM obras o JOIN centros_custo cc ON cc.id = o.centro_custo_id WHERE o.id = $1 AND o.empresa_id = $2', [id, empresaId])).rows[0];
+  const r = (
+    await c.query(
+      `SELECT o.*, cc.nome AS centro_nome, eg.razao_social AS empresa_grupo_nome
+         FROM obras o JOIN centros_custo cc ON cc.id = o.centro_custo_id LEFT JOIN empresas_grupo eg ON eg.id = o.empresa_grupo_id
+        WHERE o.id = $1 AND o.empresa_id = $2`,
+      [id, empresaId],
+    )
+  ).rows[0];
   if (!r) throw naoEncontrado('Obra');
   return r;
 }
@@ -1549,6 +1573,8 @@ function obraPublica(o: Record<string, any>) {
     dataInicio: (o.data_inicio as string | null) ?? null,
     dataPrevisao: (o.data_previsao as string | null) ?? null,
     nivelApropriacao: o.nivel_apropriacao as string,
+    empresaGrupoId: (o.empresa_grupo_id as string | null | undefined) ?? null,
+    empresaGrupoNome: (o.empresa_grupo_nome as string | null | undefined) ?? null,
     bdiPercentual: Number(o.bdi_percentual),
     bdiModo: (o.bdi_modo as 'calculado' | 'informado' | undefined) ?? 'informado',
     bdiParametros: (o.bdi_parametros as Partial<ParametrosBdi> | null) ?? null,

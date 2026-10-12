@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { api, formatarCnpj, type Empresa as TEmpresa, type Impressao } from '../api';
 import { NOMES_PAPEL } from '../componentes/Documento';
 import { useSessao } from '../sessao';
+import { EmpresasGrupo } from './EmpresasGrupo';
 
 const CAMPOS_ALIQUOTA: Record<TEmpresa['regimeTributario'], { chave: string; rotulo: string }[]> = {
   simples: [{ chave: 'simples', rotulo: 'Alíquota efetiva do Simples (%)' }],
@@ -208,6 +209,7 @@ export function Empresa() {
           aoMudar={async (e) => { setEmpresa(e); await recarregar(); }}
         />
       )}
+      <EmpresasGrupo podeEditar={podeEditar} />
     </>
   );
 }

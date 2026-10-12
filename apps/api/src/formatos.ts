@@ -41,3 +41,19 @@ export function empresaPublica(r: Record<string, any>) {
     criadoEm: r.criado_em,
   };
 }
+
+/** Empresa do grupo, como a tela a recebe. */
+export function empresaGrupoPublica(r: Record<string, any>) {
+  return {
+    id: r.id as string,
+    razaoSocial: r.razao_social as string,
+    nomeFantasia: (r.nome_fantasia as string | null) ?? null,
+    cnpj: ((r.cnpj as string) ?? '').trim(),
+    regimeTributario: r.regime_tributario as 'simples' | 'presumido' | 'real',
+    simplesAnexo: (r.simples_anexo as string | null) ?? null,
+    simplesFaixa: r.simples_faixa === null || r.simples_faixa === undefined ? null : Number(r.simples_faixa),
+    cidade: (r.cidade as string | null) ?? null,
+    uf: (r.uf as string | null) ?? null,
+    ativo: !!r.ativo,
+  };
+}

@@ -2,8 +2,8 @@ import type { FastifyInstance } from 'fastify';
 import type { Banco } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
-import { esquemaEmpresa } from '../esquemas.ts';
-import { empresaPublica } from '../formatos.ts';
+import { esquemaEmpresa, esquemaEmpresaGrupo } from '../esquemas.ts';
+import { empresaGrupoPublica, empresaPublica } from '../formatos.ts';
 import { z } from 'zod';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { PERFIS_EMPRESA } from '../lib/perfis.ts';
@@ -35,6 +35,53 @@ export function rotasEmpresa(banco: Banco) {
         return depois;
       });
       return { empresa: empresaPublica(empresa) };
+    });
+
+    // ----- Empresas do grupo: CNPJs da empresa, cada um com seu regime (a obra escolhe uma delas) -----
+    app.get('/grupo', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req) => {
+      const r = await banco.query('SELECT * FROM empresas_grupo WHERE empresa_id = $1 ORDER BY razao_social', [empresaDo(req)]);
+      return { empresas: r.rows.map(empresaGrupoPublica) };
+    });
+
+    app.post('/grupo', { preHandler: exigir(banco, 'dono') }, async (req, reply) => {
+      const d = esquemaEmpresaGrupo.parse(req.body);
+      const empresaId = empresaDo(req);
+      const criada = await emTransacao(banco, async (c) => {
+        if ((await c.query('SELECT 1 FROM empresas_grupo WHERE empresa_id = $1 AND cnpj = $2', [empresaId, d.cnpj])).rowCount)
+          throw new ErroHttp(409, 'Já existe uma empresa do grupo com este CNPJ.');
+        const r = (
+          await c.query(
+            `INSERT INTO empresas_grupo (empresa_id, razao_social, nome_fantasia, cnpj, regime_tributario, simples_anexo, simples_faixa, cidade, uf, ativo)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+            [empresaId, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, d.simplesAnexo ?? null, d.simplesFaixa ?? null, d.cidade, d.uf ?? null, d.ativo ?? true],
+          )
+        ).rows[0];
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'empresas_grupo', entidadeId: r.id, depois: d });
+        return r;
+      });
+      return reply.code(201).send({ empresa: empresaGrupoPublica(criada) });
+    });
+
+    app.put<{ Params: { id: string } }>('/grupo/:id', { preHandler: exigir(banco, 'dono') }, async (req) => {
+      const d = esquemaEmpresaGrupo.parse(req.body);
+      const empresaId = empresaDo(req);
+      const atualizada = await emTransacao(banco, async (c) => {
+        const antes = (await c.query('SELECT * FROM empresas_grupo WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [req.params.id, empresaId])).rows[0];
+        if (!antes) throw naoEncontrado('Empresa do grupo');
+        if ((await c.query('SELECT 1 FROM empresas_grupo WHERE empresa_id = $1 AND cnpj = $2 AND id <> $3', [empresaId, d.cnpj, antes.id])).rowCount)
+          throw new ErroHttp(409, 'Já existe uma empresa do grupo com este CNPJ.');
+        const r = (
+          await c.query(
+            `UPDATE empresas_grupo SET razao_social = $3, nome_fantasia = $4, cnpj = $5, regime_tributario = $6, simples_anexo = $7,
+                    simples_faixa = $8, cidade = $9, uf = $10, ativo = $11, atualizado_em = now()
+              WHERE id = $1 AND empresa_id = $2 RETURNING *`,
+            [antes.id, empresaId, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, d.simplesAnexo ?? null, d.simplesFaixa ?? null, d.cidade, d.uf ?? null, d.ativo ?? true],
+          )
+        ).rows[0];
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas_grupo', entidadeId: antes.id, antes, depois: d });
+        return r;
+      });
+      return { empresa: empresaGrupoPublica(atualizada) };
     });
 
     const TODOS = PERFIS_EMPRESA;

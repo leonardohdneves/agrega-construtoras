@@ -4,6 +4,7 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
 import { ConferenciaComposicao, type DetalheComposicao, type Tabela } from './EngTabelas';
+import { rotuloEmpresaGrupo, type EmpresaGrupo } from './EmpresasGrupo';
 
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
@@ -11,6 +12,7 @@ export type Obra = {
   status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number;
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
+  empresaGrupoId?: string | null; empresaGrupoNome?: string | null;
 };
 export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number };
 export type No = { id: string; paiId: string | null; nivel: Nivel; codigo: string; descricao: string; itens: number; subtotal: number | null };
@@ -116,7 +118,7 @@ export function bdiCalculadoPrevia(p: Partial<Record<CampoBdi, number>>): number
 
 const paraTexto = (n: number | undefined) => String(n ?? 0).replace('.', ',');
 
-type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
+type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
 
 function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar: (o: Obra) => void; aoCancelar?: () => void }) {
   const editando = !!inicial;
@@ -127,6 +129,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
     cidade: inicial?.cidade ?? '',
     uf: inicial?.uf ?? '',
     responsavel: inicial?.responsavel ?? '',
+    empresaGrupoId: inicial?.empresaGrupoId ?? '',
     status: inicial?.status ?? 'planejamento',
     dataInicio: inicial?.dataInicio ?? '',
     dataPrevisao: inicial?.dataPrevisao ?? '',
@@ -139,6 +142,10 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
   const previaBdi = bdiCalculadoPrevia(paramsNumericos);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [empresasGrupo, setEmpresasGrupo] = useState<EmpresaGrupo[]>([]);
+  useEffect(() => {
+    api<{ empresas: EmpresaGrupo[] }>('/empresa/grupo').then((r) => setEmpresasGrupo(r.empresas.filter((x) => x.ativo))).catch(() => setEmpresasGrupo([]));
+  }, []);
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
@@ -151,6 +158,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
       cidade: d.cidade.trim() || null,
       uf: d.uf.trim().toUpperCase() || null,
       responsavel: d.responsavel.trim() || null,
+      empresaGrupoId: d.empresaGrupoId || null,
       status: d.status,
       dataInicio: d.dataInicio || null,
       dataPrevisao: d.dataPrevisao || null,
@@ -204,6 +212,14 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
         <div className="campo">
           <label htmlFor="ob-resp">Responsável</label>
           <input id="ob-resp" value={d.responsavel} onChange={(e) => setD({ ...d, responsavel: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="ob-empresa">Empresa que executa a obra</label>
+          <select id="ob-empresa" value={d.empresaGrupoId} onChange={(e) => setD({ ...d, empresaGrupoId: e.target.value })}>
+            <option value="">Empresa logada (sem grupo)</option>
+            {empresasGrupo.map((e) => <option key={e.id} value={e.id}>{rotuloEmpresaGrupo(e)}</option>)}
+          </select>
+          <span className="small muted">O regime de impostos da obra segue a empresa escolhida.</span>
         </div>
         <div className="campo">
           <label htmlFor="ob-ini">Início</label>
@@ -288,7 +304,7 @@ export function EngObraDetalhe() {
         <div className="titulo">
           <h1>{obra.codigo} · {obra.nome}</h1>
           <span className="muted">
-            Nível {ROTULO_NIVEL[obra.nivelApropriacao]} · BDI {String(obra.bdiPercentual).replace('.', ',')}% · Centro de custo: {obra.centroCustoNome ?? '—'}
+            Nível {ROTULO_NIVEL[obra.nivelApropriacao]} · BDI {String(obra.bdiPercentual).replace('.', ',')}% · Empresa: {obra.empresaGrupoNome ?? 'empresa logada'} · Centro de custo: {obra.centroCustoNome ?? '—'}
           </span>
         </div>
         <div className="acoes">

@@ -42,6 +42,19 @@ export const esquemaAliquotas = z
   .strict()
   .default({});
 
+/** Empresa do grupo: um CNPJ da empresa, com o próprio regime tributário (define os impostos das obras que a escolhem). */
+export const esquemaEmpresaGrupo = z.object({
+  razaoSocial: texto('a razão social', 2),
+  nomeFantasia: opcional,
+  cnpj: esquemaCnpj,
+  regimeTributario: z.enum(['simples', 'presumido', 'real'], { message: 'Escolha o regime tributário.' }),
+  simplesAnexo: z.enum(['I', 'II', 'III', 'IV', 'V']).nullable().optional(),
+  simplesFaixa: z.number().int().min(1, 'Faixa de 1 a 6.').max(6, 'Faixa de 1 a 6.').nullable().optional(),
+  cidade: opcional,
+  uf: z.string().trim().toUpperCase().length(2, 'UF com 2 letras.').optional().nullable().or(z.literal('').transform(() => null)),
+  ativo: z.boolean().optional(),
+});
+
 export const esquemaEmpresa = z.object({
   razaoSocial: texto('a razão social', 2),
   nomeFantasia: opcional,
