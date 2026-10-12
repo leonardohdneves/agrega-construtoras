@@ -241,7 +241,7 @@ export type LinhaPlanilhaRel = {
   nivel: NivelPlanilha;
   codigo: string;
   descricao: string;
-  servico: { codigo: string; unidade: string; quantidade: number; custoUnitario: number; itemId: string } | null;
+  servico: { codigo: string; unidade: string; quantidade: number; custoUnitario: number; itemId: string; descricaoServico?: string } | null;
 };
 export type InsumoComposicaoRel = { codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number };
 export type LinhaRelatorio =
@@ -312,4 +312,122 @@ export function erroMudarNivel(nivelPai: NivelPlanilha | null, novo: NivelPlanil
   if (filho) return `Esta linha tem ${ROTULO_PLANILHA[filho]} abaixo dela; ela não pode virar ${ROTULO_PLANILHA[novo]}.`;
   if (temServico && novo !== 'tarefa') return 'Esta linha tem serviço lançado. Retire o serviço antes de mudar o nível.';
   return null;
+}
+
+// ---------------------------------------------------------------- curva ABC (serviços e insumos)
+
+export type ItemAbc = { codigo: string; descricao: string; unidade: string; quantidade: number; precoUnitario: number; total: number };
+export type LinhaAbc = ItemAbc & { posicao: number; percentual: number; acumulado: number; classe: 'A' | 'B' | 'C' };
+
+/** Limites usuais da curva ABC: classe A até 80% do valor acumulado, B até 95%, C o restante. */
+export const LIMITES_ABC = { A: 80, B: 95 } as const;
+
+/**
+ * Curva ABC: ordena do maior para o menor valor, com percentual e acumulado. A classe é decidida pelo acumulado
+ * antes do item: quem começa abaixo de 80% é A (o item que cruza os 80% ainda é A), abaixo de 95% é B, o resto C.
+ */
+export function curvaAbc(itens: ItemAbc[]): { linhas: LinhaAbc[]; total: number; classes: Record<'A' | 'B' | 'C', { itens: number; valor: number; percentual: number }> } {
+  const ordenados = itens.filter((i) => i.total > 0).sort((a, b) => b.total - a.total || a.codigo.localeCompare(b.codigo));
+  const total = r2(ordenados.reduce((s, i) => s + i.total, 0));
+  const classes = { A: { itens: 0, valor: 0, percentual: 0 }, B: { itens: 0, valor: 0, percentual: 0 }, C: { itens: 0, valor: 0, percentual: 0 } };
+  let acumuladoValor = 0;
+  const linhas = ordenados.map((i, n) => {
+    const antes = total > 0 ? (acumuladoValor / total) * 100 : 0;
+    acumuladoValor += i.total;
+    const classe: 'A' | 'B' | 'C' = antes < LIMITES_ABC.A ? 'A' : antes < LIMITES_ABC.B ? 'B' : 'C';
+    classes[classe].itens++;
+    classes[classe].valor += i.total;
+    return {
+      ...i,
+      posicao: n + 1,
+      percentual: total > 0 ? Math.round((i.total / total) * 10000) / 100 : 0,
+      acumulado: total > 0 ? Math.round((acumuladoValor / total) * 10000) / 100 : 0,
+      classe,
+    };
+  });
+  for (const k of ['A', 'B', 'C'] as const) {
+    classes[k].valor = r2(classes[k].valor);
+    classes[k].percentual = total > 0 ? Math.round((classes[k].valor / total) * 10000) / 100 : 0;
+  }
+  return { linhas, total, classes };
+}
+
+/** Serviços do orçamento somados por serviço (o mesmo serviço em várias Tarefas vira uma linha), com preço com BDI. */
+export function abcServicos(linhas: LinhaPlanilhaRel[], bdiPercentual: number): ItemAbc[] {
+  const fator = 1 + bdiPercentual / 100;
+  const porServico = new Map<string, ItemAbc>();
+  for (const l of linhas) {
+    if (!l.servico) continue;
+    const precoUnitario = r2(l.servico.custoUnitario * fator);
+    const atual = porServico.get(l.servico.itemId);
+    const total = r2(l.servico.quantidade * precoUnitario);
+    if (atual) {
+      atual.quantidade += l.servico.quantidade;
+      atual.total = r2(atual.total + total);
+    } else {
+      porServico.set(l.servico.itemId, { codigo: l.servico.codigo, descricao: l.servico.descricaoServico ?? l.descricao, unidade: l.servico.unidade, quantidade: l.servico.quantidade, precoUnitario, total });
+    }
+  }
+  return [...porServico.values()];
+}
+
+/** Insumos de todos os serviços: quantidade = coeficiente × quantidade do serviço, somada por insumo; valor em custo direto. */
+export function abcInsumos(linhas: LinhaPlanilhaRel[], composicoes: Map<string, InsumoComposicaoRel[]>): ItemAbc[] {
+  const porInsumo = new Map<string, ItemAbc>();
+  for (const l of linhas) {
+    if (!l.servico) continue;
+    for (const k of composicoes.get(l.servico.itemId) ?? []) {
+      const quantidade = k.coeficiente * l.servico.quantidade;
+      const atual = porInsumo.get(k.codigo);
+      if (atual) atual.quantidade += quantidade;
+      else porInsumo.set(k.codigo, { codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, quantidade, precoUnitario: k.precoUnitario, total: 0 });
+    }
+  }
+  for (const i of porInsumo.values()) {
+    i.quantidade = Math.round(i.quantidade * 1e6) / 1e6;
+    i.total = r2(i.quantidade * i.precoUnitario);
+  }
+  return [...porInsumo.values()];
+}
+
+// ---------------------------------------------------------------- planilha: mover linhas e renumerar
+
+type NoOrdem = { id: string; paiId: string | null; codigo: string };
+
+/**
+ * Numeração da planilha a partir da ordem atual: irmãos em ordem de código, numerados 1, 2, 3… e os filhos herdam o
+ * código do pai (1.2, 1.2.1…). Fecha buracos deixados por exclusões. Devolve o novo código de cada linha.
+ */
+export function renumerar(nos: NoOrdem[], ordem?: Map<string | null, string[]>): Map<string, string> {
+  const filhos = ordem ?? new Map<string | null, string[]>();
+  if (!ordem) {
+    for (const n of [...nos].sort((a, b) => compararCodigo(a.codigo, b.codigo))) filhos.set(n.paiId, [...(filhos.get(n.paiId) ?? []), n.id]);
+  }
+  const codigos = new Map<string, string>();
+  const visitar = (pai: string | null, prefixo: string) => {
+    (filhos.get(pai) ?? []).forEach((id, i) => {
+      const codigo = prefixo ? `${prefixo}.${i + 1}` : `${i + 1}`;
+      codigos.set(id, codigo);
+      visitar(id, codigo);
+    });
+  };
+  visitar(null, '');
+  return codigos;
+}
+
+/**
+ * Sobe ou desce uma linha entre as irmãs (mesma linha de cima), levando junto tudo o que está abaixo dela,
+ * e renumera a planilha. Devolve null quando não há para onde mover.
+ */
+export function moverLinha(nos: NoOrdem[], id: string, direcao: 'cima' | 'baixo'): Map<string, string> | null {
+  const alvo = nos.find((n) => n.id === id);
+  if (!alvo) return null;
+  const filhos = new Map<string | null, string[]>();
+  for (const n of [...nos].sort((a, b) => compararCodigo(a.codigo, b.codigo))) filhos.set(n.paiId, [...(filhos.get(n.paiId) ?? []), n.id]);
+  const irmaos = filhos.get(alvo.paiId)!;
+  const i = irmaos.indexOf(id);
+  const j = direcao === 'cima' ? i - 1 : i + 1;
+  if (j < 0 || j >= irmaos.length) return null;
+  [irmaos[i], irmaos[j]] = [irmaos[j], irmaos[i]];
+  return renumerar(nos, filhos);
 }

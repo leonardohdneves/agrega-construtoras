@@ -31,6 +31,22 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
     carregar();
   }, [obra.id]);
 
+  const [movendo, setMovendo] = useState(false);
+  // Setas: a linha troca de lugar com a irmã de cima ou de baixo (mesma linha acima dela), levando as de baixo junto.
+  async function mover(l: Linha, direcao: 'cima' | 'baixo') {
+    setErro('');
+    setMovendo(true);
+    try {
+      await api(`/eng/obras/${obra.id}/planilha/${l.id}/mover`, { corpo: { direcao } });
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setMovendo(false);
+    }
+  }
+  const irmas = (l: Linha) => (p?.linhas ?? []).filter((x) => x.paiId === l.paiId);
+
   async function excluir(l: Linha) {
     setErro('');
     if (!window.confirm(`Excluir a linha ${l.codigo} · ${l.descricao}?${l.servico ? ' O serviço lançado nela sai junto.' : ''}`)) return;
@@ -89,6 +105,10 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
                   <td className="num">{l.servico ? formatarMoeda(l.servico.custoUnitario) : ''}</td>
                   <td className="num">{l.servico || l.nivel !== 'tarefa' ? formatarMoeda(l.custoTotal) : <span className="small muted">sem serviço</span>}</td>
                   <td className="acoes nao-imprimir">
+                    <span className="setas" style={{ display: 'inline-flex', gap: 2, marginRight: 4 }}>
+                      <button className="btn btn-link" type="button" title="Subir (leva junto as linhas de baixo)" aria-label={`Subir ${l.codigo}`} disabled={movendo || irmas(l)[0]?.id === l.id} onClick={() => mover(l, 'cima')} style={{ padding: '0 6px' }}>▲</button>
+                      <button className="btn btn-link" type="button" title="Descer (leva junto as linhas de baixo)" aria-label={`Descer ${l.codigo}`} disabled={movendo || irmas(l).at(-1)?.id === l.id} onClick={() => mover(l, 'baixo')} style={{ padding: '0 6px' }}>▼</button>
+                    </span>
                     <button className="btn btn-link" type="button" onClick={() => setEditando(l.id)}>Editar</button>
                     <button className="btn btn-link" type="button" onClick={() => excluir(l)}>Excluir</button>
                   </td>

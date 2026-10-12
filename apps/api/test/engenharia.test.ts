@@ -185,3 +185,74 @@ test('planilha: troca de nível respeita a linha de cima, as de baixo e o servi�
   assert.match(erroMudarNivel('etapa', 'subetapa', [], true) ?? '', /serviço lançado/);
   assert.equal(erroMudarNivel('etapa', 'tarefa', [], true), null);
 });
+
+test('curva ABC: ordem, percentual, acumulado e classes 80/95', async () => {
+  const { curvaAbc } = await import('../src/lib/engenharia.ts');
+  const item = (codigo: string, total: number) => ({ codigo, descricao: codigo, unidade: 'un', quantidade: 1, precoUnitario: total, total });
+  const r = curvaAbc([item('c', 50), item('a', 700), item('b', 150), item('d', 100), item('zero', 0)]);
+  assert.equal(r.total, 1000);
+  assert.deepEqual(r.linhas.map((l) => [l.codigo, l.percentual, l.acumulado, l.classe]), [
+    ['a', 70, 70, 'A'],
+    ['b', 15, 85, 'A'], // começa em 70% (< 80%): ainda é A
+    ['d', 10, 95, 'B'], // começa em 85%
+    ['c', 5, 100, 'C'], // começa em 95%
+  ]);
+  assert.deepEqual(r.classes.A, { itens: 2, valor: 850, percentual: 85 });
+  assert.deepEqual(r.classes.C, { itens: 1, valor: 50, percentual: 5 });
+  assert.equal(curvaAbc([]).total, 0);
+});
+
+test('curva ABC de serviços soma o mesmo serviço em várias Tarefas; de insumos usa coeficiente × quantidade', async () => {
+  const { abcServicos, abcInsumos } = await import('../src/lib/engenharia.ts');
+  const linhas = [
+    { id: 't1', paiId: null, nivel: 'tarefa' as const, codigo: '1', descricao: 'Parede térreo', servico: { codigo: 'S1', unidade: 'm2', quantidade: 10, custoUnitario: 80, itemId: 's1', descricaoServico: 'Alvenaria' } },
+    { id: 't2', paiId: null, nivel: 'tarefa' as const, codigo: '2', descricao: 'Parede superior', servico: { codigo: 'S1', unidade: 'm2', quantidade: 5, custoUnitario: 80, itemId: 's1', descricaoServico: 'Alvenaria' } },
+    { id: 't3', paiId: null, nivel: 'tarefa' as const, codigo: '3', descricao: 'Reboco', servico: { codigo: 'S2', unidade: 'm2', quantidade: 20, custoUnitario: 30, itemId: 's2', descricaoServico: 'Reboco' } },
+  ];
+  const serv = abcServicos(linhas, 25);
+  const s1 = serv.find((s) => s.codigo === 'S1')!;
+  assert.equal(serv.length, 2);
+  assert.equal(s1.quantidade, 15);
+  assert.equal(s1.precoUnitario, 100);
+  assert.equal(s1.total, 1500);
+  assert.equal(s1.descricao, 'Alvenaria');
+
+  const comp = new Map([
+    ['s1', [{ codigo: 'BLOCO', descricao: 'Bloco', unidade: 'un', coeficiente: 12.5, precoUnitario: 4 }, { codigo: 'PEDREIRO', descricao: 'Pedreiro', unidade: 'h', coeficiente: 1, precoUnitario: 30 }]],
+    ['s2', [{ codigo: 'PEDREIRO', descricao: 'Pedreiro', unidade: 'h', coeficiente: 0.5, precoUnitario: 30 }]],
+  ]);
+  const ins = abcInsumos(linhas, comp);
+  const pedreiro = ins.find((i) => i.codigo === 'PEDREIRO')!;
+  assert.equal(pedreiro.quantidade, 25); // 1 × 15 + 0,5 × 20
+  assert.equal(pedreiro.total, 750);
+  assert.equal(ins.find((i) => i.codigo === 'BLOCO')!.total, 750); // 12,5 × 15 × 4
+});
+
+test('planilha: mover Etapa leva as linhas de baixo junto e renumera tudo', async () => {
+  const { moverLinha, renumerar } = await import('../src/lib/engenharia.ts');
+  const nos = [
+    { id: 'obra', paiId: null, codigo: '1' },
+    { id: 'fund', paiId: 'obra', codigo: '1.1' },
+    { id: 'estacas', paiId: 'fund', codigo: '1.1.1' },
+    { id: 'blocos', paiId: 'fund', codigo: '1.1.2' },
+    { id: 'alv', paiId: 'obra', codigo: '1.2' },
+    { id: 'parede', paiId: 'alv', codigo: '1.2.1' },
+  ];
+  const desce = moverLinha(nos, 'fund', 'baixo')!;
+  assert.deepEqual(Object.fromEntries(desce), { obra: '1', alv: '1.1', parede: '1.1.1', fund: '1.2', estacas: '1.2.1', blocos: '1.2.2' });
+  const sobe = moverLinha(nos, 'blocos', 'cima')!;
+  assert.equal(sobe.get('blocos'), '1.1.1');
+  assert.equal(sobe.get('estacas'), '1.1.2');
+  assert.equal(moverLinha(nos, 'fund', 'cima'), null, 'primeira não sobe');
+  assert.equal(moverLinha(nos, 'alv', 'baixo'), null, 'última não desce');
+  assert.equal(moverLinha(nos, 'obra', 'cima'), null);
+  // Buracos de exclusão somem (1.3 vira 1.2; 1.10 vem depois de 1.9).
+  const r = renumerar([
+    { id: 'a', paiId: null, codigo: '1' },
+    { id: 'b', paiId: 'a', codigo: '1.1' },
+    { id: 'c', paiId: 'a', codigo: '1.3' },
+    { id: 'd', paiId: 'c', codigo: '1.3.10' },
+    { id: 'e', paiId: 'c', codigo: '1.3.9' },
+  ]);
+  assert.deepEqual(Object.fromEntries(r), { a: '1', b: '1.1', c: '1.2', e: '1.2.1', d: '1.2.2' });
+});

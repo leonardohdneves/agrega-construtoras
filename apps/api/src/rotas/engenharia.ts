@@ -10,7 +10,13 @@ import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import {
+  abcInsumos,
+  abcServicos,
   compararCodigo,
+  curvaAbc,
+  LIMITES_ABC,
+  moverLinha,
+  renumerar,
   erroMudarNivel,
   erroPaiPlanilha,
   erroServicoNaLinha,
@@ -1100,6 +1106,32 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true };
     });
 
+    /** Grava a nova numeração (em dois passos, por causa do código único por obra). */
+    async function gravarCodigos(c: Cliente, obraId: string, codigos: Map<string, string>) {
+      const atuais = (await c.query('SELECT id, codigo FROM eap_nos WHERE obra_id = $1', [obraId])).rows as { id: string; codigo: string }[];
+      const mudam = atuais.filter((n) => codigos.has(n.id) && codigos.get(n.id) !== n.codigo);
+      if (!mudam.length) return;
+      const ids = mudam.map((n) => n.id);
+      await c.query(`UPDATE eap_nos SET codigo = 'tmp-' || id::text WHERE id = ANY($1::uuid[])`, [ids]);
+      await c.query('UPDATE eap_nos n SET codigo = x.codigo FROM unnest($1::uuid[], $2::text[]) AS x(id, codigo) WHERE n.id = x.id', [ids, mudam.map((n) => codigos.get(n.id)!)]);
+    }
+
+    // Setas da planilha: a linha troca de lugar com a irmã de cima ou de baixo, levando junto as linhas de baixo dela.
+    app.post<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId/mover', async (req) => {
+      const d = z.object({ direcao: z.enum(['cima', 'baixo']) }).parse(req.body);
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`planilha:${obra.id}`]);
+        const nos = (await c.query('SELECT id, pai_id, codigo FROM eap_nos WHERE obra_id = $1', [obra.id])).rows.map((n) => ({ id: n.id as string, paiId: (n.pai_id as string | null) ?? null, codigo: n.codigo as string }));
+        if (!nos.some((n) => n.id === req.params.noId)) throw naoEncontrado('Linha da planilha');
+        const codigos = moverLinha(nos, req.params.noId, d.direcao);
+        if (!codigos) throw new ErroHttp(400, d.direcao === 'cima' ? 'Esta linha já é a primeira do seu grupo.' : 'Esta linha já é a última do seu grupo.');
+        await gravarCodigos(c, obra.id, codigos);
+      });
+      return { ok: true };
+    });
+
     app.delete<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId', async (req) => {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1109,35 +1141,54 @@ export function rotasEngenharia(banco: Banco) {
         if ((await c.query('SELECT 1 FROM eap_nos WHERE pai_id = $1 LIMIT 1', [no.id])).rowCount) throw new ErroHttp(409, 'Esta linha tem linhas abaixo dela. Exclua-as antes.');
         if ((await c.query('SELECT 1 FROM obra_necessidades WHERE eap_no_id = $1 LIMIT 1', [no.id])).rowCount) throw new ErroHttp(409, 'Esta linha tem insumos apropriados. Retire-os antes.');
         if ((await c.query('SELECT 1 FROM obra_atividades WHERE eap_no_id = $1 LIMIT 1', [no.id])).rowCount) throw new ErroHttp(409, 'Esta linha tem atividades no planejamento. Retire-as antes.');
-        // O serviço da Tarefa sai junto (orcamento_itens apaga em cascata com o nó).
+        // O serviço da Tarefa sai junto (orcamento_itens apaga em cascata com o nó). Depois, a numeração fecha o buraco.
         await c.query('DELETE FROM eap_nos WHERE id = $1', [no.id]);
+        const nos = (await c.query('SELECT id, pai_id, codigo FROM eap_nos WHERE obra_id = $1', [obra.id])).rows.map((n) => ({ id: n.id as string, paiId: (n.pai_id as string | null) ?? null, codigo: n.codigo as string }));
+        await gravarCodigos(c, obra.id, renumerar(nos));
       });
       return { ok: true };
     });
 
     // ---------------------------------------------------------------- relatório de orçamento
 
+    /** Insumos (já desdobrados) de cada serviço lançado na planilha, com o preço da obra. */
+    async function composicoesDaPlanilha(linhas: { servico: { itemId: string } | null }[]) {
+      const composicoes = new Map<string, InsumoComposicaoRel[]>();
+      const ids = [...new Set(linhas.flatMap((l) => (l.servico ? [l.servico.itemId] : [])))];
+      if (!ids.length) return composicoes;
+      const r = await banco.query(
+        `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos
+           FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id
+          WHERE ci.composicao_id = ANY($1::uuid[]) ORDER BY ii.descricao`,
+        [ids],
+      );
+      for (const k of r.rows) {
+        const l = composicoes.get(k.composicao_id) ?? [];
+        l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0 });
+        composicoes.set(k.composicao_id, l);
+      }
+      return composicoes;
+    }
+
+    // Curva ABC: serviços (preço com BDI) ou insumos (custo direto), do maior para o menor valor, com classes A, B e C.
+    app.get<{ Params: { id: string }; Querystring: { tipo?: string } }>('/obras/:id/relatorio-abc', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const insumos = req.query.tipo === 'insumos';
+      const linhas = await linhasPlanilha(banco, obra.id);
+      const itens = insumos ? abcInsumos(linhas, await composicoesDaPlanilha(linhas)) : abcServicos(linhas, Number(obra.bdi_percentual));
+      return {
+        tipo: insumos ? 'insumos' : 'servicos',
+        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
+        limites: LIMITES_ABC,
+        ...curvaAbc(itens),
+      };
+    });
+
     app.get<{ Params: { id: string }; Querystring: { tipo?: string } }>('/obras/:id/relatorio-orcamento', async (req) => {
       const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
       const analitico = req.query.tipo === 'analitico';
       const linhas = await linhasPlanilha(banco, obra.id);
-      const composicoes = new Map<string, InsumoComposicaoRel[]>();
-      if (analitico) {
-        const ids = [...new Set(linhas.flatMap((l) => (l.servico ? [l.servico.itemId] : [])))];
-        if (ids.length) {
-          const r = await banco.query(
-            `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos
-               FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id
-              WHERE ci.composicao_id = ANY($1::uuid[]) ORDER BY ii.descricao`,
-            [ids],
-          );
-          for (const k of r.rows) {
-            const l = composicoes.get(k.composicao_id) ?? [];
-            l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0 });
-            composicoes.set(k.composicao_id, l);
-          }
-        }
-      }
+      const composicoes = analitico ? await composicoesDaPlanilha(linhas) : new Map<string, InsumoComposicaoRel[]>();
       const rel = montarRelatorioOrcamento(linhas, Number(obra.bdi_percentual), analitico, composicoes);
       return {
         tipo: analitico ? 'analitico' : 'sintetico',
