@@ -2,13 +2,26 @@
 // a empresa de demonstração (Concreteira Modelo) com um usuário de cada perfil.
 import type { Banco } from './db.ts';
 import { emTransacao } from './db.ts';
-import { gerarHashSenha } from './lib/senha.ts';
+import { conferirSenha, gerarHashSenha } from './lib/senha.ts';
 import { CNPJ_DEMO, USUARIOS_DEMO } from './lib/demo.ts';
 
 export async function garantirAdmin(banco: Banco, email: string, senha: string, log = console.log): Promise<void> {
   if (!email || !senha) return;
-  const existe = await banco.query('SELECT 1 FROM usuarios WHERE lower(email) = lower($1) AND excluido_em IS NULL', [email]);
-  if (existe.rowCount) return;
+  const existe = (
+    await banco.query('SELECT id, senha_hash FROM usuarios WHERE lower(email) = lower($1) AND excluido_em IS NULL', [email])
+  ).rows[0];
+  if (existe) {
+    // As variáveis ADMIN_EMAIL/ADMIN_SENHA são a fonte da verdade do administrador: se a senha
+    // configurada mudou, o próximo deploy passa a aceitar a nova.
+    if (await conferirSenha(senha, existe.senha_hash)) return;
+    await banco.query('UPDATE usuarios SET senha_hash = $2, perfil = $3, empresa_id = NULL WHERE id = $1', [
+      existe.id,
+      await gerarHashSenha(senha),
+      'admin_sistema',
+    ]);
+    log('Senha do administrador do sistema atualizada.');
+    return;
+  }
   await banco.query(`INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil) VALUES (NULL, 'Administrador', $1, $2, 'admin_sistema')`, [
     email.toLowerCase(),
     await gerarHashSenha(senha),

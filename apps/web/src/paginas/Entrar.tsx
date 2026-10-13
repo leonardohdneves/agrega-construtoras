@@ -34,7 +34,7 @@ export function Entrar() {
       <div className="caixa">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           <Logo tamanho={36} />
-          <span className="muted">ERP para concreteiras</span>
+          <span className="muted">ERP para construtoras</span>
         </div>
         <form className="card form" onSubmit={aoEnviar} noValidate>
           <h1 style={{ fontSize: 26 }}>Entrar</h1>

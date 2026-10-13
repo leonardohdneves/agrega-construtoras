@@ -1,6 +1,6 @@
 # Agrega
 
-ERP para concreteiras: frota (betoneiras e bombas) e financeiro, com DRE gerencial.
+ERP para construtoras: obras, engenharia (orçamento, composições, planejamento), suprimentos e financeiro.
 
 ## Estrutura
 

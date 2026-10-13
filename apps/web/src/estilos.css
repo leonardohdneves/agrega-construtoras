@@ -432,7 +432,7 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 @page {
   size: A4 landscape;
   margin: 12mm 12mm 16mm;
-  @bottom-left { content: "agrega · ERP para concreteiras"; font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
+  @bottom-left { content: "agrega · ERP para construtoras"; font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
   @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
 }
 /* Produção */
@@ -707,7 +707,7 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 @page relatorio-retrato {
   size: A4 portrait;
   margin: 12mm 10mm 16mm;
-  @bottom-left { content: "agrega · ERP para concreteiras"; font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
+  @bottom-left { content: "agrega · ERP para construtoras"; font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
   @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; }
 }
 @media print {

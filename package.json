@@ -2,7 +2,7 @@
   "name": "agrega",
   "private": true,
   "version": "0.1.0",
-  "description": "Agrega - ERP para concreteiras",
+  "description": "Agrega - ERP para construtoras",
   "workspaces": ["apps/api", "apps/web"],
   "engines": { "node": ">=22.18" },
   "scripts": {
