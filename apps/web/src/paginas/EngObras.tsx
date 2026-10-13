@@ -14,7 +14,11 @@ export type Obra = {
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
   empresaGrupoId?: string | null; empresaGrupoNome?: string | null;
 };
-export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number };
+export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null };
+
+type ClasseComponente = 'insumo' | 'servico' | 'equipamento';
+const ROTULO_CLASSE: Record<ClasseComponente, string> = { insumo: 'Insumo', servico: 'Serviço', equipamento: 'Equipamento' };
+const classeDoItem = (tipo: 'insumo' | 'composicao', grupo?: string | null): ClasseComponente => (tipo === 'composicao' ? 'servico' : /EQUIPAMENT/i.test(grupo ?? '') ? 'equipamento' : 'insumo');
 export type No = { id: string; paiId: string | null; nivel: Nivel; codigo: string; descricao: string; itens: number; subtotal: number | null };
 type LinhaOrc = { id: string; eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null; itemId: string; tipo: string; codigo: string; descricao: string; unidade: string; editado: boolean; quantidade: number; precoUnitario: number | null; total: number };
 export type Orcamento = { nivelApropriacao: Nivel; bdiPercentual: number; subtotal: number; bdi: number; total: number; linhas: LinhaOrc[] };
@@ -610,7 +614,7 @@ function AvisoTabelaPropria({ modo, setErro, aoCriada, aoCancelar }: { modo: 'co
   );
 }
 
-type CompEditor = { insumoId: string; codigo: string; descricao: string; unidade: string; coeficiente: string; preco: string };
+type CompEditor = { insumoId: string; classe: ClasseComponente; codigo: string; descricao: string; unidade: string; coeficiente: string; preco: string };
 const numCampo = (v: number | null | undefined) => (v === null || v === undefined ? '' : String(v).replace('.', ','));
 
 /** Editor de composição: renomear, trocar insumos, coeficientes e preços. Salva na tabela própria escolhida. */
@@ -623,32 +627,39 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
   const [tabelaId, setTabelaId] = useState(tabelas[0]?.id ?? '');
   const [comps, setComps] = useState<CompEditor[]>([]);
   const [insumos, setInsumos] = useState<ItemObra[]>([]);
+  const [servicos, setServicos] = useState<ItemObra[]>([]);
   const [novo, setNovo] = useState({ insumoId: '', coeficiente: '' });
   const [ocupado, setOcupado] = useState(false);
 
   useEffect(() => {
     Promise.all([
-      api<{ componentes: { id: string; codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null }[] }>(`/eng/obras/${obraId}/itens/${item.id}`),
+      api<{ componentes: { id: string; classe: ClasseComponente; codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null }[] }>(`/eng/obras/${obraId}/itens/${item.id}`),
       api<{ itens: ItemObra[] }>(`/eng/obras/${obraId}/itens?tipo=insumo`),
+      api<{ itens: ItemObra[] }>(`/eng/obras/${obraId}/itens?tipo=composicao`),
     ])
-      .then(([det, ins]) => {
-        setComps(det.componentes.map((k) => ({ insumoId: k.id, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: numCampo(k.coeficiente), preco: numCampo(k.precoUnitario) })));
-        setInsumos(ins.itens.filter((i) => i.tipo === 'insumo'));
+      .then(([det, ins, sv]) => {
+        setComps(det.componentes.map((k) => ({ insumoId: k.id, classe: k.classe, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: numCampo(k.coeficiente), preco: numCampo(k.precoUnitario) })));
+        setInsumos(ins.itens);
+        // Serviços que podem entrar aqui: os salvos na tabela própria escolhida, exceto o próprio serviço em edição.
+        setServicos(sv.itens.filter((x) => x.id !== item.id));
       })
       .catch((e) => setErro((e as Error).message))
       .finally(() => setCarregando(false));
   }, [obraId, item.id]);
 
   const custo = comps.reduce((s, k) => s + (lerNumero(k.coeficiente) ?? 0) * (lerNumero(k.preco) ?? 0), 0);
+  const servicosDaTabela = servicos.filter((x) => x.origemTabelaId === tabelaId);
   const disponiveis = insumos.filter((i) => !comps.some((k) => k.insumoId === i.id));
+  const servicosDisponiveis = servicosDaTabela.filter((x) => !comps.some((k) => k.insumoId === x.id));
 
   function incluir() {
-    const ins = insumos.find((i) => i.id === novo.insumoId);
+    const ins = [...insumos, ...servicosDaTabela].find((i) => i.id === novo.insumoId);
     const q = lerNumero(novo.coeficiente);
-    if (!ins) return setErro('Escolha o insumo.');
-    if (q === null || q <= 0) return setErro('Informe o coeficiente do insumo.');
+    if (!ins) return setErro('Escolha o insumo ou o serviço.');
+    if (q === null || q <= 0) return setErro('Informe o coeficiente.');
     setErro('');
-    setComps([...comps, { insumoId: ins.id, codigo: ins.codigo, descricao: ins.descricao, unidade: ins.unidade, coeficiente: numCampo(q), preco: numCampo(ins.preco) }]);
+    const classe = classeDoItem(ins.tipo, ins.grupo);
+    setComps([...comps, { insumoId: ins.id, classe, codigo: ins.codigo, descricao: ins.descricao, unidade: ins.unidade, coeficiente: numCampo(q), preco: numCampo(ins.preco) }]);
     setNovo({ insumoId: '', coeficiente: '' });
   }
 
@@ -661,13 +672,14 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
     setErro('');
     if (nome.trim().length < 2) return setErro('Dê um nome ao serviço.');
     if (!tabelaId) return setErro('Escolha a tabela própria.');
-    if (!comps.length) return setErro('O serviço precisa de pelo menos um insumo.');
+    if (!comps.length) return setErro('O serviço precisa de pelo menos um insumo ou serviço.');
     const componentes: { insumoId: string; coeficiente: number; precoUnitario?: number }[] = [];
     for (const k of comps) {
       const q = lerNumero(k.coeficiente);
       if (q === null || q <= 0) return setErro(`Coeficiente inválido em ${k.descricao}.`);
-      const p = k.preco.trim() ? lerNumero(k.preco) : null;
-      if (k.preco.trim() && (p === null || p < 0)) return setErro(`Preço inválido em ${k.descricao}.`);
+      // Serviço não tem preço próprio: o custo dele vem da composição.
+      const p = k.classe !== 'servico' && k.preco.trim() ? lerNumero(k.preco) : null;
+      if (k.classe !== 'servico' && k.preco.trim() && (p === null || p < 0)) return setErro(`Preço inválido em ${k.descricao}.`);
       componentes.push({ insumoId: k.insumoId, coeficiente: q, ...(p !== null ? { precoUnitario: p } : {}) });
     }
     setOcupado(true);
@@ -689,7 +701,7 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
     <form className="card form" onSubmit={salvar}>
       <h2 style={{ margin: 0 }}>{modo === 'copia' ? 'Cópia editável do serviço' : 'Editar serviço'}</h2>
       <p className="muted" style={{ margin: 0 }}>
-        {modo === 'copia' ? `Copiando ${item.codigo}. ` : ''}Altere o nome, a unidade, os insumos, os coeficientes e os preços. Ao salvar, a composição vai para a tabela própria escolhida.
+        {modo === 'copia' ? `Copiando ${item.codigo}. ` : ''}Altere o nome, a unidade, os insumos e serviços, os coeficientes e os preços. Ao salvar, a composição vai para a tabela própria escolhida.
       </p>
       {carregando ? <p className="muted">Carregando composição…</p> : (
         <>
@@ -720,7 +732,8 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
               <thead>
                 <tr>
                   <th>Código</th>
-                  <th>Insumo</th>
+                  <th>Tipo</th>
+                  <th>Descrição</th>
                   <th>Unid.</th>
                   <th className="num">Coeficiente</th>
                   <th className="num">Preço unit.</th>
@@ -732,10 +745,15 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
                 {comps.map((k, i) => (
                   <tr key={k.insumoId}>
                     <td>{k.codigo}</td>
+                    <td className="small">{ROTULO_CLASSE[k.classe]}</td>
                     <td>{k.descricao}</td>
                     <td>{k.unidade}</td>
                     <td className="num"><input aria-label={`Coeficiente de ${k.descricao}`} style={{ width: 110 }} inputMode="decimal" value={k.coeficiente} onChange={(e) => atualizar(i, 'coeficiente', e.target.value)} /></td>
-                    <td className="num"><input aria-label={`Preço de ${k.descricao}`} style={{ width: 110 }} inputMode="decimal" value={k.preco} onChange={(e) => atualizar(i, 'preco', e.target.value)} /></td>
+                    <td className="num">
+                      {k.classe === 'servico'
+                        ? <span title="O custo do serviço vem da composição dele">{formatarMoeda(lerNumero(k.preco) ?? 0)}</span>
+                        : <input aria-label={`Preço de ${k.descricao}`} style={{ width: 110 }} inputMode="decimal" value={k.preco} onChange={(e) => atualizar(i, 'preco', e.target.value)} />}
+                    </td>
                     <td className="num">{formatarMoeda((lerNumero(k.coeficiente) ?? 0) * (lerNumero(k.preco) ?? 0))}</td>
                     <td><button className="btn btn-link" type="button" onClick={() => setComps(comps.filter((_, n) => n !== i))}>Remover</button></td>
                   </tr>
@@ -743,7 +761,7 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5} className="forte">Custo unitário do serviço</td>
+                  <td colSpan={6} className="forte">Custo unitário do serviço</td>
                   <td className="num forte">{formatarMoeda(custo)}</td>
                   <td />
                 </tr>
@@ -753,10 +771,17 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, alignItems: 'end' }}>
             <div className="campo" style={{ gridColumn: 'span 2' }}>
-              <label htmlFor="es-novo">Incluir insumo da obra</label>
+              <label htmlFor="es-novo">Incluir insumo ou serviço da obra</label>
               <select id="es-novo" value={novo.insumoId} onChange={(e) => setNovo({ ...novo, insumoId: e.target.value })}>
                 <option value="">Escolha…</option>
-                {disponiveis.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+                <optgroup label="Insumos">
+                  {disponiveis.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+                </optgroup>
+                {servicosDisponiveis.length > 0 && (
+                  <optgroup label="Serviços desta tabela própria">
+                    {servicosDisponiveis.map((x) => <option key={x.id} value={x.id}>{x.codigo} · {x.descricao}</option>)}
+                  </optgroup>
+                )}
               </select>
             </div>
             <div className="campo">
@@ -764,10 +789,10 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
               <input id="es-novo-coef" inputMode="decimal" value={novo.coeficiente} onChange={(e) => setNovo({ ...novo, coeficiente: e.target.value })} />
             </div>
             <div>
-              <button className="btn" type="button" onClick={incluir}>Incluir insumo</button>
+              <button className="btn" type="button" onClick={incluir}>Incluir</button>
             </div>
           </div>
-          <p className="small muted" style={{ margin: 0 }}>Insumo novo que não esteja na obra: cadastre antes em Insumos.</p>
+          <p className="small muted" style={{ margin: 0 }}>Insumo novo que não esteja na obra: cadastre antes em Insumos. Serviço só entra depois de salvo nesta tabela própria.</p>
         </>
       )}
       <div className="acoes">

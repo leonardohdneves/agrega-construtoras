@@ -31,6 +31,8 @@ import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, aliquotaSim
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
+/** Classe de um componente da composição: serviço (composição), equipamento (grupo de equipamentos) ou insumo. */
+const classeComponente = (tipo: string, grupo: string | null | undefined) => (tipo === 'composicao' ? 'servico' : /EQUIPAMENT/i.test(grupo ?? '') ? 'equipamento' : 'insumo');
 const reais = (c: unknown) => (c === null || c === undefined ? null : Math.round(Number(c)) / 100);
 const cent = (r: number) => Math.round(r * 100);
 /** Preço digitado (número ou texto pt-BR/ponto) em centavos; null se inválido. */
@@ -59,10 +61,9 @@ const pct = z.number().min(0, 'Os percentuais do BDI não podem ser negativos.')
 const mes = z.string().regex(/^\d{4}-\d{2}$/, 'Mês de referência no formato AAAA-MM.').optional().nullable().transform((v) => v || null);
 
 /** Preço de um item da obra: insumo tem preço próprio; composição é a soma dos insumos × coeficiente. */
-const precoObra = (a: string) =>
-  `(CASE WHEN ${a}.tipo = 'insumo' THEN ${a}.preco_centavos::numeric ELSE coalesce((SELECT sum(ci.coeficiente * ii.preco_centavos) FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id WHERE ci.composicao_id = ${a}.id), 0) END)`;
+const precoObra = (a: string) => `custo_obra_item(${a}.id)`;
 /** Mesmo cálculo para os itens da tabela de referência. */
-const precoRef = (a: string) =>
+const precoRef = (a: string) => `custo_ref_item(${a}.id)`;
   `(CASE WHEN ${a}.tipo = 'insumo' THEN ${a}.preco_centavos::numeric ELSE coalesce((SELECT sum(rc.coeficiente * ri.preco_centavos) FROM ref_composicao_insumos rc JOIN ref_itens ri ON ri.id = rc.insumo_id WHERE rc.composicao_id = ${a}.id), 0) END)`;
 
 // Tabelas SINAPI em texto passam de 2 MB (limite geral do servidor).
@@ -709,13 +710,14 @@ export function rotasEngenharia(banco: Banco) {
       if (!i) throw naoEncontrado('Item');
       const comp = (
         await banco.query(
-          `SELECT ii.id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id WHERE ci.composicao_id = $1 ORDER BY ii.codigo`,
+          `SELECT ii.id, ii.tipo, ii.codigo, ii.descricao, ii.unidade, ii.grupo, ii.origem_tabela_id, ci.coeficiente, ${precoObra('ii')} AS custo
+             FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id WHERE ci.composicao_id = $1 ORDER BY ii.tipo, ii.codigo`,
           [i.id],
         )
       ).rows;
       return {
         item: itemObraPublico(i),
-        componentes: comp.map((k) => ({ id: k.id, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) })),
+        componentes: comp.map((k) => ({ id: k.id, tipo: k.tipo as string, classe: classeComponente(k.tipo, k.grupo), codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.custo), origemTabelaId: (k.origem_tabela_id as string | null) ?? null })),
       };
     });
 
@@ -847,14 +849,29 @@ export function rotasEngenharia(banco: Banco) {
 
         const ids = d.componentes.map((k) => k.insumoId);
         if (new Set(ids).size !== ids.length) throw new ErroHttp(400, 'Um insumo aparece mais de uma vez no serviço.');
-        const insumos = (await c.query(`SELECT * FROM obra_itens WHERE obra_id = $1 AND tipo = 'insumo' AND id = ANY($2::uuid[])`, [obra.id, ids])).rows;
-        if (insumos.length !== ids.length) throw new ErroHttp(400, 'Algum insumo não está nesta obra.');
-        const porId = new Map(insumos.map((x) => [x.id as string, x]));
+        // Componentes: insumos da obra e serviços (composições) já salvos nesta mesma tabela própria.
+        const itens = (await c.query(`SELECT * FROM obra_itens WHERE obra_id = $1 AND id = ANY($2::uuid[])`, [obra.id, ids])).rows;
+        if (itens.length !== ids.length) throw new ErroHttp(400, 'Algum insumo ou serviço não está nesta obra.');
+        for (const x of itens) {
+          if (x.tipo !== 'composicao') continue;
+          if (d.modo === 'edicao' && x.id === origem.id) throw new ErroHttp(400, 'Um serviço não pode entrar na própria composição.');
+          if (x.origem_tabela_id !== tabela.id) throw new ErroHttp(400, `Salve o serviço ${x.codigo} ${x.descricao} nesta tabela própria antes de incluí-lo em outro serviço.`);
+          // Ciclo: o serviço incluído não pode, direta ou indiretamente, usar o serviço que está sendo editado.
+          if (d.modo === 'edicao' && (await c.query(
+            `WITH RECURSIVE arvore AS (
+               SELECT insumo_id FROM obra_composicao_insumos WHERE composicao_id = $1
+               UNION SELECT ci.insumo_id FROM obra_composicao_insumos ci JOIN arvore a ON ci.composicao_id = a.insumo_id)
+             SELECT 1 FROM arvore WHERE insumo_id = $2 LIMIT 1`, [x.id, origem.id])).rowCount)
+            throw new ErroHttp(400, `O serviço ${x.codigo} já usa este serviço. Isso criaria um ciclo na composição.`);
+        }
+        const insumos = itens.filter((x) => x.tipo === 'insumo');
+        const porId = new Map(itens.map((x) => [x.id as string, x]));
 
         // Preço novo de insumo: atualiza o insumo da obra; o mesmo preço vai para a tabela própria.
         const precoFinal = new Map<string, number | null>();
         for (const k of d.componentes) {
           const ins = porId.get(k.insumoId)!;
+          if (ins.tipo !== 'insumo') { precoFinal.set(ins.id, null); continue; }
           const novo = k.precoUnitario === undefined || k.precoUnitario === null ? null : precoCentavos(k.precoUnitario);
           if (k.precoUnitario !== undefined && k.precoUnitario !== null && novo === null) throw new ErroHttp(400, `Preço inválido para ${ins.descricao}.`);
           if (novo !== null && novo !== Number(ins.preco_centavos)) {
@@ -896,6 +913,12 @@ export function rotasEngenharia(banco: Banco) {
           )
         ).rows[0].id as string;
         const idRef = new Map<string, string>();
+        for (const sv of itens.filter((x) => x.tipo === 'composicao')) {
+          // O serviço incluído já está nesta tabela própria, com o mesmo código.
+          const r = await c.query(`SELECT id FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao' AND codigo = $2`, [tabela.id, sv.codigo]);
+          if (!r.rowCount) throw new ErroHttp(400, `Salve o serviço ${sv.codigo} nesta tabela própria antes de incluí-lo em outro serviço.`);
+          idRef.set(sv.id as string, r.rows[0].id as string);
+        }
         for (const ins of insumos) {
           const r = await c.query(
             `INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos) VALUES ($1,'insumo',$2,$3,$4,$5,$6)
@@ -1596,6 +1619,7 @@ function itemObraPublico(i: Record<string, any>) {
     editado: !!i.editado,
     origem: i.origem_fonte ? `${i.origem_versao ?? i.origem_fonte}` : null,
     componentes: Number(i.componentes ?? 0),
+    origemTabelaId: (i.origem_tabela_id as string | null) ?? null,
     noOrcamento: Number(i.no_orcamento ?? 0) > 0,
   };
 }
