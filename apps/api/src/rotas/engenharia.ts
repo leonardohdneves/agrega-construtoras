@@ -64,7 +64,6 @@ const mes = z.string().regex(/^\d{4}-\d{2}$/, 'Mês de referência no formato AA
 const precoObra = (a: string) => `custo_obra_item(${a}.id)`;
 /** Mesmo cálculo para os itens da tabela de referência. */
 const precoRef = (a: string) => `custo_ref_item(${a}.id)`;
-  `(CASE WHEN ${a}.tipo = 'insumo' THEN ${a}.preco_centavos::numeric ELSE coalesce((SELECT sum(rc.coeficiente * ri.preco_centavos) FROM ref_composicao_insumos rc JOIN ref_itens ri ON ri.id = rc.insumo_id WHERE rc.composicao_id = ${a}.id), 0) END)`;
 
 // Tabelas SINAPI em texto passam de 2 MB (limite geral do servidor).
 const LIMITE_ARQUIVO = 60_000_000;
