@@ -6,14 +6,20 @@ test('módulo de cada rota', () => {
   assert.equal(moduloDaRota('/api/frota/veiculos?x=1'), 'frota');
   assert.equal(moduloDaRota('/api/rel/financeiro'), 'financeiro');
   assert.equal(moduloDaRota('/api/rel/indicadores'), 'gerencial');
+  assert.equal(moduloDaRota('/api/eng/obras/1'), 'engenharia');
   assert.equal(moduloDaRota('/api/auth/eu'), null);
   assert.equal(moduloDaRota('/api/empresa'), null);
 });
 
 test('módulos efetivos', () => {
-  assert.equal(modulosEfetivos('dono', ['frota']).length, 9);
-  assert.deepEqual(modulosEfetivos('operador_usina', null), ['producao']);
-  assert.deepEqual(modulosEfetivos('gestor', ['financeiro', 'frota']), ['financeiro', 'frota']);
+  assert.equal(modulosEfetivos('dono', ['frota']).length, 7);
+  assert.deepEqual(modulosEfetivos('operador_usina', null), []);
+  // módulos da concreteira gravados num usuário antigo não valem mais
+  assert.deepEqual(modulosEfetivos('gestor', ['financeiro', 'frota']), ['financeiro']);
+  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'suprimentos', 'gerencial', 'administrativo']);
+  assert.deepEqual(modulosEfetivos('orcamentista', null), ['engenharia', 'comercial']);
+  assert.deepEqual(modulosEfetivos('engenheiro_obra', null), ['engenharia']);
+  assert.deepEqual(modulosEfetivos('comprador', null), ['suprimentos']);
 });
 
 test('regras de acesso', () => {
@@ -21,21 +27,14 @@ test('regras de acesso', () => {
   // padrão: o Financeiro é só do dono e do perfil Financeiro
   assert.equal(g('dono', null, ['dono', 'gestor'], '/api/fin/lancamentos'), true);
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/fin/lancamentos'), false);
-  assert.equal(g('gestor', ['financeiro', 'frota'], ['dono', 'gestor'], '/api/fin/lancamentos'), false);
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/fin/lancamentos', 'POST'), true);
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/fin/resumo'), true);
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/fin/contas'), true);
   assert.equal(g('motorista', null, ['dono', 'gestor'], '/api/fin/lancamentos'), false);
-  // gestor sem financeiro
-  assert.equal(g('gestor', ['frota'], ['dono', 'gestor'], '/api/fin/lancamentos'), false);
   // consulta de cadastro liberada mesmo sem o módulo
   assert.equal(g('gestor', ['financeiro'], ['dono', 'gestor'], '/api/frota/veiculos'), true);
   assert.equal(g('gestor', ['financeiro'], ['dono', 'gestor'], '/api/frota/veiculos', 'POST'), false);
-  // operador com Suprimentos a mais: acesso completo
-  assert.equal(g('operador_usina', ['producao', 'suprimentos'], ['dono', 'gestor'], '/api/sup/pedidos', 'POST'), true);
-  // motorista no módulo padrão continua limitado pelo perfil da rota
   assert.equal(g('motorista', null, ['dono', 'gestor'], '/api/frota/os'), false);
-  assert.equal(g('motorista', null, ['dono', 'gestor', 'motorista'], '/api/frota/abastecimentos', 'POST'), true);
   // perfis novos: acesso pelos módulos
   assert.equal(g('vendedor', null, ['dono', 'gestor', 'vendedor'], '/api/com/vendas', 'POST'), true);
   assert.equal(g('vendedor', null, ['dono', 'gestor'], '/api/ger/producao-equipe'), false);
@@ -45,6 +44,35 @@ test('regras de acesso', () => {
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/ger/dre'), true);
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/prod/cargas', 'POST'), false);
   assert.equal(g('operador_usina', null, ['dono', 'gestor', 'vendedor'], '/api/com/vendas'), false);
+  // construtora: frota, produção e qualidade saíram (só as listas respondem)
+  assert.equal(g('dono', null, ['dono', 'gestor'], '/api/frota/os'), false);
+  assert.equal(g('dono', null, ['dono', 'gestor'], '/api/prod/cargas', 'POST'), false);
+  assert.equal(g('dono', null, ['dono', 'gestor'], '/api/qual/amostras'), false);
+  assert.equal(g('dono', null, ['dono', 'gestor'], '/api/prod/insumos'), true);
+  // engenharia como módulo
+  assert.equal(g('dono', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), true);
+  assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), true);
+  assert.equal(g('gestor', ['suprimentos'], ['dono', 'gestor'], '/api/eng/obras'), false);
+  assert.equal(g('vendedor', null, ['dono', 'gestor'], '/api/eng/obras'), false);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras'), false);
+  // orçamentista: engenharia e comercial; nada de compras nem caixa
+  assert.equal(g('orcamentista', null, ['dono', 'gestor'], '/api/eng/obras/1/planilha', 'POST'), true);
+  assert.equal(g('orcamentista', null, ['dono', 'gestor', 'vendedor'], '/api/com/propostas', 'POST'), true);
+  assert.equal(g('orcamentista', null, ['dono', 'gestor'], '/api/sup/pedidos', 'POST'), false);
+  assert.equal(g('orcamentista', null, ['dono', 'gestor'], '/api/fin/lancamentos'), false);
+  // comprador: suprimentos
+  assert.equal(g('comprador', null, ['dono', 'gestor'], '/api/sup/pedidos', 'POST'), true);
+  assert.equal(g('comprador', null, ['dono', 'gestor'], '/api/eng/obras'), false);
+  assert.equal(g('comprador', null, ['dono', 'gestor'], '/api/fin/lancamentos'), false);
+  // engenheiro de obra: engenharia, contratos e medições (a rota limita às obras dele)
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/eng/obras/1/planejamento', 'PUT'), true);
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/sup/contratos', 'POST'), true);
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/sup/medicoes/9'), true);
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/sup/pedidos', 'POST'), false);
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/sup/autorizacoes'), false);
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/fin/plano-contas'), true);
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/fin/lancamentos'), false);
+  assert.equal(g('engenheiro_obra', null, ['dono', 'gestor'], '/api/com/propostas'), false);
   // rota comum
   assert.equal(g('laboratorista', ['qualidade'], [], '/api/auth/eu'), true);
 });

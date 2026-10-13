@@ -19,7 +19,7 @@ const RANKINGS: [string, string][] = [
   ['vendedores_m3', 'Vendedores · m³ entregues'],
   ['vendedores_valor', 'Vendedores · valor vendido'],
 ];
-const PERFIS: Perfil[] = ['gestor', 'financeiro', 'administrativo', 'vendedor', 'operador_usina', 'laboratorista', 'motorista'];
+const PERFIS: Perfil[] = ['gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor'];
 const MEDALHA = ['1º', '2º', '3º'];
 
 function usePainelMural() {

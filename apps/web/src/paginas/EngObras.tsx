@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
 import { ConferenciaComposicao, type DetalheComposicao, type Tabela } from './EngTabelas';
 import { rotuloEmpresaGrupo, type EmpresaGrupo } from './EmpresasGrupo';
+import { useSessao } from '../sessao';
 
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
@@ -13,7 +14,10 @@ export type Obra = {
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
   empresaGrupoId?: string | null; empresaGrupoNome?: string | null;
+  /** Engenheiros de obra responsáveis: só eles (além de dono, gestor e orçamentista) enxergam a obra. */
+  responsaveis?: { id: string; nome: string }[];
 };
+type Engenheiro = { id: string; nome: string; email: string; ativo: boolean };
 export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null };
 
 type ClasseComponente = 'insumo' | 'servico' | 'equipamento';
@@ -33,6 +37,8 @@ export function EngObras() {
   const [erro, setErro] = useState('');
   const [nova, setNova] = useState(false);
   const navegar = useNavigate();
+  const { usuario } = useSessao();
+  const engenheiro = usuario?.perfil === 'engenheiro_obra';
   const carregar = () => api<{ obras: Obra[] }>('/eng/obras').then((r) => setObras(r.obras)).catch((e) => setErro((e as Error).message));
   useEffect(() => {
     carregar();
@@ -43,16 +49,22 @@ export function EngObras() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Obras</h1>
-          <span className="muted">Cadastro de obras com centro de custo, nível de apropriação e BDI.</span>
+          <span className="muted">{engenheiro ? 'Obras sob a sua responsabilidade.' : 'Cadastro de obras com centro de custo, nível de apropriação e BDI.'}</span>
         </div>
-        <div className="acoes">
-          <button className="btn btn-primario" type="button" onClick={() => setNova(!nova)} aria-expanded={nova}>{nova ? 'Fechar' : 'Nova obra'}</button>
-        </div>
+        {!engenheiro && (
+          <div className="acoes">
+            <button className="btn btn-primario" type="button" onClick={() => setNova(!nova)} aria-expanded={nova}>{nova ? 'Fechar' : 'Nova obra'}</button>
+          </div>
+        )}
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {nova && <FormObra aoSalvar={(o) => navegar(`/eng/obras/${o.id}`)} />}
       {obras === null && !erro && <p className="muted">Carregando…</p>}
-      {obras?.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhuma obra cadastrada.</p></div>}
+      {obras?.length === 0 && (
+        <div className="card">
+          <p className="muted" style={{ margin: 0 }}>{engenheiro ? 'Nenhuma obra atribuída a você ainda. Peça ao dono ou ao gestor para marcar você como responsável na obra.' : 'Nenhuma obra cadastrada.'}</p>
+        </div>
+      )}
       {obras && obras.length > 0 && (
         <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
           <table className="tabela">
@@ -147,8 +159,12 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [empresasGrupo, setEmpresasGrupo] = useState<EmpresaGrupo[]>([]);
+  // Engenheiros de obra da empresa; null = este usuário não atribui responsáveis.
+  const [engenheiros, setEngenheiros] = useState<Engenheiro[] | null>(null);
+  const [responsaveis, setResponsaveis] = useState<string[]>(() => (inicial?.responsaveis ?? []).map((r) => r.id));
   useEffect(() => {
     api<{ empresas: EmpresaGrupo[] }>('/empresa/grupo').then((r) => setEmpresasGrupo(r.empresas.filter((x) => x.ativo))).catch(() => setEmpresasGrupo([]));
+    api<{ engenheiros: Engenheiro[] }>('/eng/engenheiros').then((r) => setEngenheiros(r.engenheiros)).catch(() => setEngenheiros(null));
   }, []);
 
   async function salvar(e: FormEvent) {
@@ -169,6 +185,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
       nivelApropriacao: d.nivelApropriacao,
       bdiModo: d.bdiModo,
       ...(d.bdiModo === 'calculado' ? { bdiParametros: paramsNumericos } : { bdiPercentual: lerNumero(d.bdi) ?? 0 }),
+      ...(engenheiros ? { responsaveis } : {}),
     };
     try {
       const r = await api<{ obra: Obra }>(editando ? `/eng/obras/${inicial!.id}` : '/eng/obras', { metodo: editando ? 'PUT' : 'POST', corpo });
@@ -267,6 +284,28 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
           ))}
         </div>
       )}
+      {engenheiros && (
+        <fieldset className="campo" style={{ border: 0, padding: 0, margin: 0 }}>
+          <legend style={{ fontWeight: 600, marginBottom: 6 }}>Engenheiros de obra responsáveis</legend>
+          {engenheiros.length ? (
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px' }}>
+              {engenheiros.map((e) => (
+                <label key={e.id} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontWeight: 400 }}>
+                  <input
+                    type="checkbox"
+                    checked={responsaveis.includes(e.id)}
+                    onChange={(ev) => setResponsaveis(ev.target.checked ? [...responsaveis, e.id] : responsaveis.filter((x) => x !== e.id))}
+                  />
+                  {e.nome}{!e.ativo && <span className="small muted"> (inativo)</span>}
+                </label>
+              ))}
+            </div>
+          ) : (
+            <span className="small muted">Nenhum usuário com o perfil Engenheiro de obra. Cadastre em Configurações › Usuários.</span>
+          )}
+          <span className="small muted">O engenheiro de obra só vê as obras marcadas aqui, com os contratos e as medições delas.</span>
+        </fieldset>
+      )}
       <span className="ajuda">
         O nível define onde o orçamento é lançado: <b>Obra</b> (sem EAP), <b>Etapa</b>, <b>Subetapa</b> ou <b>Tarefa</b>. Depois de haver itens no orçamento, o nível só muda após removê-los.
       </span>
@@ -280,6 +319,9 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
 
 export function EngObraDetalhe() {
   const { id } = useParams();
+  const { usuario } = useSessao();
+  // O cadastro da obra (nome, BDI, responsáveis) é do dono, do gestor e do orçamentista.
+  const editaCadastro = usuario?.perfil !== 'engenheiro_obra';
   const [obra, setObra] = useState<Obra | null>(null);
   const [itens, setItens] = useState<ItemObra[]>([]);
   const [nos, setNos] = useState<No[]>([]);
@@ -309,6 +351,7 @@ export function EngObraDetalhe() {
           <h1>{obra.codigo} · {obra.nome}</h1>
           <span className="muted">
             Nível {ROTULO_NIVEL[obra.nivelApropriacao]} · BDI {String(obra.bdiPercentual).replace('.', ',')}% · Empresa: {obra.empresaGrupoNome ?? 'empresa logada'} · Centro de custo: {obra.centroCustoNome ?? '—'}
+            {obra.responsaveis?.length ? ` · Engenheiros: ${obra.responsaveis.map((r) => r.nome).join(', ')}` : ''}
           </span>
         </div>
         <div className="acoes">
@@ -316,7 +359,7 @@ export function EngObraDetalhe() {
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      <FormObra inicial={obra} aoSalvar={() => recarregar()} />
+      {editaCadastro && <FormObra key={obra.id} inicial={obra} aoSalvar={() => recarregar()} />}
     </>
   );
 }

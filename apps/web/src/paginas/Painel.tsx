@@ -50,7 +50,7 @@ type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: Consum
 type Aba = 'geral' | 'frota' | 'financeiro' | 'indicadores' | 'obras';
 const ABAS: { id: Aba; texto: string; soDono?: boolean; soConstrutora?: boolean }[] = [
   { id: 'geral', texto: 'Geral' },
-  { id: 'obras', texto: 'Obras', soDono: true, soConstrutora: true },
+  { id: 'obras', texto: 'Obras', soConstrutora: true },
   { id: 'frota', texto: 'Frota' },
   { id: 'financeiro', texto: 'Financeiro' },
   { id: 'indicadores', texto: 'Indicadores', soDono: true },
@@ -556,12 +556,13 @@ function PainelGestao() {
   const [params, setParams] = useSearchParams();
   const { usuario } = useSessao();
   const dono = usuario?.perfil === 'dono';
-  // Na construtora o painel do dono mostra Obras no lugar de Frota; por isso o módulo frota não entra nele.
+  // Na construtora o painel mostra Obras (para quem tem Engenharia) no lugar de Frota.
   const construtora = lerEscolha() === 'construtora';
   const frotaOk = temModulo(usuario, 'frota') && !construtora;
+  const engOk = construtora && temModulo(usuario, 'engenharia');
   const finOk = temModulo(usuario, 'financeiro');
-  const abas = ABAS.filter((a) => (!a.soDono || dono) && (!a.soConstrutora || (construtora && dono)) && (a.id !== 'frota' || frotaOk) && (a.id !== 'financeiro' || finOk));
-  const padrao: Aba = construtora && dono ? 'obras' : 'geral';
+  const abas = ABAS.filter((a) => (!a.soDono || dono) && (!a.soConstrutora || engOk) && (a.id !== 'frota' || frotaOk) && (a.id !== 'financeiro' || finOk));
+  const padrao: Aba = engOk ? 'obras' : 'geral';
   const aba = (abas.some((a) => a.id === params.get('aba')) ? params.get('aba') : padrao) as Aba;
   const [d, setD] = useState<Dados>({ frota: null, fin: null, consumo: [], manut: [], erro: '' });
 

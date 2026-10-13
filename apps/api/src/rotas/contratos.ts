@@ -10,6 +10,7 @@ import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { dispensaAprovacao, lerRegras, podeAprovar, proximoNumero, textoRegras } from '../lib/aprovacao.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { centrosPermitidos, ehEngenheiroDeObra } from '../lib/obras-acesso.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -557,6 +558,35 @@ async function cancelarContasAPagar(c: Cliente, a: Record<string, any>, usuarioI
 export function rotasContratos(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
+    // Engenheiro de obra: só contratos e medições lançados no centro de custo das obras atribuídas a ele.
+    app.addHook('preHandler', async (req) => {
+      if (!ehEngenheiroDeObra(req.usuario)) return;
+      const empresaId = empresaDo(req);
+      const centros = await centrosPermitidos(banco, empresaId, req.usuario);
+      const caminho = req.url.split('?')[0].replace(/^\/api\/sup/, '');
+      const corpo = (req.body ?? {}) as { centroCustoId?: string | null; contratoId?: string };
+      const centroDoContrato = async (id: string) =>
+        (await banco.query('SELECT centro_custo_id FROM contratos WHERE id::text = $1 AND empresa_id = $2', [id, empresaId])).rows[0]?.centro_custo_id as string | null | undefined;
+      const exigirCentro = (centro: string | null | undefined) => {
+        if (!centro || !centros!.includes(centro)) throw new ErroHttp(403, 'Escolha o centro de custo de uma obra sob sua responsabilidade.');
+      };
+      let m: RegExpExecArray | null;
+      if ((m = /^\/contratos\/([^/]+)/.exec(caminho))) {
+        const centro = await centroDoContrato(m[1]);
+        if (!centro || !centros!.includes(centro)) throw naoEncontrado('Contrato');
+        if (req.method === 'PUT' && corpo.centroCustoId !== undefined) exigirCentro(corpo.centroCustoId);
+      } else if ((m = /^\/medicoes\/([^/]+)/.exec(caminho))) {
+        const r = await banco.query('SELECT k.centro_custo_id FROM medicoes m JOIN contratos k ON k.id = m.contrato_id WHERE m.id::text = $1 AND m.empresa_id = $2', [m[1], empresaId]);
+        const centro = r.rows[0]?.centro_custo_id as string | null | undefined;
+        if (!centro || !centros!.includes(centro)) throw naoEncontrado('Medição');
+      } else if (caminho === '/contratos' && req.method === 'POST') {
+        exigirCentro(corpo.centroCustoId);
+      } else if (caminho === '/medicoes' && req.method === 'POST') {
+        const centro = corpo.contratoId ? await centroDoContrato(corpo.contratoId) : null;
+        if (!centro || !centros!.includes(centro)) throw naoEncontrado('Contrato');
+      }
+      // Listas (GET /contratos e /medicoes) são filtradas na rota.
+    });
 
     // ----- Contratos
     app.get<{ Querystring: Record<string, string | undefined> }>('/contratos', async (req) => {
@@ -565,8 +595,9 @@ export function rotasContratos(banco: Banco) {
       const ids = (
         await banco.query(
           `SELECT id FROM contratos WHERE empresa_id = $1 AND ($2::text IS NULL OR status = $2) AND ($2::text IS NOT NULL OR status IN ('rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente'))
+              AND ($3::uuid[] IS NULL OR centro_custo_id = ANY($3::uuid[]))
             ORDER BY array_position(ARRAY['aguardando_aprovacao','reprovado','rascunho','vigente','encerrado','cancelado'], status), numero DESC LIMIT 300`,
-          [empresaId, status],
+          [empresaId, status, await centrosPermitidos(banco, empresaId, req.usuario)],
         )
       ).rows;
       const contratos = [];
@@ -724,6 +755,7 @@ export function rotasContratos(banco: Banco) {
                   WHERE a.medicao_id = m.id AND a.status IN ('aguardando_aprovacao', 'aprovada') LIMIT 1) AS autorizacao
            FROM medicoes m JOIN contratos k ON k.id = m.contrato_id JOIN fornecedores f ON f.id = k.fornecedor_id
           WHERE m.empresa_id = $1
+            AND ($3::uuid[] IS NULL OR k.centro_custo_id = ANY($3::uuid[]))
             AND CASE $2
                   WHEN 'aprovacao' THEN m.status = 'aguardando_aprovacao'
                   WHEN 'autorizar' THEN m.status = 'aprovada' AND NOT EXISTS (SELECT 1 FROM autorizacoes_pagamento a WHERE a.medicao_id = m.id AND a.status IN ('aguardando_aprovacao', 'aprovada'))
@@ -732,7 +764,7 @@ export function rotasContratos(banco: Banco) {
                   ELSE m.status <> 'cancelada' AND (m.status <> 'aprovada' OR m.data > current_date - 180)
                 END
           ORDER BY array_position(ARRAY['aguardando_aprovacao','reprovada','rascunho','aprovada','cancelada'], m.status), m.numero DESC LIMIT 500`,
-        [empresaId, st],
+        [empresaId, st, await centrosPermitidos(banco, empresaId, req.usuario)],
       );
       return {
         medicoes: r.rows.map((m) => ({

@@ -5,7 +5,8 @@ import { z } from 'zod';
 import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
-import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
+import { ehEngenheiroDeObra, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
@@ -122,6 +123,8 @@ const esquemaObra = z.object({
   bdiPercentual: z.number().min(0).max(99.99).optional(),
   // Empresa do grupo que executa a obra (define o regime de impostos). Nulo: a própria empresa logada.
   empresaGrupoId: z.string().uuid('Escolha uma empresa válida.').nullable().optional(),
+  // Engenheiros de obra responsáveis: só eles (além de dono, gestor e orçamentista) enxergam a obra.
+  responsaveis: z.array(z.string().uuid('Escolha um engenheiro válido.')).max(30).optional(),
   bdiParametros: z
     .object({ ac: pct, s: pct, r: pct, g: pct, df: pct, l: pct, i: pct })
     .partial()
@@ -141,6 +144,46 @@ function resolverBdi(d: { bdiModo?: 'calculado' | 'informado'; bdiPercentual?: n
 export function rotasEngenharia(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
+    // Engenheiro de obra: só as obras atribuídas a ele; tabelas de referência só para consulta.
+    app.addHook('preHandler', async (req) => {
+      if (!ehEngenheiroDeObra(req.usuario)) return;
+      const regra = regraEngenheiroEngenharia(req.method, req.url.split('?')[0].replace(/^\/api\/eng/, ''));
+      if (regra.tipo === 'negado') throw semPermissao();
+      if (regra.tipo === 'obra') {
+        const ok = await banco.query(
+          `SELECT 1 FROM obra_responsaveis r JOIN obras o ON o.id = r.obra_id
+            WHERE r.usuario_id = $1 AND o.empresa_id = $2 AND r.obra_id::text = $3`,
+          [req.usuario!.id, empresaDo(req), regra.obraId],
+        );
+        if (!ok.rowCount) throw naoEncontrado('Obra');
+      }
+    });
+
+    /** Engenheiro de obra logado: limita listas às obras atribuídas a ele. Outros perfis: null (todas). */
+    const engenheiroDe = (req: { usuario?: { id: string; perfil: string } }) => (ehEngenheiroDeObra(req.usuario) ? req.usuario!.id : null);
+
+    /** Grava os engenheiros responsáveis pela obra (substitui a lista). Só usuários engenheiros de obra desta empresa. */
+    async function gravarResponsaveis(c: Cliente, empresaId: string, obraId: string, ids: string[]) {
+      const unicos = [...new Set(ids)];
+      if (unicos.length) {
+        const ok = await c.query(
+          `SELECT count(*)::int AS n FROM usuarios WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND perfil = 'engenheiro_obra' AND excluido_em IS NULL`,
+          [unicos, empresaId],
+        );
+        if (Number(ok.rows[0].n) !== unicos.length) throw new ErroHttp(400, 'Escolha só usuários com o perfil Engenheiro de obra desta empresa.');
+      }
+      await c.query('DELETE FROM obra_responsaveis WHERE obra_id = $1', [obraId]);
+      for (const u of unicos) await c.query('INSERT INTO obra_responsaveis (obra_id, usuario_id) VALUES ($1, $2)', [obraId, u]);
+    }
+
+    /** Engenheiros de obra da empresa, para atribuir às obras. */
+    app.get('/engenheiros', async (req) => {
+      const r = await banco.query(
+        `SELECT id, nome, email, ativo FROM usuarios WHERE empresa_id = $1 AND perfil = 'engenheiro_obra' AND excluido_em IS NULL ORDER BY ativo DESC, nome`,
+        [empresaDo(req)],
+      );
+      return { engenheiros: r.rows.map((u) => ({ id: u.id as string, nome: u.nome as string, email: u.email as string, ativo: !!u.ativo })) };
+    });
 
     async function tabelaDaEmpresa(c: Cliente, empresaId: string, id: string) {
       const t = (await c.query('SELECT * FROM ref_tabelas WHERE id = $1 AND empresa_id = $2', [id, empresaId])).rows[0];
@@ -529,8 +572,10 @@ export function rotasEngenharia(banco: Banco) {
                 (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_id = o.id) AS linhas_orcamento,
                 (SELECT coalesce(sum(oq.quantidade * ${precoObra('oi')}), 0) FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id WHERE oq.obra_id = o.id) AS subtotal
            FROM obras o JOIN centros_custo cc ON cc.id = o.centro_custo_id
-          WHERE o.empresa_id = $1 AND o.ativo ORDER BY o.codigo`,
-        [empresaId],
+          WHERE o.empresa_id = $1 AND o.ativo
+            AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM obra_responsaveis r WHERE r.obra_id = o.id AND r.usuario_id = $2))
+          ORDER BY o.codigo`,
+        [empresaId, engenheiroDe(req)],
       );
       const obras = await Promise.all(
         r.rows.map(async (o) => ({ ...obraPublica(o), itens: o.itens, linhasOrcamento: o.linhas_orcamento, total: r2(reais(o.subtotal)! * (1 + (await bdiDaObra(banco, o)) / 100)) })),
@@ -549,8 +594,10 @@ export function rotasEngenharia(banco: Banco) {
                 (SELECT coalesce(sum(oq.quantidade * ${precoObra('oi')}), 0) FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id WHERE oq.obra_id = o.id) AS subtotal,
                 (SELECT count(*)::int FROM obra_necessidades nec WHERE nec.obra_id = o.id AND nec.status = 'pendente') AS necessidades_pendentes,
                 (SELECT coalesce(sum(nec.quantidade * ${precoObra('oi')}), 0) FROM obra_necessidades nec JOIN obra_itens oi ON oi.id = nec.obra_item_id WHERE nec.obra_id = o.id AND nec.status = 'pendente') AS necessidades_valor
-           FROM obras o WHERE o.empresa_id = $1 AND o.ativo ORDER BY o.codigo`,
-        [empresaId],
+           FROM obras o WHERE o.empresa_id = $1 AND o.ativo
+            AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM obra_responsaveis r WHERE r.obra_id = o.id AND r.usuario_id = $2))
+          ORDER BY o.codigo`,
+        [empresaId, engenheiroDe(req)],
       );
       const atividades = await banco.query(
         `SELECT a.id, a.obra_id, a.inicio, a.duracao_dias, a.predecessora_id
@@ -630,6 +677,7 @@ export function rotasEngenharia(banco: Banco) {
             [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id, grupoId],
           )
         ).rows[0];
+        if (d.responsaveis?.length) await gravarResponsaveis(c, empresaId, o.id, d.responsaveis);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obras', entidadeId: o.id, depois: { ...d, codigo } });
         return o.id as string;
       });
@@ -679,6 +727,7 @@ export function rotasEngenharia(banco: Banco) {
           [atual.id, empresaId, campos.nome, campos.endereco, campos.cidade, campos.uf, campos.responsavel, campos.status, campos.dataInicio, campos.dataPrevisao, campos.nivel, campos.bdi.percentual, campos.bdi.modo, JSON.stringify(campos.bdi.parametros), campos.grupoId],
         );
         await c.query('UPDATE centros_custo SET nome = $2 WHERE id = $1', [atual.centro_custo_id, `Obra ${atual.codigo} - ${nome}`.slice(0, 120)]);
+        if (d.responsaveis !== undefined) await gravarResponsaveis(c, empresaId, atual.id, d.responsaveis);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'obras', entidadeId: atual.id, depois: d });
       });
       return { obra: obraPublica(await obraDetalhe(banco, empresaId, req.params.id)) };
@@ -1558,7 +1607,9 @@ async function tabelaDetalhe(c: Cliente | Banco, empresaId: string, id: string) 
 async function obraDetalhe(c: Cliente | Banco, empresaId: string, id: string) {
   const r = (
     await c.query(
-      `SELECT o.*, cc.nome AS centro_nome, eg.razao_social AS empresa_grupo_nome
+      `SELECT o.*, cc.nome AS centro_nome, eg.razao_social AS empresa_grupo_nome,
+              (SELECT coalesce(json_agg(json_build_object('id', u.id, 'nome', u.nome) ORDER BY u.nome), '[]'::json)
+                 FROM obra_responsaveis r JOIN usuarios u ON u.id = r.usuario_id WHERE r.obra_id = o.id) AS responsaveis
          FROM obras o JOIN centros_custo cc ON cc.id = o.centro_custo_id LEFT JOIN empresas_grupo eg ON eg.id = o.empresa_grupo_id
         WHERE o.id = $1 AND o.empresa_id = $2`,
       [id, empresaId],
@@ -1602,6 +1653,7 @@ function obraPublica(o: Record<string, any>) {
     bdiParametros: (o.bdi_parametros as Partial<ParametrosBdi> | null) ?? null,
     centroCustoId: o.centro_custo_id as string,
     centroCustoNome: (o.centro_nome as string | null) ?? null,
+    responsaveis: (o.responsaveis as { id: string; nome: string }[] | undefined) ?? [],
   };
 }
 

@@ -4,11 +4,11 @@ import { MODULOS_PADRAO } from '../acesso';
 import { useSessao } from '../sessao';
 
 type PerfilEmpresa = Exclude<Perfil, 'admin_sistema'>;
-const PERFIS: PerfilEmpresa[] = ['dono', 'gestor', 'financeiro', 'administrativo', 'vendedor', 'operador_usina', 'laboratorista', 'motorista'];
+const PERFIS: PerfilEmpresa[] = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor'];
 
 type Acesso = { perfil: PerfilEmpresa; administrador: boolean; padrao: boolean; modulos: Modulo[] };
 type Novo = { nome: string; email: string; senha: string; telefoneWhatsapp: string } & Acesso;
-const VAZIO: Novo = { nome: '', email: '', senha: '', telefoneWhatsapp: '', perfil: 'motorista', administrador: false, padrao: true, modulos: MODULOS_PADRAO.motorista };
+const VAZIO: Novo = { nome: '', email: '', senha: '', telefoneWhatsapp: '', perfil: 'engenheiro_obra', administrador: false, padrao: true, modulos: MODULOS_PADRAO.engenheiro_obra };
 
 /** Quem não é dono cuida de todos, menos dos donos. */
 function podeGerenciar(eu: Usuario, alvo: Perfil) {

@@ -215,7 +215,10 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
   };
   // Construtora: menu próprio, nesta ordem; os módulos da concreteira não aparecem.
   const construtora = lerEscolha() === 'construtora';
-  const modulos = MODULOS.filter((m) => (m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || m.id === 'engenharia' || temModulo(usuario, m.id as ModuloApp)))
+  // Engenharia é um módulo como os outros. O engenheiro de obra vê também Suprimentos, só com Contratos e Medições das obras dele.
+  const modulos = MODULOS.filter((m) =>
+    m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || temModulo(usuario, m.id as ModuloApp) || (m.id === 'suprimentos' && perfil === 'engenheiro_obra'),
+  )
     .filter((m) => !construtora || m.id === 'admin' || ORDEM_CONSTRUTORA.includes(m.id))
     .sort((a, b) => (construtora ? ORDEM_CONSTRUTORA.indexOf(a.id) - ORDEM_CONSTRUTORA.indexOf(b.id) : 0))
     .map((m) => ({ ...m, itens: m.itens.filter((i) => itemOk(m, i)) }))

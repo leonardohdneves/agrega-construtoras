@@ -3,24 +3,33 @@ import type { Modulo, Perfil, Usuario } from './api';
 
 export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   admin_sistema: [],
-  dono: ['comercial', 'producao', 'suprimentos', 'financeiro', 'qualidade', 'frota', 'gerencial', 'administrativo', 'configuracoes'],
+  dono: ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
   // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
-  gestor: ['comercial', 'producao', 'suprimentos', 'qualidade', 'frota', 'gerencial', 'administrativo', 'configuracoes'],
+  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'administrativo'],
+  orcamentista: ['engenharia', 'comercial'],
+  // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
+  engenheiro_obra: ['engenharia'],
+  comprador: ['suprimentos'],
   financeiro: ['financeiro', 'gerencial'],
-  administrativo: ['administrativo', 'suprimentos'],
   vendedor: ['comercial'],
-  operador_usina: ['producao'],
-  laboratorista: ['qualidade', 'producao'],
-  motorista: ['frota', 'producao'],
+  administrativo: ['administrativo', 'suprimentos'],
+  // Perfis da concreteira: não são oferecidos na construtora.
+  operador_usina: [],
+  laboratorista: [],
+  motorista: [],
 };
+
+/** Perfis que a construtora pode dar aos usuários, na ordem da tela de usuários. */
+export const PERFIS_CONSTRUTORA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor'] as const;
 
 /** Só o dono e o perfil Financeiro veem saldo bancário, contas a pagar e a receber. */
 export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'financeiro'];
 /** Perfis cujo acesso é definido só pelos módulos que têm. */
-export const PERFIS_POR_MODULO: Perfil[] = ['financeiro', 'administrativo', 'vendedor'];
+export const PERFIS_POR_MODULO: Perfil[] = ['financeiro', 'administrativo', 'vendedor', 'orcamentista', 'comprador'];
 
 /** Módulo de cada tela, pelo endereço. */
 export function moduloDaPagina(caminho: string): Modulo | null {
+  if (caminho.startsWith('/eng')) return 'engenharia';
   if (caminho.startsWith('/com')) return 'comercial';
   if (caminho.startsWith('/frota') || caminho.startsWith('/abastecer')) return 'frota';
   if (caminho.startsWith('/prod') || caminho.startsWith('/minha-')) return 'producao';
@@ -43,6 +52,11 @@ export function podeAcessar(usuario: Usuario | null, perfis: Perfil[] | undefine
   const porPerfil = !perfis || perfis.includes(usuario.perfil);
   const modulo = moduloDaPagina(caminho);
   if (!modulo || usuario.perfil === 'admin_sistema') return porPerfil;
+  if (usuario.perfil === 'engenheiro_obra') {
+    // Engenharia (as obras dele, conferidas no servidor) e os contratos e medições dessas obras.
+    if (/^\/sup\/(contratos|medicoes)(\/|$)/.test(caminho)) return true;
+    return modulo === 'engenharia' && temModulo(usuario, 'engenharia');
+  }
   if (modulo === 'financeiro' && !PERFIS_FINANCEIRO.includes(usuario.perfil)) return false;
   // O fluxo de caixa mostra saldos: só dono e Financeiro.
   if (caminho.startsWith('/ger/fluxo') && !PERFIS_FINANCEIRO.includes(usuario.perfil)) return false;

@@ -40,7 +40,20 @@ export async function api<T = any>(caminho: string, opcoes: { metodo?: string; c
   return dados as T;
 }
 
-export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista' | 'operador_usina' | 'laboratorista' | 'administrativo' | 'vendedor' | 'financeiro';
+export type Perfil =
+  | 'admin_sistema'
+  | 'dono'
+  | 'gestor'
+  | 'orcamentista'
+  | 'engenheiro_obra'
+  | 'comprador'
+  | 'administrativo'
+  | 'vendedor'
+  | 'financeiro'
+  // Perfis da concreteira, mantidos só por compatibilidade com o código herdado.
+  | 'motorista'
+  | 'operador_usina'
+  | 'laboratorista';
 
 export type Usuario = {
   id: string;
@@ -57,11 +70,14 @@ export type Usuario = {
   modulosEfetivos: Modulo[];
 };
 
-export const MODULOS = ['comercial', 'producao', 'suprimentos', 'financeiro', 'qualidade', 'frota', 'gerencial', 'administrativo', 'configuracoes'] as const;
-export type Modulo = (typeof MODULOS)[number];
+export const MODULOS = ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'] as const;
+/** Módulos da concreteira que ficaram no código herdado, mas ninguém recebe na construtora. */
+export type ModuloRetirado = 'frota' | 'producao' | 'qualidade';
+export type Modulo = (typeof MODULOS)[number] | ModuloRetirado;
 export const NOMES_MODULO: Record<Modulo, string> = {
-  comercial: 'Comercial', frota: 'Frota', producao: 'Produção', qualidade: 'Qualidade', suprimentos: 'Suprimentos', financeiro: 'Financeiro',
+  engenharia: 'Engenharia', comercial: 'Comercial', suprimentos: 'Suprimentos', financeiro: 'Financeiro',
   gerencial: 'Gerencial', administrativo: 'Administrativo', configuracoes: 'Configurações',
+  frota: 'Frota', producao: 'Produção', qualidade: 'Qualidade',
 };
 export type Impressao = { orientacao: 'retrato' | 'paisagem'; papel: 'A4' | 'Carta' | 'Oficio' };
 
@@ -90,12 +106,15 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   admin_sistema: 'Administrador do sistema',
   dono: 'Dono',
   gestor: 'Gestor',
+  orcamentista: 'Orçamentista',
+  engenheiro_obra: 'Engenheiro de obra',
+  comprador: 'Comprador',
+  financeiro: 'Financeiro',
+  administrativo: 'Administrativo',
+  vendedor: 'Comercial',
   motorista: 'Motorista',
   operador_usina: 'Operador de usina',
   laboratorista: 'Laboratorista',
-  administrativo: 'Administrativo',
-  vendedor: 'Vendedor',
-  financeiro: 'Financeiro',
 };
 
 export function formatarCnpj(c: string): string {

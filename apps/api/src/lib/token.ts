@@ -1,7 +1,20 @@
 // Token de sessão no formato JWT (HS256), assinado com a biblioteca padrão do Node.
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
-export type Perfil = 'admin_sistema' | 'dono' | 'gestor' | 'motorista' | 'operador_usina' | 'laboratorista' | 'administrativo' | 'vendedor' | 'financeiro';
+export type Perfil =
+  | 'admin_sistema'
+  | 'dono'
+  | 'gestor'
+  | 'orcamentista'
+  | 'engenheiro_obra'
+  | 'comprador'
+  | 'administrativo'
+  | 'vendedor'
+  | 'financeiro'
+  // Perfis da concreteira, mantidos só por compatibilidade com o código herdado.
+  | 'motorista'
+  | 'operador_usina'
+  | 'laboratorista';
 
 export type DadosSessao = {
   sub: string; // id do usuário
