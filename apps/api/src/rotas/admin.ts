@@ -1,4 +1,4 @@
-// Área do administrador do sistema (você): cadastro das concreteiras clientes.
+// Área do administrador do sistema (você): cadastro das construtoras clientes.
 import type { FastifyInstance } from 'fastify';
 import type { Banco } from '../db.ts';
 import { emTransacao } from '../db.ts';

@@ -262,7 +262,7 @@ function LogoEImpressao({ empresa, podeEditar, aoMudar }: { empresa: TEmpresa; p
       {ok && <div className="alerta alerta-ok" role="status">{ok}</div>}
       <div className="campos">
         <div className="campo">
-          <label htmlFor="emp-logo">Logo da concreteira</label>
+          <label htmlFor="emp-logo">Logo da construtora</label>
           {empresa.temLogo
             ? <img className="logo-previa" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt="Logo atual" />
             : <span className="small muted">Nenhuma logo enviada.</span>}

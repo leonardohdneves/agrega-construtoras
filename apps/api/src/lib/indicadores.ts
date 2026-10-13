@@ -91,7 +91,7 @@ export const INDICADORES: Indicador[] = [
     id: 'receita_bruta', nome: 'Receita bruta', modulo: 'Financeiro', unidade: 'moeda', melhor: 'maior',
     formula: 'Soma das receitas confirmadas nas categorias da linha "Receita bruta", pela competência.',
     fonte: 'Lançamentos e notas de venda confirmados (DRE por competência).',
-    leitura: 'Quanto a concreteira vendeu no mês, pago ou não.',
+    leitura: 'Quanto a empresa vendeu no mês, pago ou não.',
     bruto: (b) => b.receita / 100,
   },
   {
@@ -126,7 +126,7 @@ export const INDICADORES: Indicador[] = [
     id: 'pmp', nome: 'Prazo médio de pagamento', modulo: 'Financeiro', unidade: 'dias', melhor: 'maior',
     formula: 'Média dos dias entre a competência e o pagamento, ponderada pelo valor pago no mês.',
     fonte: 'Parcelas de despesa pagas.',
-    leitura: 'Em quantos dias, em média, a concreteira paga os fornecedores. Bom quando é maior que o prazo de recebimento.',
+    leitura: 'Em quantos dias, em média, a empresa paga os fornecedores. Bom quando é maior que o prazo de recebimento.',
     bruto: (b) => div(b.pagPonderado, b.pagValor),
   },
   {
@@ -169,7 +169,7 @@ export const INDICADORES: Indicador[] = [
     id: 'preco_diesel', nome: 'Preço médio do diesel', modulo: 'Frota', unidade: 'moeda_l', melhor: 'menor',
     formula: 'Valor dos abastecimentos ÷ litros abastecidos.',
     fonte: 'Abastecimentos com valor informado.',
-    leitura: 'Quanto a concreteira pagou, em média, por litro.',
+    leitura: 'Quanto a empresa pagou, em média, por litro.',
     bruto: (b) => div(b.dieselValor / 100, b.dieselLitros),
   },
   {

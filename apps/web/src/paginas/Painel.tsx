@@ -694,12 +694,12 @@ export function Painel() {
           </div>
         </div>
         <div className="card">
-          <h2>Concreteiras clientes</h2>
+          <h2>Construtoras clientes</h2>
           <p className="muted" style={{ marginTop: 0 }}>
-            Cadastre cada concreteira com o seu dono. O dono entra no sistema e convida o gestor e os motoristas.
+            Cadastre cada construtora com o seu dono. O dono entra no sistema e convida a equipe.
           </p>
           <Link className="btn btn-primario" to="/admin/empresas">
-            Ver concreteiras
+            Ver construtoras
           </Link>
         </div>
       </>

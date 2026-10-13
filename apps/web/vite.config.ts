@@ -9,9 +9,9 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg'],
       manifest: {
-        name: 'Agrega',
+        name: 'Agrega Construtoras',
         short_name: 'Agrega',
-        description: 'ERP para concreteiras: frota e financeiro',
+        description: 'ERP para construtoras: obras, engenharia e financeiro',
         lang: 'pt-BR',
         start_url: '/',
         display: 'standalone',

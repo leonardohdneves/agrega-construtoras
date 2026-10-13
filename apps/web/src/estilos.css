@@ -1,8 +1,9 @@
-/* Agrega · tokens do design system e estilos base */
+/* Agrega Construtoras · tokens do design system e estilos base.
+   A cor de marca é o azul da construtora; o token mantém o nome --brand-orange por compatibilidade com o CSS existente. */
 :root {
-  --brand-orange: #e8590c;
-  --action: #c2410c;
-  --action-hover: #9a3412;
+  --brand-orange: #1f5fad;
+  --action: #1f5fad;
+  --action-hover: #174a8a;
   --on-action: #ffffff;
   --ink: #1f2328;
   --ink-muted: #4a4f57;
@@ -21,7 +22,7 @@
   --status-warn-ink: #78350f;
   --status-danger-bg: #fbe1de;
   --status-danger-ink: #7f1d1d;
-  --focus: #c2410c;
+  --focus: #1f5fad;
 
   --font-display: 'Archivo', system-ui, sans-serif;
   --font-sans: 'IBM Plex Sans', system-ui, sans-serif;
@@ -35,10 +36,10 @@
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --brand-orange: #f07a35;
-    --action: #e8590c;
-    --action-hover: #f07a35;
-    --on-action: #1f2328;
+    --brand-orange: #5b92d6;
+    --action: #2f6fbf;
+    --action-hover: #5b92d6;
+    --on-action: #ffffff;
     --ink: #f2f1ee;
     --ink-muted: #b8bcc2;
     --cement: #9aa0a8;
@@ -56,24 +57,8 @@
     --status-warn-ink: #f5c77a;
     --status-danger-bg: #45201c;
     --status-danger-ink: #f4a6a0;
-    --focus: #f07a35;
-    color-scheme: dark;
-  }
-}
-
-/* Agrega Construtora: a mesma identidade, com o azul no lugar do laranja. Ativada pelo atributo data-tipo no <html>. */
-:root[data-tipo="construtora"] {
-  --brand-orange: #1f5fad;
-  --action: #1f5fad;
-  --action-hover: #174a8a;
-  --focus: #1f5fad;
-}
-@media (prefers-color-scheme: dark) {
-  :root[data-tipo="construtora"] {
-    --brand-orange: #5b92d6;
-    --action: #2f6fbf;
-    --action-hover: #5b92d6;
     --focus: #5b92d6;
+    color-scheme: dark;
   }
 }
 

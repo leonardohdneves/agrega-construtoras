@@ -155,7 +155,7 @@ export function rotasPropostas(banco: Banco) {
       const emp = (await banco.query('SELECT coalesce(nome_fantasia, razao_social) AS nome FROM empresas WHERE id = $1', [empresaId])).rows[0];
       const tr = (await banco.query('SELECT fck, slump FROM tracos WHERE id = $1', [r.traco_id])).rows[0];
       const dados: DadosProposta = {
-        empresa: emp?.nome ?? 'Concreteira',
+        empresa: emp?.nome ?? 'Construtora',
         cliente: r.cliente_nome,
         obra: r.obra,
         endereco: r.endereco,

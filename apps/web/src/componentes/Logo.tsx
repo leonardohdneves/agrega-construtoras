@@ -1,7 +1,6 @@
-export const COR_CONCRETEIRA = '#E8590C';
 export const COR_CONSTRUTORA = '#1F5FAD';
 
-/** Sem cor informada, usa a cor de marca da identidade ativa (laranja, ou azul na construtora). */
+/** Sem cor informada, usa a cor de marca (azul da construtora). */
 export function Simbolo({ tamanho = 28, escuro = false, cor }: { tamanho?: number; escuro?: boolean; cor?: string }) {
   const pedra = escuro ? '#FFFFFF' : 'var(--ink)';
   const marca = cor ?? 'var(--brand-orange)';

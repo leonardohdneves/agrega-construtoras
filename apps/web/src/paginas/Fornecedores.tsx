@@ -38,7 +38,7 @@ function paraDados(f: Fornecedor): Dados {
 const TEXTOS = {
   fornecedor: {
     titulo: 'Fornecedores',
-    sub: 'Quem vende para a concreteira: cimento, agregados, aditivos, combustível, peças e oficinas.',
+    sub: 'Quem vende para a construtora: materiais, serviços, equipamentos e locações.',
     novo: 'Novo fornecedor',
     vazio: 'Nenhum fornecedor cadastrado. Fornecedores também serão criados automaticamente ao importar notas fiscais.',
     ramo: 'Ramo (ex.: cimento, oficina, posto)',
@@ -52,7 +52,7 @@ const TEXTOS = {
   },
   credor: {
     titulo: 'Credores',
-    sub: 'A quem a concreteira deve sem ser por compra: bancos, financiamentos, consórcios, impostos e aluguéis.',
+    sub: 'A quem a construtora deve sem ser por compra: bancos, financiamentos, consórcios, impostos e aluguéis.',
     novo: 'Novo credor',
     vazio: 'Nenhum credor cadastrado.',
     ramo: 'Natureza (ex.: financiamento, tributo, aluguel)',

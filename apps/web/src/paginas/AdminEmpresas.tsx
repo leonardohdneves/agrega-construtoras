@@ -54,12 +54,12 @@ export function AdminEmpresas() {
     <>
       <div className="cabecalho">
         <div className="titulo">
-          <h1>Concreteiras</h1>
+          <h1>Construtoras</h1>
           <span className="muted">Empresas clientes do Agrega.</span>
         </div>
         {!nova && (
           <button className="btn btn-primario" type="button" onClick={() => setNova(VAZIA)}>
-            Nova concreteira
+            Nova construtora
           </button>
         )}
       </div>
@@ -68,7 +68,7 @@ export function AdminEmpresas() {
 
       {nova && (
         <form className="card form" onSubmit={criar}>
-          <h2>Nova concreteira</h2>
+          <h2>Nova construtora</h2>
           <div className="campos">
             <div className="campo">
               <label htmlFor="ne-razao">Razão social</label>
@@ -101,7 +101,7 @@ export function AdminEmpresas() {
               <input id="ne-uf" maxLength={2} value={nova.uf} onChange={(e) => setNova({ ...nova, uf: e.target.value.toUpperCase() })} />
             </div>
           </div>
-          <h2 style={{ marginTop: 8 }}>Dono da concreteira</h2>
+          <h2 style={{ marginTop: 8 }}>Dono da construtora</h2>
           <div className="campos">
             <div className="campo">
               <label htmlFor="ne-dono-nome">Nome</label>
@@ -119,7 +119,7 @@ export function AdminEmpresas() {
           </div>
           <div className="acoes">
             <button className="btn btn-primario" type="submit" disabled={salvando}>
-              {salvando ? 'Cadastrando…' : 'Cadastrar concreteira'}
+              {salvando ? 'Cadastrando…' : 'Cadastrar construtora'}
             </button>
             <button className="btn btn-secundario" type="button" onClick={() => setNova(null)}>
               Cancelar
@@ -133,13 +133,13 @@ export function AdminEmpresas() {
           <p className="muted">Carregando…</p>
         ) : lista.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>
-            Nenhuma concreteira cadastrada ainda.
+            Nenhuma construtora cadastrada ainda.
           </p>
         ) : (
           <table className="tabela">
             <thead>
               <tr>
-                <th>Concreteira</th>
+                <th>Construtora</th>
                 <th>CNPJ</th>
                 <th>Cidade</th>
                 <th>Regime</th>

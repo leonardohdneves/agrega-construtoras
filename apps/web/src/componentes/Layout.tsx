@@ -35,10 +35,10 @@ const LAB: Perfil[] = ['dono', 'gestor', 'laboratorista'];
 export const MODULOS: Modulo[] = [
   {
     id: 'admin',
-    titulo: 'Concreteiras',
+    titulo: 'Construtoras',
     icone: <IconeEmpresa />,
     perfis: ['admin_sistema'],
-    itens: [{ rotulo: 'Concreteiras clientes', para: '/admin/empresas' }],
+    itens: [{ rotulo: 'Construtoras clientes', para: '/admin/empresas' }],
   },
   {
     id: 'comercial',
@@ -189,7 +189,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Mural de avisos', para: '/mural', livre: true },
       { rotulo: 'Minha conta', para: '/conta', livre: true },
       { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
-      { rotulo: 'Manual de operação (PDF)', arquivo: '/manual/agrega-manual-de-operacao.pdf', livre: true },
+      // O manual atual é o da concreteira; volta ao menu quando o manual da construtora estiver pronto.
       { rotulo: 'Extrato OFX de demonstração', arquivo: '/api/demo/extrato.ofx', perfis: GESTAO, soDemo: true },
       { rotulo: 'NF-e de demonstração (XML)', arquivo: '/api/demo/nfe-posto.xml', perfis: GESTAO, soDemo: true },
     ],

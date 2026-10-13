@@ -182,7 +182,7 @@ export async function lerNotaComIa(
             type: 'text',
             text:
               'Leia este documento fiscal brasileiro e registre os dados chamando a ferramenta registrar_nota (uma única vez, sem texto antes). ' +
-              `A empresa que está lançando a nota é ${contexto.razaoEmpresa ?? 'a concreteira'}${contexto.cnpjEmpresa ? ` (CNPJ ${contexto.cnpjEmpresa})` : ''}. ` +
+              `A empresa que está lançando a nota é ${contexto.razaoEmpresa ?? 'a construtora'}${contexto.cnpjEmpresa ? ` (CNPJ ${contexto.cnpjEmpresa})` : ''}. ` +
               'Valores em reais, como número (ex.: 1234.56). Datas no formato AAAA-MM-DD. Copie os números exatamente como impressos; ' +
               'se não conseguir ler um campo, deixe null e inclua-o em "duvidas". Não invente dados. ' +
               'ITENS: liste TODOS os itens da tabela de produtos/serviços, um por linha da tabela, mesmo que a soma não bata com o total. ' +

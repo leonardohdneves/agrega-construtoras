@@ -355,7 +355,7 @@ export function PropostaDetalhe() {
       </div>
 
       <div className="so-imprimir assinaturas">
-        <Assinatura nome={empresa?.nomeFantasia || empresa?.razaoSocial || ''} papel="Concreteira (responsável comercial)" />
+        <Assinatura nome={empresa?.nomeFantasia || empresa?.razaoSocial || ''} papel="Construtora (responsável comercial)" />
         <Assinatura nome={p.clienteNome} papel="Aceite do cliente" />
       </div>
 
