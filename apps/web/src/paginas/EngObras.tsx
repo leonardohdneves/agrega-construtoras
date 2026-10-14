@@ -10,7 +10,7 @@ import { useSessao } from '../sessao';
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
   id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null;
-  status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number;
+  status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number; horasDia?: number;
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
   empresaGrupoId?: string | null; empresaGrupoNome?: string | null;
@@ -134,7 +134,7 @@ export function bdiCalculadoPrevia(p: Partial<Record<CampoBdi, number>>): number
 
 const paraTexto = (n: number | undefined) => String(n ?? 0).replace('.', ',');
 
-type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
+type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
 
 function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar: (o: Obra) => void; aoCancelar?: () => void }) {
   const editando = !!inicial;
@@ -150,6 +150,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
     dataInicio: inicial?.dataInicio ?? '',
     dataPrevisao: inicial?.dataPrevisao ?? '',
     nivelApropriacao: inicial?.nivelApropriacao ?? 'etapa',
+    horasDia: paraTexto(inicial?.horasDia ?? 8),
     bdiModo: inicial?.bdiModo ?? 'informado',
     bdi: paraTexto(inicial?.bdiPercentual),
     params: Object.fromEntries(CAMPOS_BDI.map(([k]) => [k, paraTexto(inicial?.bdiParametros?.[k])])) as Record<CampoBdi, string>,
@@ -183,6 +184,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
       dataInicio: d.dataInicio || null,
       dataPrevisao: d.dataPrevisao || null,
       nivelApropriacao: d.nivelApropriacao,
+      horasDia: lerNumero(d.horasDia) ?? 8,
       bdiModo: d.bdiModo,
       ...(d.bdiModo === 'calculado' ? { bdiParametros: paramsNumericos } : { bdiPercentual: lerNumero(d.bdi) ?? 0 }),
       ...(engenheiros ? { responsaveis } : {}),
@@ -255,6 +257,11 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
           <select id="ob-nivel" value={d.nivelApropriacao} onChange={(e) => setD({ ...d, nivelApropriacao: e.target.value as Nivel })}>
             {(Object.keys(ROTULO_NIVEL) as Nivel[]).map((n) => <option key={n} value={n}>{ROTULO_NIVEL[n]}</option>)}
           </select>
+        </div>
+        <div className="campo">
+          <label htmlFor="ob-horas">Horas de trabalho por dia</label>
+          <input id="ob-horas" inputMode="decimal" value={d.horasDia} onChange={(e) => setD({ ...d, horasDia: e.target.value })} />
+          <span className="ajuda">Usada para dimensionar as equipes do planejamento. Padrão: 8.</span>
         </div>
         <div className="campo">
           <label htmlFor="ob-bdi-modo">BDI</label>

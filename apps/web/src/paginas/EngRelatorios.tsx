@@ -31,14 +31,42 @@ type RelatorioAbc = {
   total: number;
   classes: Record<'A' | 'B' | 'C', { itens: number; valor: number; percentual: number }>;
 };
-type Tipo = 'sintetico' | 'analitico' | 'abc-servicos' | 'abc-insumos' | 'comparacao';
+type Gran = 'dia' | 'semana' | 'quinzena' | 'mes';
+const GRANULARIDADES: { id: Gran; texto: string }[] = [
+  { id: 'dia', texto: 'Dias' },
+  { id: 'semana', texto: 'Semanas' },
+  { id: 'quinzena', texto: 'Quinzenas' },
+  { id: 'mes', texto: 'Meses' },
+];
+type PeriodoRel = { rotulo: string; inicio: string; fim: string; dias: number };
+type GanttRel = {
+  granularidade: Gran; inicio: string; fim: string; totalDias: number; periodos: PeriodoRel[];
+  atividades: { id: string; descricao: string; eapCodigo: string | null; inicio: string; fim: string; duracaoDias: number; deslocamentoDias: number }[];
+  atividadesSemEap: number;
+};
+type EquipesRel = {
+  granularidade: Gran; horasDia: number; inicio: string; fim: string; periodos: string[];
+  porTipo: { codigo: string; descricao: string; pico: number; periodos: { rotulo: string; trabalhadores: number }[] }[];
+  porAtividade: { id: string; descricao: string; inicio: string; fim: string; duracaoDias: number; recursos: { codigo: string; descricao: string; horas: number; trabalhadores: number }[] }[];
+  mensalistasNaoCalculados: string[]; atividadesSemOrcamento: number;
+};
+type ComprasRel = {
+  itens: { codigo: string; descricao: string; unidade: string; grupo: string | null; total: number; primeira: string; usos: { atividade: string; inicio: string; quantidade: number }[] }[];
+  semClasse: number; atividadesSemOrcamento: number;
+};
+type Tipo = 'sintetico' | 'analitico' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'gantt' | 'equipes' | 'compras';
 const TIPOS: { id: Tipo; texto: string; titulo: string }[] = [
   { id: 'sintetico', texto: 'Orçamento sintético', titulo: 'Orçamento sintético' },
   { id: 'analitico', texto: 'Orçamento analítico', titulo: 'Orçamento analítico' },
   { id: 'abc-servicos', texto: 'Curva ABC de serviços', titulo: 'Curva ABC de serviços' },
   { id: 'abc-insumos', texto: 'Curva ABC de insumos', titulo: 'Curva ABC de insumos' },
   { id: 'comparacao', texto: 'Comparar versões', titulo: 'Comparação de versões' },
+  { id: 'gantt', texto: 'Gantt', titulo: 'Cronograma (Gantt)' },
+  { id: 'equipes', texto: 'Equipes', titulo: 'Equipes necessárias' },
+  { id: 'compras', texto: 'Compras', titulo: 'Necessidade de compras' },
 ];
+const ehPlanejamento = (t: Tipo) => t === 'gantt' || t === 'equipes' || t === 'compras';
+const dataCurta = (iso: string) => iso.split('-').reverse().join('/');
 
 const num = (n: number, casas = 4) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: casas });
 const pct = (n: number) => `${n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
@@ -48,10 +76,12 @@ export function EngRelatorios() {
   const [obras, setObras] = useState<Obra[] | null>(null);
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [abc, setAbc] = useState<RelatorioAbc | null>(null);
+  const [plan, setPlan] = useState<GanttRel | EquipesRel | ComprasRel | null>(null);
   const [erro, setErro] = useState('');
   const obraId = params.get('obra') ?? obras?.[0]?.id ?? '';
   const tipo: Tipo = TIPOS.find((t) => t.id === params.get('tipo'))?.id ?? 'sintetico';
   const ehAbc = tipo.startsWith('abc-');
+  const gran: Gran = GRANULARIDADES.find((g) => g.id === params.get('gran'))?.id ?? 'semana';
 
   useEffect(() => {
     api<{ obras: Obra[] }>('/eng/obras')
@@ -62,14 +92,21 @@ export function EngRelatorios() {
     if (!obraId || tipo === 'comparacao') return;
     setRel(null);
     setAbc(null);
+    setPlan(null);
     setErro('');
-    const pedido = ehAbc
-      ? api<RelatorioAbc>(`/eng/obras/${obraId}/relatorio-abc?tipo=${tipo === 'abc-insumos' ? 'insumos' : 'servicos'}`).then(setAbc)
-      : api<Relatorio>(`/eng/obras/${obraId}/relatorio-orcamento?tipo=${tipo}`).then(setRel);
+    const pedido = ehPlanejamento(tipo)
+      ? api<GanttRel | EquipesRel | ComprasRel>(
+          tipo === 'compras'
+            ? `/eng/obras/${obraId}/relatorios-planejamento/compras`
+            : `/eng/obras/${obraId}/relatorios-planejamento/${tipo}?granularidade=${gran}`,
+        ).then(setPlan)
+      : ehAbc
+        ? api<RelatorioAbc>(`/eng/obras/${obraId}/relatorio-abc?tipo=${tipo === 'abc-insumos' ? 'insumos' : 'servicos'}`).then(setAbc)
+        : api<Relatorio>(`/eng/obras/${obraId}/relatorio-orcamento?tipo=${tipo}`).then(setRel);
     pedido.catch((e) => setErro((e as Error).message));
-  }, [obraId, tipo]);
+  }, [obraId, tipo, gran]);
 
-  const mudar = (p: Record<string, string>) => setParams({ obra: obraId, tipo, ...p }, { replace: true });
+  const mudar = (p: Record<string, string>) => setParams({ obra: obraId, tipo, ...(p.tipo && ehPlanejamento(p.tipo as Tipo) ? { gran } : {}), ...p }, { replace: true });
   const obraRel = rel?.obra ?? abc?.obra;
   const obraAtual = obras?.find((o) => o.id === obraId);
   const local =obraRel ? [obraRel.endereco, [obraRel.cidade, obraRel.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') : '';
@@ -103,7 +140,22 @@ export function EngRelatorios() {
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {obras?.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhuma obra cadastrada.</p></div>}
       {tipo === 'comparacao' && obraId && <ComparacaoVersoes key={obraId} obraId={obraId} />}
-      {obraId && tipo !== 'comparacao' && !rel && !abc && !erro && <p className="muted">Carregando…</p>}
+      {tipo === 'gantt' || tipo === 'equipes' ? (
+        <div className="card nao-imprimir" style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
+          <div className="campo">
+            <span className="rotulo">Período</span>
+            <div className="segmentado" role="group" aria-label="Período">
+              {GRANULARIDADES.map((g) => (
+                <button key={g.id} type="button" aria-pressed={gran === g.id} className={gran === g.id ? 'ativo' : ''} onClick={() => mudar({ gran: g.id })}>{g.texto}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {obraId && tipo !== 'comparacao' && !rel && !abc && !plan && !erro && <p className="muted">Carregando…</p>}
+      {plan && tipo === 'gantt' && <GanttView g={plan as GanttRel} />}
+      {plan && tipo === 'equipes' && <EquipesView e={plan as EquipesRel} />}
+      {plan && tipo === 'compras' && <ComprasView c={plan as ComprasRel} />}
       {abc && (abc.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abc.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abc} />)}
       {rel && rel.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
       {rel && rel.linhas.length > 0 && (rel.tipo === 'sintetico' ? <Sintetico rel={rel} /> : <Analitico rel={rel} />)}
@@ -604,5 +656,154 @@ function ResultadoComparacao({ comp, soMudancas }: { comp: Comparacao; soMudanca
         </div>
       )}
     </>
+  );
+}
+
+/** Gantt: uma linha por atividade. A largura de cada período é proporcional aos dias que ele tem no projeto. */
+function GanttView({ g }: { g: GanttRel }) {
+  if (!g.atividades.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Não há atividades no planejamento desta obra. Monte-o em Planejamento.</p></div>;
+  const largura = Math.max(900, g.periodos.length * 56);
+  return (
+    <div className="card" style={{ overflowX: 'auto' }}>
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Projeto de {dataCurta(g.inicio)} a {dataCurta(g.fim)} · {g.totalDias} dias corridos{g.atividadesSemEap ? ` · ${g.atividadesSemEap} sem linha da EAP` : ''}
+      </p>
+      <div style={{ minWidth: largura }}>
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--borda, #d4d4d8)' }}>
+          <div className="small muted" style={{ flex: '0 0 300px', padding: '4px 8px 4px 0' }}>Atividade</div>
+          <div style={{ flex: 1, display: 'flex' }}>
+            {g.periodos.map((p) => (
+              <div key={p.inicio} style={{ flex: `${p.dias} 1 0`, fontSize: 11, padding: '4px 2px', borderLeft: '1px solid var(--borda, #d4d4d8)', overflow: 'hidden', whiteSpace: 'nowrap' }} title={`${dataCurta(p.inicio)} a ${dataCurta(p.fim)}`}>
+                {p.rotulo}
+              </div>
+            ))}
+          </div>
+        </div>
+        {g.atividades.map((a) => (
+          <div key={a.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--borda, #e4e4e7)', minHeight: 34 }}>
+            <div style={{ flex: '0 0 300px', padding: '4px 8px 4px 0', fontSize: 12 }}>
+              <div>{a.descricao}</div>
+              <div className="small muted">{a.eapCodigo ?? 'sem linha da EAP'} · {dataCurta(a.inicio)} a {dataCurta(a.fim)} · {a.duracaoDias} d</div>
+            </div>
+            <div style={{ flex: 1, position: 'relative', height: 16 }}>
+              <div
+                title={`${a.descricao}: ${dataCurta(a.inicio)} a ${dataCurta(a.fim)}`}
+                style={{
+                  position: 'absolute', top: 0, bottom: 0, borderRadius: 3, background: 'var(--cor-primaria, #1d4ed8)',
+                  left: `${(a.deslocamentoDias / g.totalDias) * 100}%`, width: `${Math.max(0.5, (a.duracaoDias / g.totalDias) * 100)}%`,
+                }}
+              />
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** Equipes: trabalhadores por dia em cada tipo de mão de obra, no pico de cada período. */
+function EquipesView({ e }: { e: EquipesRel }) {
+  if (!e.porTipo.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhuma mão de obra horista encontrada no orçamento das atividades.</p></div>;
+  return (
+    <>
+      <div className="card">
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Jornada de {num(e.horasDia, 2)} h por dia (ajustável no cadastro da obra). Trabalhadores = horas da atividade ÷ dias ÷ jornada.
+          Em cada período aparece o pico diário, arredondado para cima.
+        </p>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tabela">
+            <thead>
+              <tr>
+                <th>Mão de obra</th>
+                <th className="num">Pico</th>
+                {e.periodos.map((p) => <th key={p} className="num">{p}</th>)}
+              </tr>
+            </thead>
+            <tbody>
+              {e.porTipo.map((t) => (
+                <tr key={t.codigo}>
+                  <td>{t.descricao}</td>
+                  <td className="num"><b>{t.pico}</b></td>
+                  {t.periodos.map((p) => <td key={p.rotulo} className="num">{p.trabalhadores || '—'}</td>)}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <div className="card">
+        <h2 style={{ marginTop: 0 }}>Atividades</h2>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tabela">
+            <thead>
+              <tr>
+                <th>Atividade</th>
+                <th>Período</th>
+                <th className="num">Dias</th>
+                <th>Trabalhadores necessários</th>
+              </tr>
+            </thead>
+            <tbody>
+              {e.porAtividade.map((a) => (
+                <tr key={a.id}>
+                  <td>{a.descricao}</td>
+                  <td className="small">{dataCurta(a.inicio)} a {dataCurta(a.fim)}</td>
+                  <td className="num">{a.duracaoDias}</td>
+                  <td className="small">{a.recursos.length ? a.recursos.map((r) => `${r.descricao}: ${r.trabalhadores}`).join(' · ') : <span className="muted">sem mão de obra no orçamento</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {e.mensalistasNaoCalculados.length > 0 && (
+          <p className="small muted">
+            Fora do cálculo, por serem mensalistas (sem horas): {e.mensalistasNaoCalculados.join(', ')}.
+          </p>
+        )}
+        {e.atividadesSemOrcamento > 0 && <p className="small muted">{e.atividadesSemOrcamento} atividade(s) sem orçamento vinculado: não entram nos cálculos.</p>}
+      </div>
+    </>
+  );
+}
+
+/** Compras: materiais a entregar, com a data da primeira atividade que usa cada insumo. Mão de obra, equipamentos e terceirizados ficam de fora. */
+function ComprasView({ c }: { c: ComprasRel }) {
+  if (!c.itens.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhum material encontrado para as atividades do planejamento.</p></div>;
+  return (
+    <div className="card">
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Quantidade total de cada material, com a data em que ele deve estar na obra (início da primeira atividade que o usa).
+        Ficam de fora mão de obra, equipamentos e serviços terceirizados.
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <table className="tabela">
+          <thead>
+            <tr>
+              <th>Material</th>
+              <th>Un.</th>
+              <th className="num">Quantidade</th>
+              <th>Entregar até</th>
+              <th>Usado em</th>
+            </tr>
+          </thead>
+          <tbody>
+            {c.itens.map((i) => (
+              <tr key={i.codigo}>
+                <td>{i.descricao}{!i.grupo && <span className="small muted"> · classe não identificada</span>}</td>
+                <td>{i.unidade}</td>
+                <td className="num">{num(i.total, 3)}</td>
+                <td>{dataCurta(i.primeira)}</td>
+                <td className="small" title={i.usos.map((u) => `${u.atividade} (${dataCurta(u.inicio)}): ${num(u.quantidade, 3)}`).join('\n')}>
+                  {i.usos.length} atividade(s)
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {c.semClasse > 0 && <p className="small muted">{c.semClasse} material(is) sem classe identificada: conferir antes de comprar.</p>}
+      {c.atividadesSemOrcamento > 0 && <p className="small muted">{c.atividadesSemOrcamento} atividade(s) sem orçamento vinculado: não entram na lista.</p>}
+    </div>
   );
 }

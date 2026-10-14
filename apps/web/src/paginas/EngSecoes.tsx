@@ -231,7 +231,7 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
     setOcupado(true);
     try {
       const r = await api<{ criadas: number }>(`/eng/obras/${obra.id}/planejamento/gerar-da-eap`, { metodo: 'POST' });
-      setAviso(r.criadas ? `${r.criadas} atividade(s) criada(s) a partir das linhas da EAP. Ajuste início e duração.` : 'Todas as linhas da EAP já têm atividade.');
+      setAviso(r.criadas ? `${r.criadas} atividade(s) criada(s) para as linhas novas da EAP. Ajuste início e duração; as demais atividades não foram alteradas.` : 'Nenhuma linha nova na EAP: o planejamento já está atualizado.');
       await carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -256,7 +256,7 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
       <div className="card">
         <div className="acoes" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
           <h2 style={{ margin: 0 }}>Atividades</h2>
-          <button className="btn" type="button" onClick={gerarDaEap} disabled={ocupado || !nos.length} title="Cria uma atividade para cada linha final da EAP que ainda não tem atividade">Gerar atividades pela EAP</button>
+          <button className="btn" type="button" onClick={gerarDaEap} disabled={ocupado || !nos.length} title="Cria uma atividade só para as linhas novas da EAP (lançadas no orçamento depois do planejamento). As atividades existentes não são alteradas.">Atualizar pela EAP</button>
         </div>
         {aviso && <p className="small muted" style={{ marginTop: 8 }}>{aviso}</p>}
         {lista === null ? (
