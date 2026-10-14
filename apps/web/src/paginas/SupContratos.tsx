@@ -13,7 +13,6 @@ import {
   SELO_AUTORIZACAO,
   SELO_CONTRATO,
   SELO_MEDICAO,
-  rotuloCatalogo,
   textoRetencoes,
   UNIDADES,
   useCadastrosCompra,
@@ -103,13 +102,13 @@ export function SupContratos() {
 }
 
 // ---------- Formulário ----------
-type LinhaItem = { chave: string; id: string | null; catalogoId: string; descricao: string; unidade: string; quantidade: string; preco: string; medido: number };
+type LinhaItem = { chave: string; id: string | null; descricao: string; unidade: string; quantidade: string; preco: string; medido: number };
 let seq = 0;
-const novaLinhaItem = (p: Partial<LinhaItem> = {}): LinhaItem => ({ chave: `c${++seq}`, id: null, catalogoId: '', descricao: '', unidade: 'h', quantidade: '', preco: '', medido: 0, ...p });
+const novaLinhaItem = (p: Partial<LinhaItem> = {}): LinhaItem => ({ chave: `c${++seq}`, id: null, descricao: '', unidade: 'h', quantidade: '', preco: '', medido: 0, ...p });
 const RET_VAZIA: Record<keyof Retencoes, string> = { caucao: '', iss: '', inss: '', ir: '', pcc: '' };
 
 function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; aoSalvar: (k: Contrato) => void; aoCancelar?: () => void }) {
-  const { fornecedores, centros, catalogo } = useCadastrosCompra();
+  const { fornecedores, centros } = useCadastrosCompra();
   const [planos, setPlanos] = useState<PlanoConta[]>([]);
   useEffect(() => {
     api<{ contas: PlanoConta[] }>('/fin/plano-contas').then((r) => setPlanos(r.contas.filter((p) => p.tipo === 'despesa' && p.aceitaLancamento && p.ativo))).catch(() => {});
@@ -134,7 +133,7 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
   );
   const [linhas, setLinhas] = useState<LinhaItem[]>(
     inicial?.itens.length
-      ? inicial.itens.map((i) => novaLinhaItem({ id: i.id, catalogoId: i.catalogoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), preco: campoNumero(i.precoUnitario, 4), medido: i.medido + i.pendente }))
+      ? inicial.itens.map((i) => novaLinhaItem({ id: i.id, descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), preco: campoNumero(i.precoUnitario, 4), medido: i.medido + i.pendente }))
       : [novaLinhaItem()],
   );
   const [erro, setErro] = useState('');
@@ -159,7 +158,7 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
                 if (!l.descricao.trim()) throw new Error(`Item ${n + 1}: descreva o serviço.`);
                 if (!q || q <= 0) throw new Error(`Item ${n + 1}: informe a quantidade.`);
                 if (p === null || p < 0) throw new Error(`Item ${n + 1}: informe o preço unitário.`);
-                return { id: l.id, catalogoId: l.catalogoId || null, descricao: l.descricao.trim(), unidade: l.unidade, quantidade: q, precoUnitario: p };
+                return { id: l.id, descricao: l.descricao.trim(), unidade: l.unidade, quantidade: q, precoUnitario: p };
               })
           : [];
       const retencoes = Object.fromEntries((Object.keys(RET_VAZIA) as (keyof Retencoes)[]).map((k) => [k, usaRet ? lerNumero(ret[k]) ?? 0 : 0]));
@@ -234,28 +233,6 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
           <div className="editor-itens">
             {linhas.map((l, n) => (
               <div key={l.chave} className="campos editor-linha">
-                <div className="campo">
-                  <label htmlFor={`ci-c-${l.chave}`}>Serviço {n + 1}</label>
-                  <select
-                    id={`ci-c-${l.chave}`}
-                    value={l.catalogoId}
-                    onChange={(e) => {
-                      const c = catalogo.find((x) => x.id === e.target.value);
-                      mudarLinha(l.chave, c ? { catalogoId: c.id, descricao: c.descricao, unidade: c.unidade, preco: l.preco || (c.ultimoPreco ? campoNumero(c.ultimoPreco, 4) : '') } : { catalogoId: '' });
-                      if (c?.planoContaId && !f.planoContaId) setF({ ...f, planoContaId: c.planoContaId });
-                    }}
-                  >
-                    <option value="">Descrever (sem catálogo)</option>
-                    {(['servico', 'material'] as const).map((t) => {
-                      const lista = catalogo.filter((c) => c.tipo === t && (c.ativo || c.id === l.catalogoId));
-                      return lista.length ? (
-                        <optgroup key={t} label={t === 'servico' ? 'Serviços do catálogo' : 'Materiais do catálogo'}>
-                          {lista.map((c) => <option key={c.id} value={c.id}>{rotuloCatalogo(c)}</option>)}
-                        </optgroup>
-                      ) : null;
-                    })}
-                  </select>
-                </div>
                 <div className="campo">
                   <label htmlFor={`ci-d-${l.chave}`}>Descrição no contrato</label>
                   <input id={`ci-d-${l.chave}`} maxLength={200} value={l.descricao} onChange={(e) => mudarLinha(l.chave, { descricao: e.target.value })} placeholder="Ex.: hora técnica de mecânico" />

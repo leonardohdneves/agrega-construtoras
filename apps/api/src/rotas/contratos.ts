@@ -72,7 +72,7 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
   if (!k) throw naoEncontrado('Contrato');
   const itens = (
     await c.query(
-      `SELECT ci.*, (SELECT codigo FROM catalogo_itens ct WHERE ct.id = ci.catalogo_id) AS codigo,
+      `SELECT ci.*, NULL::text AS codigo,
               coalesce((SELECT sum(mi.quantidade) FROM medicoes_itens mi JOIN medicoes m ON m.id = mi.medicao_id WHERE mi.contrato_item_id = ci.id AND m.status = 'aprovada'), 0) AS medido,
               coalesce((SELECT sum(mi.quantidade) FROM medicoes_itens mi JOIN medicoes m ON m.id = mi.medicao_id WHERE mi.contrato_item_id = ci.id AND m.status IN ('rascunho', 'aguardando_aprovacao')), 0) AS pendente
          FROM contratos_itens ci WHERE ci.contrato_id = $1 ORDER BY ci.ordem, ci.descricao`,
@@ -104,7 +104,6 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
     const medido = Number(i.medido);
     return {
       id: i.id as string,
-      catalogoId: i.catalogo_id as string | null,
       codigo: i.codigo as string | null,
       descricao: i.descricao as string,
       unidade: i.unidade as string,
@@ -237,7 +236,6 @@ const esquemaContrato = z.object({
     .array(
       z.object({
         id: uuidOpc,
-        catalogoId: uuidOpc,
         descricao: z.string().trim().min(1, 'Descreva cada item.').max(200),
         unidade: z.string().trim().min(1).max(10),
         quantidade: positivo('Quantidade inválida.'),
@@ -282,24 +280,12 @@ async function gravarItensContrato(c: Cliente, empresaId: string, contratoId: st
   await c.query('DELETE FROM contratos_itens WHERE contrato_id = $1 AND NOT (id = ANY($2::uuid[]))', [contratoId, [...manter]]);
   for (const [n, i] of itens.entries()) {
     if (i.id && atuais.some((a) => a.id === i.id))
-      await c.query('UPDATE contratos_itens SET ordem = $2, descricao = $3, unidade = $4, quantidade = $5, preco_unitario_centavos = $6, catalogo_id = $7 WHERE id = $1', [i.id, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario), i.catalogoId]);
+      await c.query('UPDATE contratos_itens SET ordem = $2, descricao = $3, unidade = $4, quantidade = $5, preco_unitario_centavos = $6 WHERE id = $1', [i.id, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario)]);
     else
-      await c.query('INSERT INTO contratos_itens (empresa_id, contrato_id, ordem, descricao, unidade, quantidade, preco_unitario_centavos, catalogo_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)', [empresaId, contratoId, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario), i.catalogoId]);
+      await c.query('INSERT INTO contratos_itens (empresa_id, contrato_id, ordem, descricao, unidade, quantidade, preco_unitario_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7)', [empresaId, contratoId, n + 1, i.descricao, i.unidade, r3(i.quantidade), centPreco(i.precoUnitario)]);
   }
-  const cats = [...new Set(itens.map((i) => i.catalogoId).filter(Boolean))] as string[];
-  if (cats.length && (await c.query('SELECT count(*)::int AS n FROM catalogo_itens WHERE empresa_id = $1 AND id = ANY($2::uuid[])', [empresaId, cats])).rows[0].n !== cats.length)
-    throw new ErroHttp(400, 'Item do catálogo não encontrado.');
 }
 
-/** Último preço contratado dos serviços do catálogo (contrato vigente). */
-async function atualizarUltimoPrecoContrato(c: Cliente, contratoId: string) {
-  await c.query(
-    `UPDATE catalogo_itens ct SET ultimo_preco_centavos = ci.preco_unitario_centavos, ultimo_preco_em = coalesce(k.data_assinatura, k.inicio), ultimo_fornecedor_id = k.fornecedor_id, atualizado_em = now()
-       FROM contratos_itens ci JOIN contratos k ON k.id = ci.contrato_id
-      WHERE ci.contrato_id = $1 AND k.status = 'vigente' AND ct.id = ci.catalogo_id AND (ct.ultimo_preco_em IS NULL OR ct.ultimo_preco_em <= coalesce(k.data_assinatura, k.inicio))`,
-    [contratoId],
-  );
-}
 
 // ---------------------------------------------------------------- medição
 
@@ -662,7 +648,6 @@ export function rotasContratos(banco: Banco) {
         if (d.tipo === 'itens') await gravarItensContrato(c, empresaId, k.id, d.itens);
         else await c.query('DELETE FROM contratos_itens WHERE contrato_id = $1', [k.id]);
         if (k.status === 'reprovado') await c.query("UPDATE contratos SET status = 'rascunho', motivo_reprovacao = NULL WHERE id = $1", [k.id]);
-        await atualizarUltimoPrecoContrato(c, k.id);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, antes: { status: k.status, objeto: k.objeto }, depois: { objeto: d.objeto, aditivo: k.status === 'vigente' } });
       });
       return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
@@ -677,8 +662,7 @@ export function rotasContratos(banco: Banco) {
           if (!de.includes(k.status)) throw new ErroHttp(409, msg);
           if (extra) await extra(c, k);
           await c.query(`UPDATE contratos SET status = $2, encerrado_em = CASE WHEN $2 = 'encerrado' THEN $3::date ELSE encerrado_em END, atualizado_em = now() WHERE id = $1`, [k.id, para, hojeBrasil()]);
-          if (para === 'vigente') await atualizarUltimoPrecoContrato(c, k.id);
-          await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, antes: { status: k.status }, depois: { status: para } });
+                    await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, antes: { status: k.status }, depois: { status: para } });
         });
         return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
       });
@@ -698,7 +682,6 @@ export function rotasContratos(banco: Banco) {
         if (valor <= 0) throw new ErroHttp(400, 'O contrato não tem valor.');
         if (dispensaAprovacao(valor, await lerRegras(c, empresaId))) {
           await c.query("UPDATE contratos SET status = 'vigente', enviado_aprovacao_em = now(), aprovado_em = now(), aprovado_por_id = NULL, aprovacao_automatica = true, motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1", [k.id]);
-          await atualizarUltimoPrecoContrato(c, k.id);
         } else await c.query("UPDATE contratos SET status = 'aguardando_aprovacao', enviado_aprovacao_em = now(), motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1", [k.id]);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'contratos', entidadeId: k.id, depois: { acao: 'enviar para aprovação', valor: valor / 100 } });
       });
@@ -714,7 +697,6 @@ export function rotasContratos(banco: Banco) {
         const valor = await valorDoContrato(c, k);
         if (!podeAprovar(u, valor, await lerRegras(c, empresaId))) throw new ErroHttp(403, 'Você não tem alçada para aprovar este valor.');
         await c.query("UPDATE contratos SET status = 'vigente', aprovado_em = now(), aprovado_por_id = $2, aprovacao_automatica = false, atualizado_em = now() WHERE id = $1", [k.id, u.id]);
-        await atualizarUltimoPrecoContrato(c, k.id);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'confirmar', entidade: 'contratos', entidadeId: k.id, depois: { acao: 'aprovar', valor: valor / 100 } });
       });
       return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };

@@ -21,7 +21,6 @@ import { rotasPropostas } from './rotas/propostas.ts';
 import { rotasEngenharia } from './rotas/engenharia.ts';
 import { rotasMural } from './rotas/mural.ts';
 import { rotasProducaoEquipe } from './rotas/producao-equipe.ts';
-import { rotasCatalogo } from './rotas/catalogo.ts';
 import { rotasFinanceiro } from './rotas/financeiro.ts';
 import { rotasNotas } from './rotas/notas.ts';
 import { rotasConciliacao } from './rotas/conciliacao.ts';
@@ -78,8 +77,6 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
         plano_contas_codigo_unico: 'Já existe uma categoria com este código.',
         centros_custo_nome_unico: 'Já existe um centro de custo com este nome.',
         notas_chave_unica: 'Esta nota (mesma chave de acesso) já foi lançada.',
-        catalogo_codigo_unico: 'Já existe um item do catálogo com este código.',
-        catalogo_descricao_unica: 'Já existe um item do catálogo com esta descrição.',
       };
       return reply.code(409).send({ erro: MSG[restricao] ?? 'Já existe um cadastro com esses dados.' });
     }
@@ -116,7 +113,6 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(rotasQualidade(banco), { prefix: '/api/qual' });
   await app.register(rotasSuprimentos(banco), { prefix: '/api/sup' });
   await app.register(rotasContratos(banco), { prefix: '/api/sup' });
-  await app.register(rotasCatalogo(banco), { prefix: '/api/sup' });
   await app.register(rotasAprovacoes(banco), { prefix: '/api/ger' });
   await app.register(rotasProducaoEquipe(banco), { prefix: '/api/ger' });
   await app.register(rotasComercial(banco), { prefix: '/api/com' });

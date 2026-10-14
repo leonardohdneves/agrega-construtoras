@@ -1,14 +1,11 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarDataHora, formatarDocumento, formatarMoeda, hojeLocal, lerNumero, moedaCampo, NOMES_MODELO, type ModeloNota } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import {
   Assinatura,
   campoNumero,
-  EditorItens,
-  itensParaApi,
   nomeFornecedor,
-  novaLinha,
   numeroDoc,
   pct,
   precoUn,
@@ -16,10 +13,8 @@ import {
   Selo,
   SELO_PEDIDO,
   useCadastrosCompra,
-  type LinhaEditor,
   type Pedido,
   type PedidoResumo,
-  type Solicitacao,
 } from '../componentes/Suprimentos';
 import { useSessao } from '../sessao';
 
@@ -52,7 +47,6 @@ export function SupPedidos() {
           <h1>Pedidos de compra</h1>
           <span className="muted">Do rascunho à entrega: aprovação, envio ao fornecedor e recebimento conferido pela nota fiscal.</span>
         </div>
-        <Link className="btn btn-primario" to="/sup/pedidos/novo">Novo pedido</Link>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       <div className="abas" role="tablist">
@@ -104,46 +98,29 @@ export function SupPedidos() {
   );
 }
 
-// ---------- Formulário ----------
+// ---------- Edição do cabeçalho (os itens vêm da cotação e não são alterados aqui) ----------
 type DadosForm = { fornecedorId: string; data: string; previsaoEntrega: string; condicaoPagamento: string; localEntrega: string; frete: string; centroCustoId: string; observacao: string };
 
-function FormPedido({ inicial, solicitacao, aoSalvar, aoCancelar }: { inicial?: Pedido; solicitacao?: Solicitacao | null; aoSalvar: (p: Pedido) => void; aoCancelar?: () => void }) {
-  const { insumos, fornecedores, centros, catalogo } = useCadastrosCompra();
+function FormPedido({ inicial, aoSalvar, aoCancelar }: { inicial: Pedido; aoSalvar: (p: Pedido) => void; aoCancelar?: () => void }) {
+  const { fornecedores, centros } = useCadastrosCompra();
   const [f, setF] = useState<DadosForm>({
-    fornecedorId: inicial?.fornecedorId ?? '',
-    data: inicial?.data ?? hojeLocal(),
-    previsaoEntrega: inicial?.previsaoEntrega ?? solicitacao?.necessidade ?? '',
-    condicaoPagamento: inicial?.condicaoPagamento ?? '',
-    localEntrega: inicial?.localEntrega ?? '',
-    frete: inicial?.frete ? moedaCampo(inicial.frete) : '',
-    centroCustoId: inicial?.centroCustoId ?? solicitacao?.centroCustoId ?? '',
-    observacao: inicial?.observacao ?? '',
-  });
-  const [linhas, setLinhas] = useState<LinhaEditor[]>(() => {
-    if (inicial) return inicial.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', catalogoId: i.catalogoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade), preco: campoNumero(i.precoUnitario, 4) }));
-    if (solicitacao) return solicitacao.itens.map((i) => novaLinha({ insumoId: i.insumoId ?? '', catalogoId: i.catalogoId ?? '', descricao: i.descricao, unidade: i.unidade, quantidade: campoNumero(i.quantidade) }));
-    return [novaLinha()];
+    fornecedorId: inicial.fornecedorId ?? '',
+    data: inicial.data ?? hojeLocal(),
+    previsaoEntrega: inicial.previsaoEntrega ?? '',
+    condicaoPagamento: inicial.condicaoPagamento ?? '',
+    localEntrega: inicial.localEntrega ?? '',
+    frete: inicial.frete ? moedaCampo(inicial.frete) : '',
+    centroCustoId: inicial.centroCustoId ?? '',
+    observacao: inicial.observacao ?? '',
   });
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
-
-  // Preço de partida: último custo do insumo (pelas notas) ou último preço pago do item do catálogo.
-  useEffect(() => {
-    if (inicial || (!insumos.length && !catalogo.length)) return;
-    setLinhas((ls) => ls.map((l) => {
-      if (l.preco) return l;
-      const c = l.insumoId ? insumos.find((i) => i.id === l.insumoId)?.custoUnitario : l.catalogoId ? catalogo.find((x) => x.id === l.catalogoId)?.ultimoPreco : null;
-      return c ? { ...l, preco: campoNumero(c, 4) } : l;
-    }));
-  }, [insumos, catalogo, inicial]);
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro('');
     try {
       if (!f.fornecedorId) throw new Error('Escolha o fornecedor.');
-      const itens = itensParaApi(linhas, true);
-      if (!itens.length) throw new Error('Inclua pelo menos um item.');
       setOcupado(true);
       const corpo = {
         ...f,
@@ -153,12 +130,9 @@ function FormPedido({ inicial, solicitacao, aoSalvar, aoCancelar }: { inicial?: 
         frete: lerNumero(f.frete) ?? 0,
         centroCustoId: f.centroCustoId || null,
         observacao: f.observacao || null,
-        solicitacaoId: inicial ? inicial.solicitacaoId : solicitacao?.id ?? null,
-        itens,
+        solicitacaoId: inicial.solicitacaoId,
       };
-      const r = inicial
-        ? await api<{ pedido: Pedido }>(`/sup/pedidos/${inicial.id}`, { metodo: 'PUT', corpo })
-        : await api<{ pedido: Pedido }>('/sup/pedidos', { corpo });
+      const r = await api<{ pedido: Pedido }>(`/sup/pedidos/${inicial.id}`, { metodo: 'PUT', corpo });
       aoSalvar(r.pedido);
     } catch (err) {
       setErro((err as Error).message);
@@ -193,8 +167,9 @@ function FormPedido({ inicial, solicitacao, aoSalvar, aoCancelar }: { inicial?: 
           </select>
         </div>
       </div>
-      <h2>Itens</h2>
-      <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} catalogo={catalogo} comPreco />
+      <h2>Itens da cotação</h2>
+      <p className="small muted">Os itens e preços vêm da cotação vencedora. Para mudar um item, refaça a cotação.</p>
+      <ItensPedidoTabela itens={inicial.itens} />
       <div className="campos">
         <div className="campo">
           <label htmlFor="pd-frete">Frete (R$)</label>
@@ -214,39 +189,40 @@ function FormPedido({ inicial, solicitacao, aoSalvar, aoCancelar }: { inicial?: 
         <textarea id="pd-obs" rows={2} maxLength={1000} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} />
       </div>
       <div className="acoes">
-        <button className="btn btn-primario" type="submit" disabled={ocupado}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Salvar rascunho'}</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado}>{ocupado ? 'Salvando…' : 'Salvar alterações'}</button>
         {aoCancelar && <button className="btn btn-secundario" type="button" onClick={aoCancelar}>Cancelar</button>}
       </div>
     </form>
   );
 }
 
-export function NovoPedido() {
-  const navegar = useNavigate();
-  const [params] = useSearchParams();
-  const solId = params.get('solicitacao');
-  const [sol, setSol] = useState<Solicitacao | null | undefined>(solId ? undefined : null);
-  const [erro, setErro] = useState('');
-  useEffect(() => {
-    if (!solId) return;
-    api<{ solicitacao: Solicitacao }>(`/sup/solicitacoes/${solId}`).then((r) => setSol(r.solicitacao)).catch((e) => setErro((e as Error).message));
-  }, [solId]);
+/** Itens do pedido com a EAP de cada insumo (a base do custo real da obra). */
+export function ItensPedidoTabela({ itens }: { itens: Pedido['itens'] }) {
   return (
-    <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <Link to="/sup/pedidos" className="small">← Pedidos de compra</Link>
-          <h1>Novo pedido de compra</h1>
-          {sol && <span className="muted">Da solicitação nº {numeroDoc(sol.numero)}, sem cotação.</span>}
-        </div>
-      </div>
-      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      {sol === undefined ? (
-        !erro && <p className="muted">Carregando…</p>
-      ) : (
-        <FormPedido solicitacao={sol} aoSalvar={(p) => navegar(`/sup/pedidos/${p.id}`, { replace: true, state: { aviso: 'Rascunho salvo. Confira e envie para aprovação.' } })} />
-      )}
-    </>
+    <div style={{ overflowX: 'auto' }}>
+      <table className="tabela">
+        <thead>
+          <tr>
+            <th>EAP</th>
+            <th>Insumo</th>
+            <th className="num">Quantidade</th>
+            <th className="num">Preço unit.</th>
+            <th className="num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {itens.map((i) => (
+            <tr key={i.id}>
+              <td className="mono small">{i.eapCodigo ?? '—'} <span className="muted">{i.eapDescricao ?? ''}</span></td>
+              <td>{i.descricao}</td>
+              <td className="num">{qtd(i.quantidade, i.unidade)}</td>
+              <td className="num">{precoUn(i.precoUnitario)}</td>
+              <td className="num">{formatarMoeda(i.total)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
   );
 }
 

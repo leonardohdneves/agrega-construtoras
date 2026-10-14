@@ -469,10 +469,10 @@ function PainelApropriacao({ obra, itens, nos, setErro }: { obra: Obra; itens: I
                     <td>{n.dataNecessaria ? n.dataNecessaria.split('-').reverse().join('/') : '—'}</td>
                     <td className="num">{formatarMoeda(n.precoUnitario)}</td>
                     <td className="num">{formatarMoeda(n.total)}</td>
-                    <td>{n.status === 'cancelada' ? 'Cancelada' : 'Pendente'}</td>
+                    <td>{n.status === 'cancelada' ? 'Cancelada' : n.status === 'solicitada' ? 'Em solicitação' : n.status === 'comprada' ? 'Comprada' : 'Pendente'}</td>
                     <td className="acoes">
-                      {n.status !== 'cancelada' && <button className="btn" type="button" onClick={() => cancelar(n)}>Cancelar</button>}
-                      <button className="btn" type="button" onClick={() => excluir(n)}>Excluir</button>
+                      {n.status === 'pendente' && <button className="btn" type="button" onClick={() => cancelar(n)}>Cancelar</button>}
+                      {(n.status === 'pendente' || n.status === 'cancelada') && <button className="btn" type="button" onClick={() => excluir(n)}>Excluir</button>}
                     </td>
                   </tr>
                 ))}

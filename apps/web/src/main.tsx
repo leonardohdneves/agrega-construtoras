@@ -40,9 +40,8 @@ import { Amostras, CpsARomper, Laudo, Resistencia } from './paginas/Qualidade';
 import { ConfigQualidade, EnsaiosInsumos, Equipamentos } from './paginas/QualCadastros';
 import { NovaSolicitacao, SolicitacaoDetalhe, SupSolicitacoes } from './paginas/SupSolicitacoes';
 import { CotacaoDetalhe, NovaCotacao, SupCotacoes } from './paginas/SupCotacoes';
-import { NovoPedido, PedidoDetalhe, SupPedidos } from './paginas/SupPedidos';
+import { PedidoDetalhe, SupPedidos } from './paginas/SupPedidos';
 import { SupAprovacoes } from './paginas/SupAprovacoes';
-import { SupCatalogo } from './paginas/SupCatalogo';
 import { ContratoDetalhe, NovoContrato, SupContratos } from './paginas/SupContratos';
 import { MedicaoDetalhe, NovaMedicao, SupMedicoes } from './paginas/SupMedicoes';
 import { AutorizacaoDetalhe, SupAutorizacoes } from './paginas/SupAutorizacoes';
@@ -167,7 +166,6 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/cotacoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaCotacao /></Protegido>} />
             <Route path="sup/cotacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><CotacaoDetalhe /></Protegido>} />
             <Route path="sup/pedidos" element={<Protegido perfis={['dono', 'gestor']}><SupPedidos /></Protegido>} />
-            <Route path="sup/pedidos/novo" element={<Protegido perfis={['dono', 'gestor']}><NovoPedido /></Protegido>} />
             <Route path="sup/pedidos/:id" element={<Protegido perfis={['dono', 'gestor']}><PedidoDetalhe /></Protegido>} />
             <Route path="sup/contratos" element={<Protegido perfis={['dono', 'gestor']}><SupContratos /></Protegido>} />
             <Route path="sup/contratos/novo" element={<Protegido perfis={['dono', 'gestor']}><NovoContrato /></Protegido>} />
@@ -179,7 +177,6 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/autorizacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><AutorizacaoDetalhe /></Protegido>} />
             <Route path="ger/aprovacoes" element={<Protegido perfis={['dono', 'gestor']}><SupAprovacoes /></Protegido>} />
             <Route path="sup/aprovacoes" element={<Navigate to="/ger/aprovacoes" replace />} />
-            <Route path="sup/catalogo" element={<Protegido perfis={['dono', 'gestor']}><SupCatalogo /></Protegido>} />
             <Route path="sup/relatorios" element={<Protegido perfis={['dono', 'gestor']}><SupRelatorios /></Protegido>} />
             <Route path="com/propostas" element={<Protegido perfis={COMERCIAL}><ComPropostas /></Protegido>} />
             <Route path="com/propostas/nova" element={<Protegido perfis={COMERCIAL}><PropostaNova /></Protegido>} />
