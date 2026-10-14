@@ -34,6 +34,7 @@ import { rotasFrota } from './rotas/frota.ts';
 import { rotasAbastecimento } from './rotas/abastecimentos.ts';
 import { rotasManutencao } from './rotas/manutencao.ts';
 import { rotasAdministrativo } from './rotas/administrativo.ts';
+import { rotasBackups, rotasExportacao } from './rotas/backups.ts';
 
 const VERSAO = '0.9.0';
 const PASTA_WEB = path.resolve(import.meta.dirname, '..', '..', 'web', 'dist');
@@ -99,6 +100,8 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(rotasEmpresa(banco), { prefix: '/api/empresa' });
   await app.register(rotasUsuarios(banco), { prefix: '/api/usuarios' });
   await app.register(rotasAdmin(banco), { prefix: '/api/admin' });
+  await app.register(rotasBackups(banco), { prefix: '/api/admin' });
+  await app.register(rotasExportacao(banco), { prefix: '/api/empresa' });
   await app.register(rotasFrota(banco), { prefix: '/api/frota' });
   await app.register(rotasAbastecimento(banco), { prefix: '/api/frota' });
   await app.register(rotasManutencao(banco), { prefix: '/api/frota' });

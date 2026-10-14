@@ -3,6 +3,7 @@ import { criarBanco } from './db.ts';
 import { aplicarMigracoes } from './migrar.ts';
 import { garantirAdmin, garantirConteudoDemo, garantirDemo } from './sementes.ts';
 import { criarApp } from './app.ts';
+import { iniciarAgendamentoBackup } from './lib/backup-job.ts';
 
 const banco = criarBanco(config.databaseUrl);
 await aplicarMigracoes(banco);
@@ -23,3 +24,4 @@ process.on('SIGTERM', encerrar);
 process.on('SIGINT', encerrar);
 
 await app.listen({ port: config.porta, host: '0.0.0.0' });
+iniciarAgendamentoBackup(banco, (m) => console.log(m));
