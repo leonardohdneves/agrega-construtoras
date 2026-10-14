@@ -157,6 +157,8 @@ export function EngPlanejamento() {
 type Atividade = {
   id: string; ordem: number; descricao: string; eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null;
   inicioInformado: string; duracaoDias: number; predecessoraId: string | null; inicio: string; fim: string;
+  /** Etapa ou subetapa: início e fim vêm das tarefas abaixo dela. */
+  resumo: boolean;
 };
 type FormAtividade = { descricao: string; eapNoId: string; inicio: string; duracaoDias: string; predecessoraId: string };
 const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
@@ -295,7 +297,7 @@ function PainelPlanejamento({ obra, nos, setErro }: { obra: Obra; nos: No[]; set
                       {a.inicio !== a.inicioInformado && <div className="small muted">informado: {dataBr(a.inicioInformado)}</div>}
                     </td>
                     <td>{dataBr(a.fim)}</td>
-                    <td className="num">{a.duracaoDias}</td>
+                    <td className="num">{a.resumo ? <span className="small muted">resumo</span> : a.duracaoDias}</td>
                     <td className="acoes">
                       <button className="btn" type="button" onClick={() => editar(a)}>Editar</button>
                       <button className="btn" type="button" onClick={() => excluir(a)}>Excluir</button>
