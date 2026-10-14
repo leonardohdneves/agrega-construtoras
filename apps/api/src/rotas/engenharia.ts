@@ -1523,6 +1523,7 @@ export function rotasEngenharia(banco: Banco) {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
         const atual = (await c.query('SELECT * FROM obra_necessidades WHERE id = $1 AND obra_id = $2', [req.params.necId, obra.id])).rows[0];
         if (!atual) throw naoEncontrado('Necessidade');
+        if (['solicitada', 'comprada'].includes(atual.status)) throw new ErroHttp(409, 'Esta necessidade já está em solicitação de compra ou comprada. Para alterá-la, cancele a solicitação antes.');
         const campos = {
           eapNoId: d.eapNoId !== undefined ? d.eapNoId : atual.eap_no_id,
           quantidade: d.quantidade ?? Number(atual.quantidade),
@@ -1544,6 +1545,8 @@ export function rotasEngenharia(banco: Banco) {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const atual = (await c.query('SELECT status FROM obra_necessidades WHERE id = $1 AND obra_id = $2', [req.params.necId, obra.id])).rows[0];
+        if (atual && ['solicitada', 'comprada'].includes(atual.status)) throw new ErroHttp(409, 'Esta necessidade já está em solicitação de compra ou comprada. Não dá para excluí-la.');
         const n = (await c.query('DELETE FROM obra_necessidades WHERE id = $1 AND obra_id = $2', [req.params.necId, obra.id])).rowCount;
         if (!n) throw naoEncontrado('Necessidade');
       });

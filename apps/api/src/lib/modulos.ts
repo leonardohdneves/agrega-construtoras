@@ -88,7 +88,7 @@ const CONSULTAS = [
 /** Contratos e medições que o engenheiro de obra administra (só das obras atribuídas a ele, conferido na rota). */
 const CONTRATOS_DA_OBRA = [/^\/api\/sup\/(contratos|medicoes)(\/|$)/];
 /** Listas que o engenheiro de obra usa para preencher contratos e medições. */
-const CONSULTAS_ENGENHEIRO = [/^\/api\/fin\/(plano-contas|centros-custo)\/?$/, /^\/api\/sup\/catalogo\/?$/];
+const CONSULTAS_ENGENHEIRO = [/^\/api\/fin\/(plano-contas|centros-custo)\/?$/];
 
 /** Do Financeiro, liberado sem o módulo (para o painel e listas); a resposta esconde saldos e contas de quem não pode ver. */
 const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|plano-contas|centros-custo)\/?$/];

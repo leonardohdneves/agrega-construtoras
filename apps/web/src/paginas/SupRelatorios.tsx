@@ -17,7 +17,7 @@ type Resp = {
   emAberto: { id: string; numero: number; data: string; fornecedor: string; status: StatusPedido; previsaoEntrega: string | null; diasAtraso: number; total: number; saldo: number; itens: string }[];
   economia: { id: string; numero: number; data: string; itens: number; fornecedores: number; total: number; economiaMaior: number; economiaMedia: number; foraDoMenor: number; justificativa: string | null }[];
   divergencias: { pedido: number; fornecedor: string; nota: string | null; data: string; descricao: string; unidade: string; quantidadePedido: number; quantidadeNota: number; precoPedido: number | null; precoNota: number | null; diferencaPreco: number | null; valorDiferenca: number }[];
-  pendentes: { numero: number; data: string; necessidade: string | null; status: StatusSolicitacao; origem: string; solicitante: string | null; itens: string | null; dias: number }[];
+  pendentes: { numero: number; data: string; necessidade: string | null; status: StatusSolicitacao; obra: string | null; solicitante: string | null; itens: string | null; dias: number }[];
 };
 
 const ABAS = [
@@ -131,7 +131,12 @@ export function SupRelatorios() {
         abas={ABAS}
         aba={aba}
         aoMudar={(id) => mudar({ aba: id })}
-        extra={<SeletorPeriodo valor={periodo} aoMudar={(p) => mudar(p)} />}
+        extra={
+          <>
+            <SeletorPeriodo valor={periodo} aoMudar={(p) => mudar(p)} />
+            <button className="btn" type="button" onClick={() => window.print()} disabled={!r}>Imprimir / salvar em PDF</button>
+          </>
+        }
       />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {r && !ABAS_CONTRATO.includes(aba) && (
@@ -253,7 +258,7 @@ export function SupRelatorios() {
       ) : (
         <TabelaRelatorio
           titulo="Solicitações pendentes"
-          descricao="Solicitações abertas ou em cotação hoje, da mais urgente para a menos urgente."
+          descricao="Solicitações abertas, finalizadas aguardando cotação ou em cotação hoje, da mais urgente para a menos urgente."
           arquivo="solicitacoes_pendentes"
           linhas={r.pendentes}
           vazio="Nenhuma solicitação pendente."
@@ -262,6 +267,7 @@ export function SupRelatorios() {
             { titulo: 'Data', valor: (l) => l.data, formato: 'data' },
             { titulo: 'Precisa até', valor: (l) => l.necessidade, formato: 'data' },
             { titulo: 'Situação', valor: (l) => SELO_SOLICITACAO[l.status].texto },
+            { titulo: 'Obra', valor: (l) => l.obra },
             { titulo: 'Solicitante', valor: (l) => l.solicitante },
             { titulo: 'Itens', valor: (l) => l.itens },
             { titulo: 'Dias', valor: (l) => l.dias, formato: 'numero', destaque: (l) => (l.dias > 7 ? 'aviso' : undefined) },

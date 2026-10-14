@@ -7,7 +7,6 @@ import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
-import { SQL_SALDOS } from '../lib/estoque.ts';
 import { normalizar } from '../lib/sugestoes.ts';
 import { dispensaAprovacao, lerRegras, lerRegrasDe, podeAprovar, proximoNumero, textoRegras, type RegrasAprovacao } from '../lib/aprovacao.ts';
 import { empresaDo, exigir } from '../sessao.ts';
@@ -53,48 +52,64 @@ function periodo(q: Record<string, string | undefined>, padraoDias = 90) {
   return { de, ate, hoje };
 }
 
-// ---------------------------------------------------------------- itens (insumo do cadastro ou descrição livre)
+// ---------------------------------------------------------------- itens: necessidades de insumo da obra (apropriadas à EAP)
+// Toda compra parte de uma necessidade pendente: insumo cadastrado na obra, apropriado a um nó da EAP.
 
-const esquemaItem = z.object({
-  insumoId: uuidOpc,
-  catalogoId: uuidOpc,
-  descricao: texto(200),
-  unidade: z.string().trim().max(10).optional().nullable().transform((v) => v || null),
-  quantidade: positivo('A quantidade deve ser maior que zero.'),
+const esquemaNecessidadeItem = z.object({
+  necessidadeId: z.string().regex(UUID, 'Escolha o insumo da obra.'),
   observacao: texto(200),
 });
-type ItemEntrada = z.infer<typeof esquemaItem>;
-type ItemResolvido = { insumoId: string | null; catalogoId: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null };
 
-async function resolverItens(c: Cliente, empresaId: string, itens: ItemEntrada[]): Promise<ItemResolvido[]> {
+/** Item de compra resolvido a partir de uma necessidade da obra. */
+type ItemResolvido = {
+  necessidadeId: string;
+  obraItemId: string;
+  eapNoId: string;
+  codigo: string;
+  descricao: string;
+  unidade: string;
+  quantidade: number;
+  observacao: string | null;
+};
+
+/** Confere que as necessidades são desta obra, estão pendentes e apropriadas a um nó da EAP. */
+async function resolverNecessidades(c: Cliente, empresaId: string, obraId: string, itens: { necessidadeId: string; observacao: string | null }[]): Promise<ItemResolvido[]> {
   if (!itens.length) throw new ErroHttp(400, 'Inclua pelo menos um item.');
-  const ids = [...new Set(itens.map((i) => i.insumoId).filter(Boolean))] as string[];
-  const insumos = new Map<string, { nome: string; unidade: string }>();
-  if (ids.length) {
-    const r = await c.query('SELECT id, nome, unidade FROM insumos WHERE empresa_id = $1 AND id = ANY($2::uuid[]) AND excluido_em IS NULL', [empresaId, ids]);
-    for (const x of r.rows) insumos.set(x.id, { nome: x.nome, unidade: x.unidade });
-  }
-  const cids = [...new Set(itens.map((i) => i.catalogoId).filter(Boolean))] as string[];
-  const catalogo = new Map<string, { descricao: string; unidade: string }>();
-  if (cids.length) {
-    const r = await c.query('SELECT id, descricao, unidade FROM catalogo_itens WHERE empresa_id = $1 AND id = ANY($2::uuid[])', [empresaId, cids]);
-    for (const x of r.rows) catalogo.set(x.id, { descricao: x.descricao, unidade: x.unidade });
-  }
+  if (new Set(itens.map((i) => i.necessidadeId)).size !== itens.length) throw new ErroHttp(400, 'Um mesmo insumo não pode aparecer duas vezes.');
+  const r = await c.query(
+    `SELECT n.id, n.obra_id, n.status, n.quantidade, n.eap_no_id, oi.id AS obra_item_id, oi.codigo, oi.descricao, oi.unidade
+       FROM obra_necessidades n JOIN obra_itens oi ON oi.id = n.obra_item_id JOIN obras o ON o.id = n.obra_id
+      WHERE n.id = ANY($1::uuid[]) AND o.empresa_id = $2
+      FOR UPDATE OF n`,
+    [itens.map((i) => i.necessidadeId), empresaId],
+  );
+  const porId = new Map(r.rows.map((x) => [x.id as string, x]));
   return itens.map((i, n) => {
-    if (i.catalogoId && !i.insumoId) {
-      const it = catalogo.get(i.catalogoId);
-      if (!it) throw new ErroHttp(400, `Item ${n + 1}: item do catálogo não encontrado.`);
-      return { insumoId: null, catalogoId: i.catalogoId, descricao: it.descricao, unidade: it.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
-    }
-    if (i.insumoId) {
-      const ins = insumos.get(i.insumoId);
-      if (!ins) throw new ErroHttp(400, `Item ${n + 1}: insumo não encontrado.`);
-      return { insumoId: i.insumoId, catalogoId: null, descricao: i.descricao ?? ins.nome, unidade: i.unidade ?? ins.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
-    }
-    if (!i.descricao) throw new ErroHttp(400, `Item ${n + 1}: escolha o insumo ou escreva a descrição.`);
-    if (!i.unidade) throw new ErroHttp(400, `Item ${n + 1}: informe a unidade.`);
-    return { insumoId: null, catalogoId: null, descricao: i.descricao, unidade: i.unidade, quantidade: r3(i.quantidade), observacao: i.observacao };
+    const x = porId.get(i.necessidadeId);
+    if (!x) throw new ErroHttp(400, `Item ${n + 1}: insumo não encontrado.`);
+    if (x.obra_id !== obraId) throw new ErroHttp(400, `Item ${n + 1}: o insumo não pertence a esta obra.`);
+    if (x.status !== 'pendente') throw new ErroHttp(409, `Item ${n + 1} (${x.descricao}): já está em outra solicitação ou foi comprado.`);
+    if (!x.eap_no_id) throw new ErroHttp(400, `Item ${n + 1} (${x.descricao}): o insumo não está apropriado a um nó da EAP.`);
+    return {
+      necessidadeId: x.id as string,
+      obraItemId: x.obra_item_id as string,
+      eapNoId: x.eap_no_id as string,
+      codigo: x.codigo as string,
+      descricao: x.descricao as string,
+      unidade: x.unidade as string,
+      quantidade: Number(x.quantidade),
+      observacao: i.observacao,
+    };
   });
+}
+
+/** Devolve ao pendente as necessidades que estavam numa solicitação (antes de alterar ou cancelar). */
+async function liberarNecessidades(c: Cliente, solicitacaoId: string) {
+  await c.query(
+    `UPDATE obra_necessidades SET status = 'pendente', atualizado_em = now()
+      WHERE status = 'solicitada' AND id IN (SELECT necessidade_id FROM solicitacoes_itens WHERE solicitacao_id = $1 AND necessidade_id IS NOT NULL)`,
+    [solicitacaoId],
+  );
 }
 
 async function validarFornecedor(c: Cliente, empresaId: string, id: string) {
@@ -108,22 +123,22 @@ async function validarCentro(c: Cliente, empresaId: string, id: string | null) {
 // ---------------------------------------------------------------- solicitações
 
 const esquemaSolicitacao = z.object({
+  obraId: z.string().regex(UUID, 'Escolha a obra.'),
   data: dataOpc,
   necessidade: dataOpc,
-  centroCustoId: uuidOpc,
   observacao: texto(500),
-  origem: z.enum(['manual', 'estoque_minimo']).optional().default('manual'),
-  itens: z.array(esquemaItem).max(100, 'Até 100 itens por solicitação.'),
+  itens: z.array(esquemaNecessidadeItem).min(1, 'Inclua pelo menos um insumo.').max(200, 'Até 200 itens por solicitação.'),
 });
 
 async function detalharSolicitacao(c: Cliente, empresaId: string, id: string) {
   if (!UUID.test(id)) throw naoEncontrado('Solicitação');
   const s = (
     await c.query(
-      `SELECT s.*, u.nome AS solicitante, cc.nome AS centro_custo,
+      `SELECT s.*, u.nome AS solicitante, cc.nome AS centro_custo, o.nome AS obra_nome, o.codigo AS obra_codigo,
               (SELECT json_agg(json_build_object('id', ct.id, 'numero', ct.numero, 'status', ct.status) ORDER BY ct.numero) FROM cotacoes ct WHERE ct.solicitacao_id = s.id) AS cotacoes,
               (SELECT json_agg(json_build_object('id', p.id, 'numero', p.numero, 'status', p.status) ORDER BY p.numero) FROM pedidos_compra p WHERE p.solicitacao_id = s.id) AS pedidos
          FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id LEFT JOIN centros_custo cc ON cc.id = s.centro_custo_id
+              LEFT JOIN obras o ON o.id = s.obra_id
         WHERE s.id = $1 AND s.empresa_id = $2`,
       [id, empresaId],
     )
@@ -131,7 +146,9 @@ async function detalharSolicitacao(c: Cliente, empresaId: string, id: string) {
   if (!s) throw naoEncontrado('Solicitação');
   const itens = (
     await c.query(
-      `SELECT si.*, i.tipo FROM solicitacoes_itens si LEFT JOIN insumos i ON i.id = si.insumo_id WHERE si.solicitacao_id = $1 ORDER BY si.descricao`,
+      `SELECT si.*, en.codigo AS eap_codigo, en.descricao AS eap_descricao
+         FROM solicitacoes_itens si LEFT JOIN eap_nos en ON en.id = si.eap_no_id
+        WHERE si.solicitacao_id = $1 ORDER BY en.codigo, si.descricao`,
       [id],
     )
   ).rows;
@@ -140,69 +157,41 @@ async function detalharSolicitacao(c: Cliente, empresaId: string, id: string) {
     numero: s.numero,
     data: s.data,
     necessidade: s.necessidade,
-    origem: s.origem,
+    obraId: s.obra_id,
+    obra: s.obra_id ? { id: s.obra_id as string, codigo: s.obra_codigo as string, nome: s.obra_nome as string } : null,
     centroCustoId: s.centro_custo_id,
     centroCusto: s.centro_custo,
     observacao: s.observacao,
     status: s.status,
+    finalizadaEm: s.finalizada_em,
     solicitante: s.solicitante,
     cotacoes: s.cotacoes ?? [],
     pedidos: s.pedidos ?? [],
-    itens: itens.map((i) => ({ id: i.id, insumoId: i.insumo_id, catalogoId: i.catalogo_id, tipo: i.tipo, descricao: i.descricao, unidade: i.unidade, quantidade: Number(i.quantidade), observacao: i.observacao })),
+    itens: itens.map((i) => ({
+      id: i.id as string,
+      necessidadeId: i.necessidade_id as string | null,
+      obraItemId: i.obra_item_id as string | null,
+      eapNoId: i.eap_no_id as string | null,
+      eapCodigo: i.eap_codigo as string | null,
+      eapDescricao: i.eap_descricao as string | null,
+      descricao: i.descricao as string,
+      unidade: i.unidade as string,
+      quantidade: Number(i.quantidade),
+      observacao: i.observacao as string | null,
+    })),
   };
 }
 
+/** Grava os itens da solicitação (já validados) e marca as necessidades como solicitadas. */
 async function gravarItensSolicitacao(c: Cliente, empresaId: string, solicitacaoId: string, itens: ItemResolvido[]) {
   await c.query('DELETE FROM solicitacoes_itens WHERE solicitacao_id = $1', [solicitacaoId]);
   for (const i of itens)
     await c.query(
-      'INSERT INTO solicitacoes_itens (empresa_id, solicitacao_id, insumo_id, catalogo_id, descricao, unidade, quantidade, observacao) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-      [empresaId, solicitacaoId, i.insumoId, i.catalogoId, i.descricao, i.unidade, i.quantidade, i.observacao],
+      `INSERT INTO solicitacoes_itens (empresa_id, solicitacao_id, descricao, unidade, quantidade, observacao, obra_item_id, eap_no_id, necessidade_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+      [empresaId, solicitacaoId, i.descricao, i.unidade, i.quantidade, i.observacao, i.obraItemId, i.eapNoId, i.necessidadeId],
     );
-}
-
-/** Insumos abaixo do estoque mínimo, descontando o que já está pedido ou solicitado, com a quantidade para repor até 2× o mínimo. */
-async function sugestaoEstoque(c: Cliente, empresaId: string) {
-  const hoje = hojeBrasil();
-  const r = await c.query(
-    `WITH s AS (${SQL_SALDOS})
-     SELECT i.id, i.nome, i.tipo, i.unidade, i.estoque_minimo, s.saldo,
-            coalesce((SELECT sum(cc.quantidade) FROM cargas_consumo cc JOIN cargas c ON c.id = cc.carga_id
-                       WHERE cc.insumo_id = i.id AND c.status = 'produzida' AND (c.data_hora AT TIME ZONE 'America/Sao_Paulo')::date > $2::date - 30), 0) / 30.0 AS consumo_dia,
-            coalesce((SELECT sum(pi.quantidade - coalesce((SELECT sum(ni.quantidade_pedido) FROM notas_itens ni JOIN notas_fiscais n ON n.id = ni.nota_id
-                                                             WHERE ni.pedido_item_id = pi.id AND n.excluido_em IS NULL AND n.status <> 'cancelada'), 0))
-                        FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id
-                       WHERE pi.insumo_id = i.id AND p.status IN ('rascunho', 'aguardando_aprovacao', 'aprovado', 'enviado', 'parcial')), 0) AS em_pedido,
-            coalesce((SELECT sum(si.quantidade) FROM solicitacoes_itens si JOIN solicitacoes_compra sc ON sc.id = si.solicitacao_id
-                       WHERE si.insumo_id = i.id AND sc.status IN ('aberta', 'em_cotacao')), 0) AS em_solicitacao
-       FROM insumos i JOIN s ON s.insumo_id = i.id
-      WHERE i.empresa_id = $1 AND i.excluido_em IS NULL AND i.ativo AND i.controla_estoque AND i.estoque_minimo IS NOT NULL AND i.estoque_minimo > 0
-      ORDER BY i.nome`,
-    [empresaId, hoje],
-  );
-  return r.rows
-    .map((x) => {
-      const minimo = Number(x.estoque_minimo);
-      const saldo = Number(x.saldo);
-      const emPedido = Math.max(0, Number(x.em_pedido));
-      const emSolicitacao = Number(x.em_solicitacao);
-      const consumoDia = Number(x.consumo_dia);
-      const sugerido = 2 * minimo - saldo - emPedido - emSolicitacao;
-      return {
-        insumoId: x.id as string,
-        nome: x.nome as string,
-        tipo: x.tipo as string,
-        unidade: x.unidade as string,
-        estoqueMinimo: minimo,
-        saldo: r3(saldo),
-        emPedido: r3(emPedido),
-        emSolicitacao: r3(emSolicitacao),
-        diasCobertura: consumoDia > 0 && saldo > 0 ? Math.floor(saldo / consumoDia) : null,
-        sugerido: sugerido > 0 ? Math.ceil(sugerido) : 0,
-        abaixo: saldo < minimo,
-      };
-    })
-    .filter((x) => x.abaixo);
+  await c.query("UPDATE obra_necessidades SET status = 'solicitada', atualizado_em = now() WHERE id = ANY($1::uuid[])", [itens.map((i) => i.necessidadeId)]);
 }
 
 // ---------------------------------------------------------------- cotações e mapa
@@ -226,7 +215,14 @@ async function detalharCotacao(c: Cliente, empresaId: string, id: string) {
       [id],
     )
   ).rows;
-  const itens = (await c.query('SELECT * FROM cotacoes_itens WHERE cotacao_id = $1 ORDER BY descricao', [id])).rows;
+  const itens = (
+    await c.query(
+      `SELECT ci.*, en.codigo AS eap_codigo, en.descricao AS eap_descricao, oi.codigo
+         FROM cotacoes_itens ci LEFT JOIN eap_nos en ON en.id = ci.eap_no_id LEFT JOIN obra_itens oi ON oi.id = ci.obra_item_id
+        WHERE ci.cotacao_id = $1 ORDER BY en.codigo, ci.descricao`,
+      [id],
+    )
+  ).rows;
   const precos = (await c.query('SELECT cp.* FROM cotacoes_precos cp JOIN cotacoes_itens ci ON ci.id = cp.cotacao_item_id WHERE ci.cotacao_id = $1', [id])).rows;
   const pedidos = (
     await c.query(
@@ -253,8 +249,12 @@ async function detalharCotacao(c: Cliente, empresaId: string, id: string) {
     const venc = ofertas.find((o) => o.cotacaoFornecedorId === i.vencedor_id) ?? null;
     return {
       id: i.id as string,
-      insumoId: i.insumo_id as string | null,
-      catalogoId: i.catalogo_id as string | null,
+      solicitacaoItemId: i.solicitacao_item_id as string | null,
+      necessidadeId: i.necessidade_id as string | null,
+      obraItemId: i.obra_item_id as string | null,
+      eapNoId: i.eap_no_id as string | null,
+      eapCodigo: i.eap_codigo as string | null,
+      codigo: i.codigo as string | null,
       descricao: i.descricao as string,
       unidade: i.unidade as string,
       quantidade: q,
@@ -358,7 +358,14 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
     )
   ).rows[0] as LinhaPedido | undefined;
   if (!p) throw naoEncontrado('Pedido');
-  const itens = (await c.query('SELECT pi.*, i.tipo, ct.codigo FROM pedidos_itens pi LEFT JOIN insumos i ON i.id = pi.insumo_id LEFT JOIN catalogo_itens ct ON ct.id = pi.catalogo_id WHERE pi.pedido_id = $1 ORDER BY pi.descricao', [id])).rows;
+  const itens = (
+    await c.query(
+      `SELECT pi.*, oi.codigo, en.codigo AS eap_codigo, en.descricao AS eap_descricao
+         FROM pedidos_itens pi LEFT JOIN obra_itens oi ON oi.id = pi.obra_item_id LEFT JOIN eap_nos en ON en.id = pi.eap_no_id
+        WHERE pi.pedido_id = $1 ORDER BY en.codigo, pi.descricao`,
+      [id],
+    )
+  ).rows;
   const recebidos = await recebidosDoPedido(c, id);
   const notas = (
     await c.query(
@@ -379,10 +386,12 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
     const difPreco = precoNota !== null && pu > 0 ? precoNota / pu - 1 : null;
     return {
       id: i.id as string,
-      insumoId: i.insumo_id as string | null,
-      catalogoId: i.catalogo_id as string | null,
+      obraItemId: i.obra_item_id as string | null,
+      necessidadeId: i.necessidade_id as string | null,
+      eapNoId: i.eap_no_id as string | null,
+      eapCodigo: i.eap_codigo as string | null,
+      eapDescricao: i.eap_descricao as string | null,
       codigo: i.codigo as string | null,
-      tipo: i.tipo as string | null,
       descricao: i.descricao as string,
       unidade: i.unidade as string,
       quantidade: q,
@@ -451,6 +460,7 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
   };
 }
 
+/** Cabeçalho do pedido. Os itens vêm da cotação (com obra, EAP e necessidade) e não são editados aqui. */
 const esquemaPedido = z.object({
   fornecedorId: z.string().regex(UUID, 'Escolha o fornecedor.'),
   data: dataOpc,
@@ -461,36 +471,23 @@ const esquemaPedido = z.object({
   centroCustoId: uuidOpc,
   observacao: texto(1000),
   solicitacaoId: uuidOpc,
-  itens: z
-    .array(esquemaItem.extend({ precoUnitario: naoNegativo('Preço inválido.') }))
-    .max(100, 'Até 100 itens por pedido.'),
 });
 
-async function gravarItensPedido(c: Cliente, empresaId: string, pedidoId: string, itens: (ItemResolvido & { precoUnitario: number; cotacaoItemId?: string | null })[], freteCentavos: number) {
+async function gravarItensPedido(c: Cliente, empresaId: string, pedidoId: string, itens: (ItemResolvido & { precoUnitario: number; cotacaoItemId: string })[], freteCentavos: number) {
   await c.query('DELETE FROM pedidos_itens WHERE pedido_id = $1', [pedidoId]);
   let total = 0;
   for (const i of itens) {
     const pu = centPreco(i.precoUnitario);
     total += Math.round(pu * i.quantidade);
     await c.query(
-      `INSERT INTO pedidos_itens (empresa_id, pedido_id, cotacao_item_id, insumo_id, catalogo_id, descricao, unidade, quantidade, preco_unitario_centavos)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-      [empresaId, pedidoId, i.cotacaoItemId ?? null, i.insumoId, i.catalogoId ?? null, i.descricao, i.unidade, i.quantidade, pu],
+      `INSERT INTO pedidos_itens (empresa_id, pedido_id, cotacao_item_id, descricao, unidade, quantidade, preco_unitario_centavos, obra_item_id, eap_no_id, necessidade_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+      [empresaId, pedidoId, i.cotacaoItemId, i.descricao, i.unidade, i.quantidade, pu, i.obraItemId, i.eapNoId, i.necessidadeId],
     );
   }
   total += freteCentavos;
   await c.query('UPDATE pedidos_compra SET total_centavos = $2, atualizado_em = now() WHERE id = $1', [pedidoId, total]);
   return total;
-}
-
-/** Último preço pago dos itens do catálogo, na aprovação do pedido. */
-export async function atualizarUltimoPrecoPedido(c: Cliente, pedidoId: string) {
-  await c.query(
-    `UPDATE catalogo_itens ct SET ultimo_preco_centavos = pi.preco_unitario_centavos, ultimo_preco_em = p.data, ultimo_fornecedor_id = p.fornecedor_id, atualizado_em = now()
-       FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id
-      WHERE pi.pedido_id = $1 AND ct.id = pi.catalogo_id AND (ct.ultimo_preco_em IS NULL OR ct.ultimo_preco_em <= p.data)`,
-    [pedidoId],
-  );
 }
 
 /** Situação do pedido pelo que já foi recebido. */
@@ -536,40 +533,42 @@ export function rotasSuprimentos(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
 
-    // ----- Solicitações de compra
+    // ----- Solicitações de compra: sempre de uma obra, com os insumos das necessidades apropriadas à EAP.
     app.get<{ Querystring: Record<string, string | undefined> }>('/solicitacoes', async (req) => {
       const empresaId = empresaDo(req);
       const status = STATUS_SOLICITACAO.includes(req.query.status as never) ? req.query.status! : null;
+      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
       const r = await banco.query(
-        `SELECT s.id, s.numero, s.data, s.necessidade, s.origem, s.status, s.observacao, u.nome AS solicitante,
+        `SELECT s.id, s.numero, s.data, s.necessidade, s.status, s.observacao, s.finalizada_em, s.obra_id, u.nome AS solicitante,
+                o.codigo AS obra_codigo, o.nome AS obra_nome,
                 (SELECT count(*)::int FROM solicitacoes_itens si WHERE si.solicitacao_id = s.id) AS itens,
                 (SELECT string_agg(si.descricao, ', ' ORDER BY si.descricao) FROM solicitacoes_itens si WHERE si.solicitacao_id = s.id) AS resumo
-           FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id
-          WHERE s.empresa_id = $1 AND ($2::text IS NULL OR s.status = $2)
-            AND ($2::text IS NOT NULL OR s.status IN ('aberta', 'em_cotacao') OR s.data > current_date - 120)
-          ORDER BY (s.status IN ('aberta', 'em_cotacao')) DESC, s.numero DESC LIMIT 500`,
-        [empresaId, status],
+           FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id LEFT JOIN obras o ON o.id = s.obra_id
+          WHERE s.empresa_id = $1 AND ($2::text IS NULL OR s.status = $2) AND ($3::uuid IS NULL OR s.obra_id = $3)
+            AND ($2::text IS NOT NULL OR s.status IN ('aberta', 'finalizada', 'em_cotacao') OR s.data > current_date - 120)
+          ORDER BY (s.status IN ('aberta', 'finalizada', 'em_cotacao')) DESC, s.numero DESC LIMIT 500`,
+        [empresaId, status, obraId],
       );
       const hoje = hojeBrasil();
+      const abertas = ['aberta', 'finalizada', 'em_cotacao'];
       return {
         solicitacoes: r.rows.map((s) => ({
           id: s.id,
           numero: s.numero,
           data: s.data,
           necessidade: s.necessidade,
-          origem: s.origem,
+          obra: s.obra_id ? { id: s.obra_id as string, codigo: s.obra_codigo as string, nome: s.obra_nome as string } : null,
           status: s.status,
+          finalizadaEm: s.finalizada_em,
           observacao: s.observacao,
           solicitante: s.solicitante,
           itens: s.itens,
           resumo: s.resumo,
-          diasAberta: ['aberta', 'em_cotacao'].includes(s.status) ? diasEntre(s.data, hoje) : null,
-          urgente: ['aberta', 'em_cotacao'].includes(s.status) && !!s.necessidade && s.necessidade <= somarDias(hoje, 3),
+          diasAberta: abertas.includes(s.status) ? diasEntre(s.data, hoje) : null,
+          urgente: abertas.includes(s.status) && !!s.necessidade && s.necessidade <= somarDias(hoje, 3),
         })),
       };
     });
-
-    app.get('/solicitacoes/estoque-minimo', async (req) => ({ insumos: await sugestaoEstoque(banco, empresaDo(req)) }));
 
     app.get<{ Params: { id: string } }>('/solicitacoes/:id', async (req) => ({ solicitacao: await detalharSolicitacao(banco, empresaDo(req), req.params.id) }));
 
@@ -578,14 +577,15 @@ export function rotasSuprimentos(banco: Banco) {
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       const id = await emTransacao(banco, async (c) => {
-        await validarCentro(c, empresaId, d.centroCustoId);
-        const itens = await resolverItens(c, empresaId, d.itens);
+        const obra = (await c.query('SELECT id, centro_custo_id FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo', [d.obraId, empresaId])).rows[0];
+        if (!obra) throw new ErroHttp(400, 'Obra não encontrada.');
+        const itens = await resolverNecessidades(c, empresaId, d.obraId, d.itens);
         const numero = await proximoNumero(c, 'solicitacoes_compra', empresaId);
         const s = (
           await c.query(
-            `INSERT INTO solicitacoes_compra (empresa_id, numero, data, necessidade, origem, centro_custo_id, observacao, solicitante_id)
+            `INSERT INTO solicitacoes_compra (empresa_id, numero, data, necessidade, obra_id, centro_custo_id, observacao, solicitante_id)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-            [empresaId, numero, d.data ?? hojeBrasil(), d.necessidade, d.origem, d.centroCustoId, d.observacao, u.id],
+            [empresaId, numero, d.data ?? hojeBrasil(), d.necessidade, d.obraId, obra.centro_custo_id, d.observacao, u.id],
           )
         ).rows[0];
         await gravarItensSolicitacao(c, empresaId, s.id, itens);
@@ -600,13 +600,15 @@ export function rotasSuprimentos(banco: Banco) {
       const d = esquemaSolicitacao.parse(req.body);
       const empresaId = empresaDo(req);
       const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
-      if (atual.status !== 'aberta') throw new ErroHttp(409, 'Só dá para alterar solicitação aberta (sem cotação).');
+      if (atual.status !== 'aberta') throw new ErroHttp(409, 'Só dá para alterar solicitação aberta (não finalizada e sem cotação).');
       await emTransacao(banco, async (c) => {
-        await validarCentro(c, empresaId, d.centroCustoId);
-        const itens = await resolverItens(c, empresaId, d.itens);
+        const obra = (await c.query('SELECT id, centro_custo_id FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo', [d.obraId, empresaId])).rows[0];
+        if (!obra) throw new ErroHttp(400, 'Obra não encontrada.');
+        await liberarNecessidades(c, atual.id);
+        const itens = await resolverNecessidades(c, empresaId, d.obraId, d.itens);
         await c.query(
-          'UPDATE solicitacoes_compra SET data = coalesce($2, data), necessidade = $3, centro_custo_id = $4, observacao = $5, atualizado_em = now() WHERE id = $1',
-          [atual.id, d.data, d.necessidade, d.centroCustoId, d.observacao],
+          'UPDATE solicitacoes_compra SET obra_id = $2, centro_custo_id = $3, data = coalesce($4, data), necessidade = $5, observacao = $6, atualizado_em = now() WHERE id = $1',
+          [atual.id, d.obraId, obra.centro_custo_id, d.data, d.necessidade, d.observacao],
         );
         await gravarItensSolicitacao(c, empresaId, atual.id, itens);
         await auditar(c, { empresaId, usuarioId: usuarioDe(req).id, acao: 'alterar', entidade: 'solicitacoes_compra', entidadeId: atual.id, antes: { itens: atual.itens.length }, depois: { itens: itens.length } });
@@ -614,12 +616,37 @@ export function rotasSuprimentos(banco: Banco) {
       return { solicitacao: await detalharSolicitacao(banco, empresaId, atual.id) };
     });
 
+    /** Finalizar: a solicitação fica disponível para cotação (e só então aparece no mapa de cotações). */
+    app.post<{ Params: { id: string } }>('/solicitacoes/:id/finalizar', async (req) => {
+      const empresaId = empresaDo(req);
+      const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
+      if (atual.status !== 'aberta') throw new ErroHttp(409, 'Esta solicitação já foi finalizada ou está em cotação.');
+      if (!atual.itens.length) throw new ErroHttp(400, 'Inclua pelo menos um insumo antes de finalizar.');
+      await emTransacao(banco, async (c) => {
+        await c.query("UPDATE solicitacoes_compra SET status = 'finalizada', finalizada_em = now(), atualizado_em = now() WHERE id = $1", [atual.id]);
+        await auditar(c, { empresaId, usuarioId: usuarioDe(req).id, acao: 'alterar', entidade: 'solicitacoes_compra', entidadeId: atual.id, depois: { status: 'finalizada' } });
+      });
+      return { solicitacao: await detalharSolicitacao(banco, empresaId, atual.id) };
+    });
+
+    app.post<{ Params: { id: string } }>('/solicitacoes/:id/reabrir', async (req) => {
+      const empresaId = empresaDo(req);
+      const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
+      if (atual.status !== 'finalizada') throw new ErroHttp(409, 'Só dá para reabrir solicitação finalizada.');
+      await emTransacao(banco, async (c) => {
+        await c.query("UPDATE solicitacoes_compra SET status = 'aberta', finalizada_em = NULL, atualizado_em = now() WHERE id = $1", [atual.id]);
+        await auditar(c, { empresaId, usuarioId: usuarioDe(req).id, acao: 'alterar', entidade: 'solicitacoes_compra', entidadeId: atual.id, depois: { status: 'aberta' } });
+      });
+      return { solicitacao: await detalharSolicitacao(banco, empresaId, atual.id) };
+    });
+
     app.post<{ Params: { id: string } }>('/solicitacoes/:id/cancelar', async (req) => {
       const empresaId = empresaDo(req);
       const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
-      if (!['aberta', 'em_cotacao'].includes(atual.status)) throw new ErroHttp(409, 'Esta solicitação já foi atendida ou cancelada.');
+      if (!['aberta', 'finalizada', 'em_cotacao'].includes(atual.status)) throw new ErroHttp(409, 'Esta solicitação já foi atendida ou cancelada.');
       if (atual.cotacoes.some((c: { status: string }) => c.status === 'aberta')) throw new ErroHttp(409, 'Cancele antes a cotação aberta desta solicitação.');
       await emTransacao(banco, async (c) => {
+        await liberarNecessidades(c, atual.id);
         await c.query("UPDATE solicitacoes_compra SET status = 'cancelada', atualizado_em = now() WHERE id = $1", [atual.id]);
         await auditar(c, { empresaId, usuarioId: usuarioDe(req).id, acao: 'alterar', entidade: 'solicitacoes_compra', entidadeId: atual.id, depois: { status: 'cancelada' } });
       });
@@ -662,32 +689,34 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.get<{ Params: { id: string } }>('/cotacoes/:id', async (req) => ({ cotacao: await detalharCotacao(banco, empresaDo(req), req.params.id) }));
 
+    /** Cotação sempre parte de uma solicitação finalizada; os itens são os da solicitação (obra, EAP e necessidade). */
     app.post('/cotacoes', async (req, reply) => {
       const d = z
         .object({
-          solicitacaoId: uuidOpc,
+          solicitacaoId: z.string().regex(UUID, 'Escolha a solicitação finalizada.'),
           data: dataOpc,
           prazoResposta: dataOpc,
           observacao: texto(500),
           fornecedorIds: z.array(z.string().regex(UUID)).max(10, 'Até 10 fornecedores por cotação.').default([]),
-          itens: z.array(esquemaItem).max(100).optional().default([]),
         })
         .parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       const id = await emTransacao(banco, async (c) => {
-        let itens: (ItemResolvido & { solicitacaoItemId: string | null })[];
-        if (d.solicitacaoId) {
-          const s = (await c.query('SELECT status FROM solicitacoes_compra WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [d.solicitacaoId, empresaId])).rows[0];
-          if (!s) throw new ErroHttp(400, 'Solicitação não encontrada.');
-          if (!['aberta', 'em_cotacao'].includes(s.status)) throw new ErroHttp(409, 'Esta solicitação já foi atendida ou cancelada.');
-          const r = await c.query('SELECT * FROM solicitacoes_itens WHERE solicitacao_id = $1', [d.solicitacaoId]);
-          itens = r.rows.map((x) => ({ insumoId: x.insumo_id, catalogoId: x.catalogo_id, descricao: x.descricao, unidade: x.unidade, quantidade: Number(x.quantidade), observacao: x.observacao, solicitacaoItemId: x.id }));
-          await c.query("UPDATE solicitacoes_compra SET status = 'em_cotacao', atualizado_em = now() WHERE id = $1", [d.solicitacaoId]);
-        } else {
-          itens = (await resolverItens(c, empresaId, d.itens)).map((i) => ({ ...i, solicitacaoItemId: null }));
-        }
-        if (!itens.length) throw new ErroHttp(400, 'A cotação precisa de pelo menos um item.');
+        const s = (await c.query('SELECT status FROM solicitacoes_compra WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [d.solicitacaoId, empresaId])).rows[0];
+        if (!s) throw new ErroHttp(400, 'Solicitação não encontrada.');
+        if (s.status !== 'finalizada') throw new ErroHttp(409, 'Só dá para cotar solicitação finalizada.');
+        const r = await c.query('SELECT * FROM solicitacoes_itens WHERE solicitacao_id = $1 ORDER BY descricao', [d.solicitacaoId]);
+        if (!r.rows.length) throw new ErroHttp(400, 'A solicitação não tem itens.');
+        const itens = r.rows.map((x) => ({
+          solicitacaoItemId: x.id as string,
+          necessidadeId: x.necessidade_id as string | null,
+          obraItemId: x.obra_item_id as string | null,
+          eapNoId: x.eap_no_id as string | null,
+          descricao: x.descricao as string,
+          unidade: x.unidade as string,
+          quantidade: Number(x.quantidade),
+        }));
         const numero = await proximoNumero(c, 'cotacoes', empresaId);
         const ct = (
           await c.query(
@@ -697,13 +726,15 @@ export function rotasSuprimentos(banco: Banco) {
         ).rows[0];
         for (const i of itens)
           await c.query(
-            'INSERT INTO cotacoes_itens (empresa_id, cotacao_id, solicitacao_item_id, insumo_id, catalogo_id, descricao, unidade, quantidade) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)',
-            [empresaId, ct.id, i.solicitacaoItemId, i.insumoId, i.catalogoId, i.descricao, i.unidade, i.quantidade],
+            `INSERT INTO cotacoes_itens (empresa_id, cotacao_id, solicitacao_item_id, descricao, unidade, quantidade, obra_item_id, eap_no_id, necessidade_id)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+            [empresaId, ct.id, i.solicitacaoItemId, i.descricao, i.unidade, i.quantidade, i.obraItemId, i.eapNoId, i.necessidadeId],
           );
         for (const f of [...new Set(d.fornecedorIds)]) {
           await validarFornecedor(c, empresaId, f);
           await c.query('INSERT INTO cotacoes_fornecedores (empresa_id, cotacao_id, fornecedor_id) VALUES ($1, $2, $3)', [empresaId, ct.id, f]);
         }
+        await c.query("UPDATE solicitacoes_compra SET status = 'em_cotacao', atualizado_em = now() WHERE id = $1", [d.solicitacaoId]);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'cotacoes', entidadeId: ct.id, depois: { numero, itens: itens.length, fornecedores: d.fornecedorIds.length } });
         return ct.id as string;
       });
@@ -830,20 +861,29 @@ export function rotasSuprimentos(banco: Banco) {
           ).rows[0];
           const itens = escolhidos
             .filter((i) => i.vencedorId === f.id)
-            .map((i) => ({
-              insumoId: i.insumoId,
-              catalogoId: i.catalogoId,
-              descricao: i.descricao,
-              unidade: i.unidade,
-              quantidade: i.quantidade,
-              observacao: null,
-              precoUnitario: i.ofertas.find((o) => o.cotacaoFornecedorId === f.id)!.precoUnitario,
-              cotacaoItemId: i.id,
-            }));
+            .map((i) => {
+              if (!i.necessidadeId || !i.obraItemId || !i.eapNoId) throw new ErroHttp(400, `${i.descricao}: item sem insumo da obra apropriado à EAP. Refaça a solicitação.`);
+              return {
+                necessidadeId: i.necessidadeId,
+                obraItemId: i.obraItemId,
+                eapNoId: i.eapNoId,
+                codigo: i.codigo ?? '',
+                descricao: i.descricao,
+                unidade: i.unidade,
+                quantidade: i.quantidade,
+                observacao: null,
+                precoUnitario: i.ofertas.find((o) => o.cotacaoFornecedorId === f.id)!.precoUnitario,
+                cotacaoItemId: i.id,
+              };
+            });
           await gravarItensPedido(c, empresaId, p.id, itens, cent(f.frete));
           await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { numero, cotacao: mapa.numero } });
           criados.push({ id: p.id, numero });
         }
+        // Necessidades: as compradas ficam "comprada"; as que não foram escolhidas voltam a pendente para nova cotação.
+        const naoEscolhidos = mapa.itens.filter((i) => !i.vencedorId && i.necessidadeId).map((i) => i.necessidadeId as string);
+        await c.query("UPDATE obra_necessidades SET status = 'comprada', atualizado_em = now() WHERE id = ANY($1::uuid[])", [escolhidos.map((i) => i.necessidadeId)]);
+        if (naoEscolhidos.length) await c.query("UPDATE obra_necessidades SET status = 'pendente', atualizado_em = now() WHERE id = ANY($1::uuid[]) AND status = 'solicitada'", [naoEscolhidos]);
         await c.query("UPDATE cotacoes SET status = 'concluida', concluida_em = now(), atualizado_em = now() WHERE id = $1", [mapa.id]);
         if (mapa.solicitacaoId) await c.query("UPDATE solicitacoes_compra SET status = 'atendida', atualizado_em = now() WHERE id = $1", [mapa.solicitacaoId]);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'confirmar', entidade: 'cotacoes', entidadeId: mapa.id, depois: { pedidos: criados.map((x) => x.numero), economia: mapa.resumo.economiaMaior } });
@@ -857,10 +897,10 @@ export function rotasSuprimentos(banco: Banco) {
       await emTransacao(banco, async (c) => {
         await cotacaoAberta(c, empresaId, req.params.id);
         const ct = (await c.query("UPDATE cotacoes SET status = 'cancelada', atualizado_em = now() WHERE id = $1 RETURNING solicitacao_id", [req.params.id])).rows[0];
-        // A solicitação volta a ficar aberta se não houver outra cotação em andamento.
+        // A solicitação volta a ficar finalizada (pronta para nova cotação) se não houver outra cotação em andamento.
         if (ct.solicitacao_id)
           await c.query(
-            `UPDATE solicitacoes_compra SET status = 'aberta', atualizado_em = now()
+            `UPDATE solicitacoes_compra SET status = 'finalizada', atualizado_em = now()
               WHERE id = $1 AND status = 'em_cotacao' AND NOT EXISTS (SELECT 1 FROM cotacoes WHERE solicitacao_id = $1 AND status = 'aberta')`,
             [ct.solicitacao_id],
           );
@@ -920,33 +960,6 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.get<{ Params: { id: string } }>('/pedidos/:id', async (req) => ({ pedido: await detalharPedido(banco, empresaDo(req), req.params.id, usuarioDe(req)) }));
 
-    app.post('/pedidos', async (req, reply) => {
-      const d = esquemaPedido.parse(req.body);
-      const empresaId = empresaDo(req);
-      const u = usuarioDe(req);
-      const id = await emTransacao(banco, async (c) => {
-        await validarFornecedor(c, empresaId, d.fornecedorId);
-        await validarCentro(c, empresaId, d.centroCustoId);
-        if (d.solicitacaoId && !(await c.query('SELECT 1 FROM solicitacoes_compra WHERE id = $1 AND empresa_id = $2', [d.solicitacaoId, empresaId])).rowCount)
-          throw new ErroHttp(400, 'Solicitação não encontrada.');
-        const base = await resolverItens(c, empresaId, d.itens);
-        const numero = await proximoNumero(c, 'pedidos_compra', empresaId);
-        const p = (
-          await c.query(
-            `INSERT INTO pedidos_compra (empresa_id, numero, data, fornecedor_id, solicitacao_id, previsao_entrega, condicao_pagamento, local_entrega, frete_centavos, centro_custo_id, observacao, criado_por_id)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) RETURNING id`,
-            [empresaId, numero, d.data ?? hojeBrasil(), d.fornecedorId, d.solicitacaoId, d.previsaoEntrega, d.condicaoPagamento, d.localEntrega, cent(d.frete), d.centroCustoId, d.observacao, u.id],
-          )
-        ).rows[0];
-        await gravarItensPedido(c, empresaId, p.id, base.map((b, n) => ({ ...b, precoUnitario: d.itens[n].precoUnitario })), cent(d.frete));
-        if (d.solicitacaoId) await c.query("UPDATE solicitacoes_compra SET status = 'atendida', atualizado_em = now() WHERE id = $1 AND status IN ('aberta', 'em_cotacao')", [d.solicitacaoId]);
-        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { numero, itens: base.length } });
-        return p.id as string;
-      });
-      reply.code(201);
-      return { pedido: await detalharPedido(banco, empresaId, id, u) };
-    });
-
     const pedidoPara = async (c: Cliente, empresaId: string, id: string) => {
       if (!UUID.test(id)) throw naoEncontrado('Pedido');
       const p = (await c.query('SELECT * FROM pedidos_compra WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [id, empresaId])).rows[0];
@@ -954,6 +967,7 @@ export function rotasSuprimentos(banco: Banco) {
       return p as LinhaPedido;
     };
 
+    // Pedidos nascem da cotação concluída (um por fornecedor vencedor). Aqui só o cabeçalho é editado; os itens são os da cotação.
     app.put<{ Params: { id: string } }>('/pedidos/:id', async (req) => {
       const d = esquemaPedido.parse(req.body);
       const empresaId = empresaDo(req);
@@ -963,24 +977,10 @@ export function rotasSuprimentos(banco: Banco) {
         if (!['rascunho', 'reprovado'].includes(p.status)) throw new ErroHttp(409, 'Só dá para alterar pedido em rascunho ou reprovado. Depois de aprovado, cancele e faça outro.');
         await validarFornecedor(c, empresaId, d.fornecedorId);
         await validarCentro(c, empresaId, d.centroCustoId);
-        const base = await resolverItens(c, empresaId, d.itens);
-        // Mantém o vínculo com a cotação dos itens que continuam iguais.
-        const antigos = (await c.query('SELECT insumo_id, descricao, cotacao_item_id FROM pedidos_itens WHERE pedido_id = $1', [p.id])).rows;
         await c.query(
           `UPDATE pedidos_compra SET fornecedor_id = $2, data = coalesce($3, data), previsao_entrega = $4, condicao_pagamento = $5, local_entrega = $6,
                   frete_centavos = $7, centro_custo_id = $8, observacao = $9, status = 'rascunho', motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1`,
           [p.id, d.fornecedorId, d.data, d.previsaoEntrega, d.condicaoPagamento, d.localEntrega, cent(d.frete), d.centroCustoId, d.observacao],
-        );
-        await gravarItensPedido(
-          c,
-          empresaId,
-          p.id,
-          base.map((b, n) => ({
-            ...b,
-            precoUnitario: d.itens[n].precoUnitario,
-            cotacaoItemId: antigos.find((a) => (a.insumo_id && a.insumo_id === b.insumoId) || a.descricao === b.descricao)?.cotacao_item_id ?? null,
-          })),
-          cent(d.frete),
         );
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, antes: { status: p.status, total: reais(p.total_centavos) } });
       });
@@ -1002,7 +1002,6 @@ export function rotasSuprimentos(banco: Banco) {
             "UPDATE pedidos_compra SET status = 'aprovado', enviado_aprovacao_em = now(), aprovado_em = now(), aprovado_por_id = NULL, aprovacao_automatica = true, motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1",
             [p.id],
           );
-          await atualizarUltimoPrecoPedido(c, p.id);
         } else {
           // Sempre passa pela fila de aprovações (inclusive quando quem envia é o próprio aprovador).
           await c.query("UPDATE pedidos_compra SET status = 'aguardando_aprovacao', enviado_aprovacao_em = now(), motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1", [p.id]);
@@ -1020,7 +1019,6 @@ export function rotasSuprimentos(banco: Banco) {
         if (p.status !== 'aguardando_aprovacao') throw new ErroHttp(409, 'Este pedido não está aguardando aprovação.');
         if (!podeAprovar(u, Number(p.total_centavos), await lerRegras(c, empresaId))) throw new ErroHttp(403, 'Você não tem alçada para aprovar este valor.');
         await c.query("UPDATE pedidos_compra SET status = 'aprovado', aprovado_em = now(), aprovado_por_id = $2, aprovacao_automatica = false, atualizado_em = now() WHERE id = $1", [p.id, u.id]);
-        await atualizarUltimoPrecoPedido(c, p.id);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'confirmar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { acao: 'aprovar', valor: reais(p.total_centavos) } });
       });
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
@@ -1155,14 +1153,6 @@ export function rotasSuprimentos(banco: Banco) {
           if (i.pedidoItemId && !itensPedido.has(i.pedidoItemId)) throw new ErroHttp(400, 'Item não pertence ao pedido.');
           if (i.pedidoItemId && i.quantidade === null) throw new ErroHttp(400, 'Informe a quantidade recebida na unidade do pedido.');
           await c.query('UPDATE notas_itens SET pedido_item_id = $2, quantidade_pedido = $3 WHERE id = $1', [i.notaItemId, i.pedidoItemId, i.pedidoItemId ? r3(i.quantidade!) : null]);
-          // Item do catálogo com categoria: a nota (ainda sem categoria) herda para a conta a pagar.
-          if (i.pedidoItemId)
-            await c.query(
-              `UPDATE notas_itens ni SET plano_conta_id = ct.plano_conta_id, centro_custo_id = coalesce(ni.centro_custo_id, p.centro_custo_id)
-                 FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id JOIN catalogo_itens ct ON ct.id = pi.catalogo_id
-                WHERE ni.id = $1 AND pi.id = $2 AND ni.plano_conta_id IS NULL AND ct.plano_conta_id IS NOT NULL`,
-              [i.notaItemId, i.pedidoItemId],
-            );
           if (i.pedidoItemId) ligados++;
         }
         if (!ligados) throw new ErroHttp(400, 'Ligue pelo menos um item da nota a um item do pedido.');
@@ -1209,9 +1199,9 @@ export function rotasSuprimentos(banco: Banco) {
 
       const porItem = (
         await banco.query(
-          `SELECT pi.descricao, pi.unidade, max(ct.codigo) AS codigo, sum(pi.quantidade) AS quantidade, sum(pi.quantidade * pi.preco_unitario_centavos) AS valor,
+          `SELECT pi.descricao, pi.unidade, max(oi.codigo) AS codigo, sum(pi.quantidade) AS quantidade, sum(pi.quantidade * pi.preco_unitario_centavos) AS valor,
                   min(pi.preco_unitario_centavos) AS menor, max(pi.preco_unitario_centavos) AS maior, count(DISTINCT p.fornecedor_id)::int AS fornecedores
-             FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id LEFT JOIN catalogo_itens ct ON ct.id = pi.catalogo_id
+             FROM pedidos_itens pi JOIN pedidos_compra p ON p.id = pi.pedido_id LEFT JOIN obra_itens oi ON oi.id = pi.obra_item_id
             WHERE p.empresa_id = $1 AND p.data BETWEEN $2 AND $3 AND ${VALIDOS}
             GROUP BY pi.descricao, pi.unidade ORDER BY sum(pi.quantidade * pi.preco_unitario_centavos) DESC`,
           [empresaId, de, ate],
@@ -1312,13 +1302,13 @@ export function rotasSuprimentos(banco: Banco) {
 
       const pendentes = (
         await banco.query(
-          `SELECT s.numero, s.data, s.necessidade, s.status, s.origem, u.nome AS solicitante,
+          `SELECT s.numero, s.data, s.necessidade, s.status, o.nome AS obra, u.nome AS solicitante,
                   (SELECT json_agg(json_build_object('d', si.descricao, 'q', si.quantidade, 'u', si.unidade) ORDER BY si.descricao) FROM solicitacoes_itens si WHERE si.solicitacao_id = s.id) AS itens
-             FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id
-            WHERE s.empresa_id = $1 AND s.status IN ('aberta', 'em_cotacao') ORDER BY s.necessidade NULLS LAST, s.numero`,
+             FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id LEFT JOIN obras o ON o.id = s.obra_id
+            WHERE s.empresa_id = $1 AND s.status IN ('aberta', 'finalizada', 'em_cotacao') ORDER BY s.necessidade NULLS LAST, s.numero`,
           [empresaId],
         )
-      ).rows.map((x) => ({ numero: x.numero, data: x.data, necessidade: x.necessidade, status: x.status, origem: x.origem, solicitante: x.solicitante, itens: ((x.itens ?? []) as { d: string; q: number; u: string }[]).map((i) => `${i.d} (${Number(i.q).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${i.u === 'm3' ? 'm³' : i.u})`).join(', '), dias: diasEntre(x.data, hoje) }));
+      ).rows.map((x) => ({ numero: x.numero, data: x.data, necessidade: x.necessidade, status: x.status, obra: x.obra, solicitante: x.solicitante, itens: ((x.itens ?? []) as { d: string; q: number; u: string }[]).map((i) => `${i.d} (${Number(i.q).toLocaleString('pt-BR', { maximumFractionDigits: 3 })} ${i.u === 'm3' ? 'm³' : i.u})`).join(', '), dias: diasEntre(x.data, hoje) }));
 
       const totalComprado = porFornecedor.reduce((s, f) => s + (f.total ?? 0), 0);
       return {

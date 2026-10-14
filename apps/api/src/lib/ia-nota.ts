@@ -143,18 +143,16 @@ export function notaDaIa(r: Record<string, any>): NotaLida {
 }
 
 function listaCadastros(c: CadastrosIa | undefined): string {
-  if (!c || (!c.insumos.length && !c.catalogo.length)) return '';
+  if (!c || !c.insumos.length) return '';
   const ins = c.insumos.map((i) => `${i.ref} | ${i.nome} | ${i.unidade}`).join('\n');
-  const cat = c.catalogo.map((i) => `${i.ref} | ${i.descricao} | ${i.unidade} | ${i.tipo}`).join('\n');
   return (
     '\n\nCADASTROS DA EMPRESA (para "cadastro_ref" de cada item; use o ref só quando o item for claramente o mesmo produto ou serviço, mesmo com nome diferente):' +
-    (ins ? `\nInsumos da usina (ref | nome | unidade):\n${ins}` : '') +
-    (cat ? `\nCatálogo de materiais e serviços (ref | descrição | unidade | tipo):\n${cat}` : '')
+    (ins ? `\nInsumos da usina (ref | nome | unidade):\n${ins}` : '')
   );
 }
 
 /** Envia o arquivo (PDF ou foto) para a IA e devolve os dados lidos. */
-export type CadastrosIa = { insumos: { ref: string; nome: string; unidade: string }[]; catalogo: { ref: string; descricao: string; unidade: string; tipo: string }[] };
+export type CadastrosIa = { insumos: { ref: string; nome: string; unidade: string }[] };
 
 export async function lerNotaComIa(
   arquivo: Buffer,

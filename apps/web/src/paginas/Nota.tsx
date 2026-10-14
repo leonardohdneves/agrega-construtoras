@@ -34,7 +34,6 @@ const ORIGEM_TEXTO: Record<NotaFiscal['origem'], string> = { xml: 'importada do 
 const CONFERIR_TEXTO: Record<string, string> = { dataEmissao: 'a data de emissão', fornecedor: 'o fornecedor', itens: 'os itens', total: 'o total' };
 const METODO_TEXTO: Record<string, string> = { leitor: 'pelo leitor do Agrega', ia: 'pela IA', codigo_barras: 'pela chave do código de barras' };
 
-type ItemCatalogoMin = { id: string; codigo: string; descricao: string; tipo: 'material' | 'servico'; ativo: boolean };
 
 const soma = (xs: number[]) => Math.round(xs.reduce((s, x) => s + x, 0) * 100) / 100;
 
@@ -405,7 +404,6 @@ function LinhaItem({
   cadastros,
   editavel,
   insumos,
-  catalogo,
   aoMudar,
   aoErro,
 }: {
@@ -414,7 +412,6 @@ function LinhaItem({
   cadastros: Cadastros;
   editavel: boolean;
   insumos: Insumo[];
-  catalogo: ItemCatalogoMin[];
   aoMudar: (n: NotaFiscal) => void;
   aoErro: (m: string) => void;
 }) {
@@ -494,7 +491,7 @@ function LinhaItem({
               Ligado a {item.os.quantidade} item(ns) de OS · {item.os.ordens}
             </div>
           )}
-          {nota.direcao === 'entrada' && (editavel || item.insumoId || item.catalogoId) && (
+          {nota.direcao === 'entrada' && (editavel || item.insumoId) && (
             <div className="small" style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginTop: 4 }}>
               {editavel ? (
                 <>
@@ -503,17 +500,14 @@ function LinhaItem({
                     aria-label="Cadastro do item"
                     className="campo-tabela"
                     style={{ width: 'auto', maxWidth: 190 }}
-                    value={item.insumoId ? `ins:${item.insumoId}` : item.catalogoId ? `cat:${item.catalogoId}` : item.cadastrarCatalogo ? 'novo' : ''}
+                    value={item.insumoId ? `ins:${item.insumoId}` : ''}
                     onChange={(e) => {
                       const v = e.target.value;
                       if (v.startsWith('ins:')) salvar({ insumoId: v.slice(4) });
-                      else if (v.startsWith('cat:')) salvar({ catalogoId: v.slice(4) });
-                      else if (v === 'novo') salvar({ cadastrarCatalogo: true });
-                      else salvar({ insumoId: null, catalogoId: null, cadastrarCatalogo: false });
+                      else salvar({ insumoId: null });
                     }}
                   >
                     <option value="">Lançar sem cadastrar</option>
-                    <option value="novo">Cadastrar no catálogo ao confirmar</option>
                     {insumos.some((x) => x.controlaEstoque) && (
                       <optgroup label="Insumos da usina (entra no estoque)">
                         {insumos.filter((x) => x.controlaEstoque && (x.ativo || x.id === item.insumoId)).map((x) => (
@@ -521,15 +515,8 @@ function LinhaItem({
                         ))}
                       </optgroup>
                     )}
-                    {catalogo.length > 0 && (
-                      <optgroup label="Catálogo de materiais e serviços">
-                        {catalogo.filter((x) => x.ativo || x.id === item.catalogoId).map((x) => (
-                          <option key={x.id} value={`cat:${x.id}`}>{x.codigo} · {x.descricao}</option>
-                        ))}
-                      </optgroup>
-                    )}
                   </select>
-                  {item.vinculoSugestao && (item.insumoId || item.catalogoId) && (
+                  {item.vinculoSugestao && item.insumoId && (
                     <span className="selo selo-neutro">{item.vinculoSugestao === 'ia' ? 'sugerido pela IA' : 'já usado com este fornecedor'}</span>
                   )}
                   {item.insumoId && (
@@ -551,9 +538,7 @@ function LinhaItem({
                 <span style={{ color: 'var(--status-ok-ink)' }}>
                   Entrou no estoque: {formatarNumero(item.quantidade * (item.fatorEstoque ?? 1), 0)} {unidadeInsumo} de {item.insumoNome}
                 </span>
-              ) : (
-                <span style={{ color: 'var(--status-ok-ink)' }}>Catálogo: {item.catalogoCodigo} · {item.catalogoDescricao}</span>
-              )}
+              ) : null}
             </div>
           )}
         </td>
@@ -670,9 +655,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   useEffect(() => {
     api<{ insumos: Insumo[] }>('/prod/insumos').then((r) => setInsumos(r.insumos)).catch(() => {});
-    api<{ itens: ItemCatalogoMin[] }>('/sup/catalogo').then((r) => setCatalogo(r.itens)).catch(() => {});
   }, []);
-  const [catalogo, setCatalogo] = useState<ItemCatalogoMin[]>([]);
 
   const carregar = useCallback(async () => {
     try {
@@ -918,7 +901,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
           </thead>
           <tbody>
             {nota.itens.map((i) => (
-              <LinhaItem key={`${i.id}-${i.valorProduto}-${i.quantidade}`} item={i} nota={nota} cadastros={cadastros} editavel={!!editavel} insumos={insumos} catalogo={catalogo} aoMudar={setNota} aoErro={setErro} />
+              <LinhaItem key={`${i.id}-${i.valorProduto}-${i.quantidade}`} item={i} nota={nota} cadastros={cadastros} editavel={!!editavel} insumos={insumos} aoMudar={setNota} aoErro={setErro} />
             ))}
           </tbody>
           <tfoot>

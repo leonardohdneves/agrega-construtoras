@@ -1,25 +1,23 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, formatarData, formatarDocumento, formatarMoeda, hojeLocal, lerNumero, moedaCampo, somarDias } from '../api';
+import { api, formatarData, formatarDataHora, formatarDocumento, formatarMoeda, lerNumero, moedaCampo } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import {
   Assinatura,
   campoNumero,
-  EditorItens,
-  itensParaApi,
   nomeFornecedor,
-  novaLinha,
   numeroDoc,
   precoUn,
   qtd,
   Selo,
   SELO_COTACAO,
   SELO_PEDIDO,
+  SELO_SOLICITACAO,
   useCadastrosCompra,
   type Cotacao,
   type CotacaoResumo,
   type FornecedorCotacao,
-  type LinhaEditor,
+  type SolicitacaoResumo,
 } from '../componentes/Suprimentos';
 import { useSessao } from '../sessao';
 
@@ -93,32 +91,16 @@ export function SupCotacoes() {
   );
 }
 
-// ---------- Nova cotação avulsa (sem solicitação) ----------
+// ---------- Nova cotação: escolher uma solicitação finalizada ----------
+// A cotação nasce sempre de uma solicitação finalizada (fluxo: solicitação → cotação → pedido).
 export function NovaCotacao() {
-  const navegar = useNavigate();
-  const { insumos, fornecedores, catalogo } = useCadastrosCompra();
-  const [linhas, setLinhas] = useState<LinhaEditor[]>([novaLinha()]);
-  const [sel, setSel] = useState<string[]>([]);
-  const [prazo, setPrazo] = useState(somarDias(hojeLocal(), 3));
-  const [obs, setObs] = useState('');
+  const [lista, setLista] = useState<SolicitacaoResumo[] | null>(null);
   const [erro, setErro] = useState('');
-  const [ocupado, setOcupado] = useState(false);
-
-  async function salvar(e: FormEvent) {
-    e.preventDefault();
-    setErro('');
-    try {
-      const itens = itensParaApi(linhas);
-      if (!itens.length) throw new Error('Inclua pelo menos um item.');
-      if (!sel.length) throw new Error('Escolha pelo menos um fornecedor.');
-      setOcupado(true);
-      const r = await api<{ cotacao: Cotacao }>('/sup/cotacoes', { corpo: { itens, fornecedorIds: sel, prazoResposta: prazo || null, observacao: obs || null } });
-      navegar(`/sup/cotacoes/${r.cotacao.id}`, { replace: true });
-    } catch (err) {
-      setErro((err as Error).message);
-      setOcupado(false);
-    }
-  }
+  useEffect(() => {
+    api<{ solicitacoes: SolicitacaoResumo[] }>('/sup/solicitacoes?status=finalizada')
+      .then((r) => setLista(r.solicitacoes))
+      .catch((e) => setErro((e as Error).message));
+  }, []);
 
   return (
     <>
@@ -126,36 +108,34 @@ export function NovaCotacao() {
         <div className="titulo">
           <Link to="/sup/cotacoes" className="small">← Cotações</Link>
           <h1>Nova cotação</h1>
-          <span className="muted">Para cotar o que veio de uma solicitação, abra a solicitação e use "Cotar com fornecedores".</span>
+          <span className="muted">Escolha uma solicitação finalizada. Abra-a e use "Cotar com fornecedores".</span>
         </div>
       </div>
-      <form className="card form" onSubmit={salvar}>
-        {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-        <h2>Itens</h2>
-        <EditorItens linhas={linhas} aoMudar={setLinhas} insumos={insumos} catalogo={catalogo} />
-        <h2>Fornecedores</h2>
-        <div className="lista-marcar">
-          {fornecedores.map((f) => (
-            <label key={f.id} className="marcar">
-              <input type="checkbox" checked={sel.includes(f.id)} onChange={(e) => setSel(e.target.checked ? [...sel, f.id].slice(0, 10) : sel.filter((x) => x !== f.id))} />
-              <span>{nomeFornecedor(f)}{f.ramo ? <span className="small muted"> · {f.ramo}</span> : null}</span>
-            </label>
-          ))}
-        </div>
-        <div className="campos">
-          <div className="campo">
-            <label htmlFor="nc-prazo">Prazo para resposta</label>
-            <input id="nc-prazo" type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} />
-          </div>
-          <div className="campo">
-            <label htmlFor="nc-obs">Observação para os fornecedores</label>
-            <input id="nc-obs" maxLength={500} value={obs} onChange={(e) => setObs(e.target.value)} placeholder="Ex.: entrega na usina, descarga por conta do fornecedor" />
-          </div>
-        </div>
-        <div className="acoes">
-          <button className="btn btn-primario" type="submit" disabled={ocupado}>Criar cotação</button>
-        </div>
-      </form>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <div className="card tabela-caixa">
+        {!lista ? (
+          <p className="muted">Carregando…</p>
+        ) : lista.length === 0 ? (
+          <p className="muted">Nenhuma solicitação finalizada aguardando cotação. Finalize uma solicitação para cotá-la.</p>
+        ) : (
+          <table className="tabela">
+            <thead>
+              <tr><th>Solicitação</th><th>Obra</th><th>Itens</th><th>Finalizada em</th><th>Situação</th></tr>
+            </thead>
+            <tbody>
+              {lista.map((s) => (
+                <tr key={s.id}>
+                  <td className="mono"><Link to={`/sup/solicitacoes/${s.id}`}>{numeroDoc(s.numero)}</Link></td>
+                  <td>{s.obra ? `${s.obra.codigo} · ${s.obra.nome}` : '—'}</td>
+                  <td>{s.resumo ?? `${s.itens} ${s.itens === 1 ? 'item' : 'itens'}`}</td>
+                  <td>{s.finalizadaEm ? formatarDataHora(s.finalizadaEm) : '—'}</td>
+                  <td><Selo s={SELO_SOLICITACAO[s.status]} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
     </>
   );
 }
