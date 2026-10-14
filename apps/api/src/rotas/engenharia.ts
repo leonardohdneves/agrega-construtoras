@@ -10,6 +10,7 @@ import { ehEngenheiroDeObra, regraEngenheiroEngenharia } from '../lib/obras-aces
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import {
   abcInsumos,
   abcServicos,
@@ -1587,6 +1588,107 @@ export function rotasEngenharia(banco: Banco) {
         obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
         ...rel,
       };
+    });
+
+    // ---------------------------------------------------------------- versões do orçamento
+    /** Retrato atual da obra: planilha, serviços e insumos com os preços de agora, e o BDI. */
+    async function retratoDaObra(c: Cliente, obra: Record<string, any>) {
+      const linhas = await linhasPlanilha(c, obra.id);
+      const ids = [...new Set(linhas.flatMap((l) => (l.servico ? [l.servico.itemId] : [])))];
+      const composicoes = new Map<string, InsumoComposicaoRel[]>();
+      if (ids.length) {
+        const r = await c.query(
+          `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos
+             FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id
+            WHERE ci.composicao_id = ANY($1::uuid[]) ORDER BY ii.descricao`,
+          [ids],
+        );
+        for (const k of r.rows) {
+          const l = composicoes.get(k.composicao_id) ?? [];
+          l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0 });
+          composicoes.set(k.composicao_id, l);
+        }
+      }
+      const bdi = await bdiDaObra(c, obra);
+      return criarSnapshot(
+        { codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel },
+        bdi,
+        linhas,
+        composicoes,
+      );
+    }
+
+    /** Snapshot de uma versão salva ("atual" = orçamento de agora, sem salvar). */
+    async function snapshotDeReferencia(c: Cliente, obra: Record<string, any>, ref: string): Promise<{ snap: SnapshotVersao; rotulo: string }> {
+      if (ref === 'atual') return { snap: await retratoDaObra(c, obra), rotulo: 'Orçamento atual' };
+      if (!UUID.test(ref)) throw new ErroHttp(400, 'Versão inválida.');
+      const v = (await c.query('SELECT numero, nome, snapshot FROM orcamento_versoes WHERE id = $1 AND obra_id = $2', [ref, obra.id])).rows[0];
+      if (!v) throw naoEncontrado('Versão');
+      return { snap: v.snapshot as SnapshotVersao, rotulo: `V${v.numero} · ${v.nome}` };
+    }
+
+    app.get<{ Params: { id: string } }>('/obras/:id/versoes', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const r = await banco.query(
+        'SELECT id, numero, nome, observacao, criado_por_nome, criado_em, snapshot FROM orcamento_versoes WHERE obra_id = $1 ORDER BY numero DESC',
+        [obra.id],
+      );
+      return {
+        versoes: r.rows.map((v) => {
+          const rel = relatorioDaVersao(v.snapshot as SnapshotVersao);
+          return { id: v.id, numero: v.numero, nome: v.nome, observacao: v.observacao, criadoPor: v.criado_por_nome, criadoEm: v.criado_em, precoTotal: rel.precoTotal, bdiPercentual: Number((v.snapshot as SnapshotVersao).bdiPercentual) };
+        }),
+      };
+    });
+
+    const esquemaVersao = z.object({
+      nome: z.string().trim().min(2, 'Dê um nome à versão.').max(120, 'Nome longo demais.'),
+      observacao: z.string().trim().max(500, 'Observação longa demais.').optional().default(''),
+    });
+
+    app.post<{ Params: { id: string } }>('/obras/:id/versoes', async (req, reply) => {
+      const d = esquemaVersao.parse(req.body);
+      const empresaId = empresaDo(req);
+      const usuario = req.usuario!;
+      const salva = await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        // Trava a obra para dois salvamentos simultâneos não pegarem o mesmo número.
+        await c.query('SELECT id FROM obras WHERE id = $1 FOR UPDATE', [obra.id]);
+        const snap = await retratoDaObra(c, obra);
+        const numero = Number((await c.query('SELECT COALESCE(MAX(numero), 0) + 1 AS n FROM orcamento_versoes WHERE obra_id = $1', [obra.id])).rows[0].n);
+        const v = (
+          await c.query(
+            `INSERT INTO orcamento_versoes (obra_id, empresa_id, numero, nome, observacao, snapshot, criado_por_id, criado_por_nome)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, numero, nome, criado_em`,
+            [obra.id, empresaId, numero, d.nome, d.observacao || null, JSON.stringify(snap), usuario.id, usuario.nome],
+          )
+        ).rows[0];
+        await auditar(c, { empresaId, usuarioId: usuario.id, acao: 'criar', entidade: 'orcamento_versoes', entidadeId: v.id, depois: { numero, nome: d.nome } });
+        return { id: v.id, numero: v.numero, nome: v.nome, criadoEm: v.criado_em, precoTotal: relatorioDaVersao(snap).precoTotal };
+      });
+      reply.code(201);
+      return { versao: salva };
+    });
+
+    app.delete<{ Params: { id: string; versaoId: string } }>('/obras/:id/versoes/:versaoId', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const r = (await c.query('DELETE FROM orcamento_versoes WHERE id = $1 AND obra_id = $2 RETURNING id, numero, nome', [req.params.versaoId, obra.id])).rows[0];
+        if (!r) throw naoEncontrado('Versão');
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'orcamento_versoes', entidadeId: r.id, antes: { numero: r.numero, nome: r.nome } });
+      });
+      return { ok: true };
+    });
+
+    app.get<{ Params: { id: string }; Querystring: { a?: string; b?: string } }>('/obras/:id/comparacao', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const a = req.query.a ?? '';
+      const b = req.query.b ?? '';
+      if (!a || !b) throw new ErroHttp(400, 'Escolha as duas versões a comparar.');
+      if (a === b) throw new ErroHttp(400, 'Escolha duas versões diferentes.');
+      const [ra, rb] = await Promise.all([snapshotDeReferencia(banco, obra, a), snapshotDeReferencia(banco, obra, b)]);
+      return { rotuloA: ra.rotulo, rotuloB: rb.rotulo, obra: { codigo: obra.codigo, nome: obra.nome }, ...compararVersoes(ra.snap, rb.snap) };
     });
   };
 }
