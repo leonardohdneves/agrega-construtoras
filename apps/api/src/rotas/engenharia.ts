@@ -11,6 +11,7 @@ import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
+import { GRANULARIDADES, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import {
   abcInsumos,
   abcServicos,
@@ -122,6 +123,8 @@ const esquemaObra = z.object({
   nivelApropriacao: z.enum(NIVEIS_OBRA).optional(),
   bdiModo: z.enum(['calculado', 'informado']).optional(),
   bdiPercentual: z.number().min(0).max(99.99).optional(),
+  // Jornada de trabalho da obra (horas por dia), usada para dimensionar as equipes do planejamento.
+  horasDia: z.number().min(1).max(24).optional(),
   // Empresa do grupo que executa a obra (define o regime de impostos). Nulo: a própria empresa logada.
   empresaGrupoId: z.string().uuid('Escolha uma empresa válida.').nullable().optional(),
   // Engenheiros de obra responsáveis: só eles (além de dono, gestor e orçamentista) enxergam a obra.
@@ -673,9 +676,9 @@ export function rotasEngenharia(banco: Banco) {
         const grupoId = await grupoDaEmpresa(c, empresaId, d.empresaGrupoId);
         const o = (
           await c.query(
-            `INSERT INTO obras (empresa_id, codigo, nome, endereco, cidade, uf, responsavel, status, data_inicio, data_previsao, nivel_apropriacao, bdi_percentual, bdi_modo, bdi_parametros, centro_custo_id, empresa_grupo_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16) RETURNING id`,
-            [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id, grupoId],
+            `INSERT INTO obras (empresa_id, codigo, nome, endereco, cidade, uf, responsavel, status, data_inicio, data_previsao, nivel_apropriacao, bdi_percentual, bdi_modo, bdi_parametros, centro_custo_id, empresa_grupo_id, horas_dia)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17) RETURNING id`,
+            [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id, grupoId, d.horasDia ?? 8],
           )
         ).rows[0];
         if (d.responsaveis?.length) await gravarResponsaveis(c, empresaId, o.id, d.responsaveis);
@@ -720,12 +723,13 @@ export function rotasEngenharia(banco: Banco) {
           nivel: novoNivel,
           bdi: resolverBdi(d, atual),
           grupoId: d.empresaGrupoId !== undefined ? await grupoDaEmpresa(c, empresaId, d.empresaGrupoId) : (atual.empresa_grupo_id ?? null),
+          horasDia: d.horasDia !== undefined ? d.horasDia : Number(atual.horas_dia ?? 8),
         };
         await c.query(
           `UPDATE obras SET nome = $3, endereco = $4, cidade = $5, uf = $6, responsavel = $7, status = $8, data_inicio = $9, data_previsao = $10,
-                  nivel_apropriacao = $11, bdi_percentual = $12, bdi_modo = $13, bdi_parametros = $14::jsonb, empresa_grupo_id = $15, atualizado_em = now()
+                  nivel_apropriacao = $11, bdi_percentual = $12, bdi_modo = $13, bdi_parametros = $14::jsonb, empresa_grupo_id = $15, horas_dia = $16, atualizado_em = now()
             WHERE id = $1 AND empresa_id = $2`,
-          [atual.id, empresaId, campos.nome, campos.endereco, campos.cidade, campos.uf, campos.responsavel, campos.status, campos.dataInicio, campos.dataPrevisao, campos.nivel, campos.bdi.percentual, campos.bdi.modo, JSON.stringify(campos.bdi.parametros), campos.grupoId],
+          [atual.id, empresaId, campos.nome, campos.endereco, campos.cidade, campos.uf, campos.responsavel, campos.status, campos.dataInicio, campos.dataPrevisao, campos.nivel, campos.bdi.percentual, campos.bdi.modo, JSON.stringify(campos.bdi.parametros), campos.grupoId, campos.horasDia],
         );
         await c.query('UPDATE centros_custo SET nome = $2 WHERE id = $1', [atual.centro_custo_id, `Obra ${atual.codigo} - ${nome}`.slice(0, 120)]);
         if (d.responsaveis !== undefined) await gravarResponsaveis(c, empresaId, atual.id, d.responsaveis);
@@ -789,13 +793,26 @@ export function rotasEngenharia(banco: Banco) {
         const idsInsumo = [...new Set([...d.insumoIds, ...pares.map((p) => p.insumo_id)])];
         const insumos = idsInsumo.length ? (await c.query(`SELECT * FROM ref_itens WHERE tabela_id = $1 AND tipo = 'insumo' AND id = ANY($2::uuid[])`, [tabela.id, idsInsumo])).rows : [];
 
+        // A composição SINAPI não traz a classe do insumo (mão de obra, material, equipamento): ela está na tabela de insumos da mesma referência.
+        const classeInsumo = new Map<string, string>();
+        if (tabela.fonte === 'sinapi') {
+          const classes = await c.query(
+            `SELECT r.codigo, r.grupo FROM ref_itens r JOIN ref_tabelas t ON t.id = r.tabela_id
+              WHERE t.empresa_id = $1 AND t.fonte = 'sinapi' AND t.id <> $2 AND t.uf IS NOT DISTINCT FROM $3
+                AND t.mes_referencia IS NOT DISTINCT FROM $4 AND t.desonerado = $5 AND r.tipo = 'insumo' AND coalesce(r.grupo, '') <> ''`,
+            [tabela.empresa_id, tabela.id, tabela.uf, tabela.mes_referencia, tabela.desonerado],
+          );
+          for (const k of classes.rows) classeInsumo.set(k.codigo as string, k.grupo as string);
+        }
+
         const copia = async (linhas: Record<string, any>[], tipo: 'insumo' | 'composicao') => {
           let novos = 0;
           for (const x of linhas) {
+            const grupo = (x.grupo || (tipo === 'insumo' ? classeInsumo.get(x.codigo) : null)) ?? null;
             const r = await c.query(
               `INSERT INTO obra_itens (obra_id, tipo, codigo, descricao, unidade, grupo, preco_centavos, origem_tabela_id, origem_fonte, origem_versao, preco_referencia_centavos)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (obra_id, tipo, codigo) DO NOTHING RETURNING id`,
-              [obra.id, tipo, x.codigo, x.descricao, x.unidade, x.grupo, tipo === 'insumo' ? x.preco_centavos : null, tabela.id, tabela.fonte, versao, tipo === 'insumo' ? x.preco_centavos : null],
+              [obra.id, tipo, x.codigo, x.descricao, x.unidade, grupo, tipo === 'insumo' ? x.preco_centavos : null, tabela.id, tabela.fonte, versao, tipo === 'insumo' ? x.preco_centavos : null],
             );
             novos += r.rowCount ?? 0;
             x.novo = (r.rowCount ?? 0) > 0;
@@ -1148,6 +1165,105 @@ export function rotasEngenharia(banco: Banco) {
         if (!n) throw naoEncontrado('Atividade');
       });
       return { ok: true };
+    });
+
+    // ---------------------------------------------------------------- relatórios do planejamento (Gantt, equipes, compras)
+
+    /** Atividades com as datas calculadas e os insumos do orçamento de cada linha da EAP (quantidade = orçamento × coeficiente). */
+    async function atividadesComRecursos(c: Cliente, obraId: string) {
+      const linhas = (await c.query(
+        `SELECT a.id, a.descricao, a.inicio, a.duracao_dias, a.predecessora_id, n.codigo AS eap_codigo
+           FROM obra_atividades a LEFT JOIN eap_nos n ON n.id = a.eap_no_id
+          WHERE a.obra_id = $1 ORDER BY a.ordem, a.criado_em`,
+        [obraId],
+      )).rows;
+      const datas = calcularDatas(linhas.map((a) => ({ id: a.id as string, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: (a.predecessora_id ?? null) as string | null })));
+      const insumos = (await c.query(
+        `SELECT a.id AS atividade_id, i.codigo, i.descricao, i.unidade, i.grupo, sum(oq.quantidade * ci.coeficiente)::float AS quantidade
+           FROM obra_atividades a
+           JOIN orcamento_itens oq ON oq.eap_no_id = a.eap_no_id AND oq.obra_id = a.obra_id
+           JOIN obra_composicao_insumos ci ON ci.composicao_id = oq.obra_item_id
+           JOIN obra_itens i ON i.id = ci.insumo_id
+          WHERE a.obra_id = $1 AND a.eap_no_id IS NOT NULL
+          GROUP BY a.id, i.codigo, i.descricao, i.unidade, i.grupo`,
+        [obraId],
+      )).rows;
+      const porAtividade = new Map<string, { codigo: string; descricao: string; unidade: string; grupo: string | null; quantidade: number }[]>();
+      for (const i of insumos) {
+        const lista = porAtividade.get(i.atividade_id as string) ?? [];
+        lista.push({ codigo: i.codigo as string, descricao: i.descricao as string, unidade: i.unidade as string, grupo: (i.grupo ?? null) as string | null, quantidade: Number(i.quantidade) });
+        porAtividade.set(i.atividade_id as string, lista);
+      }
+      return linhas.map((a) => {
+        const d = datas.get(a.id as string)!;
+        return {
+          id: a.id as string,
+          descricao: a.descricao as string,
+          eapCodigo: (a.eap_codigo ?? null) as string | null,
+          inicio: d.inicio,
+          fim: d.fim,
+          duracaoDias: Number(a.duracao_dias),
+          predecessoraId: (a.predecessora_id ?? null) as string | null,
+          insumos: porAtividade.get(a.id as string) ?? [],
+        };
+      });
+    }
+
+    const granularidadeDe = (v: string | undefined): Granularidade => ((GRANULARIDADES as string[]).includes(v ?? '') ? (v as Granularidade) : 'semana');
+
+    app.get<{ Params: { id: string }; Querystring: { granularidade?: string } }>('/obras/:id/relatorios-planejamento/gantt', async (req) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const atividades = await atividadesComRecursos(banco, req.params.id);
+      const g = montarGantt(
+        atividades.map((a) => ({ id: a.id, descricao: a.descricao, eapCodigo: a.eapCodigo, inicio: a.inicio, fim: a.fim, duracaoDias: a.duracaoDias, predecessoraId: a.predecessoraId })),
+        granularidadeDe(req.query.granularidade),
+      );
+      return { granularidade: granularidadeDe(req.query.granularidade), ...g, atividadesSemEap: atividades.filter((a) => !a.eapCodigo).length };
+    });
+
+    app.get<{ Params: { id: string }; Querystring: { granularidade?: string } }>('/obras/:id/relatorios-planejamento/equipes', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const horasDia = Number(obra.horas_dia ?? 8);
+      const atividades = await atividadesComRecursos(banco, req.params.id);
+      // Mão de obra horista (unidade h) entra no cálculo. Mensalista (unidade mês) não tem hora: fica de fora e é listada.
+      const mensalistas = new Map<string, string>();
+      const equipes = montarEquipes(
+        atividades.map((a) => ({
+          id: a.id,
+          descricao: a.descricao,
+          inicio: a.inicio,
+          duracaoDias: a.duracaoDias,
+          recursos: a.insumos
+            .filter((i) => i.grupo === 'Mao_obra' && (i.unidade === 'h' || i.unidade === 'H'))
+            .map((i) => ({ codigo: i.codigo, descricao: i.descricao, horas: i.quantidade })),
+        })),
+        horasDia,
+        granularidadeDe(req.query.granularidade),
+      );
+      for (const a of atividades) for (const i of a.insumos) if (i.grupo === 'Mao_obra' && !/^h$/i.test(i.unidade)) mensalistas.set(i.codigo, i.descricao);
+      return {
+        granularidade: granularidadeDe(req.query.granularidade),
+        horasDia,
+        ...equipes,
+        mensalistasNaoCalculados: [...mensalistas.values()],
+        atividadesSemOrcamento: atividades.filter((a) => a.insumos.length === 0).length,
+      };
+    });
+
+    app.get<{ Params: { id: string } }>('/obras/:id/relatorios-planejamento/compras', async (req) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const atividades = await atividadesComRecursos(banco, req.params.id);
+      const itens = montarCompras(atividades.map((a) => ({ id: a.id, descricao: a.descricao, inicio: a.inicio, insumos: a.insumos })));
+      return {
+        // Cada item tem a data da primeira atividade que o usa (primeira): a entrega deve chegar até essa data.
+        itens,
+        // Insumos sem classe (não encontrados na tabela de insumos) entram na lista de compras; conferir antes de comprar.
+        semClasse: itens.filter((i) => !i.grupo).length,
+        atividadesSemOrcamento: atividades.filter((a) => a.insumos.length === 0).length,
+      };
     });
 
     // ---------------------------------------------------------------- apropriação de insumos (fase 2)
@@ -1751,6 +1867,7 @@ function obraPublica(o: Record<string, any>) {
     empresaGrupoId: (o.empresa_grupo_id as string | null | undefined) ?? null,
     empresaGrupoNome: (o.empresa_grupo_nome as string | null | undefined) ?? null,
     bdiPercentual: Number(o.bdi_percentual),
+    horasDia: Number(o.horas_dia ?? 8),
     bdiModo: (o.bdi_modo as 'calculado' | 'informado' | undefined) ?? 'informado',
     bdiParametros: (o.bdi_parametros as Partial<ParametrosBdi> | null) ?? null,
     centroCustoId: o.centro_custo_id as string,
