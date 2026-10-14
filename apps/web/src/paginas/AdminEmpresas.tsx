@@ -65,6 +65,7 @@ export function AdminEmpresas() {
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      <BackupsSistema />
 
       {nova && (
         <form className="card form" onSubmit={criar}>
@@ -165,5 +166,93 @@ export function AdminEmpresas() {
         )}
       </div>
     </>
+  );
+}
+
+type Backup = { id: string; criadoEm: string; tipo: 'automatico' | 'manual'; status: 'ok' | 'erro'; tamanhoBytes: number | null; registros: number | null; tabelas: number | null; erro: string | null };
+
+const formatarTamanho = (b: number | null) => (b === null ? '—' : b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`);
+
+/** Backup completo do sistema: diário às 03:00 (Brasília), guardado no armazenamento, com retenção de 30 dias. */
+function BackupsSistema() {
+  const [dados, setDados] = useState<{ armazenamentoConfigurado: boolean; backups: Backup[] } | null>(null);
+  const [fazendo, setFazendo] = useState(false);
+  const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState('');
+
+  const carregar = useCallback(() => {
+    api<{ armazenamentoConfigurado: boolean; backups: Backup[] }>('/admin/backups')
+      .then(setDados)
+      .catch((e) => setErro((e as Error).message));
+  }, []);
+  useEffect(() => { carregar(); }, [carregar]);
+
+  async function fazerAgora() {
+    setErro('');
+    setAviso('');
+    setFazendo(true);
+    try {
+      const r = await api<{ backup: { registros: number; tabelas: number } }>('/admin/backups', { metodo: 'POST' });
+      setAviso(`Backup concluído: ${r.backup.registros} registros em ${r.backup.tabelas} tabelas.`);
+      carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+      carregar();
+    } finally {
+      setFazendo(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <div className="cabecalho" style={{ marginBottom: 8 }}>
+        <div className="titulo">
+          <h2 style={{ margin: 0 }}>Backup do sistema</h2>
+          <span className="muted">Todos os dados de todas as construtoras. Backup automático todo dia às 03:00, mantido por 30 dias.</span>
+        </div>
+        <button className="btn btn-primario" type="button" onClick={fazerAgora} disabled={fazendo || dados?.armazenamentoConfigurado === false}>
+          {fazendo ? 'Gerando backup…' : 'Fazer backup agora'}
+        </button>
+      </div>
+      {dados && !dados.armazenamentoConfigurado && (
+        <div className="alerta alerta-erro" role="alert">O armazenamento de backups ainda não está configurado no servidor.</div>
+      )}
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      {!dados ? (
+        <p className="muted">Carregando…</p>
+      ) : dados.backups.length === 0 ? (
+        <p className="muted" style={{ margin: 0 }}>Nenhum backup ainda.</p>
+      ) : (
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tabela">
+            <thead>
+              <tr>
+                <th>Data</th>
+                <th>Tipo</th>
+                <th>Situação</th>
+                <th className="num">Registros</th>
+                <th className="num">Tamanho</th>
+                <th />
+              </tr>
+            </thead>
+            <tbody>
+              {dados.backups.map((b) => (
+                <tr key={b.id}>
+                  <td>{new Date(b.criadoEm).toLocaleString('pt-BR')}</td>
+                  <td>{b.tipo === 'automatico' ? 'Automático' : 'Manual'}</td>
+                  <td>{b.status === 'ok' ? 'Concluído' : <span title={b.erro ?? ''}>Falhou</span>}</td>
+                  <td className="num">{b.registros ?? '—'}</td>
+                  <td className="num">{formatarTamanho(b.tamanhoBytes)}</td>
+                  <td className="acoes">
+                    {b.status === 'ok' && <a className="btn" href={`/api/admin/backups/${b.id}/download`} download>Baixar</a>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
   );
 }

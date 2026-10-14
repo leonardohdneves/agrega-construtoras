@@ -210,7 +210,22 @@ export function Empresa() {
         />
       )}
       <EmpresasGrupo podeEditar={podeEditar} />
+      <ExportarDados />
     </>
+  );
+}
+
+/** Dono e gestor: baixa os dados desta empresa em planilha (XLSX) e em JSON, sem senhas. */
+function ExportarDados() {
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Exportar dados da empresa</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Baixa uma cópia de todos os dados desta empresa: uma planilha (XLSX) com uma aba por assunto e os mesmos dados em JSON, num arquivo .zip.
+        As senhas dos usuários não são incluídas. Este arquivo não restaura o sistema.
+      </p>
+      <a className="btn btn-primario" href="/api/empresa/exportacao" download>Baixar exportação (.zip)</a>
+    </div>
   );
 }
 
