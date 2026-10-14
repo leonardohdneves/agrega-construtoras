@@ -476,3 +476,42 @@ export function aliquotaSimples(anexo: string | null | undefined, faixa: number 
   const lista = ALIQUOTAS_SIMPLES[anexo as AnexoSimples];
   return lista && faixa >= 1 && faixa <= 6 ? lista[faixa - 1] : null;
 }
+
+/** Nós da EAP que têm filhos (etapas e subetapas). */
+export function resumosDaEap(nos: { id: string; paiId: string | null }[]): Set<string> {
+  return new Set(nos.filter((n) => n.paiId).map((n) => n.paiId as string));
+}
+
+/**
+ * Atividade ligada a uma etapa ou subetapa é um resumo: início e fim são os das atividades abaixo dela na EAP.
+ * O custo não é somado aqui (ele continua vindo só dos itens lançados em cada nó), então não há duplicidade.
+ */
+export function datasComResumos(
+  datas: Map<string, { inicio: string; fim: string }>,
+  atividades: { id: string; eapNoId: string | null }[],
+  nos: { id: string; paiId: string | null }[],
+): Map<string, { inicio: string; fim: string }> {
+  const filhos = new Map<string, string[]>();
+  for (const n of nos) if (n.paiId) filhos.set(n.paiId, [...(filhos.get(n.paiId) ?? []), n.id]);
+  const atividadePorNo = new Map<string, string>();
+  for (const a of atividades) if (a.eapNoId) atividadePorNo.set(a.eapNoId, a.id);
+  const saida = new Map(datas);
+  for (const a of atividades) {
+    if (!a.eapNoId || !filhos.has(a.eapNoId)) continue;
+    const abaixo: { inicio: string; fim: string }[] = [];
+    const pilha = [...(filhos.get(a.eapNoId) ?? [])];
+    while (pilha.length) {
+      const no = pilha.pop()!;
+      // Só as tarefas (nós sem filhos) contam: resumos intermediários não têm datas próprias confiáveis.
+      const d = !filhos.has(no) && atividadePorNo.get(no) ? datas.get(atividadePorNo.get(no)!) : undefined;
+      if (d) abaixo.push(d);
+      pilha.push(...(filhos.get(no) ?? []));
+    }
+    if (!abaixo.length) continue;
+    saida.set(a.id, {
+      inicio: abaixo.reduce((m, d) => (d.inicio < m ? d.inicio : m), abaixo[0].inicio),
+      fim: abaixo.reduce((m, d) => (d.fim > m ? d.fim : m), abaixo[0].fim),
+    });
+  }
+  return saida;
+}

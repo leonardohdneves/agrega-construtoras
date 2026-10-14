@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, formatarData, hojeLocal, somarDias } from '../api';
+import { api, formatarData, hojeLocal, lerNumero, somarDias } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import {
   Assinatura,
@@ -16,6 +16,7 @@ import {
   type Solicitacao,
   type SolicitacaoResumo,
 } from '../componentes/Suprimentos';
+import { ROTULO_NIVEL } from './EngObras';
 
 const FILTROS = [
   { id: '', texto: 'Em andamento' },
@@ -107,6 +108,12 @@ export function SupSolicitacoes() {
 }
 
 // ---------- Formulário (nova e edição): obra e insumos apropriados ----------
+const indentoEapSol = (codigo: string) => codigo.split('.').length - 1;
+type InsumoPlanilha = { id: string; codigo: string; descricao: string; unidade: string };
+type NoEapLista = { id: string; nivel: string; codigo: string; descricao: string };
+/** Insumo escolhido direto na planilha da obra, ainda não gravado na solicitação. */
+type NovoItem = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number; dataNecessaria: string | null };
+
 function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao; aoSalvar: (s: Solicitacao) => void; aoCancelar?: () => void }) {
   const [obras, setObras] = useState<ObraLista[]>([]);
   const [f, setF] = useState({
@@ -116,7 +123,12 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
     observacao: inicial?.observacao ?? '',
   });
   const [necessidades, setNecessidades] = useState<Necessidade[] | null>(null);
+  const [insumos, setInsumos] = useState<InsumoPlanilha[]>([]);
+  const [nos, setNos] = useState<NoEapLista[]>([]);
+  const [nivel, setNivel] = useState<string>('');
   const [marcadas, setMarcadas] = useState<Set<string>>(() => new Set(inicial?.itens.map((i) => i.necessidadeId).filter((x): x is string => !!x) ?? []));
+  const [novos, setNovos] = useState<NovoItem[]>([]);
+  const [add, setAdd] = useState({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
@@ -126,23 +138,40 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
       .catch((e) => setErro((e as Error).message));
   }, []);
 
+  // Ao escolher a obra: nível de apropriação, insumos da planilha, nós da EAP desse nível e necessidades pendentes.
   useEffect(() => {
+    setNovos([]);
+    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
     if (!f.obraId) {
       setNecessidades(null);
+      setInsumos([]);
+      setNos([]);
+      setNivel('');
       return;
     }
     setNecessidades(null);
-    api<{ necessidades: Necessidade[] }>(`/eng/obras/${f.obraId}/necessidades`)
-      .then((r) => setNecessidades(r.necessidades))
+    Promise.all([
+      api<{ obra: { nivelApropriacao: string } }>(`/eng/obras/${f.obraId}`),
+      api<{ itens: InsumoPlanilha[] }>(`/eng/obras/${f.obraId}/itens?tipo=insumo`),
+      api<{ nos: NoEapLista[] }>(`/eng/obras/${f.obraId}/eap`),
+      api<{ necessidades: Necessidade[] }>(`/eng/obras/${f.obraId}/necessidades`),
+    ])
+      .then(([o, i, e, n]) => {
+        setNivel(o.obra.nivelApropriacao);
+        setInsumos(i.itens);
+        setNos(e.nos.filter((x) => x.nivel === o.obra.nivelApropriacao));
+        setNecessidades(n.necessidades);
+      })
       .catch((e) => setErro((e as Error).message));
   }, [f.obraId]);
 
-  // Só entram insumos pendentes (ou os já desta solicitação), com apropriação à EAP.
+  // Pendentes com apropriação à EAP (ou já desta solicitação), para incluir sem reescolher o insumo.
   const disponiveis = useMemo(() => {
     const doAtual = new Set(inicial?.itens.map((i) => i.necessidadeId) ?? []);
     return (necessidades ?? []).filter((n) => (n.status === 'pendente' || doAtual.has(n.id)) && n.eapNoId).sort(ordenarEap);
   }, [necessidades, inicial]);
   const semEap = (necessidades ?? []).filter((n) => n.status === 'pendente' && !n.eapNoId).length;
+  const totalItens = marcadas.size + novos.length;
 
   function alternar(id: string) {
     setMarcadas((atual) => {
@@ -153,11 +182,33 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
     });
   }
 
+  function incluirNovo() {
+    setErro('');
+    const insumo = insumos.find((x) => x.id === add.obraItemId);
+    if (!insumo) return setErro('Escolha o insumo da planilha.');
+    if (nivel !== 'obra' && !add.eapNoId) return setErro(`Escolha o nó da EAP (${(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel}).`);
+    const q = lerNumero(add.quantidade);
+    if (q === null || q <= 0) return setErro('Informe uma quantidade maior que zero.');
+    const no = nos.find((x) => x.id === add.eapNoId);
+    setNovos([...novos, {
+      chave: `n${Date.now()}${novos.length}`,
+      obraItemId: insumo.id,
+      eapNoId: nivel === 'obra' ? null : add.eapNoId,
+      codigo: insumo.codigo,
+      descricao: insumo.descricao,
+      unidade: insumo.unidade,
+      eapCodigo: no?.codigo ?? null,
+      quantidade: q,
+      dataNecessaria: add.dataNecessaria || null,
+    }]);
+    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
+  }
+
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro('');
     if (!f.obraId) return setErro('Escolha a obra.');
-    if (marcadas.size === 0) return setErro('Marque pelo menos um insumo da obra.');
+    if (totalItens === 0) return setErro('Inclua pelo menos um insumo.');
     setOcupado(true);
     try {
       const corpo = {
@@ -165,7 +216,10 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
         data: f.data,
         necessidade: f.necessidade || null,
         observacao: f.observacao || null,
-        itens: [...marcadas].map((necessidadeId) => ({ necessidadeId, observacao: null })),
+        itens: [
+          ...[...marcadas].map((necessidadeId) => ({ necessidadeId, observacao: null })),
+          ...novos.map((n) => ({ obraItemId: n.obraItemId, eapNoId: n.eapNoId, quantidade: n.quantidade, dataNecessaria: n.dataNecessaria, observacao: null })),
+        ],
       };
       const r = inicial
         ? await api<{ solicitacao: Solicitacao }>(`/sup/solicitacoes/${inicial.id}`, { metodo: 'PUT', corpo })
@@ -198,53 +252,106 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
         </div>
       </div>
 
-      <h2>Insumos da obra</h2>
-      {!f.obraId && <p className="muted small">Escolha a obra para ver os insumos cadastrados nela.</p>}
+      <h2>Insumos da planilha</h2>
+      {!f.obraId && <p className="muted small">Escolha a obra para ver os insumos da planilha dela.</p>}
       {f.obraId && necessidades === null && <p className="muted small">Carregando insumos…</p>}
-      {f.obraId && necessidades !== null && disponiveis.length === 0 && (
-        <div className="alerta alerta-info">
-          Não há insumos pendentes apropriados à EAP nesta obra. Cadastre a necessidade em Engenharia › Obras (apropriação) e volte aqui.
-        </div>
+      {f.obraId && necessidades !== null && (
+        <>
+          <div className="campos editor-linha">
+            <div className="campo">
+              <label htmlFor="sol-ins">Insumo</label>
+              <select id="sol-ins" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value })}>
+                <option value="">Escolha o insumo</option>
+                {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+              </select>
+            </div>
+            {nivel !== 'obra' && (
+              <div className="campo">
+                <label htmlFor="sol-no">Nó da EAP ({(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel})</label>
+                <select id="sol-no" value={add.eapNoId} onChange={(e) => setAdd({ ...add, eapNoId: e.target.value })}>
+                  <option value="">Escolha…</option>
+                  {nos.map((n) => <option key={n.id} value={n.id}>{' '.repeat(indentoEapSol(n.codigo))}{n.codigo} · {n.descricao}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="campo">
+              <label htmlFor="sol-qtd">Quantidade</label>
+              <input id="sol-qtd" className="mono" inputMode="decimal" value={add.quantidade} onChange={(e) => setAdd({ ...add, quantidade: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor="sol-dn">Precisa até (insumo)</label>
+              <input id="sol-dn" type="date" value={add.dataNecessaria} onChange={(e) => setAdd({ ...add, dataNecessaria: e.target.value })} />
+            </div>
+          </div>
+          <div className="acoes">
+            <button className="btn btn-secundario" type="button" onClick={incluirNovo}>Incluir insumo</button>
+          </div>
+        </>
       )}
-      {semEap > 0 && <p className="small tom-perigo">{semEap} insumo(s) desta obra ainda não estão apropriados a um nó da EAP e não podem ser comprados.</p>}
-      {disponiveis.length > 0 && (
-        <div style={{ overflowX: 'auto' }}>
-          <table className="tabela">
-            <thead>
-              <tr>
-                <th style={{ width: 40 }} />
-                <th>EAP</th>
-                <th>Insumo</th>
-                <th>Un.</th>
-                <th className="num">Quantidade</th>
-                <th>Precisa até</th>
+
+      {novos.length > 0 && (
+        <table className="tabela">
+          <thead>
+            <tr><th>EAP</th><th>Insumo</th><th>Un.</th><th className="num">Quantidade</th><th>Precisa até</th><th style={{ width: 90 }} /></tr>
+          </thead>
+          <tbody>
+            {novos.map((n) => (
+              <tr key={n.chave}>
+                <td className="mono small">{n.eapCodigo ?? '—'}</td>
+                <td>{n.descricao}<div className="small muted mono">{n.codigo}</div></td>
+                <td>{unidadeTexto(n.unidade)}</td>
+                <td className="num">{qtd(n.quantidade, n.unidade)}</td>
+                <td>{n.dataNecessaria ? formatarData(n.dataNecessaria) : '—'}</td>
+                <td><button className="btn btn-link" type="button" onClick={() => setNovos(novos.filter((x) => x.chave !== n.chave))}>Remover</button></td>
               </tr>
-            </thead>
-            <tbody>
-              {disponiveis.map((n) => (
-                <tr key={n.id}>
-                  <td>
-                    <input type="checkbox" aria-label={`Incluir ${n.descricao}`} checked={marcadas.has(n.id)} onChange={() => alternar(n.id)} />
-                  </td>
-                  <td className="mono small">{n.eapCodigo} <span className="muted">{n.eapDescricao}</span></td>
-                  <td>{n.descricao}<div className="small muted mono">{n.codigo}</div></td>
-                  <td>{unidadeTexto(n.unidade)}</td>
-                  <td className="num">{qtd(n.quantidade)}</td>
-                  <td className="small">{n.dataNecessaria ? formatarData(n.dataNecessaria) : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <p className="small muted">{marcadas.size} {marcadas.size === 1 ? 'insumo marcado' : 'insumos marcados'}.</p>
-        </div>
+            ))}
+          </tbody>
+        </table>
       )}
+
+      {f.obraId && necessidades !== null && disponiveis.length > 0 && (
+        <>
+          <h2>Já apropriados e pendentes</h2>
+          <p className="small muted" style={{ marginTop: 0 }}>Insumos lançados antes em Engenharia › Obras (apropriação) que ainda não foram pedidos.</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tabela">
+              <thead>
+                <tr>
+                  <th style={{ width: 40 }} />
+                  <th>EAP</th>
+                  <th>Insumo</th>
+                  <th>Un.</th>
+                  <th className="num">Quantidade</th>
+                  <th>Precisa até</th>
+                </tr>
+              </thead>
+              <tbody>
+                {disponiveis.map((n) => (
+                  <tr key={n.id}>
+                    <td>
+                      <input type="checkbox" aria-label={`Incluir ${n.descricao}`} checked={marcadas.has(n.id)} onChange={() => alternar(n.id)} />
+                    </td>
+                    <td className="mono small">{n.eapCodigo} <span className="muted">{n.eapDescricao}</span></td>
+                    <td>{n.descricao}<div className="small muted mono">{n.codigo}</div></td>
+                    <td>{unidadeTexto(n.unidade)}</td>
+                    <td className="num">{qtd(n.quantidade, n.unidade)}</td>
+                    <td>{n.dataNecessaria ? formatarData(n.dataNecessaria) : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+      {semEap > 0 && <p className="small tom-perigo">{semEap} insumo(s) pendente(s) desta obra ainda não estão apropriados a um nó da EAP e não podem ser comprados.</p>}
 
       <div className="campo">
         <label htmlFor="sol-obs">Observação</label>
         <textarea id="sol-obs" rows={2} maxLength={500} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} placeholder="Onde será usado, marca preferida, urgência…" />
       </div>
+      <p className="small muted" style={{ marginBottom: 0 }}>{totalItens} {totalItens === 1 ? 'insumo na solicitação' : 'insumos na solicitação'}.</p>
       <div className="acoes">
-        <button className="btn btn-primario" type="submit" disabled={ocupado}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Registrar solicitação'}</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado || !f.obraId || totalItens === 0}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Registrar solicitação'}</button>
         {aoCancelar && <button className="btn btn-secundario" type="button" onClick={aoCancelar}>Cancelar</button>}
       </div>
     </form>

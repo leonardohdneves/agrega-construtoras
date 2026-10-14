@@ -31,7 +31,7 @@ import {
   type InsumoComposicaoRel,
   type NivelPlanilha,
 } from '../lib/engenharia.ts';
-import { bdiCalculado, calcularDatas, codigoDoNo, erroItemOrcamento, aliquotaSimples, folhasDaEap, formacaoPreco, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
+import { bdiCalculado, calcularDatas, codigoDoNo, datasComResumos, erroItemOrcamento, aliquotaSimples, formacaoPreco, resumosDaEap, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -1066,7 +1066,13 @@ export function rotasEngenharia(banco: Banco) {
           WHERE a.obra_id = $1 ORDER BY a.ordem, a.criado_em`,
         [req.params.id],
       );
-      const datas = calcularDatas(r.rows.map((a) => ({ id: a.id, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
+      const nosObra = (await banco.query('SELECT id, pai_id FROM eap_nos WHERE obra_id = $1', [req.params.id])).rows.map((n) => ({ id: n.id as string, paiId: (n.pai_id ?? null) as string | null }));
+      const datas = datasComResumos(
+        calcularDatas(r.rows.map((a) => ({ id: a.id, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null }))),
+        r.rows.map((a) => ({ id: a.id as string, eapNoId: (a.eap_no_id ?? null) as string | null })),
+        nosObra,
+      );
+      const resumos = resumosDaEap(nosObra);
       // Na ordem da EAP (planilha): a estrutura do planejamento é a da planilha.
       const porEap = [...r.rows].sort((x, y) => {
         if (!x.eap_codigo || !y.eap_codigo) return x.eap_codigo ? -1 : y.eap_codigo ? 1 : 0;
@@ -1078,6 +1084,7 @@ export function rotasEngenharia(banco: Banco) {
           return {
             id: a.id, ordem: a.ordem, descricao: a.descricao, eapNoId: a.eap_no_id ?? null, eapCodigo: a.eap_codigo ?? null, eapDescricao: a.eap_descricao ?? null,
             inicioInformado: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null, inicio: d.inicio, fim: d.fim,
+            resumo: !!a.eap_no_id && resumos.has(a.eap_no_id),
           };
         }),
       };
@@ -1139,10 +1146,10 @@ export function rotasEngenharia(banco: Banco) {
       const empresaId = empresaDo(req);
       return emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
-        const linhas = (await c.query('SELECT id, pai_id, codigo, descricao FROM eap_nos WHERE obra_id = $1', [obra.id])).rows;
+        const linhas = (await c.query('SELECT id, pai_id, codigo, descricao FROM eap_nos WHERE obra_id = $1 ORDER BY string_to_array(codigo, \'.\')::int[]', [obra.id])).rows;
         const comAtividade = new Set((await c.query('SELECT eap_no_id FROM obra_atividades WHERE obra_id = $1 AND eap_no_id IS NOT NULL', [obra.id])).rows.map((r) => r.eap_no_id as string));
-        const folhas = folhasDaEap(linhas.map((l) => ({ id: l.id as string, paiId: (l.pai_id ?? null) as string | null, codigo: l.codigo as string, descricao: l.descricao as string })))
-          .filter((l) => !comAtividade.has(l.id));
+        // Todas as linhas da EAP (etapas, subetapas e tarefas). Etapas e subetapas viram resumo: as datas vêm das atividades abaixo.
+        const folhas = linhas.filter((l) => !comAtividade.has(l.id as string)).map((l) => ({ id: l.id as string, descricao: l.descricao as string }));
         if (!folhas.length) return { criadas: 0 };
         const inicio = obra.data_inicio ? dataIso(obra.data_inicio) : new Date().toISOString().slice(0, 10);
         let ordem = (await c.query('SELECT coalesce(max(ordem), 0) AS n FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows[0].n as number;
@@ -1173,12 +1180,17 @@ export function rotasEngenharia(banco: Banco) {
     /** Atividades com as datas calculadas e os insumos do orçamento de cada linha da EAP (quantidade = orçamento × coeficiente). */
     async function atividadesComRecursos(c: Cliente, obraId: string) {
       const linhas = (await c.query(
-        `SELECT a.id, a.descricao, a.inicio, a.duracao_dias, a.predecessora_id, n.codigo AS eap_codigo
+        `SELECT a.id, a.descricao, a.inicio, a.duracao_dias, a.predecessora_id, a.eap_no_id, n.codigo AS eap_codigo
            FROM obra_atividades a LEFT JOIN eap_nos n ON n.id = a.eap_no_id
           WHERE a.obra_id = $1 ORDER BY a.ordem, a.criado_em`,
         [obraId],
       )).rows;
-      const datas = calcularDatas(linhas.map((a) => ({ id: a.id as string, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: (a.predecessora_id ?? null) as string | null })));
+      const nosObra = (await c.query('SELECT id, pai_id FROM eap_nos WHERE obra_id = $1', [obraId])).rows.map((n) => ({ id: n.id as string, paiId: (n.pai_id ?? null) as string | null }));
+      const datas = datasComResumos(
+        calcularDatas(linhas.map((a) => ({ id: a.id as string, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: (a.predecessora_id ?? null) as string | null }))),
+        linhas.map((a) => ({ id: a.id as string, eapNoId: (a.eap_no_id ?? null) as string | null })),
+        nosObra,
+      );
       const insumos = (await c.query(
         `SELECT a.id AS atividade_id, i.codigo, i.descricao, i.unidade, i.grupo, sum(oq.quantidade * ci.coeficiente)::float AS quantidade
            FROM obra_atividades a
@@ -1286,7 +1298,11 @@ export function rotasEngenharia(banco: Banco) {
         orcado.set(l.eap_no_id as string, Number(l.linhas) === 1 ? { unidade: l.unidade as string, quantidade: Number(l.quantidade) } : { unidade: null, quantidade: null });
       }
       const atividades = (await c.query('SELECT id, predecessora_id, eap_no_id, inicio, duracao_dias FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows;
-      const datas = calcularDatas(atividades.map((a) => ({ id: a.id as string, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: (a.predecessora_id ?? null) as string | null })));
+      const datas = datasComResumos(
+        calcularDatas(atividades.map((a) => ({ id: a.id as string, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: (a.predecessora_id ?? null) as string | null }))),
+        atividades.map((a) => ({ id: a.id as string, eapNoId: (a.eap_no_id ?? null) as string | null })),
+        nos.map((n) => ({ id: n.id as string, paiId: (n.pai_id ?? null) as string | null })),
+      );
       const porNo = new Map<string, number>();
       for (const a of atividades) if (a.eap_no_id) porNo.set(a.eap_no_id as string, (porNo.get(a.eap_no_id as string) ?? 0) + 1);
       const planejado: AtividadePlan[] = atividades.filter((a) => a.eap_no_id).map((a) => {

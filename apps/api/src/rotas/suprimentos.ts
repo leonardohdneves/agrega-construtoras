@@ -55,10 +55,50 @@ function periodo(q: Record<string, string | undefined>, padraoDias = 90) {
 // ---------------------------------------------------------------- itens: necessidades de insumo da obra (apropriadas à EAP)
 // Toda compra parte de uma necessidade pendente: insumo cadastrado na obra, apropriado a um nó da EAP.
 
-const esquemaNecessidadeItem = z.object({
+// Item da solicitação: ou uma necessidade já apropriada (pendente), ou um insumo da planilha escolhido direto,
+// apropriado a um nó da EAP no nível de apropriação da obra (a necessidade é criada junto com a solicitação).
+const esquemaItemExistente = z.object({
   necessidadeId: z.string().regex(UUID, 'Escolha o insumo da obra.'),
   observacao: texto(200),
 });
+const esquemaItemNovo = z.object({
+  obraItemId: z.string().regex(UUID, 'Escolha o insumo da planilha.'),
+  eapNoId: z.string().regex(UUID).nullable(),
+  quantidade: z.number().positive('A quantidade precisa ser maior que zero.'),
+  dataNecessaria: dataOpc,
+  observacao: texto(200),
+});
+const esquemaNecessidadeItem = z.union([esquemaItemExistente, esquemaItemNovo]);
+
+/** Cria as necessidades dos insumos escolhidos direto na planilha (status pendente; a solicitação as marca como solicitadas). */
+async function criarNecessidadesDaSolicitacao(c: Cliente, obraId: string, itens: z.infer<typeof esquemaNecessidadeItem>[]): Promise<{ necessidadeId: string; observacao: string | null }[]> {
+  const obra = (await c.query('SELECT nivel_apropriacao FROM obras WHERE id = $1', [obraId])).rows[0];
+  const nivel = obra.nivel_apropriacao as string;
+  const saida: { necessidadeId: string; observacao: string | null }[] = [];
+  for (const [n, i] of itens.entries()) {
+    if (!('obraItemId' in i)) {
+      saida.push({ necessidadeId: i.necessidadeId, observacao: i.observacao || null });
+      continue;
+    }
+    const item = (await c.query("SELECT id FROM obra_itens WHERE id = $1 AND obra_id = $2 AND tipo = 'insumo'", [i.obraItemId, obraId])).rows[0];
+    if (!item) throw new ErroHttp(400, `Item ${n + 1}: escolha um insumo da planilha desta obra.`);
+    if (nivel === 'obra') {
+      if (i.eapNoId) throw new ErroHttp(400, `Item ${n + 1}: esta obra apropria no nível da obra, sem nó da EAP.`);
+    } else {
+      if (!i.eapNoId) throw new ErroHttp(400, `Item ${n + 1}: escolha o nó da EAP (${nivel}).`);
+      const no = (await c.query('SELECT nivel FROM eap_nos WHERE id = $1 AND obra_id = $2', [i.eapNoId, obraId])).rows[0];
+      if (!no) throw new ErroHttp(400, `Item ${n + 1}: nó da EAP não encontrado nesta obra.`);
+      if (no.nivel !== nivel) throw new ErroHttp(400, `Item ${n + 1}: a apropriação usa o nível ${nivel}; este nó é ${no.nivel}.`);
+    }
+    const r = await c.query(
+      `INSERT INTO obra_necessidades (obra_id, obra_item_id, eap_no_id, quantidade, data_necessaria, observacao)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [obraId, i.obraItemId, nivel === 'obra' ? null : i.eapNoId, i.quantidade, i.dataNecessaria ?? null, i.observacao || null],
+    );
+    saida.push({ necessidadeId: r.rows[0].id as string, observacao: i.observacao || null });
+  }
+  return saida;
+}
 
 /** Item de compra resolvido a partir de uma necessidade da obra. */
 type ItemResolvido = {
@@ -579,7 +619,7 @@ export function rotasSuprimentos(banco: Banco) {
       const id = await emTransacao(banco, async (c) => {
         const obra = (await c.query('SELECT id, centro_custo_id FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo', [d.obraId, empresaId])).rows[0];
         if (!obra) throw new ErroHttp(400, 'Obra não encontrada.');
-        const itens = await resolverNecessidades(c, empresaId, d.obraId, d.itens);
+        const itens = await resolverNecessidades(c, empresaId, d.obraId, await criarNecessidadesDaSolicitacao(c, d.obraId, d.itens));
         const numero = await proximoNumero(c, 'solicitacoes_compra', empresaId);
         const s = (
           await c.query(
@@ -605,7 +645,7 @@ export function rotasSuprimentos(banco: Banco) {
         const obra = (await c.query('SELECT id, centro_custo_id FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo', [d.obraId, empresaId])).rows[0];
         if (!obra) throw new ErroHttp(400, 'Obra não encontrada.');
         await liberarNecessidades(c, atual.id);
-        const itens = await resolverNecessidades(c, empresaId, d.obraId, d.itens);
+        const itens = await resolverNecessidades(c, empresaId, d.obraId, await criarNecessidadesDaSolicitacao(c, d.obraId, d.itens));
         await c.query(
           'UPDATE solicitacoes_compra SET obra_id = $2, centro_custo_id = $3, data = coalesce($4, data), necessidade = $5, observacao = $6, atualizado_em = now() WHERE id = $1',
           [atual.id, d.obraId, obra.centro_custo_id, d.data, d.necessidade, d.observacao],
