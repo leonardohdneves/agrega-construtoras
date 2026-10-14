@@ -12,6 +12,7 @@ import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColu
 import { empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
+import { curvaS, percentualDeQuantidade, previstoXExecutado, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import {
   abcInsumos,
   abcServicos,
@@ -1263,6 +1264,211 @@ export function rotasEngenharia(banco: Banco) {
         // Insumos sem classe (não encontrados na tabela de insumos) entram na lista de compras; conferir antes de comprar.
         semClasse: itens.filter((i) => !i.grupo).length,
         atividadesSemOrcamento: atividades.filter((a) => a.insumos.length === 0).length,
+      };
+    });
+
+    // ---------------------------------------------------------------- acompanhamento de obra (medições físicas e relatórios)
+
+    /** Dados que os relatórios e a planilha usam: EAP, custo direto das folhas, planejamento, medições e despesas da obra. */
+    async function dadosDoAcompanhamento(c: Cliente, obra: Record<string, any>) {
+      const nos = (await c.query('SELECT id, pai_id, codigo, nivel, descricao FROM eap_nos WHERE obra_id = $1', [obra.id])).rows;
+      const linhasOrc = (await c.query(
+        `SELECT oq.eap_no_id, count(*)::int AS linhas, max(oi.unidade) AS unidade, sum(oq.quantidade)::float AS quantidade,
+                sum(oq.quantidade * custo_obra_item(oq.obra_item_id))::float AS custo
+           FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id
+          WHERE oq.obra_id = $1 AND oq.eap_no_id IS NOT NULL GROUP BY oq.eap_no_id`,
+        [obra.id],
+      )).rows;
+      const custos = new Map<string, number>();
+      const orcado = new Map<string, { unidade: string | null; quantidade: number | null }>();
+      for (const l of linhasOrc) {
+        custos.set(l.eap_no_id as string, Number(l.custo));
+        orcado.set(l.eap_no_id as string, Number(l.linhas) === 1 ? { unidade: l.unidade as string, quantidade: Number(l.quantidade) } : { unidade: null, quantidade: null });
+      }
+      const atividades = (await c.query('SELECT id, predecessora_id, eap_no_id, inicio, duracao_dias FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows;
+      const datas = calcularDatas(atividades.map((a) => ({ id: a.id as string, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: (a.predecessora_id ?? null) as string | null })));
+      const porNo = new Map<string, number>();
+      for (const a of atividades) if (a.eap_no_id) porNo.set(a.eap_no_id as string, (porNo.get(a.eap_no_id as string) ?? 0) + 1);
+      const planejado: AtividadePlan[] = atividades.filter((a) => a.eap_no_id).map((a) => {
+        const d = datas.get(a.id as string)!;
+        const no = a.eap_no_id as string;
+        return { eapNoId: no, inicio: d.inicio, fim: d.fim, custo: (custos.get(no) ?? 0) / (porNo.get(no) ?? 1) };
+      });
+      const medicoes: Medicao[] = [];
+      const itens = (await c.query(
+        `SELECT m.id, m.data, i.eap_no_id, i.percentual::float AS percentual
+           FROM obra_medicoes m JOIN obra_medicao_itens i ON i.medicao_id = m.id WHERE m.obra_id = $1`,
+        [obra.id],
+      )).rows;
+      const mapaMedicoes = new Map<string, Medicao>();
+      for (const i of itens) {
+        const data = dataIso(i.data);
+        const m = mapaMedicoes.get(i.id as string) ?? { data, itens: new Map<string, number>() };
+        m.itens.set(i.eap_no_id as string, Number(i.percentual));
+        mapaMedicoes.set(i.id as string, m);
+      }
+      medicoes.push(...mapaMedicoes.values());
+      // Despesas confirmadas apropriadas ao centro de custo da obra, pela competência.
+      const despesas = (await c.query(
+        `SELECT l.competencia AS data, sum(a.valor_centavos)::float AS valor
+           FROM apropriacoes a JOIN lancamentos l ON l.id = a.lancamento_id
+          WHERE a.centro_custo_id = $1 AND l.status = 'confirmado' AND l.empresa_id = $2
+          GROUP BY l.competencia ORDER BY l.competencia`,
+        [obra.centro_custo_id, obra.empresa_id],
+      )).rows.map((d) => ({ data: dataIso(d.data), valor: Number(d.valor) }));
+      const nosEap: NoEap[] = nos.map((n) => ({ id: n.id as string, paiId: (n.pai_id ?? null) as string | null, codigo: n.codigo as string, nivel: n.nivel as string, descricao: n.descricao as string }));
+      const custoTotal = [...custos.values()].reduce((s, v) => s + v, 0);
+      return { nos, nosEap, custos, orcado, planejado, medicoes, despesas, custoTotal };
+    }
+
+    const hojeIso = () => new Date().toISOString().slice(0, 10);
+
+    app.get<{ Params: { id: string } }>('/obras/:id/acompanhamento/planilha', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const d = await dadosDoAcompanhamento(banco, obra);
+      const hoje = hojeIso();
+      // % atual de cada nó: folhas pelo último valor informado; nós acima pela média ponderada pelo custo (relatorio de previsto x executado).
+      const porNo = new Map(previstoXExecutado({ nos: d.nosEap, custos: d.custos, medicoes: d.medicoes, atividades: [], dataRef: hoje }).map((l) => [l.id, l]));
+      const medicoes = (await banco.query(
+        `SELECT m.id, m.data, m.descricao, count(i.eap_no_id)::int AS linhas
+           FROM obra_medicoes m LEFT JOIN obra_medicao_itens i ON i.medicao_id = m.id
+          WHERE m.obra_id = $1 GROUP BY m.id ORDER BY m.data`,
+        [obra.id],
+      )).rows;
+      const linhas = d.nosEap
+        .map((n) => {
+          const folha = !d.nosEap.some((x) => x.paiId === n.id);
+          const orc = d.orcado.get(n.id);
+          const r = porNo.get(n.id);
+          return {
+            id: n.id, paiId: n.paiId, nivel: n.nivel, codigo: n.codigo, descricao: n.descricao, folha,
+            unidade: orc?.unidade ?? null,
+            quantidadeOrcada: orc?.quantidade ?? null,
+            custoDireto: r ? r.custoPrevisto : 0,
+            percentualAtual: r && r.custoPrevisto > 0 ? Math.round(r.percentualExecutado * 100) / 100 : null,
+          };
+        })
+        .sort((a, b) => compararCodigo(a.codigo, b.codigo));
+      return {
+        hoje,
+        ultimaData: medicoes.length ? dataIso(medicoes[medicoes.length - 1].data) : null,
+        linhas,
+        medicoes: medicoes.map((m) => ({ id: m.id, data: dataIso(m.data), descricao: m.descricao, linhas: m.linhas })),
+      };
+    });
+
+    const esquemaMedicao = z.object({
+      data: z.string().regex(DATA, 'Informe a data da medição.'),
+      descricao: texto(200),
+      itens: z.array(z.object({
+        eapNoId: z.string().uuid(),
+        percentual: z.number().min(0).max(100).optional().nullable(),
+        quantidade: z.number().min(0).optional().nullable(),
+      })).min(1, 'Preencha ao menos uma linha.'),
+    });
+
+    app.post<{ Params: { id: string } }>('/obras/:id/acompanhamento/medicoes', async (req, reply) => {
+      const d = esquemaMedicao.parse(req.body);
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const dados = await dadosDoAcompanhamento(c, obra);
+        const linhas: { eapNoId: string; percentual: number; quantidade: number | null }[] = [];
+        for (const it of d.itens) {
+          if (!dados.nosEap.some((n) => n.id === it.eapNoId) || dados.nosEap.some((n) => n.paiId === it.eapNoId)) throw new ErroHttp(400, 'Escolha uma linha da EAP que não seja agrupadora (etapa ou subetapa com filhos).');
+          const orc = dados.orcado.get(it.eapNoId);
+          if (it.quantidade !== undefined && it.quantidade !== null) {
+            if (!orc?.unidade || !orc.quantidade) throw new ErroHttp(400, 'Esta linha tem mais de um serviço ou nenhum: informe o percentual.');
+            linhas.push({ eapNoId: it.eapNoId, percentual: percentualDeQuantidade(it.quantidade, orc.quantidade), quantidade: it.quantidade });
+          } else if (it.percentual !== undefined && it.percentual !== null) {
+            linhas.push({ eapNoId: it.eapNoId, percentual: it.percentual, quantidade: null });
+          }
+        }
+        if (!linhas.length) throw new ErroHttp(400, 'Preencha o percentual ou a quantidade de ao menos uma linha.');
+        // Uma medição por data: regravar a mesma data substitui a anterior.
+        await c.query('DELETE FROM obra_medicoes WHERE obra_id = $1 AND data = $2', [obra.id, d.data]);
+        const m = (await c.query(
+          'INSERT INTO obra_medicoes (obra_id, data, descricao, criado_por) VALUES ($1,$2,$3,$4) RETURNING id',
+          [obra.id, d.data, d.descricao ?? null, req.usuario!.id],
+        )).rows[0];
+        for (const l of linhas) {
+          await c.query('INSERT INTO obra_medicao_itens (medicao_id, eap_no_id, percentual, quantidade) VALUES ($1,$2,$3,$4)', [m.id, l.eapNoId, l.percentual, l.quantidade]);
+        }
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obra_medicoes', entidadeId: m.id, depois: { data: d.data, linhas: linhas.length } });
+        return m.id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.get<{ Params: { id: string; medId: string } }>('/obras/:id/acompanhamento/medicoes/:medId', async (req) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const m = (await banco.query('SELECT id, data, descricao FROM obra_medicoes WHERE id = $1 AND obra_id = $2', [req.params.medId, req.params.id])).rows[0];
+      if (!m) throw naoEncontrado('Medição');
+      const itens = (await banco.query('SELECT eap_no_id, percentual::float AS percentual, quantidade::float AS quantidade FROM obra_medicao_itens WHERE medicao_id = $1', [m.id])).rows;
+      return { id: m.id, data: dataIso(m.data), descricao: m.descricao, itens: itens.map((i) => ({ eapNoId: i.eap_no_id, percentual: Number(i.percentual), quantidade: i.quantidade === null ? null : Number(i.quantidade) })) };
+    });
+
+    app.delete<{ Params: { id: string; medId: string } }>('/obras/:id/acompanhamento/medicoes/:medId', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const n = (await c.query('DELETE FROM obra_medicoes WHERE id = $1 AND obra_id = $2', [req.params.medId, obra.id])).rowCount;
+        if (!n) throw naoEncontrado('Medição');
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'obra_medicoes', entidadeId: req.params.medId, depois: null });
+      });
+      return { ok: true };
+    });
+
+    app.get<{ Params: { id: string } }>('/obras/:id/relatorios-gerenciais/curva-s', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const d = await dadosDoAcompanhamento(banco, obra);
+      const hoje = hojeIso();
+      if (!d.planejado.length) return { pontos: [], hoje, custoTotal: Math.round(d.custoTotal), vazio: 'Monte o planejamento (atividades ligadas à EAP) para ver a Curva S.' };
+      const de = d.planejado.reduce((m, a) => (a.inicio < m ? a.inicio : m), d.planejado[0].inicio).slice(0, 8) + '01';
+      const ate = d.planejado.reduce((m, a) => (a.fim > m ? a.fim : m), d.planejado[0].fim);
+      const pontos = curvaS({ custos: d.custos, medicoes: d.medicoes, atividades: d.planejado, despesas: d.despesas, de, ate, hoje });
+      const ultima = d.medicoes.reduce((m, x) => (x.data > m ? x.data : m), '');
+      const executadoAtual = ultima ? valorExecutadoEm(d.custos, d.medicoes, ultima) : 0;
+      const realizadoAtual = d.despesas.filter((x) => x.data <= (ultima || hoje)).reduce((s, x) => s + x.valor, 0);
+      const previstoAtual = pontos.filter((p) => p.data <= (ultima || hoje)).slice(-1)[0]?.previsto ?? 0;
+      return {
+        pontos, hoje, custoTotal: Math.round(d.custoTotal), dataUltimaMedicao: ultima || null,
+        indices: {
+          cpi: realizadoAtual > 0 ? executadoAtual / realizadoAtual : null,
+          spi: previstoAtual > 0 ? executadoAtual / previstoAtual : null,
+        },
+      };
+    });
+
+    app.get<{ Params: { id: string }; Querystring: { data?: string } }>('/obras/:id/relatorios-gerenciais/previsto-realizado', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const d = await dadosDoAcompanhamento(banco, obra);
+      const hoje = hojeIso();
+      const ultima = d.medicoes.reduce((m, x) => (x.data > m ? x.data : m), '');
+      const dataRef = req.query.data && DATA.test(req.query.data) ? req.query.data : (ultima || hoje);
+      const linhas = previstoXExecutado({ nos: d.nosEap, custos: d.custos, medicoes: d.medicoes, atividades: d.planejado, dataRef });
+      const realizado = d.despesas.filter((x) => x.data <= dataRef).reduce((s, x) => s + x.valor, 0);
+      const totalPrevisto = linhas.filter((l) => l.nivel === 'etapa').reduce((s, l) => s + l.custoPrevisto, 0) || Math.round(d.custoTotal);
+      const totalExecutado = linhas.filter((l) => l.nivel === 'etapa').reduce((s, l) => s + l.executado, 0);
+      const totalPrevistoAte = linhas.filter((l) => l.nivel === 'etapa').reduce((s, l) => s + l.previstoAte, 0);
+      return {
+        dataRef,
+        linhas: linhas.sort((a, b) => compararCodigo(a.codigo, b.codigo)),
+        totais: {
+          custoPrevisto: totalPrevisto,
+          previstoAte: totalPrevistoAte,
+          executado: totalExecutado,
+          realizado: Math.round(realizado),
+          saldo: totalPrevisto - totalExecutado,
+          cpi: realizado > 0 ? totalExecutado / realizado : null,
+          spi: totalPrevistoAte > 0 ? totalExecutado / totalPrevistoAte : null,
+        },
+        observacao: 'O realizado é o total das despesas confirmadas apropriadas ao centro de custo da obra. Os lançamentos não são apropriados por etapa, então o realizado aparece só no total.',
       };
     });
 

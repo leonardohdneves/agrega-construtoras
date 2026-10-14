@@ -64,6 +64,8 @@ import { EngTabelas, EngTabelaDetalhe } from './paginas/EngTabelas';
 import { EngObras, EngObraNova, EngObraDetalhe } from './paginas/EngObras';
 import { EngApropriacao, EngEap, EngInsumos, EngPlanejamento, EngServicos } from './paginas/EngSecoes';
 import { EngRelatorios } from './paginas/EngRelatorios';
+import { EngAcompanhamento } from './paginas/EngAcompanhamento';
+import { GerAcompanhamento } from './paginas/GerAcompanhamento';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
 import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
 import { PaginaMinhasCargas } from './paginas/MinhasCargas';
@@ -136,6 +138,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="adm/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelAdm /></Protegido>} />
             <Route path="config/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelConfig /></Protegido>} />
             <Route path="ger/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelGerencial /></Protegido>} />
+            <Route path="ger/acompanhamento" element={<Protegido perfis={['dono', 'gestor']}><GerAcompanhamento /></Protegido>} />
             <Route path="ger/indicadores" element={<Protegido perfis={['dono', 'gestor']}><Indicadores /></Protegido>} />
             <Route path="ger/dre" element={<Protegido perfis={['dono', 'gestor']}><Dre /></Protegido>} />
             <Route path="ger/fluxo" element={<Protegido perfis={['dono', 'gestor']}><Fluxo /></Protegido>} />
@@ -193,6 +196,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="eng/eap" element={<Protegido perfis={['dono', 'gestor']}><EngEap /></Protegido>} />
             <Route path="eng/planejamento" element={<Protegido perfis={['dono', 'gestor']}><EngPlanejamento /></Protegido>} />
             <Route path="eng/relatorios" element={<Protegido perfis={['dono', 'gestor']}><EngRelatorios /></Protegido>} />
+            <Route path="eng/acompanhamento" element={<Protegido perfis={['dono', 'gestor']}><EngAcompanhamento /></Protegido>} />
             <Route path="com/vendas" element={<Protegido perfis={COMERCIAL}><ComVendas /></Protegido>} />
             <Route path="com/vendas/nova" element={<Protegido perfis={COMERCIAL}><NovaVenda /></Protegido>} />
             <Route path="com/vendas/:id" element={<Protegido perfis={COMERCIAL}><VendaDetalhe /></Protegido>} />
