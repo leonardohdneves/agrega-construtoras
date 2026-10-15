@@ -138,6 +138,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
   const [nivel, setNivel] = useState<string>('');
   const [marcadas, setMarcadas] = useState<Set<string>>(() => new Set(inicial?.itens.map((i) => i.necessidadeId).filter((x): x is string => !!x) ?? []));
   const [novos, setNovos] = useState<NovoItem[]>([]);
+  const [buscaInsumo, setBuscaInsumo] = useState('');
   // Estoque da obra por insumo e etapa: mostra se o item pedido já está em estoque e onde.
   const [estoqueObra, setEstoqueObra] = useState<{ obraItemId: string; saldo: number; unidade: string; apropriacoes: { eapNoId: string; eapCodigo: string; quantidade: number }[] }[]>([]);
   useEffect(() => {
@@ -147,6 +148,13 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
       .catch(() => setEstoqueObra([]));
   }, [f.obraId]);
   const [add, setAdd] = useState({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
+  const normaliza = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  const termos = normaliza(buscaInsumo).split(/\s+/).filter(Boolean);
+  const insumosFiltrados = insumos.filter((i) => {
+    if (add.obraItemId === i.id) return true; // o insumo já escolhido continua visível
+    const alvo = normaliza(`${i.codigo} ${i.descricao}`);
+    return termos.every((t) => alvo.includes(t));
+  });
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
@@ -277,10 +285,15 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
         <>
           <div className="campos editor-linha">
             <div className="campo">
-              <label htmlFor="sol-ins">Insumo</label>
-              <select id="sol-ins" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value })}>
-                <option value="">Escolha o insumo</option>
-                {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+              <label htmlFor="sol-busca">Buscar insumo</label>
+              <input id="sol-busca" type="search" placeholder="Código ou parte da descrição" value={buscaInsumo} onChange={(e) => setBuscaInsumo(e.target.value)} />
+            </div>
+            <div className="campo">
+              <label htmlFor="sol-ins">Insumo <span className="small muted">({insumosFiltrados.length} encontrado{insumosFiltrados.length === 1 ? '' : 's'})</span></label>
+              <select id="sol-ins" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value })} size={Math.min(8, Math.max(2, insumosFiltrados.length))}>
+                {insumosFiltrados.length === 0 && <option value="">Nenhum insumo com esse texto</option>}
+                {insumosFiltrados.length > 0 && <option value="">Escolha o insumo</option>}
+                {insumosFiltrados.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
               </select>
             </div>
             {add.obraItemId && (() => {
