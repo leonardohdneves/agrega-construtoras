@@ -96,6 +96,7 @@ export const MODULOS: Modulo[] = [
     perfis: GESTAO,
     itens: [
       { rotulo: 'Solicitações de compra', para: '/sup/solicitacoes' },
+      { rotulo: 'Solicitação de serviços', para: '/sup/solicitacoes-servico' },
       { rotulo: 'Cotações e mapa', para: '/sup/cotacoes' },
       { rotulo: 'Pedidos de compra', para: '/sup/pedidos' },
       { rotulo: 'Contratos', para: '/sup/contratos' },

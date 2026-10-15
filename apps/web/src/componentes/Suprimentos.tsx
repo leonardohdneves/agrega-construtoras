@@ -13,13 +13,14 @@ export type ObraRef = { id: string; codigo: string; nome: string };
 export type ItemSolicitacao = ItemEap & {
   id: string; necessidadeId: string | null; obraItemId: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null;
 };
+export type TipoSolicitacao = 'insumo' | 'servico';
 export type Solicitacao = {
-  id: string; numero: number; data: string; necessidade: string | null; obraId: string | null; obra: ObraRef | null; centroCustoId: string | null; centroCusto: string | null;
+  id: string; numero: number; data: string; necessidade: string | null; obraId: string | null; obra: ObraRef | null; centroCustoId: string | null; centroCusto: string | null; tipo: TipoSolicitacao; planoContaId: string | null;
   observacao: string | null; status: StatusSolicitacao; finalizadaEm: string | null; solicitante: string | null; cotacoes: { id: string; numero: number; status: StatusCotacao }[];
   pedidos: { id: string; numero: number; status: StatusPedido }[]; itens: ItemSolicitacao[];
 };
 export type SolicitacaoResumo = {
-  id: string; numero: number; data: string; necessidade: string | null; obra: ObraRef | null; status: StatusSolicitacao; finalizadaEm: string | null; observacao: string | null;
+  id: string; numero: number; data: string; necessidade: string | null; obra: ObraRef | null; status: StatusSolicitacao; finalizadaEm: string | null; observacao: string | null; tipo: TipoSolicitacao;
   solicitante: string | null; itens: number; resumo: string | null; diasAberta: number | null; urgente: boolean;
 };
 

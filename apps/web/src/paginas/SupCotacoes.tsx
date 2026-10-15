@@ -373,10 +373,12 @@ export function CotacaoDetalhe() {
           metodo: 'PUT',
           corpo: { itens: c.itens.map((i) => ({ itemId: i.id, vencedorId: escolhas[i.id]?.vencedorId ?? null, justificativa: escolhas[i.id]?.justificativa || null })), justificativa: justGeral || null },
         });
-      const r = await api<{ cotacao: Cotacao; pedidos: { id: string; numero: number }[] }>(`/sup/cotacoes/${c.id}/concluir`, { metodo: 'POST' });
+      const r = await api<{ cotacao: Cotacao; pedidos: { id: string; numero: number }[]; contratos: { id: string; numero: number }[] }>(`/sup/cotacoes/${c.id}/concluir`, { metodo: 'POST' });
       aplicar(r.cotacao);
-      if (r.pedidos.length === 1) navegar(`/sup/pedidos/${r.pedidos[0].id}`, { state: { aviso: `Pedido nº ${numeroDoc(r.pedidos[0].numero)} gerado. Confira e envie para aprovação.` } });
-      else setAviso(`${r.pedidos.length} pedidos gerados (um por fornecedor). Abra cada um, confira e envie para aprovação.`);
+      if (r.contratos.length === 1) navegar(`/sup/contratos/${r.contratos[0].id}`, { state: { aviso: `Contrato nº ${numeroDoc(r.contratos[0].numero)} gerado em rascunho. Confira, envie para aprovação e depois lance as medições dos serviços.` } });
+      else if (r.contratos.length > 1) setAviso(`${r.contratos.length} contratos gerados em rascunho (um por fornecedor vencedor). Abra cada um, confira e envie para aprovação.`);
+      else if (r.pedidos.length === 1) navegar(`/sup/pedidos/${r.pedidos[0].id}`, { state: { aviso: `Pedido nº ${numeroDoc(r.pedidos[0].numero)} gerado. Confira e envie para aprovação.` } });
+      else if (r.pedidos.length > 1) setAviso(`${r.pedidos.length} pedidos gerados (um por fornecedor). Abra cada um, confira e envie para aprovação.`);
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -596,7 +598,7 @@ export function CotacaoDetalhe() {
             Aplicar menor preço
           </button>
           <button className="btn btn-secundario" type="button" disabled={ocupado || !alterado} onClick={salvarEscolhas}>Salvar escolha</button>
-          <button className="btn btn-primario" type="button" disabled={ocupado} onClick={concluir}>Concluir e gerar pedidos</button>
+          <button className="btn btn-primario" type="button" disabled={ocupado} onClick={concluir}>Concluir e gerar pedidos ou contratos</button>
           <button className="btn btn-link" type="button" disabled={ocupado} onClick={() => executar(() => api(`/sup/cotacoes/${c.id}/cancelar`, { metodo: 'POST' }), 'Cotação cancelada.')}>
             Cancelar cotação
           </button>

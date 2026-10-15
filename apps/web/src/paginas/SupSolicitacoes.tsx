@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { api, formatarData, hojeLocal, lerNumero, somarDias } from '../api';
+import { api, formatarData, hojeLocal, lerNumero, somarDias, type PlanoConta } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import {
   Assinatura,
@@ -15,6 +15,7 @@ import {
   useCadastrosCompra,
   type Solicitacao,
   type SolicitacaoResumo,
+  type TipoSolicitacao,
 } from '../componentes/Suprimentos';
 import { ROTULO_NIVEL } from './EngObras';
 
@@ -35,27 +36,36 @@ type Necessidade = {
 const ordenarEap = (a: { eapCodigo: string | null; descricao: string }, b: { eapCodigo: string | null; descricao: string }) =>
   (a.eapCodigo ?? '').localeCompare(b.eapCodigo ?? '', 'pt-BR', { numeric: true }) || a.descricao.localeCompare(b.descricao, 'pt-BR');
 
-export function SupSolicitacoes() {
+const CAMINHO_LISTA: Record<TipoSolicitacao, string> = { insumo: '/sup/solicitacoes', servico: '/sup/solicitacoes-servico' };
+
+export function SupSolicitacoes({ tipo = 'insumo' }: { tipo?: TipoSolicitacao }) {
   const [params, setParams] = useSearchParams();
   const filtro = params.get('status') ?? '';
   const [lista, setLista] = useState<SolicitacaoResumo[] | null>(null);
   const [erro, setErro] = useState('');
   useEffect(() => {
     setLista(null);
-    api<{ solicitacoes: SolicitacaoResumo[] }>(`/sup/solicitacoes${filtro ? `?status=${filtro}` : ''}`)
+    const q = new URLSearchParams({ tipo });
+    if (filtro) q.set('status', filtro);
+    api<{ solicitacoes: SolicitacaoResumo[] }>(`/sup/solicitacoes?${q}`)
       .then((r) => setLista(r.solicitacoes))
       .catch((e) => setErro((e as Error).message));
-  }, [filtro]);
+  }, [filtro, tipo]);
 
+  const servico = tipo === 'servico';
   return (
     <>
       <div className="cabecalho">
         <div className="titulo">
-          <h1>Solicitações de compra</h1>
-          <span className="muted">Cada solicitação é de uma obra e usa os insumos apropriados à EAP. Finalizada, ela vai para a cotação.</span>
+          <h1>{servico ? 'Solicitação de serviços' : 'Solicitações de compra'}</h1>
+          <span className="muted">
+            {servico
+              ? 'Serviços cadastrados na obra (composições). Finalizada e cotada, cada fornecedor vencedor recebe um contrato.'
+              : 'Cada solicitação é de uma obra e usa os insumos apropriados à EAP. Finalizada, ela vai para a cotação.'}
+          </span>
         </div>
         <div className="acoes">
-          <Link className="btn btn-primario" to="/sup/solicitacoes/nova">Nova solicitação</Link>
+          <Link className="btn btn-primario" to={`${CAMINHO_LISTA[tipo]}/nova`}>{servico ? 'Nova solicitação de serviços' : 'Nova solicitação'}</Link>
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
@@ -90,7 +100,7 @@ export function SupSolicitacoes() {
                   <td className="mono"><Link to={`/sup/solicitacoes/${s.id}`}>{numeroDoc(s.numero)}</Link></td>
                   <td className="small">{s.obra ? `${s.obra.codigo} · ${s.obra.nome}` : '—'}</td>
                   <td>{formatarData(s.data)}</td>
-                  <td>{s.itens} {s.itens === 1 ? 'insumo' : 'insumos'}<div className="small muted">{s.resumo}</div></td>
+                  <td>{s.itens} {servico ? (s.itens === 1 ? 'serviço' : 'serviços') : s.itens === 1 ? 'insumo' : 'insumos'}<div className="small muted">{s.resumo}</div></td>
                   <td className={s.urgente ? 'tom-perigo' : ''}>{s.necessidade ? formatarData(s.necessidade) : '—'}</td>
                   <td className="small">{s.solicitante ?? '—'}</td>
                   <td>
@@ -358,17 +368,224 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
   );
 }
 
-export function NovaSolicitacao() {
+// ---------- Formulário de serviços: composições cadastradas na obra ----------
+type ComposicaoPlanilha = { id: string; codigo: string; descricao: string; unidade: string };
+type NovoServico = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string | null; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number };
+
+function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao; aoSalvar: (s: Solicitacao) => void; aoCancelar?: () => void }) {
+  const [obras, setObras] = useState<ObraLista[]>([]);
+  const [planos, setPlanos] = useState<PlanoConta[]>([]);
+  const [f, setF] = useState({
+    obraId: inicial?.obraId ?? '',
+    data: inicial?.data ?? hojeLocal(),
+    necessidade: inicial?.necessidade ?? '',
+    planoContaId: inicial?.planoContaId ?? '',
+    observacao: inicial?.observacao ?? '',
+  });
+  const [composicoes, setComposicoes] = useState<ComposicaoPlanilha[] | null>(null);
+  const [nos, setNos] = useState<NoEapLista[]>([]);
+  const [nivel, setNivel] = useState<string>('');
+  const [novos, setNovos] = useState<NovoServico[]>(() =>
+    (inicial?.itens ?? [])
+      .filter((i) => i.obraItemId)
+      .map((i) => ({ chave: i.id, obraItemId: i.obraItemId as string, eapNoId: i.eapNoId, codigo: null, descricao: i.descricao, unidade: i.unidade, eapCodigo: i.eapCodigo, quantidade: i.quantidade })),
+  );
+  const [add, setAdd] = useState({ obraItemId: '', eapNoId: '', quantidade: '' });
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+
+  useEffect(() => {
+    api<{ obras: ObraLista[] }>('/eng/obras')
+      .then((r) => setObras(r.obras.filter((o) => o.ativo !== false)))
+      .catch((e) => setErro((e as Error).message));
+    api<{ contas: PlanoConta[] }>('/fin/plano-contas')
+      .then((r) => setPlanos(r.contas.filter((p) => p.tipo === 'despesa' && p.aceitaLancamento && p.ativo)))
+      .catch((e) => setErro((e as Error).message));
+  }, []);
+
+  // Só carrega os dados da obra; a troca de obra (no onChange) é que limpa os serviços já escolhidos.
+  useEffect(() => {
+    if (!f.obraId) {
+      setComposicoes(null);
+      setNos([]);
+      setNivel('');
+      return;
+    }
+    setComposicoes(null);
+    Promise.all([
+      api<{ obra: { nivelApropriacao: string } }>(`/eng/obras/${f.obraId}`),
+      api<{ itens: ComposicaoPlanilha[] }>(`/eng/obras/${f.obraId}/itens?tipo=composicao`),
+      api<{ nos: NoEapLista[] }>(`/eng/obras/${f.obraId}/eap`),
+    ])
+      .then(([o, i, e]) => {
+        setNivel(o.obra.nivelApropriacao);
+        setComposicoes(i.itens);
+        setNos(e.nos.filter((x) => x.nivel === o.obra.nivelApropriacao));
+      })
+      .catch((e) => setErro((e as Error).message));
+  }, [f.obraId]);
+
+  function trocarObra(obraId: string) {
+    setF({ ...f, obraId });
+    setNovos([]);
+    setAdd({ obraItemId: '', eapNoId: '', quantidade: '' });
+  }
+
+  function incluirNovo() {
+    setErro('');
+    const servico = composicoes?.find((x) => x.id === add.obraItemId);
+    if (!servico) return setErro('Escolha o serviço cadastrado na obra.');
+    if (nivel !== 'obra' && !add.eapNoId) return setErro(`Escolha o nó da EAP (${(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel}).`);
+    const q = lerNumero(add.quantidade);
+    if (q === null || q <= 0) return setErro('Informe uma quantidade maior que zero.');
+    const no = nos.find((x) => x.id === add.eapNoId);
+    setNovos([...novos, {
+      chave: `s${Date.now()}${novos.length}`,
+      obraItemId: servico.id,
+      eapNoId: nivel === 'obra' ? null : add.eapNoId,
+      codigo: servico.codigo,
+      descricao: servico.descricao,
+      unidade: servico.unidade,
+      eapCodigo: no?.codigo ?? null,
+      quantidade: q,
+    }]);
+    setAdd({ obraItemId: '', eapNoId: '', quantidade: '' });
+  }
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    if (!f.obraId) return setErro('Escolha a obra.');
+    if (!f.planoContaId) return setErro('Escolha a categoria (plano de contas) do serviço.');
+    if (novos.length === 0) return setErro('Inclua pelo menos um serviço.');
+    setOcupado(true);
+    try {
+      const corpo = {
+        tipo: 'servico' as const,
+        obraId: f.obraId,
+        data: f.data,
+        necessidade: f.necessidade || null,
+        observacao: f.observacao || null,
+        planoContaId: f.planoContaId,
+        itens: novos.map((n) => ({ obraItemId: n.obraItemId, eapNoId: n.eapNoId, quantidade: n.quantidade, observacao: null })),
+      };
+      const r = inicial
+        ? await api<{ solicitacao: Solicitacao }>(`/sup/solicitacoes/${inicial.id}`, { metodo: 'PUT', corpo })
+        : await api<{ solicitacao: Solicitacao }>('/sup/solicitacoes', { corpo });
+      aoSalvar(r.solicitacao);
+    } catch (err) {
+      setErro((err as Error).message);
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={salvar}>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="serv-obra">Obra</label>
+          <select id="serv-obra" value={f.obraId} onChange={(e) => trocarObra(e.target.value)}>
+            <option value="">Escolha a obra</option>
+            {obras.map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}
+          </select>
+        </div>
+        <div className="campo">
+          <label htmlFor="serv-data">Data</label>
+          <input id="serv-data" type="date" value={f.data} onChange={(e) => setF({ ...f, data: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="serv-nec">Precisa até</label>
+          <input id="serv-nec" type="date" value={f.necessidade ?? ''} onChange={(e) => setF({ ...f, necessidade: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="serv-cat">Categoria (plano de contas)</label>
+          <select id="serv-cat" value={f.planoContaId} onChange={(e) => setF({ ...f, planoContaId: e.target.value })}>
+            <option value="">Escolha…</option>
+            {planos.map((p) => <option key={p.id} value={p.id}>{p.codigo} · {p.nome}</option>)}
+          </select>
+        </div>
+      </div>
+
+      <h2>Serviços da obra</h2>
+      {!f.obraId && <p className="muted small">Escolha a obra para ver os serviços cadastrados nela.</p>}
+      {f.obraId && composicoes === null && <p className="muted small">Carregando serviços…</p>}
+      {f.obraId && composicoes !== null && (
+        <>
+          {composicoes.length === 0 && <p className="small muted">Esta obra ainda não tem serviços cadastrados no orçamento.</p>}
+          <div className="campos editor-linha">
+            <div className="campo">
+              <label htmlFor="serv-item">Serviço</label>
+              <select id="serv-item" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value })}>
+                <option value="">Escolha o serviço</option>
+                {composicoes.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+              </select>
+            </div>
+            {nivel !== 'obra' && (
+              <div className="campo">
+                <label htmlFor="serv-no">Nó da EAP ({(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel})</label>
+                <select id="serv-no" value={add.eapNoId} onChange={(e) => setAdd({ ...add, eapNoId: e.target.value })}>
+                  <option value="">Escolha…</option>
+                  {nos.map((n) => <option key={n.id} value={n.id}>{' '.repeat(indentoEapSol(n.codigo))}{n.codigo} · {n.descricao}</option>)}
+                </select>
+              </div>
+            )}
+            <div className="campo">
+              <label htmlFor="serv-qtd">Quantidade</label>
+              <input id="serv-qtd" className="mono" inputMode="decimal" value={add.quantidade} onChange={(e) => setAdd({ ...add, quantidade: e.target.value })} />
+            </div>
+          </div>
+          <div className="acoes">
+            <button className="btn btn-secundario" type="button" onClick={incluirNovo}>Incluir serviço</button>
+          </div>
+        </>
+      )}
+
+      {novos.length > 0 && (
+        <table className="tabela">
+          <thead>
+            <tr><th>EAP</th><th>Serviço</th><th>Un.</th><th className="num">Quantidade</th><th style={{ width: 90 }} /></tr>
+          </thead>
+          <tbody>
+            {novos.map((n) => (
+              <tr key={n.chave}>
+                <td className="mono small">{n.eapCodigo ?? '—'}</td>
+                <td>{n.descricao}{n.codigo && <div className="small muted mono">{n.codigo}</div>}</td>
+                <td>{unidadeTexto(n.unidade)}</td>
+                <td className="num">{qtd(n.quantidade, n.unidade)}</td>
+                <td><button className="btn btn-link" type="button" onClick={() => setNovos(novos.filter((x) => x.chave !== n.chave))}>Remover</button></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      <div className="campo">
+        <label htmlFor="serv-obs">Observação</label>
+        <textarea id="serv-obs" rows={2} maxLength={500} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} placeholder="Local, condições, prazo de execução…" />
+      </div>
+      <p className="small muted" style={{ marginBottom: 0 }}>{novos.length} {novos.length === 1 ? 'serviço na solicitação' : 'serviços na solicitação'}.</p>
+      <div className="acoes">
+        <button className="btn btn-primario" type="submit" disabled={ocupado || !f.obraId || !f.planoContaId || novos.length === 0}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Registrar solicitação'}</button>
+        {aoCancelar && <button className="btn btn-secundario" type="button" onClick={aoCancelar}>Cancelar</button>}
+      </div>
+    </form>
+  );
+}
+
+export function NovaSolicitacao({ tipo = 'insumo' }: { tipo?: TipoSolicitacao }) {
   const navegar = useNavigate();
+  const servico = tipo === 'servico';
+  const aoSalvar = (s: Solicitacao) => navegar(`/sup/solicitacoes/${s.id}`, { replace: true });
   return (
     <>
       <div className="cabecalho">
         <div className="titulo">
-          <Link to="/sup/solicitacoes" className="small">← Solicitações</Link>
-          <h1>Nova solicitação de compra</h1>
+          <Link to={CAMINHO_LISTA[tipo]} className="small">← {servico ? 'Solicitação de serviços' : 'Solicitações'}</Link>
+          <h1>{servico ? 'Nova solicitação de serviços' : 'Nova solicitação de compra'}</h1>
         </div>
       </div>
-      <FormSolicitacao aoSalvar={(s) => navegar(`/sup/solicitacoes/${s.id}`, { replace: true })} />
+      {servico ? <FormServico aoSalvar={aoSalvar} /> : <FormSolicitacao aoSalvar={aoSalvar} />}
     </>
   );
 }
@@ -419,29 +636,34 @@ export function SolicitacaoDetalhe() {
 
   if (!s) return erro ? <div className="alerta alerta-erro">{erro}</div> : <p className="muted">Carregando…</p>;
   const emAberto = s.status === 'aberta' || s.status === 'finalizada' || s.status === 'em_cotacao';
+  const servico = s.tipo === 'servico';
 
   return (
     <>
       <div className="nao-imprimir">
-        <Link to="/sup/solicitacoes" className="small">← Solicitações</Link>
+        <Link to={CAMINHO_LISTA[s.tipo]} className="small">← {servico ? 'Solicitação de serviços' : 'Solicitações'}</Link>
       </div>
       <CabecalhoDocumento
         modulo="Suprimentos"
-        titulo={`Solicitação de compra nº ${numeroDoc(s.numero)}`}
+        titulo={`${servico ? 'Solicitação de serviços' : 'Solicitação de compra'} nº ${numeroDoc(s.numero)}`}
         descricao={s.obra ? `Obra ${s.obra.codigo} · ${s.obra.nome}` : undefined}
         filtros={[`Data: ${formatarData(s.data)}`, s.necessidade ? `Precisa até: ${formatarData(s.necessidade)}` : '', `Situação: ${SELO_SOLICITACAO[s.status].texto}`]}
       />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
 
       {editar ? (
-        <FormSolicitacao inicial={s} aoSalvar={(n) => { setS(n); setEditar(false); }} aoCancelar={() => setEditar(false)} />
+        servico ? (
+          <FormServico inicial={s} aoSalvar={(n) => { setS(n); setEditar(false); }} aoCancelar={() => setEditar(false)} />
+        ) : (
+          <FormSolicitacao inicial={s} aoSalvar={(n) => { setS(n); setEditar(false); }} aoCancelar={() => setEditar(false)} />
+        )
       ) : (
         <>
           <div className="card tabela-caixa">
-            <h2>Insumos</h2>
+            <h2>{servico ? 'Serviços' : 'Insumos'}</h2>
             <table className="tabela">
               <thead>
-                <tr><th>EAP</th><th>Insumo</th><th className="num">Quantidade</th></tr>
+                <tr><th>EAP</th><th>{servico ? 'Serviço' : 'Insumo'}</th><th className="num">Quantidade</th></tr>
               </thead>
               <tbody>
                 {s.itens.map((i) => (
