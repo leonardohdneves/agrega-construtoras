@@ -1,5 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, formatarCnpj, type Empresa as TEmpresa, type Impressao } from '../api';
+import { api, formatarCnpj, formatarDataHora, type Empresa as TEmpresa, type Impressao } from '../api';
 import { NOMES_PAPEL } from '../componentes/Documento';
 import { useSessao } from '../sessao';
 import { EmpresasGrupo } from './EmpresasGrupo';
@@ -210,8 +210,87 @@ export function Empresa() {
         />
       )}
       <EmpresasGrupo podeEditar={podeEditar} />
+      {podeEditar && <BackupEmpresa />}
       <ExportarDados />
     </>
+  );
+}
+
+type BackupItem = { id: string; criadoEm: string; status: string; tamanhoBytes: number | null; registros: number | null; tabelas: number | null; erro: string | null; criadoPor: string | null };
+
+/** Dono: backup guardado da própria empresa. Fica na lista e pode ser baixado depois. */
+function BackupEmpresa() {
+  const [lista, setLista] = useState<BackupItem[] | null>(null);
+  const [armazenamento, setArmazenamento] = useState(true);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  const [aviso, setAviso] = useState('');
+
+  function carregar() {
+    api<{ armazenamentoConfigurado: boolean; backups: BackupItem[] }>('/empresa/backups')
+      .then((r) => {
+        setArmazenamento(r.armazenamentoConfigurado);
+        setLista(r.backups);
+      })
+      .catch((e) => setErro((e as Error).message));
+  }
+  useEffect(carregar, []);
+
+  async function fazerBackup() {
+    setErro('');
+    setAviso('');
+    setOcupado(true);
+    try {
+      const r = await api<{ backup: { registros: number; tabelas: number } }>('/empresa/backups', { metodo: 'POST' });
+      setAviso(`Backup feito: ${r.backup.registros.toLocaleString('pt-BR')} registros em ${r.backup.tabelas} tabelas.`);
+      carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="card">
+      <h2 style={{ marginTop: 0 }}>Backup da empresa</h2>
+      <p className="muted" style={{ marginTop: 0 }}>
+        Guarda uma cópia de todos os dados desta empresa, com a data do momento. Os backups ficam disponíveis por 30 dias.
+        Para restaurar um backup, fale com o suporte.
+      </p>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {aviso && <div className="alerta" role="status">{aviso}</div>}
+      {!armazenamento && <div className="alerta alerta-erro" role="alert">O armazenamento de backups não está configurado. Procure o suporte.</div>}
+      <div className="acoes">
+        <button className="btn btn-primario" type="button" onClick={fazerBackup} disabled={ocupado || !armazenamento}>
+          {ocupado ? 'Fazendo backup…' : 'Fazer backup agora'}
+        </button>
+      </div>
+      {lista === null ? null : lista.length === 0 ? (
+        <p className="small muted">Nenhum backup desta empresa ainda.</p>
+      ) : (
+        <table className="tabela tabela-compacta" style={{ marginTop: 12 }}>
+          <thead>
+            <tr><th>Data</th><th>Situação</th><th>Registros</th><th>Feito por</th><th /></tr>
+          </thead>
+          <tbody>
+            {lista.map((b) => (
+              <tr key={b.id}>
+                <td>{formatarDataHora(b.criadoEm)}</td>
+                <td>{b.status === 'ok' ? 'Concluído' : `Falhou${b.erro ? `: ${b.erro}` : ''}`}</td>
+                <td className="mono">{b.registros === null ? '—' : b.registros.toLocaleString('pt-BR')}</td>
+                <td>{b.criadoPor ?? '—'}</td>
+                <td>
+                  {b.status === 'ok' && (
+                    <a className="btn btn-link" href={`/api/empresa/backups/${b.id}/download`} download>Baixar</a>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
   );
 }
 

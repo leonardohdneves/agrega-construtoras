@@ -219,7 +219,7 @@ export function ordemRestauracao(esquema: Esquema): string[] {
 export type RegistroBackup = { id: string; criado_em: Date; tipo: string; status: string; tamanho_bytes: string | null; registros: number | null; tabelas: number | null; chave: string | null; erro: string | null };
 
 export async function listarBackups(banco: Banco): Promise<RegistroBackup[]> {
-  return (await banco.query<RegistroBackup>('SELECT id, criado_em, tipo, status, tamanho_bytes, registros, tabelas, chave, erro FROM backups ORDER BY criado_em DESC LIMIT 200')).rows;
+  return (await banco.query<RegistroBackup>('SELECT id, criado_em, tipo, status, tamanho_bytes, registros, tabelas, chave, erro FROM backups WHERE empresa_id IS NULL ORDER BY criado_em DESC LIMIT 200')).rows;
 }
 
 export { sha };
