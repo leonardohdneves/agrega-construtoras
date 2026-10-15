@@ -139,7 +139,8 @@ function corpoDe(f: Form) {
       baseAdm: f.baseAdm,
       valorBaseInformado: n(f.valorBaseInformado),
       valorInformado: n(f.valorInformado),
-      marcos: f.marcos.map((m) => ({ descricao: m.descricao, percentual: n(m.percentual) ?? 0, dias: n(m.dias) ?? 0 })),
+      // Marcos só valem para preço global; nos outros tipos a linha vazia não deve travar a prévia.
+      marcos: f.tipo === 'preco_global' ? f.marcos.map((m) => ({ descricao: m.descricao, percentual: n(m.percentual) ?? 0, dias: n(m.dias) ?? 0 })) : undefined,
       numeroParcelas: n(f.numeroParcelas),
       entradaPct: n(f.entradaPct),
       prazoEntregaDias: n(f.prazoEntregaDias),
