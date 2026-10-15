@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { api } from '../api';
 
-type Apropriacao = { obraId: string; obraCodigo: string; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number };
+type Apropriacao = { obraId: string; obraCodigo: string; estoqueId: string | null; estoqueNome: string | null; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number };
 type ItemEstoque = { obraItemId: string; codigo: string; descricao: string; unidade: string; saldo: number; apropriacoes: Apropriacao[] };
 type Obra = { id: string; codigo: string; nome: string };
 type NoEap = { id: string; codigo: string; descricao: string };
@@ -25,6 +25,7 @@ export function SupEstoque() {
   const [ocupado, setOcupado] = useState(false);
   const [estoques, setEstoques] = useState<EstoqueObra[]>([]);
   const [nomeNovo, setNomeNovo] = useState('');
+  const [transf, setTransf] = useState({ obraItemId: '', eapNoId: '', origemId: '', destinoId: '', quantidade: '', data: hoje(), observacao: '' });
 
   useEffect(() => {
     api<{ obras: Obra[] }>('/obras').then((r) => setObras(r.obras)).catch(() => setObras([]));
@@ -67,6 +68,7 @@ export function SupEstoque() {
   useEffect(() => {
     setSaida({ obraItemId: '', eapNoId: '', quantidade: '', data: hoje(), observacao: '', estoqueId: '' });
     setEstoques([]);
+    setTransf({ obraItemId: '', eapNoId: '', origemId: '', destinoId: '', quantidade: '', data: hoje(), observacao: '' });
     setInsumos([]);
     setEtapas([]);
     if (!obraId) { setItens(null); return; }
@@ -77,7 +79,31 @@ export function SupEstoque() {
   }, [obraId]);
 
   const insumoEscolhido = insumos.find((i) => i.id === saida.obraItemId);
-  const saldoAtual = itens?.find((i) => i.obraItemId === saida.obraItemId)?.apropriacoes.find((a) => a.eapNoId === saida.eapNoId)?.quantidade ?? 0;
+  const recebimentoId = estoques.find((x) => x.recebimento)?.id ?? '';
+  const saldoDo = (obraItemId: string, eapNoId: string, estoqueId: string) =>
+    itens?.find((i) => i.obraItemId === obraItemId)?.apropriacoes.find((a) => a.eapNoId === eapNoId && (a.estoqueId ?? '') === estoqueId)?.quantidade ?? 0;
+  const saldoAtual = saldoDo(saida.obraItemId, saida.eapNoId, saida.estoqueId || recebimentoId);
+  const saldoTransf = saldoDo(transf.obraItemId, transf.eapNoId, transf.origemId);
+  const estoquesAtivos = estoques.filter((x) => x.ativo);
+
+  async function registrarTransferencia(e: FormEvent) {
+    e.preventDefault();
+    setErro(null); setAviso(null);
+    setOcupado(true);
+    try {
+      await api('/sup/estoque/transferencias', {
+        metodo: 'POST',
+        corpo: { obraId, obraItemId: transf.obraItemId, eapNoId: transf.eapNoId, origemId: transf.origemId, destinoId: transf.destinoId, data: transf.data, quantidade: transf.quantidade, observacao: transf.observacao || null },
+      });
+      setAviso('Transferência registrada.');
+      setTransf({ obraItemId: '', eapNoId: '', origemId: '', destinoId: '', quantidade: '', data: hoje(), observacao: '' });
+      await carregar(obraId);
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   async function registrarSaida(e: FormEvent) {
     e.preventDefault();
@@ -163,7 +189,7 @@ export function SupEstoque() {
                       <td className="n">{num(it.saldo)} {it.unidade}</td>
                       <td className="small">
                         {aberto === it.obraItemId
-                          ? it.apropriacoes.map((a) => <div key={a.eapNoId}>{a.eapCodigo} {a.eapDescricao}: {num(a.quantidade)} {it.unidade}</div>)
+                          ? it.apropriacoes.map((a) => <div key={`${a.estoqueId}-${a.eapNoId}`}>{a.estoqueNome ?? 'Recebimento'} · {a.eapCodigo} {a.eapDescricao}: {num(a.quantidade)} {it.unidade}</div>)
                           : `${it.apropriacoes.length} etapa(s) · clique para ver`}
                       </td>
                     </tr>
@@ -213,6 +239,57 @@ export function SupEstoque() {
             </div>
             <div className="acoes">
               <button className="btn btn-primario" type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar saída'}</button>
+            </div>
+          </form>
+
+          <form className="card form" onSubmit={registrarTransferencia}>
+            <h2>Transferir entre estoques</h2>
+            <p className="muted small">Sai do estoque de origem e entra no de destino, na mesma etapa e data.</p>
+            <div className="campos">
+              <label className="campo">
+                <span>Insumo da obra</span>
+                <select aria-label="Insumo da transferência" required value={transf.obraItemId} onChange={(e) => setTransf({ ...transf, obraItemId: e.target.value, eapNoId: '' })}>
+                  <option value="">Escolha…</option>
+                  {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+                </select>
+              </label>
+              <label className="campo">
+                <span>Etapa da EAP</span>
+                <select aria-label="Etapa da transferência" required disabled={!transf.obraItemId} value={transf.eapNoId} onChange={(e) => setTransf({ ...transf, eapNoId: e.target.value })}>
+                  <option value="">Escolha…</option>
+                  {etapas.map((n) => <option key={n.id} value={n.id}>{n.codigo} {n.descricao}</option>)}
+                </select>
+              </label>
+              <label className="campo">
+                <span>Estoque de origem</span>
+                <select aria-label="Estoque de origem" required value={transf.origemId} onChange={(e) => setTransf({ ...transf, origemId: e.target.value })}>
+                  <option value="">Escolha…</option>
+                  {estoquesAtivos.map((est) => <option key={est.id} value={est.id}>{est.nome}</option>)}
+                </select>
+              </label>
+              <label className="campo">
+                <span>Estoque de destino</span>
+                <select aria-label="Estoque de destino" required value={transf.destinoId} onChange={(e) => setTransf({ ...transf, destinoId: e.target.value })}>
+                  <option value="">Escolha…</option>
+                  {estoquesAtivos.filter((est) => est.id !== transf.origemId).map((est) => <option key={est.id} value={est.id}>{est.nome}</option>)}
+                </select>
+              </label>
+              <label className="campo">
+                <span>Quantidade{insumos.find((i) => i.id === transf.obraItemId) ? ` (${insumos.find((i) => i.id === transf.obraItemId)!.unidade})` : ''}</span>
+                <input inputMode="decimal" required value={transf.quantidade} onChange={(e) => setTransf({ ...transf, quantidade: e.target.value })} />
+                {transf.origemId && transf.eapNoId && transf.obraItemId && <small className="muted">Disponível na origem: {num(saldoTransf)}</small>}
+              </label>
+              <label className="campo">
+                <span>Data</span>
+                <input type="date" required value={transf.data} onChange={(e) => setTransf({ ...transf, data: e.target.value })} />
+              </label>
+              <label className="campo">
+                <span>Observação</span>
+                <input value={transf.observacao} onChange={(e) => setTransf({ ...transf, observacao: e.target.value })} />
+              </label>
+            </div>
+            <div className="acoes">
+              <button className="btn btn-secundario" type="submit" disabled={ocupado}>{ocupado ? 'Registrando…' : 'Registrar transferência'}</button>
             </div>
           </form>
         </>

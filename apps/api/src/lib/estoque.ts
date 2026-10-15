@@ -211,11 +211,19 @@ export async function registrarEntradasObra(c: Cliente, empresaId: string, notaI
 }
 
 /** Saldo de uma apropriação (insumo da obra + etapa) = entradas e ajustes menos saídas. */
-export async function saldoApropriacao(c: Cliente, empresaId: string, obraId: string, obraItemId: string, eapNoId: string): Promise<number> {
+export async function saldoApropriacao(c: Cliente, empresaId: string, obraId: string, obraItemId: string, eapNoId: string, estoqueId: string): Promise<number> {
   const r = await c.query(
     `SELECT coalesce(sum(CASE WHEN tipo = 'saida' THEN -quantidade ELSE quantidade END), 0) AS saldo
-       FROM estoque_movimentos WHERE empresa_id = $1 AND obra_id = $2 AND obra_item_id = $3 AND eap_no_id = $4`,
-    [empresaId, obraId, obraItemId, eapNoId],
+       FROM estoque_movimentos WHERE empresa_id = $1 AND obra_id = $2 AND obra_item_id = $3 AND eap_no_id = $4 AND obra_estoque_id = $5`,
+    [empresaId, obraId, obraItemId, eapNoId, estoqueId],
   );
   return Number(r.rows[0].saldo);
+}
+
+/** Estoque de uma movimentação da obra: o escolhido (ativo nesta obra) ou o de recebimento quando não há escolha. */
+export async function estoqueDaMovimentacao(c: Cliente, empresaId: string, obraId: string, estoqueId: string | null): Promise<string> {
+  if (!estoqueId) return estoqueRecebimento(c, empresaId, obraId);
+  const ok = (await c.query('SELECT 1 FROM obra_estoques WHERE id = $1 AND obra_id = $2 AND ativo', [estoqueId, obraId])).rowCount;
+  if (!ok) throw new ErroHttp(400, 'Estoque não encontrado nesta obra ou inativo.');
+  return estoqueId;
 }

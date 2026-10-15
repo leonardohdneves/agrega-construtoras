@@ -5,7 +5,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
-import { estoqueRecebimento, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
+import { estoqueDaMovimentacao, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { normalizar } from '../lib/sugestoes.ts';
@@ -681,22 +681,23 @@ export function rotasSuprimentos(banco: Banco) {
       const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
       const r = await banco.query(
         `WITH s AS (
-           SELECT m.obra_id, m.obra_item_id, m.eap_no_id, sum(CASE WHEN m.tipo = 'saida' THEN -m.quantidade ELSE m.quantidade END) AS qtd
+           SELECT m.obra_id, m.obra_item_id, m.eap_no_id, m.obra_estoque_id, sum(CASE WHEN m.tipo = 'saida' THEN -m.quantidade ELSE m.quantidade END) AS qtd
              FROM estoque_movimentos m
             WHERE m.empresa_id = $1 AND m.obra_item_id IS NOT NULL AND ($2::uuid IS NULL OR m.obra_id = $2)
-            GROUP BY m.obra_id, m.obra_item_id, m.eap_no_id)
-         SELECT s.obra_id, s.obra_item_id, s.eap_no_id, s.qtd, oi.codigo, oi.descricao, oi.unidade, o.codigo AS obra_codigo, e.codigo AS eap_codigo, e.descricao AS eap_descricao
+            GROUP BY m.obra_id, m.obra_item_id, m.eap_no_id, m.obra_estoque_id)
+         SELECT s.obra_id, s.obra_item_id, s.eap_no_id, s.obra_estoque_id, ee.nome AS estoque_nome, s.qtd, oi.codigo, oi.descricao, oi.unidade, o.codigo AS obra_codigo, e.codigo AS eap_codigo, e.descricao AS eap_descricao
            FROM s JOIN obra_itens oi ON oi.id = s.obra_item_id JOIN obras o ON o.id = s.obra_id JOIN eap_nos e ON e.id = s.eap_no_id
+           LEFT JOIN obra_estoques ee ON ee.id = s.obra_estoque_id
           WHERE s.qtd <> 0
-          ORDER BY oi.descricao, e.codigo`,
+          ORDER BY oi.descricao, ee.nome, e.codigo`,
         [empresaId, obraId],
       );
-      const mapa = new Map<string, { obraItemId: string; codigo: string; descricao: string; unidade: string; saldo: number; apropriacoes: { obraId: string; obraCodigo: string; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number }[] }>();
+      const mapa = new Map<string, { obraItemId: string; codigo: string; descricao: string; unidade: string; saldo: number; apropriacoes: { obraId: string; obraCodigo: string; estoqueId: string | null; estoqueNome: string | null; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number }[] }>();
       for (const x of r.rows) {
         const q = Math.round(Number(x.qtd) * 1000) / 1000;
         const it = mapa.get(x.obra_item_id) ?? { obraItemId: x.obra_item_id, codigo: x.codigo, descricao: x.descricao, unidade: x.unidade, saldo: 0, apropriacoes: [] };
         it.saldo = Math.round((it.saldo + q) * 1000) / 1000;
-        it.apropriacoes.push({ obraId: x.obra_id, obraCodigo: x.obra_codigo, eapNoId: x.eap_no_id, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, quantidade: q });
+        it.apropriacoes.push({ obraId: x.obra_id, obraCodigo: x.obra_codigo, estoqueId: x.obra_estoque_id ?? null, estoqueNome: x.estoque_nome ?? null, eapNoId: x.eap_no_id, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, quantidade: q });
         mapa.set(x.obra_item_id, it);
       }
       return { itens: [...mapa.values()] };
@@ -719,16 +720,10 @@ export function rotasSuprimentos(banco: Banco) {
       const qtd = Math.round(d.quantidade * 1000) / 1000;
       await emTransacao(banco, async (c) => {
         await validarApropriacaoObra(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
-        const saldo = await saldoApropriacao(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
-        if (qtd > saldo + 0.0005) throw new ErroHttp(400, `Saldo insuficiente nesta etapa: ${saldo.toLocaleString('pt-BR')} disponível.`);
-        // Sem estoque escolhido, a saída sai do estoque de recebimento da obra.
-        let estoqueId = d.estoqueId ?? null;
-        if (estoqueId) {
-          const ok = (await c.query('SELECT 1 FROM obra_estoques WHERE id = $1 AND obra_id = $2 AND ativo', [estoqueId, d.obraId])).rowCount;
-          if (!ok) throw new ErroHttp(400, 'Estoque não encontrado nesta obra ou inativo.');
-        } else {
-          estoqueId = await estoqueRecebimento(c, empresaId, d.obraId);
-        }
+        // Sem estoque escolhido, a saída sai do estoque de recebimento da obra. O saldo é o do estoque de origem.
+        const estoqueId = await estoqueDaMovimentacao(c, empresaId, d.obraId, d.estoqueId ?? null);
+        const saldo = await saldoApropriacao(c, empresaId, d.obraId, d.obraItemId, d.eapNoId, estoqueId);
+        if (qtd > saldo + 0.0005) throw new ErroHttp(400, `Saldo insuficiente neste estoque e etapa: ${saldo.toLocaleString('pt-BR')} disponível.`);
         const mov = (
           await c.query(
             `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id)
@@ -740,6 +735,49 @@ export function rotasSuprimentos(banco: Banco) {
       });
       reply.code(201);
       return { ok: true };
+    });
+
+    // ----- Transferência entre estoques da mesma obra: saída na origem e entrada no destino, com a mesma referência.
+    app.post('/estoque/transferencias', async (req, reply) => {
+      const d = z
+        .object({
+          obraId: z.string().uuid('Escolha a obra.'),
+          obraItemId: z.string().uuid('Escolha o insumo.'),
+          eapNoId: z.string().uuid('Escolha a etapa.'),
+          origemId: z.string().uuid('Escolha o estoque de origem.'),
+          destinoId: z.string().uuid('Escolha o estoque de destino.'),
+          data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
+          quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
+          observacao: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
+        })
+        .parse(req.body);
+      if (d.origemId === d.destinoId) throw new ErroHttp(400, 'Origem e destino são o mesmo estoque.');
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      const qtd = Math.round(d.quantidade * 1000) / 1000;
+      const ref = await emTransacao(banco, async (c) => {
+        await validarApropriacaoObra(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
+        const origem = await estoqueDaMovimentacao(c, empresaId, d.obraId, d.origemId);
+        const destino = await estoqueDaMovimentacao(c, empresaId, d.obraId, d.destinoId);
+        const saldo = await saldoApropriacao(c, empresaId, d.obraId, d.obraItemId, d.eapNoId, origem);
+        if (qtd > saldo + 0.0005) throw new ErroHttp(400, `Saldo insuficiente no estoque de origem nesta etapa: ${saldo.toLocaleString('pt-BR')} disponível.`);
+        const referencia = (await c.query('SELECT gen_random_uuid() AS id')).rows[0].id as string;
+        const obs = d.observacao ?? 'Transferência entre estoques';
+        await c.query(
+          `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id, transferencia_ref)
+           VALUES ($1,$2,$3,$4,$5,$6,'saida',$7,$8,$9,$10)`,
+          [empresaId, d.obraId, origem, d.obraItemId, d.eapNoId, d.data, qtd, obs, u.id, referencia],
+        );
+        await c.query(
+          `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id, transferencia_ref)
+           VALUES ($1,$2,$3,$4,$5,$6,'entrada',$7,$8,$9,$10)`,
+          [empresaId, d.obraId, destino, d.obraItemId, d.eapNoId, d.data, qtd, obs, u.id, referencia],
+        );
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'estoque_movimentos', entidadeId: referencia, depois: { transferencia: true, quantidade: qtd, origemId: origem, destinoId: destino, obraItemId: d.obraItemId, eapNoId: d.eapNoId } });
+        return referencia;
+      });
+      reply.code(201);
+      return { ok: true, transferenciaId: ref };
     });
 
     // ----- Estoques de cada obra: sempre há um de recebimento (ativo), onde entram as notas de compra.
