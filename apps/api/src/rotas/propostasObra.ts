@@ -135,7 +135,7 @@ export function rotasPropostasObra(banco: Banco) {
     app.get('/obra-propostas/opcoes', async (req) => {
       const empresaId = empresaDo(req);
       const [clientes, obras] = await Promise.all([
-        banco.query('SELECT id, coalesce(nome_fantasia, razao_social) AS nome, documento FROM clientes WHERE empresa_id = $1 AND excluido_em IS NULL AND ativo ORDER BY 2', [empresaId]),
+        banco.query('SELECT id, coalesce(nome_fantasia, razao_social) AS nome, cnpj_cpf AS documento FROM clientes WHERE empresa_id = $1 AND excluido_em IS NULL AND ativo ORDER BY 2', [empresaId]),
         banco.query(
           `SELECT o.id, o.codigo, o.nome, o.bdi_percentual,
                   coalesce((SELECT sum(oq.quantidade * custo_obra_item(oq.obra_item_id)) FROM orcamento_itens oq WHERE oq.obra_id = o.id), 0) AS custo
