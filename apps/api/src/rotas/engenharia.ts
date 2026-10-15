@@ -100,6 +100,32 @@ async function proximoCodigoServico(c: Cliente, tabelaId: string, obraId?: strin
   }
 }
 
+/** Código do próximo insumo da tabela própria: prefixo da tabela + sequência (ex.: INS-0001). Pula códigos já usados. */
+async function proximoCodigoInsumo(c: Cliente, tabelaId: string): Promise<string> {
+  for (;;) {
+    const r = (await c.query('UPDATE ref_tabelas SET proximo_insumo = proximo_insumo + 1 WHERE id = $1 RETURNING prefixo_insumo, proximo_insumo - 1 AS n', [tabelaId])).rows[0];
+    const codigo = `${r.prefixo_insumo}-${String(r.n).padStart(4, '0')}`;
+    if ((await c.query(`SELECT 1 FROM ref_itens WHERE tabela_id = $1 AND tipo = 'insumo' AND codigo = $2`, [tabelaId, codigo])).rowCount) continue;
+    return codigo;
+  }
+}
+
+const esquemaUnidadeCompra = z.object({ unidade: z.string().trim().min(1, 'Informe a unidade de compra.').max(20), fator: z.union([z.number(), z.string()]) });
+
+/** Valida as unidades de compra de um insumo: diferentes da base, sem repetição e com fator positivo. */
+function unidadesValidas(lista: { unidade: string; fator: number | string }[], base: string): { unidade: string; fator: number }[] {
+  const vistos = new Set<string>();
+  return lista.map((u) => {
+    const unidade = u.unidade.trim();
+    const fator = typeof u.fator === 'number' ? u.fator : numeroBr(String(u.fator ?? ''));
+    if (unidade.toLowerCase() === base.trim().toLowerCase()) throw new ErroHttp(400, `"${unidade}" é a unidade base do insumo. Informe outra unidade de compra.`);
+    if (vistos.has(unidade.toLowerCase())) throw new ErroHttp(400, `A unidade de compra "${unidade}" está repetida.`);
+    if (fator === null || !Number.isFinite(fator) || fator <= 0) throw new ErroHttp(400, `Informe quantos ${base} cabem em 1 ${unidade}.`);
+    vistos.add(unidade.toLowerCase());
+    return { unidade, fator };
+  });
+}
+
 const esquemaItemRef = z.object({
   tipo: z.enum(['insumo', 'composicao']),
   codigo: z.string().trim().max(40).optional().default(''),
@@ -107,6 +133,8 @@ const esquemaItemRef = z.object({
   unidade: z.string().trim().min(1, 'Informe a unidade.').max(20),
   grupo: texto(80),
   preco: z.union([z.number(), z.string()]).optional().nullable(),
+  precoOrigem: z.enum(['nao_informado', 'informado']).optional(),
+  unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
   componentes: z.array(z.object({ insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
 });
 
@@ -482,8 +510,13 @@ export function rotasEngenharia(banco: Banco) {
           [i.id],
         )
       ).rows;
+      const unidades = (await banco.query('SELECT unidade, fator FROM ref_insumo_unidades WHERE item_id = $1 ORDER BY unidade', [i.id])).rows;
       return {
-        item: { id: i.id, tipo: i.tipo, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, grupo: i.grupo, preco: reais(i.preco) },
+        item: {
+          id: i.id, tipo: i.tipo, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, grupo: i.grupo, preco: reais(i.preco),
+          precoOrigem: i.preco_origem ?? null,
+          unidadesCompra: unidades.map((u) => ({ unidade: u.unidade as string, fator: Number(u.fator) })),
+        },
         componentes: comp.map((k) => ({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) })),
         estrutura: est.map((k) => ({ id: k.id, tipo: k.tipo, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: k.preco === null ? null : Number(k.preco) / 100 })),
       };
@@ -496,15 +529,27 @@ export function rotasEngenharia(banco: Banco) {
       const id = await emTransacao(banco, async (c) => {
         const t = await tabelaDaEmpresa(c, empresaId, req.params.id);
         if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A tabela SINAPI é imutável. Para outra versão, importe uma nova tabela.');
-        const preco = d.tipo === 'insumo' ? precoCentavos(d.preco) : null;
-        if (d.tipo === 'insumo' && preco === null) throw new ErroHttp(400, 'Informe um preço válido para o insumo.');
-        // Serviço novo na tabela própria leva o próximo código da sequência; insumo mantém o código informado.
-        let codigo = d.codigo;
-        if (d.tipo === 'composicao') codigo = await proximoCodigoServico(c, t.id);
-        else if (!codigo) throw new ErroHttp(400, 'Informe o código.');
+        let preco: number | null = null;
+        let origem: string | null = null;
+        if (d.tipo === 'insumo') {
+          // Preço é opcional no cadastro: ou fica para depois ("não informado") ou é informado agora.
+          const quer = d.precoOrigem ?? (d.preco !== undefined && d.preco !== null && d.preco !== '' ? 'informado' : 'nao_informado');
+          if (quer === 'informado') {
+            preco = precoCentavos(d.preco);
+            if (preco === null) throw new ErroHttp(400, 'Informe um preço válido ou deixe o preço para depois.');
+            origem = 'informado';
+          } else origem = 'nao_informado';
+        }
+        const unidades = d.tipo === 'insumo' ? unidadesValidas(d.unidadesCompra ?? [], d.unidade) : [];
+        // Insumo e serviço novos recebem o próximo código da sequência da tabela.
+        const codigo = d.tipo === 'composicao' ? await proximoCodigoServico(c, t.id) : await proximoCodigoInsumo(c, t.id);
         const x = (
-          await c.query(`INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, codigo`, [t.id, d.tipo, codigo, d.descricao, d.unidade, d.grupo, preco])
+          await c.query(
+            'INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos, preco_origem) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, codigo',
+            [t.id, d.tipo, codigo, d.descricao, d.unidade, d.grupo, preco, origem],
+          )
         ).rows[0];
+        for (const u of unidades) await c.query('INSERT INTO ref_insumo_unidades (item_id, unidade, fator) VALUES ($1,$2,$3)', [x.id, u.unidade, u.fator]);
         if (d.tipo === 'composicao') await gravarComponentes(c, t.id, x.id, d.componentes ?? []);
         return { id: x.id as string, codigo: x.codigo as string };
       }).catch((e: Error & { code?: string }) => {
@@ -522,6 +567,8 @@ export function rotasEngenharia(banco: Banco) {
           unidade: z.string().trim().min(1).max(20).optional(),
           grupo: texto(80),
           preco: z.union([z.number(), z.string()]).optional().nullable(),
+          precoOrigem: z.enum(['nao_informado', 'informado']).optional(),
+          unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
           componentes: z.array(z.object({ insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
         })
         .parse(req.body);
@@ -531,9 +578,25 @@ export function rotasEngenharia(banco: Banco) {
         if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A tabela SINAPI é imutável.');
         const item = (await c.query('SELECT * FROM ref_itens WHERE id = $1 AND tabela_id = $2', [req.params.itemId, t.id])).rows[0];
         if (!item) throw naoEncontrado('Item');
-        const preco = item.tipo === 'insumo' && d.preco !== undefined && d.preco !== null ? precoCentavos(d.preco) : item.preco_centavos;
-        if (item.tipo === 'insumo' && preco === null) throw new ErroHttp(400, 'Informe um preço válido para o insumo.');
-        await c.query('UPDATE ref_itens SET descricao = $2, unidade = $3, grupo = $4, preco_centavos = $5 WHERE id = $1', [item.id, d.descricao ?? item.descricao, d.unidade ?? item.unidade, d.grupo ?? item.grupo, preco]);
+        let preco: number | null = item.preco_centavos;
+        let origem: string | null = item.preco_origem;
+        if (item.tipo === 'insumo') {
+          if (d.precoOrigem === 'nao_informado') {
+            preco = null;
+            origem = 'nao_informado';
+          } else if (d.preco !== undefined && d.preco !== null && d.preco !== '') {
+            const p = precoCentavos(d.preco);
+            if (p === null) throw new ErroHttp(400, 'Informe um preço válido.');
+            preco = p;
+            origem = 'informado';
+          }
+        }
+        const unidadeBase = d.unidade ?? item.unidade;
+        await c.query('UPDATE ref_itens SET descricao = $2, unidade = $3, grupo = $4, preco_centavos = $5, preco_origem = $6 WHERE id = $1', [item.id, d.descricao ?? item.descricao, unidadeBase, d.grupo ?? item.grupo, preco, origem]);
+        if (item.tipo === 'insumo' && d.unidadesCompra !== undefined) {
+          await c.query('DELETE FROM ref_insumo_unidades WHERE item_id = $1', [item.id]);
+          for (const u of unidadesValidas(d.unidadesCompra, unidadeBase)) await c.query('INSERT INTO ref_insumo_unidades (item_id, unidade, fator) VALUES ($1,$2,$3)', [item.id, u.unidade, u.fator]);
+        }
         if (item.tipo === 'composicao' && d.componentes !== undefined) {
           await c.query('DELETE FROM ref_composicao_insumos WHERE composicao_id = $1', [item.id]);
           await gravarComponentes(c, t.id, item.id, d.componentes);

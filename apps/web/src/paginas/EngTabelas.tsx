@@ -578,9 +578,9 @@ export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | '
     );
   return (
     <div>
-      {proprias.length > 1 && (
+      {(
         <div className="campo" style={{ maxWidth: 360, marginBottom: 8 }}>
-          <label htmlFor="np-tabela">Tabela própria</label>
+          <label htmlFor="np-tabela">Tabela que recebe o item</label>
           <select id="np-tabela" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
             {proprias.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
           </select>
@@ -591,18 +591,35 @@ export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | '
   );
 }
 
+type UnidadeCompraEdit = { unidade: string; fator: string };
 function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar: (itemId: string) => void; tipoFixo?: 'insumo' | 'composicao' }) {
-  const [d, setD] = useState({ tipo: (tipoFixo ?? 'insumo') as 'insumo' | 'composicao', codigo: '', descricao: '', unidade: '', grupo: '', preco: '' });
+  const [d, setD] = useState({ tipo: (tipoFixo ?? 'insumo') as 'insumo' | 'composicao', descricao: '', unidade: '', grupo: '', precoOrigem: 'nao_informado' as 'nao_informado' | 'informado', preco: '' });
+  const [unidades, setUnidades] = useState<UnidadeCompraEdit[]>([]);
   const [comp, setComp] = useState([{ insumoCodigo: '', coeficiente: '' }]);
   const [erro, setErro] = useState('');
+  const base = d.unidade.trim() || 'unidade';
+  const eInsumo = d.tipo === 'insumo';
+
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro('');
     const componentes = comp.filter((c) => c.insumoCodigo.trim()).map((c) => ({ insumoCodigo: c.insumoCodigo.trim(), coeficiente: lerNumero(c.coeficiente) ?? -1 }));
     if (d.tipo === 'composicao' && componentes.some((c) => c.coeficiente < 0)) return setErro('Confira os coeficientes dos insumos.');
     try {
-      const r = await api<{ id: string }>(`/eng/tabelas/${tabelaId}/itens`, { corpo: { tipo: d.tipo, codigo: d.codigo, descricao: d.descricao, unidade: d.unidade, grupo: d.grupo || null, preco: d.tipo === 'insumo' ? d.preco : null, componentes } });
-      setD({ tipo: d.tipo, codigo: '', descricao: '', unidade: '', grupo: '', preco: '' });
+      const r = await api<{ id: string; codigo: string }>(`/eng/tabelas/${tabelaId}/itens`, {
+        corpo: {
+          tipo: d.tipo,
+          descricao: d.descricao,
+          unidade: d.unidade,
+          grupo: d.grupo || null,
+          precoOrigem: eInsumo ? d.precoOrigem : undefined,
+          preco: eInsumo && d.precoOrigem === 'informado' ? d.preco : null,
+          unidadesCompra: eInsumo ? unidades.filter((u) => u.unidade.trim()).map((u) => ({ unidade: u.unidade.trim(), fator: u.fator })) : undefined,
+          componentes,
+        },
+      });
+      setD({ tipo: d.tipo, descricao: '', unidade: '', grupo: '', precoOrigem: 'nao_informado', preco: '' });
+      setUnidades([]);
       setComp([{ insumoCodigo: '', coeficiente: '' }]);
       aoSalvar(r.id);
     } catch (err) {
@@ -625,19 +642,44 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
         )}
         <div className="campo">
           <label htmlFor="ni-cod">Código</label>
-          {d.tipo === 'composicao' ? (
-            <>
-              <input id="ni-cod" value="Automático" disabled />
-              <span className="ajuda">Serviço novo recebe o próximo número da tabela própria.</span>
-            </>
-          ) : (
-            <input id="ni-cod" value={d.codigo} onChange={(e) => setD({ ...d, codigo: e.target.value })} />
-          )}
+          <input id="ni-cod" value="Automático" disabled />
+          <span className="ajuda">{eInsumo ? 'Recebe o próximo número da tabela (ex.: INS-0001).' : 'Serviço novo recebe o próximo número da tabela própria.'}</span>
         </div>
         <div className="campo" style={{ gridColumn: 'span 2' }}><label htmlFor="ni-desc">Descrição</label><input id="ni-desc" value={d.descricao} onChange={(e) => setD({ ...d, descricao: e.target.value })} /></div>
-        <div className="campo"><label htmlFor="ni-un">Unidade</label><input id="ni-un" value={d.unidade} onChange={(e) => setD({ ...d, unidade: e.target.value })} /></div>
-        {d.tipo === 'insumo' && <div className="campo"><label htmlFor="ni-preco">Preço (R$)</label><input id="ni-preco" inputMode="decimal" value={d.preco} onChange={(e) => setD({ ...d, preco: e.target.value })} /></div>}
+        <div className="campo">
+          <label htmlFor="ni-un">{eInsumo ? 'Unidade de orçamento' : 'Unidade'}</label>
+          <input id="ni-un" value={d.unidade} onChange={(e) => setD({ ...d, unidade: e.target.value })} placeholder={eInsumo ? 'ex.: kg' : undefined} />
+        </div>
       </div>
+      {eInsumo && (
+        <>
+          <div className="campo" style={{ marginTop: 12 }}>
+            <span className="rotulo">Preço</span>
+            <div className="segmentado" role="group" aria-label="Preço do insumo" style={{ maxWidth: 420 }}>
+              <button type="button" aria-pressed={d.precoOrigem === 'nao_informado'} className={d.precoOrigem === 'nao_informado' ? 'ativo' : ''} onClick={() => setD({ ...d, precoOrigem: 'nao_informado' })}>Não registrar agora</button>
+              <button type="button" aria-pressed={d.precoOrigem === 'informado'} className={d.precoOrigem === 'informado' ? 'ativo' : ''} onClick={() => setD({ ...d, precoOrigem: 'informado' })}>Informar valor</button>
+            </div>
+            {d.precoOrigem === 'informado' && (
+              <input id="ni-preco" inputMode="decimal" aria-label="Preço por unidade de orçamento (R$)" placeholder={`R$ por ${base}`} value={d.preco} onChange={(e) => setD({ ...d, preco: e.target.value })} style={{ maxWidth: 220, marginTop: 6 }} />
+            )}
+            <span className="ajuda">O preço pode ficar para depois. Insumo sem preço aparece na tabela, mas não tem custo até ser informado.</span>
+          </div>
+          <div className="campo" style={{ marginTop: 12 }}>
+            <span className="rotulo">Unidades de compra (opcional)</span>
+            {unidades.map((u, n) => (
+              <div key={n} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', marginBottom: 6 }}>
+                <input aria-label={`Unidade de compra ${n + 1}`} placeholder="ex.: barra" value={u.unidade} onChange={(e) => setUnidades(unidades.map((x, i) => (i === n ? { ...x, unidade: e.target.value } : x)))} style={{ maxWidth: 140 }} />
+                <span className="small muted">1 {u.unidade.trim() || 'unidade'} =</span>
+                <input aria-label={`Quantos ${base} cabem em 1 ${u.unidade.trim() || 'unidade'}`} placeholder="ex.: 46,2" inputMode="decimal" value={u.fator} onChange={(e) => setUnidades(unidades.map((x, i) => (i === n ? { ...x, fator: e.target.value } : x)))} style={{ maxWidth: 120 }} />
+                <span className="small muted">{base}</span>
+                <button className="btn btn-link" type="button" onClick={() => setUnidades(unidades.filter((_, i) => i !== n))}>Remover</button>
+              </div>
+            ))}
+            <button className="btn btn-link" type="button" onClick={() => setUnidades([...unidades, { unidade: '', fator: '' }])}>+ unidade de compra</button>
+            <span className="ajuda">Ex.: o aço é orçado em kg, mas comprado em barra: 1 barra = 46,2 kg. Cada unidade de compra informa quantos {base} tem.</span>
+          </div>
+        </>
+      )}
       {d.tipo === 'composicao' && (
         <div className="campo">
           <span className="rotulo">Insumos da composição</span>
@@ -651,7 +693,9 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
           <span className="ajuda">Informe o código de cada insumo e a quantidade por unidade do serviço. Os insumos precisam existir na tabela própria (crie-os em Insumos › Novo insumo). O preço do serviço é a soma dos insumos × coeficiente.</span>
         </div>
       )}
-      <div className="acoes"><button className="btn btn-primario" type="submit" disabled={(d.tipo === 'insumo' && d.codigo.trim() === '') || d.descricao.trim().length < 2 || d.unidade.trim() === ''}>Adicionar</button></div>
+      <div className="acoes">
+        <button className="btn btn-primario" type="submit" disabled={d.descricao.trim().length < 2 || d.unidade.trim() === '' || (eInsumo && d.precoOrigem === 'informado' && d.preco.trim() === '')}>Adicionar</button>
+      </div>
     </form>
   );
 }
