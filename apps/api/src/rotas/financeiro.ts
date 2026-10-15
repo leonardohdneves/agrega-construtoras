@@ -995,7 +995,7 @@ export function rotasFinanceiro(banco: Banco) {
 }
 
 /** Cria o que falta do plano de contas padrão e dos centros de custo padrão. */
-export async function aplicarPlanoPadrao(c: Cliente, empresaId: string, plano: ContaPadrao[] = PLANO_CONTAS_PADRAO, centros: string[] = CENTROS_CUSTO_PADRAO) {
+export async function aplicarPlanoPadrao(c: Cliente, empresaId: string, plano: ContaPadrao[] = PLANO_CONTAS_PADRAO, listaCentros: string[] = CENTROS_CUSTO_PADRAO) {
   let contas = 0;
   for (const p of plano) {
     const r = await c.query(
@@ -1013,7 +1013,7 @@ export async function aplicarPlanoPadrao(c: Cliente, empresaId: string, plano: C
     [empresaId],
   );
   let centros = 0;
-  for (const nome of centros) {
+  for (const nome of listaCentros) {
     const r = await c.query(
       `INSERT INTO centros_custo (empresa_id, nome) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM centros_custo WHERE empresa_id = $1 AND lower(nome) = lower($2))`,
       [empresaId, nome],
