@@ -967,10 +967,10 @@ export function rotasSuprimentos(banco: Banco) {
     app.get('/saidas-material', async (req) => {
       const r = await banco.query(
         `SELECT s.id, s.numero, s.data, s.observacao, o.codigo AS obra_codigo, o.nome AS obra_nome, e.codigo AS eap_codigo, e.descricao AS eap_descricao,
-                coalesce(c.nome, f.nome) AS colaborador_nome, u.nome AS entregue_por,
+                coalesce(c.nome, s.funcionario_nome) AS colaborador_nome, u.nome AS entregue_por,
                 (SELECT count(*) FROM estoque_movimentos m WHERE m.saida_material_id = s.id)::int AS itens
            FROM saidas_material s JOIN obras o ON o.id = s.obra_id JOIN eap_nos e ON e.id = s.eap_no_id
-           LEFT JOIN motoristas c ON c.id = s.colaborador_id LEFT JOIN funcionarios f ON f.id = s.funcionario_id JOIN usuarios u ON u.id = s.entregue_por_id
+           LEFT JOIN motoristas c ON c.id = s.colaborador_id JOIN usuarios u ON u.id = s.entregue_por_id
           WHERE s.empresa_id = $1 ORDER BY s.criado_em DESC LIMIT 200`,
         [empresaDo(req)],
       );
