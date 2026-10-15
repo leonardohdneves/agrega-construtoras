@@ -100,7 +100,7 @@ const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|pla
  * Módulo liberado além do padrão do perfil dá acesso completo a ele.
  */
 /** Almoxarife: estoques, saídas por etiqueta, funcionários e as leituras de obra e EAP que a tela usa. */
-const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|funcionarios|etiquetas|saidas-material)(\/|$)/];
+const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|colaboradores|etiquetas|saidas-material)(\/|$)/];
 const ALMOXARIFADO_CONSULTAS = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/];
 
 export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; perfisRota: Perfil[]; url: string; metodo: string }): boolean {

@@ -24,8 +24,8 @@ type Etiqueta = {
   eapDescricao: string;
   estoque: { id: string | null; codigo: string | null; nome: string | null };
 };
-type Funcionario = { id: string; nome: string; cpf: string | null; funcao: string | null; ativo: boolean };
-type SaidaMaterial = { id: string; numero: string; data: string; observacao: string | null; obraCodigo: string; obraNome: string; eapCodigo: string; eapDescricao: string; funcionario: string; entreguePor: string; itens: number };
+type Colaborador = { id: string; nome: string; funcao: string | null; cargo: string | null };
+type SaidaMaterial = { id: string; numero: string; data: string; observacao: string | null; obraCodigo: string; obraNome: string; eapCodigo: string; eapDescricao: string; colaborador: string; entreguePor: string; itens: number };
 type ItemSaida = { etiqueta: Etiqueta; quantidade: string };
 
 const hoje = () => new Date().toISOString().slice(0, 10);
@@ -44,7 +44,7 @@ function QrEtiqueta({ texto, mm }: { texto: string; mm: number }) {
   );
 }
 
-/** Estoque da construtora: estoques (com código automático), saldo por insumo, etiquetas QR, saídas por leitura e funcionários. */
+/** Estoque da construtora: estoques (com código automático), saldo por insumo, etiquetas QR, saídas por leitura e colaboradores. */
 export function SupEstoque() {
   const [obras, setObras] = useState<Obra[]>([]);
   const [obraId, setObraId] = useState('');
@@ -57,10 +57,9 @@ export function SupEstoque() {
   const [etapas, setEtapas] = useState<NoEap[]>([]);
   const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
   const [soComSaldo, setSoComSaldo] = useState(true);
-  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
-  const [novoFunc, setNovoFunc] = useState({ nome: '', cpf: '', funcao: '' });
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [saidas, setSaidas] = useState<SaidaMaterial[]>([]);
-  const [saida, setSaida] = useState({ funcionarioId: '', eapNoId: '', data: hoje(), observacao: '' });
+  const [saida, setSaida] = useState({ colaboradorId: '', eapNoId: '', data: hoje(), observacao: '' });
   const [itensSaida, setItensSaida] = useState<ItemSaida[]>([]);
   const [codigo, setCodigo] = useState('');
   const [leitor, setLeitor] = useState(false);
@@ -95,21 +94,21 @@ export function SupEstoque() {
     setSaidas(r.saidas);
   }
 
-  async function carregarFuncionarios() {
-    const r = await api<{ funcionarios: Funcionario[] }>('/sup/funcionarios');
-    setFuncionarios(r.funcionarios);
+  async function carregarColaboradores() {
+    const r = await api<{ colaboradores: Colaborador[] }>('/sup/colaboradores');
+    setColaboradores(r.colaboradores);
   }
 
   useEffect(() => {
     api<{ obras: Obra[] }>('/eng/obras').then((r) => setObras(r.obras)).catch(() => setObras([]));
-    carregarFuncionarios().catch(msg);
+    carregarColaboradores().catch(msg);
     carregarSaidas().catch(msg);
   }, []);
 
   useEffect(() => {
     setErro(null); setAviso(null); setAberto(null);
     setItensSaida([]); setCodigo('');
-    setSaida({ funcionarioId: '', eapNoId: '', data: hoje(), observacao: '' });
+    setSaida({ colaboradorId: '', eapNoId: '', data: hoje(), observacao: '' });
     setTransf({ obraItemId: '', eapNoId: '', origemId: '', destinoId: '', quantidade: '', data: hoje(), observacao: '' });
     setInsumos([]);
     setEtapas([]);
@@ -148,29 +147,6 @@ export function SupEstoque() {
     }
   }
 
-  async function criarFuncionario(e: FormEvent) {
-    e.preventDefault();
-    setErro(null); setAviso(null);
-    try {
-      await api('/sup/funcionarios', { metodo: 'POST', corpo: { nome: novoFunc.nome, cpf: novoFunc.cpf || undefined, funcao: novoFunc.funcao || undefined } });
-      setNovoFunc({ nome: '', cpf: '', funcao: '' });
-      setAviso('Funcionário cadastrado.');
-      await carregarFuncionarios();
-    } catch (err) {
-      msg(err);
-    }
-  }
-
-  async function alternarFuncionario(f: Funcionario) {
-    setErro(null); setAviso(null);
-    try {
-      await api(`/sup/funcionarios/${f.id}`, { metodo: 'PUT', corpo: { ativo: !f.ativo } });
-      await carregarFuncionarios();
-    } catch (err) {
-      msg(err);
-    }
-  }
-
   /** Lê uma etiqueta (código digitado ou QR) e a põe na saída, se for desta obra, com saldo e da mesma etapa. */
   async function lerEtiqueta(texto: string) {
     setErro(null); setAviso(null);
@@ -202,7 +178,7 @@ export function SupEstoque() {
         corpo: {
           obraId,
           eapNoId: saida.eapNoId,
-          funcionarioId: saida.funcionarioId,
+          colaboradorId: saida.colaboradorId,
           data: saida.data,
           observacao: saida.observacao || null,
           itens: itensSaida.map((i) => ({ etiquetaId: i.etiqueta.id, quantidade: i.quantidade })),
@@ -210,7 +186,7 @@ export function SupEstoque() {
       });
       setAviso(`Saída ${r.numero} registrada.`);
       setItensSaida([]);
-      setSaida({ funcionarioId: '', eapNoId: '', data: hoje(), observacao: '' });
+      setSaida({ colaboradorId: '', eapNoId: '', data: hoje(), observacao: '' });
       await Promise.all([carregarObra(obraId), carregarSaidas()]);
     } catch (err) {
       msg(err);
@@ -256,7 +232,7 @@ export function SupEstoque() {
         <label className="campo">
           <span>Obra</span>
           <select aria-label="Obra do estoque" value={obraId} onChange={(e) => setObraId(e.target.value)}>
-            <option value="">Todas as obras (estoques e funcionários)</option>
+            <option value="">Todas as obras (estoques)</option>
             {obras.map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}
           </select>
         </label>
@@ -373,13 +349,13 @@ export function SupEstoque() {
 
           <form className="card form" onSubmit={registrarSaida}>
             <h2>Saída de material</h2>
-            <p className="muted small">Leia a etiqueta de cada insumo que sai. Todos os insumos da saída devem ser da mesma etapa.</p>
+            <p className="muted small">Os colaboradores são os do cadastro do Administrativo. Leia a etiqueta de cada insumo que sai; todos devem ser da mesma etapa.</p>
             <div className="campos">
               <label className="campo">
-                <span>Funcionário que pegou</span>
-                <select aria-label="Funcionário da saída" required value={saida.funcionarioId} onChange={(e) => setSaida({ ...saida, funcionarioId: e.target.value })}>
+                <span>Colaborador que pegou</span>
+                <select aria-label="Colaborador da saída" required value={saida.colaboradorId} onChange={(e) => setSaida({ ...saida, colaboradorId: e.target.value })}>
                   <option value="">Escolha…</option>
-                  {funcionarios.filter((f) => f.ativo).map((f) => <option key={f.id} value={f.id}>{f.nome}{f.funcao ? ` · ${f.funcao}` : ''}</option>)}
+                  {colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.funcao ? ` · ${c.funcao}` : ''}</option>)}
                 </select>
               </label>
               <label className="campo">
@@ -437,7 +413,7 @@ export function SupEstoque() {
             <h2>Últimas saídas</h2>
             {saidas.length === 0 ? <p className="muted">Nenhuma saída registrada.</p> : (
               <table className="tabela">
-                <thead><tr><th>Saída</th><th>Data</th><th>Obra</th><th>Etapa</th><th>Funcionário</th><th>Entregue por</th><th className="n">Insumos</th></tr></thead>
+                <thead><tr><th>Saída</th><th>Data</th><th>Obra</th><th>Etapa</th><th>Colaborador</th><th>Entregue por</th><th className="n">Insumos</th></tr></thead>
                 <tbody>
                   {saidas.map((s) => (
                     <tr key={s.id}>
@@ -445,7 +421,7 @@ export function SupEstoque() {
                       <td>{s.data}</td>
                       <td>{s.obraCodigo}</td>
                       <td>{s.eapCodigo} {s.eapDescricao}</td>
-                      <td>{s.funcionario}</td>
+                      <td>{s.colaborador}</td>
                       <td>{s.entreguePor}</td>
                       <td className="n">{s.itens}</td>
                     </tr>
@@ -507,44 +483,6 @@ export function SupEstoque() {
           </form>
         </>
       )}
-
-      <div className="card">
-        <h2>Funcionários</h2>
-        <p className="muted small">Quem pega o material na saída. Só os ativos aparecem na saída.</p>
-        {funcionarios.length > 0 && (
-          <table className="tabela">
-            <thead><tr><th>Nome</th><th>Função</th><th>CPF</th><th>Situação</th><th /></tr></thead>
-            <tbody>
-              {funcionarios.map((f) => (
-                <tr key={f.id}>
-                  <td>{f.nome}</td>
-                  <td>{f.funcao ?? '—'}</td>
-                  <td>{f.cpf ?? '—'}</td>
-                  <td>{f.ativo ? 'Ativo' : 'Inativo'}</td>
-                  <td><button className="btn btn-link" type="button" onClick={() => alternarFuncionario(f)}>{f.ativo ? 'Desativar' : 'Ativar'}</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <form className="campos" onSubmit={criarFuncionario}>
-          <label className="campo">
-            <span>Nome</span>
-            <input aria-label="Nome do funcionário" required minLength={2} maxLength={120} value={novoFunc.nome} onChange={(e) => setNovoFunc({ ...novoFunc, nome: e.target.value })} />
-          </label>
-          <label className="campo">
-            <span>Função</span>
-            <input aria-label="Função do funcionário" maxLength={60} value={novoFunc.funcao} onChange={(e) => setNovoFunc({ ...novoFunc, funcao: e.target.value })} />
-          </label>
-          <label className="campo">
-            <span>CPF (opcional)</span>
-            <input aria-label="CPF do funcionário" inputMode="numeric" value={novoFunc.cpf} onChange={(e) => setNovoFunc({ ...novoFunc, cpf: e.target.value })} />
-          </label>
-          <div className="acoes">
-            <button className="btn btn-secundario" type="submit">Cadastrar funcionário</button>
-          </div>
-        </form>
-      </div>
 
       {leitor && <LeitorCodigo aoLer={(chave) => lerEtiqueta(chave)} aoFechar={() => setLeitor(false)} ocupado={ocupado} />}
     </div>

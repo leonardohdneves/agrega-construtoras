@@ -891,53 +891,10 @@ export function rotasSuprimentos(banco: Banco) {
     });
 
     // ----- Funcionários que recebem material na obra.
-    const cpfOpc = z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, '') || null : null)).refine((v) => v === null || v.length === 11, 'CPF com 11 números.');
-    app.get('/funcionarios', async (req) => {
-      const r = await banco.query('SELECT id, nome, cpf, funcao, ativo FROM funcionarios WHERE empresa_id = $1 ORDER BY ativo DESC, nome', [empresaDo(req)]);
-      return { funcionarios: r.rows.map((x) => ({ id: x.id, nome: x.nome, cpf: x.cpf ?? null, funcao: x.funcao ?? null, ativo: x.ativo })) };
-    });
-
-    app.post('/funcionarios', async (req, reply) => {
-      const d = z
-        .object({
-          nome: z.string().trim().min(2, 'Informe o nome do funcionário.').max(120),
-          cpf: cpfOpc,
-          funcao: z.string().trim().max(60).optional().nullable().transform((v) => v || null),
-        })
-        .parse(req.body);
-      const empresaId = empresaDo(req);
-      const u = usuarioDe(req);
-      const id = await emTransacao(banco, async (c) => {
-        const f = (await c.query('INSERT INTO funcionarios (empresa_id, nome, cpf, funcao) VALUES ($1,$2,$3,$4) RETURNING id', [empresaId, d.nome, d.cpf, d.funcao])).rows[0];
-        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'funcionarios', entidadeId: f.id, depois: { nome: d.nome, funcao: d.funcao } });
-        return f.id as string;
-      });
-      reply.code(201);
-      return { ok: true, id };
-    });
-
-    app.put<{ Params: { id: string } }>('/funcionarios/:id', async (req) => {
-      const d = z
-        .object({
-          nome: z.string().trim().min(2, 'Informe o nome do funcionário.').max(120).optional(),
-          cpf: cpfOpc.optional(),
-          funcao: z.string().trim().max(60).optional().nullable().transform((v) => v || null),
-          ativo: z.boolean().optional(),
-        })
-        .parse(req.body);
-      const empresaId = empresaDo(req);
-      const u = usuarioDe(req);
-      if (!UUID.test(req.params.id)) throw new ErroHttp(404, 'Funcionário não encontrado.');
-      await emTransacao(banco, async (c) => {
-        const atual = (await c.query('SELECT id, nome FROM funcionarios WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
-        if (!atual) throw new ErroHttp(404, 'Funcionário não encontrado.');
-        await c.query(
-          'UPDATE funcionarios SET nome = coalesce($2, nome), cpf = CASE WHEN $3::boolean THEN $4 ELSE cpf END, funcao = CASE WHEN $5::boolean THEN $6 ELSE funcao END, ativo = coalesce($7, ativo) WHERE id = $1',
-          [atual.id, d.nome ?? null, d.cpf !== undefined, d.cpf ?? null, d.funcao !== undefined, d.funcao ?? null, d.ativo ?? null],
-        );
-        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'funcionarios', entidadeId: atual.id, antes: { nome: atual.nome }, depois: d });
-      });
-      return { ok: true };
+    // Colaboradores: o mesmo cadastro do Administrativo (motoristas), só os ativos. Quem pega material na saída.
+    app.get('/colaboradores', async (req) => {
+      const r = await banco.query('SELECT id, nome, funcao, cargo FROM motoristas WHERE empresa_id = $1 AND excluido_em IS NULL AND ativo ORDER BY nome', [empresaDo(req)]);
+      return { colaboradores: r.rows.map((x) => ({ id: x.id, nome: x.nome, funcao: x.funcao ?? null, cargo: x.cargo ?? null })) };
     });
 
     // ----- Saída de material por etiqueta: cadastro com obra, etapa, funcionário e o almoxarife que entregou.
@@ -946,7 +903,7 @@ export function rotasSuprimentos(banco: Banco) {
         .object({
           obraId: z.string().uuid('Escolha a obra.'),
           eapNoId: z.string().uuid('Escolha a etapa.'),
-          funcionarioId: z.string().uuid('Escolha o funcionário.'),
+          colaboradorId: z.string().uuid('Escolha o colaborador.'),
           data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
           observacao: z.string().trim().max(500).optional().nullable().transform((v) => v || null),
           itens: z
@@ -965,13 +922,13 @@ export function rotasSuprimentos(banco: Banco) {
       const u = usuarioDe(req);
       const criada = await emTransacao(banco, async (c) => {
         await validarApropriacaoObra(c, empresaId, d.obraId, null, d.eapNoId);
-        if (!(await c.query('SELECT 1 FROM funcionarios WHERE id = $1 AND empresa_id = $2 AND ativo', [d.funcionarioId, empresaId])).rowCount)
-          throw new ErroHttp(400, 'Funcionário não encontrado ou inativo.');
+        if (!(await c.query('SELECT 1 FROM motoristas WHERE id = $1 AND empresa_id = $2 AND ativo AND excluido_em IS NULL', [d.colaboradorId, empresaId])).rowCount)
+          throw new ErroHttp(400, 'Colaborador não encontrado ou inativo.');
         const numero = (await c.query("SELECT 'SAI-' || lpad((coalesce(max(substring(numero FROM '^SAI-([0-9]+)$')::int), 0) + 1)::text, 4, '0') AS numero FROM saidas_material WHERE empresa_id = $1", [empresaId])).rows[0].numero as string;
         const cab = (
           await c.query(
-            'INSERT INTO saidas_material (empresa_id, numero, data, obra_id, eap_no_id, funcionario_id, entregue_por_id, observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
-            [empresaId, numero, d.data, d.obraId, d.eapNoId, d.funcionarioId, u.id, d.observacao],
+            'INSERT INTO saidas_material (empresa_id, numero, data, obra_id, eap_no_id, colaborador_id, entregue_por_id, observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
+            [empresaId, numero, d.data, d.obraId, d.eapNoId, d.colaboradorId, u.id, d.observacao],
           )
         ).rows[0];
         for (const it of d.itens) {
@@ -1010,14 +967,14 @@ export function rotasSuprimentos(banco: Banco) {
     app.get('/saidas-material', async (req) => {
       const r = await banco.query(
         `SELECT s.id, s.numero, s.data, s.observacao, o.codigo AS obra_codigo, o.nome AS obra_nome, e.codigo AS eap_codigo, e.descricao AS eap_descricao,
-                f.nome AS funcionario_nome, u.nome AS entregue_por,
+                coalesce(c.nome, f.nome) AS colaborador_nome, u.nome AS entregue_por,
                 (SELECT count(*) FROM estoque_movimentos m WHERE m.saida_material_id = s.id)::int AS itens
            FROM saidas_material s JOIN obras o ON o.id = s.obra_id JOIN eap_nos e ON e.id = s.eap_no_id
-           JOIN funcionarios f ON f.id = s.funcionario_id JOIN usuarios u ON u.id = s.entregue_por_id
+           LEFT JOIN motoristas c ON c.id = s.colaborador_id LEFT JOIN funcionarios f ON f.id = s.funcionario_id JOIN usuarios u ON u.id = s.entregue_por_id
           WHERE s.empresa_id = $1 ORDER BY s.criado_em DESC LIMIT 200`,
         [empresaDo(req)],
       );
-      return { saidas: r.rows.map((x) => ({ id: x.id, numero: x.numero, data: String(x.data).slice(0, 10), observacao: x.observacao ?? null, obraCodigo: x.obra_codigo, obraNome: x.obra_nome, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, funcionario: x.funcionario_nome, entreguePor: x.entregue_por, itens: x.itens })) };
+      return { saidas: r.rows.map((x) => ({ id: x.id, numero: x.numero, data: String(x.data).slice(0, 10), observacao: x.observacao ?? null, obraCodigo: x.obra_codigo, obraNome: x.obra_nome, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, colaborador: x.colaborador_nome, entreguePor: x.entregue_por, itens: x.itens })) };
     });
 
     // ----- Solicitações de compra: sempre de uma obra, com os insumos das necessidades apropriadas à EAP.
