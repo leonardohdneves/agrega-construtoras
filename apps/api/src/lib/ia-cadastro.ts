@@ -110,7 +110,7 @@ export async function lerCadastroComIa(arquivo: Buffer, tipoArquivo: string, ent
     model: modelo,
     max_tokens: 2000,
     tools: [ferramenta(entidade)],
-    tool_choice: { type: 'tool', name: 'registrar_cadastro' },
+    tool_choice: { type: 'auto' },
     messages: [
       {
         role: 'user',
@@ -149,7 +149,7 @@ export async function lerCadastroComIa(arquivo: Buffer, tipoArquivo: string, ent
     if (resp.status === 401 || resp.status === 403) throw new ErroIa('A chave da IA foi recusada. Confira a variável ANTHROPIC_API_KEY.');
     if (resp.status === 429 || resp.status === 529) throw new ErroIa('O serviço de IA está ocupado. Tente de novo em instantes.');
     if (resp.status === 413) throw new ErroIa('O arquivo é grande demais para a leitura por IA.');
-    throw new ErroIa(`A leitura por IA falhou (código ${resp.status}).`);
+    throw new ErroIa(`A leitura por IA falhou (código ${resp.status}${detalhe ? `: ${detalhe}` : ''}).`);
   }
   const corpo = (await resp.json()) as { content?: { type: string; name?: string; input?: Record<string, unknown> }[] };
   const uso = corpo.content?.find((b) => b.type === 'tool_use' && b.name === 'registrar_cadastro');
