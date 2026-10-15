@@ -68,6 +68,7 @@ const esquemaItemNovo = z.object({
   obraItemId: z.string().regex(UUID, 'Escolha o insumo da planilha.'),
   eapNoId: z.string().regex(UUID).nullable(),
   quantidade: z.number().positive('A quantidade precisa ser maior que zero.'),
+  unidade: z.string().trim().max(20).optional().nullable(),
   dataNecessaria: dataOpc,
   observacao: texto(200),
 });
@@ -83,8 +84,20 @@ async function criarNecessidadesDaSolicitacao(c: Cliente, obraId: string, itens:
       saida.push({ necessidadeId: i.necessidadeId, observacao: i.observacao || null });
       continue;
     }
-    const item = (await c.query("SELECT id FROM obra_itens WHERE id = $1 AND obra_id = $2 AND tipo = 'insumo'", [i.obraItemId, obraId])).rows[0];
+    const item = (await c.query("SELECT id, unidade FROM obra_itens WHERE id = $1 AND obra_id = $2 AND tipo = 'insumo'", [i.obraItemId, obraId])).rows[0];
     if (!item) throw new ErroHttp(400, `Item ${n + 1}: escolha um insumo da planilha desta obra.`);
+    // Pedido em unidade de compra: a quantidade digitada vai para a necessidade convertida na unidade do orçamento.
+    let quantidadeBase = i.quantidade;
+    let unidadeCompra: string | null = null;
+    let quantidadeCompra: number | null = null;
+    const escolhida = (i.unidade ?? '').trim();
+    if (escolhida && escolhida.toLowerCase() !== String(item.unidade).toLowerCase()) {
+      const u = (await c.query('SELECT unidade, fator FROM obra_insumo_unidades WHERE obra_item_id = $1 AND lower(unidade) = lower($2)', [item.id, escolhida])).rows[0];
+      if (!u) throw new ErroHttp(400, `Item ${n + 1}: "${escolhida}" não é unidade de compra deste insumo.`);
+      quantidadeBase = Math.round(i.quantidade * Number(u.fator) * 10000) / 10000;
+      unidadeCompra = u.unidade as string;
+      quantidadeCompra = i.quantidade;
+    }
     if (nivel === 'obra') {
       if (i.eapNoId) throw new ErroHttp(400, `Item ${n + 1}: esta obra apropria no nível da obra, sem nó da EAP.`);
     } else {
@@ -94,9 +107,9 @@ async function criarNecessidadesDaSolicitacao(c: Cliente, obraId: string, itens:
       if (no.nivel !== nivel) throw new ErroHttp(400, `Item ${n + 1}: a apropriação usa o nível ${nivel}; este nó é ${no.nivel}.`);
     }
     const r = await c.query(
-      `INSERT INTO obra_necessidades (obra_id, obra_item_id, eap_no_id, quantidade, data_necessaria, observacao)
-       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-      [obraId, i.obraItemId, nivel === 'obra' ? null : i.eapNoId, i.quantidade, i.dataNecessaria ?? null, i.observacao || null],
+      `INSERT INTO obra_necessidades (obra_id, obra_item_id, eap_no_id, quantidade, data_necessaria, observacao, unidade_compra, quantidade_compra)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id`,
+      [obraId, i.obraItemId, nivel === 'obra' ? null : i.eapNoId, quantidadeBase, i.dataNecessaria ?? null, i.observacao || null, unidadeCompra, quantidadeCompra],
     );
     saida.push({ necessidadeId: r.rows[0].id as string, observacao: i.observacao || null });
   }
@@ -120,7 +133,7 @@ async function resolverNecessidades(c: Cliente, empresaId: string, obraId: strin
   if (!itens.length) throw new ErroHttp(400, 'Inclua pelo menos um item.');
   if (new Set(itens.map((i) => i.necessidadeId)).size !== itens.length) throw new ErroHttp(400, 'Um mesmo insumo não pode aparecer duas vezes.');
   const r = await c.query(
-    `SELECT n.id, n.obra_id, n.status, n.quantidade, n.eap_no_id, oi.id AS obra_item_id, oi.codigo, oi.descricao, oi.unidade
+    `SELECT n.id, n.obra_id, n.status, n.quantidade, n.unidade_compra, n.quantidade_compra, n.eap_no_id, oi.id AS obra_item_id, oi.codigo, oi.descricao, oi.unidade
        FROM obra_necessidades n JOIN obra_itens oi ON oi.id = n.obra_item_id JOIN obras o ON o.id = n.obra_id
       WHERE n.id = ANY($1::uuid[]) AND o.empresa_id = $2
       FOR UPDATE OF n`,
@@ -139,8 +152,9 @@ async function resolverNecessidades(c: Cliente, empresaId: string, obraId: strin
       eapNoId: x.eap_no_id as string,
       codigo: x.codigo as string,
       descricao: x.descricao as string,
-      unidade: x.unidade as string,
-      quantidade: Number(x.quantidade),
+      // Solicitação e pedido seguem a unidade em que o material foi pedido (de compra, quando houver).
+      unidade: (x.unidade_compra as string | null) ?? (x.unidade as string),
+      quantidade: Number(x.quantidade_compra ?? x.quantidade),
       observacao: i.observacao,
     };
   });

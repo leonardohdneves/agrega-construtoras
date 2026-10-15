@@ -30,6 +30,7 @@ type ObraLista = { id: string; codigo: string; nome: string; ativo?: boolean };
 /** Insumo da obra (necessidade de compra) já apropriado a um nó da EAP. */
 type Necessidade = {
   id: string; codigo: string; descricao: string; unidade: string; eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null;
+  unidadeCompra: string | null; quantidadeCompra: number | null;
   quantidade: number; dataNecessaria: string | null; status: 'pendente' | 'solicitada' | 'comprada' | 'cancelada';
 };
 
@@ -119,10 +120,10 @@ export function SupSolicitacoes({ tipo = 'insumo' }: { tipo?: TipoSolicitacao })
 
 // ---------- Formulário (nova e edição): obra e insumos apropriados ----------
 const indentoEapSol = (codigo: string) => codigo.split('.').length - 1;
-type InsumoPlanilha = { id: string; codigo: string; descricao: string; unidade: string };
+type InsumoPlanilha = { id: string; codigo: string; descricao: string; unidade: string; unidadesCompra: { unidade: string; fator: number }[] };
 type NoEapLista = { id: string; nivel: string; codigo: string; descricao: string };
 /** Insumo escolhido direto na planilha da obra, ainda não gravado na solicitação. */
-type NovoItem = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number; dataNecessaria: string | null };
+type NovoItem = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number; dataNecessaria: string | null; unidadeCompra: string | null; fatorCompra: number | null };
 
 function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao; aoSalvar: (s: Solicitacao) => void; aoCancelar?: () => void }) {
   const [obras, setObras] = useState<ObraLista[]>([]);
@@ -146,7 +147,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
       .then((r) => setEstoqueObra(r.itens))
       .catch(() => setEstoqueObra([]));
   }, [f.obraId]);
-  const [add, setAdd] = useState({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
+  const [add, setAdd] = useState({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', unidade: '' });
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
@@ -159,7 +160,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
   // Ao escolher a obra: nível de apropriação, insumos da planilha, nós da EAP desse nível e necessidades pendentes.
   useEffect(() => {
     setNovos([]);
-    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
+    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', unidade: '' });
     if (!f.obraId) {
       setNecessidades(null);
       setInsumos([]);
@@ -208,6 +209,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
     const q = lerNumero(add.quantidade);
     if (q === null || q <= 0) return setErro('Informe uma quantidade maior que zero.');
     const no = nos.find((x) => x.id === add.eapNoId);
+    const compra = add.unidade ? insumo.unidadesCompra.find((u) => u.unidade === add.unidade) : undefined;
     setNovos([...novos, {
       chave: `n${Date.now()}${novos.length}`,
       obraItemId: insumo.id,
@@ -218,8 +220,10 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
       eapCodigo: no?.codigo ?? null,
       quantidade: q,
       dataNecessaria: add.dataNecessaria || null,
+      unidadeCompra: compra?.unidade ?? null,
+      fatorCompra: compra?.fator ?? null,
     }]);
-    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
+    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', unidade: '' });
   }
 
   async function salvar(e: FormEvent) {
@@ -236,7 +240,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
         observacao: f.observacao || null,
         itens: [
           ...[...marcadas].map((necessidadeId) => ({ necessidadeId, observacao: null })),
-          ...novos.map((n) => ({ obraItemId: n.obraItemId, eapNoId: n.eapNoId, quantidade: n.quantidade, dataNecessaria: n.dataNecessaria, observacao: null })),
+          ...novos.map((n) => ({ obraItemId: n.obraItemId, eapNoId: n.eapNoId, quantidade: n.quantidade, unidade: n.unidadeCompra, dataNecessaria: n.dataNecessaria, observacao: null })),
         ],
       };
       const r = inicial
@@ -278,11 +282,24 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
           <div className="campos editor-linha">
             <div className="campo">
               <label htmlFor="sol-ins">Insumo</label>
-              <select id="sol-ins" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value })}>
+              <select id="sol-ins" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value, unidade: '' })}>
                 <option value="">Escolha o insumo</option>
                 {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
               </select>
             </div>
+            {(() => {
+              const ins = insumos.find((x) => x.id === add.obraItemId);
+              if (!ins || ins.unidadesCompra.length === 0) return null;
+              return (
+                <div className="campo">
+                  <label htmlFor="sol-un">Unidade do pedido</label>
+                  <select id="sol-un" value={add.unidade} onChange={(e) => setAdd({ ...add, unidade: e.target.value })}>
+                    <option value="">{ins.unidade} (orçamento)</option>
+                    {ins.unidadesCompra.map((u) => <option key={u.unidade} value={u.unidade}>{u.unidade} (1 {u.unidade} = {u.fator.toLocaleString('pt-BR')} {ins.unidade})</option>)}
+                  </select>
+                </div>
+              );
+            })()}
             {add.obraItemId && (() => {
               const e = estoqueObra.find((x) => x.obraItemId === add.obraItemId);
               const nesta = e?.apropriacoes.find((x) => x.eapNoId === add.eapNoId);
@@ -328,8 +345,8 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
               <tr key={n.chave}>
                 <td className="mono small">{n.eapCodigo ?? '—'}</td>
                 <td>{n.descricao}<div className="small muted mono">{n.codigo}</div></td>
-                <td>{unidadeTexto(n.unidade)}</td>
-                <td className="num">{qtd(n.quantidade, n.unidade)}</td>
+                <td>{unidadeTexto(n.unidadeCompra ?? n.unidade)}</td>
+                <td className="num">{qtd(n.quantidade, n.unidadeCompra ?? n.unidade)}{n.fatorCompra ? <div className="small muted">= {qtd(n.quantidade * n.fatorCompra, n.unidade)}</div> : null}</td>
                 <td>{n.dataNecessaria ? formatarData(n.dataNecessaria) : '—'}</td>
                 <td><button className="btn btn-link" type="button" onClick={() => setNovos(novos.filter((x) => x.chave !== n.chave))}>Remover</button></td>
               </tr>
@@ -362,8 +379,8 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
                     </td>
                     <td className="mono small">{n.eapCodigo} <span className="muted">{n.eapDescricao}</span></td>
                     <td>{n.descricao}<div className="small muted mono">{n.codigo}</div></td>
-                    <td>{unidadeTexto(n.unidade)}</td>
-                    <td className="num">{qtd(n.quantidade, n.unidade)}</td>
+                    <td>{unidadeTexto(n.unidadeCompra ?? n.unidade)}</td>
+                    <td className="num">{qtd(n.quantidadeCompra ?? n.quantidade, n.unidadeCompra ?? n.unidade)}</td>
                     <td>{n.dataNecessaria ? formatarData(n.dataNecessaria) : '—'}</td>
                   </tr>
                 ))}

@@ -31,6 +31,7 @@ import {
   type InsumoComposicaoRel,
   type NivelPlanilha,
 } from '../lib/engenharia.ts';
+import { escolherUltimaCompra, unidadesValidas } from '../lib/unidades-insumo.ts';
 import { bdiCalculado, calcularDatas, codigoDoNo, datasComResumos, erroItemOrcamento, aliquotaSimples, formacaoPreco, resumosDaEap, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -111,20 +112,6 @@ async function proximoCodigoInsumo(c: Cliente, tabelaId: string): Promise<string
 }
 
 const esquemaUnidadeCompra = z.object({ unidade: z.string().trim().min(1, 'Informe a unidade de compra.').max(20), fator: z.union([z.number(), z.string()]) });
-
-/** Valida as unidades de compra de um insumo: diferentes da base, sem repetição e com fator positivo. */
-function unidadesValidas(lista: { unidade: string; fator: number | string }[], base: string): { unidade: string; fator: number }[] {
-  const vistos = new Set<string>();
-  return lista.map((u) => {
-    const unidade = u.unidade.trim();
-    const fator = typeof u.fator === 'number' ? u.fator : numeroBr(String(u.fator ?? ''));
-    if (unidade.toLowerCase() === base.trim().toLowerCase()) throw new ErroHttp(400, `"${unidade}" é a unidade base do insumo. Informe outra unidade de compra.`);
-    if (vistos.has(unidade.toLowerCase())) throw new ErroHttp(400, `A unidade de compra "${unidade}" está repetida.`);
-    if (fator === null || !Number.isFinite(fator) || fator <= 0) throw new ErroHttp(400, `Informe quantos ${base} cabem em 1 ${unidade}.`);
-    vistos.add(unidade.toLowerCase());
-    return { unidade, fator };
-  });
-}
 
 const esquemaItemRef = z.object({
   tipo: z.enum(['insumo', 'composicao']),
@@ -605,6 +592,43 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true };
     });
 
+    /** Preço do insumo do cadastro pela última compra confirmada das obras que usam esse insumo (na unidade base). */
+    app.post<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId/preco-ultima-compra', async (req) => {
+      const empresaId = empresaDo(req);
+      return emTransacao(banco, async (c) => {
+        const t = await tabelaDaEmpresa(c, empresaId, req.params.id);
+        if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A tabela SINAPI é imutável.');
+        const item = (await c.query("SELECT * FROM ref_itens WHERE id = $1 AND tabela_id = $2 AND tipo = 'insumo'", [req.params.itemId, t.id])).rows[0];
+        if (!item) throw naoEncontrado('Insumo');
+        const linhas = (
+          await c.query(
+            `SELECT ni.valor_custo_centavos, ni.quantidade, ni.unidade, n.data_emissao,
+                    (SELECT u.fator FROM obra_insumo_unidades u WHERE u.obra_item_id = ob.id AND lower(u.unidade) = lower(ni.unidade)) AS fator_mapeado
+               FROM notas_itens ni
+               JOIN notas_fiscais n ON n.id = ni.nota_id
+               JOIN obra_itens ob ON ob.id = coalesce(ni.obra_item_id, (SELECT pi.obra_item_id FROM pedidos_itens pi WHERE pi.id = ni.pedido_item_id))
+              WHERE ob.origem_tabela_id = $1 AND ob.codigo = $2 AND ob.tipo = 'insumo'
+                AND n.empresa_id = $3 AND n.excluido_em IS NULL AND n.status <> 'cancelada'
+              ORDER BY n.data_emissao DESC, ni.id DESC`,
+            [t.id, item.codigo, empresaId],
+          )
+        ).rows;
+        const compra = escolherUltimaCompra(
+          linhas.map((l) => ({
+            valorCentavos: Number(l.valor_custo_centavos),
+            quantidade: Number(l.quantidade),
+            unidade: (l.unidade as string | null) ?? null,
+            data: String(l.data_emissao).slice(0, 10),
+            fatorMapeado: l.fator_mapeado === null || l.fator_mapeado === undefined ? null : Number(l.fator_mapeado),
+          })),
+          item.unidade as string,
+        );
+        if (!compra) throw new ErroHttp(409, 'Ainda não há compra confirmada deste insumo que possa ser convertida para a unidade do cadastro.');
+        await c.query("UPDATE ref_itens SET preco_centavos = $2, preco_origem = 'ultima_compra' WHERE id = $1", [item.id, compra.precoBaseCentavos]);
+        return { ok: true, preco: reais(compra.precoBaseCentavos), data: compra.data };
+      });
+    });
+
     app.delete<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId', async (req) => {
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -812,7 +836,8 @@ export function rotasEngenharia(banco: Banco) {
       const r = await banco.query(
         `SELECT oi.*, ${precoObra('oi')} AS preco,
                 (SELECT count(*)::int FROM obra_composicao_insumos ci WHERE ci.composicao_id = oi.id) AS componentes,
-                (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_item_id = oi.id) AS no_orcamento
+                (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_item_id = oi.id) AS no_orcamento,
+                (SELECT coalesce(json_agg(json_build_object('unidade', u.unidade, 'fator', u.fator) ORDER BY u.unidade), '[]'::json) FROM obra_insumo_unidades u WHERE u.obra_item_id = oi.id) AS unidades_compra
            FROM obra_itens oi
           WHERE oi.obra_id = $1 AND ($2::text IS NULL OR oi.tipo = $2) AND ($3 = '' OR oi.codigo ILIKE $3 || '%' OR oi.descricao ILIKE '%' || $3 || '%')
           ORDER BY oi.tipo, oi.codigo LIMIT 1000`,
@@ -879,6 +904,7 @@ export function rotasEngenharia(banco: Banco) {
               [obra.id, tipo, x.codigo, x.descricao, x.unidade, grupo, tipo === 'insumo' ? x.preco_centavos : null, tabela.id, tabela.fonte, versao, tipo === 'insumo' ? x.preco_centavos : null],
             );
             novos += r.rowCount ?? 0;
+            if (tipo === 'insumo' && r.rowCount) await c.query('INSERT INTO obra_insumo_unidades (obra_item_id, unidade, fator) SELECT $1, unidade, fator FROM ref_insumo_unidades WHERE item_id = $2', [r.rows[0].id, x.id]);
             x.novo = (r.rowCount ?? 0) > 0;
           }
           return novos;
@@ -1570,6 +1596,8 @@ export function rotasEngenharia(banco: Banco) {
             id: x.id, itemId: x.obra_item_id, codigo: x.codigo, descricao: x.descricao, unidade: x.unidade,
             eapNoId: x.eap_no_id ?? null, eapCodigo: x.eap_codigo ?? null, eapDescricao: x.eap_descricao ?? null,
             quantidade: q, dataNecessaria: x.data_necessaria ? dataIso(x.data_necessaria) : null, observacao: x.observacao ?? null,
+            // Unidade e quantidade de compra (quando o pedido foi feito em outra unidade); o preço segue a base do orçamento.
+            unidadeCompra: x.unidade_compra ?? null, quantidadeCompra: x.quantidade_compra === null || x.quantidade_compra === undefined ? null : Number(x.quantidade_compra),
             status: x.status, precoUnitario: preco, total: r2(q * preco),
           };
         }),
@@ -2171,6 +2199,7 @@ function itemObraPublico(i: Record<string, any>) {
     codigo: i.codigo as string,
     descricao: i.descricao as string,
     unidade: i.unidade as string,
+    unidadesCompra: ((i.unidades_compra as { unidade: string; fator: number | string }[] | undefined) ?? []).map((u) => ({ unidade: u.unidade, fator: Number(u.fator) })),
     grupo: (i.grupo as string | null) ?? null,
     preco: reais(i.preco),
     precoReferencia: reais(i.preco_referencia_centavos),

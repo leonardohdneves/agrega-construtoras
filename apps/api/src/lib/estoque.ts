@@ -2,6 +2,7 @@
 import type { Cliente } from '../db.ts';
 import { normalizar } from './sugestoes.ts';
 import { ErroHttp } from './erros.ts';
+import { fatorEntrada } from './unidades-insumo.ts';
 
 /** Saldo de cada insumo ao fim do dia `ate` (entradas e acertos menos o consumo das cargas). */
 export const SQL_SALDOS = `
@@ -168,10 +169,14 @@ export async function registrarEntradasObra(c: Cliente, empresaId: string, notaI
       `SELECT i.id, i.quantidade, i.valor_custo_centavos, i.unidade,
               coalesce(i.obra_id, o.obra_id) AS obra_id,
               coalesce(i.obra_item_id, pi.obra_item_id) AS obra_item_id,
-              coalesce(i.eap_no_id, pi.eap_no_id) AS eap_no_id
+              coalesce(i.eap_no_id, pi.eap_no_id) AS eap_no_id,
+              ob.unidade AS unidade_base,
+              (SELECT u.fator FROM obra_insumo_unidades u
+                 WHERE u.obra_item_id = coalesce(i.obra_item_id, pi.obra_item_id) AND lower(u.unidade) = lower(i.unidade)) AS fator_compra
          FROM notas_itens i
          LEFT JOIN pedidos_itens pi ON pi.id = i.pedido_item_id
          LEFT JOIN obra_itens o ON o.id = pi.obra_item_id
+         LEFT JOIN obra_itens ob ON ob.id = coalesce(i.obra_item_id, pi.obra_item_id)
         WHERE i.nota_id = $1`,
       [notaId],
     )
@@ -180,10 +185,13 @@ export async function registrarEntradasObra(c: Cliente, empresaId: string, notaI
   for (const i of itens) {
     const qtd = Number(i.quantidade);
     if (!i.obra_item_id || !i.eap_no_id || !i.obra_id || !(qtd > 0)) continue;
+    // A nota vem na unidade de compra; o estoque é mantido na unidade base do orçamento (ex.: kg).
+    const fator = fatorEntrada(i.unidade, i.unidade_base ?? '', i.fator_compra === null ? null : Number(i.fator_compra));
+    const qtdBase = qtd * fator;
     await c.query(
       `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_item_id, eap_no_id, data, tipo, quantidade, custo_unitario_centavos, nota_item_id, observacao, criado_por_id)
        VALUES ($1,$2,$3,$4,$5,'entrada',$6,$7,$8,$9,$10)`,
-      [empresaId, i.obra_id, i.obra_item_id, i.eap_no_id, n.data_emissao, Math.round(qtd * 1000) / 1000, Number(i.valor_custo_centavos) / qtd, i.id, `NF ${n.numero ?? 's/n'}`, usuarioId],
+      [empresaId, i.obra_id, i.obra_item_id, i.eap_no_id, n.data_emissao, Math.round(qtdBase * 1000) / 1000, Number(i.valor_custo_centavos) / qtdBase, i.id, `NF ${n.numero ?? 's/n'}`, usuarioId],
     );
     feitas++;
   }
