@@ -5,6 +5,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { normalizar } from '../lib/sugestoes.ts';
@@ -659,6 +660,64 @@ function sugerirPares(notaItens: { id: string; descricao: string; insumo_id: str
 export function rotasSuprimentos(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
+
+    // ----- Estoque da construtora: saldo por insumo da obra e etapa da EAP; saídas por requisição.
+    app.get<{ Querystring: Record<string, string | undefined> }>('/estoque', async (req) => {
+      const empresaId = empresaDo(req);
+      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
+      const r = await banco.query(
+        `WITH s AS (
+           SELECT m.obra_id, m.obra_item_id, m.eap_no_id, sum(CASE WHEN m.tipo = 'saida' THEN -m.quantidade ELSE m.quantidade END) AS qtd
+             FROM estoque_movimentos m
+            WHERE m.empresa_id = $1 AND m.obra_item_id IS NOT NULL AND ($2::uuid IS NULL OR m.obra_id = $2)
+            GROUP BY m.obra_id, m.obra_item_id, m.eap_no_id)
+         SELECT s.obra_id, s.obra_item_id, s.eap_no_id, s.qtd, oi.codigo, oi.descricao, oi.unidade, o.codigo AS obra_codigo, e.codigo AS eap_codigo, e.descricao AS eap_descricao
+           FROM s JOIN obra_itens oi ON oi.id = s.obra_item_id JOIN obras o ON o.id = s.obra_id JOIN eap_nos e ON e.id = s.eap_no_id
+          WHERE s.qtd <> 0
+          ORDER BY oi.descricao, e.codigo`,
+        [empresaId, obraId],
+      );
+      const mapa = new Map<string, { obraItemId: string; codigo: string; descricao: string; unidade: string; saldo: number; apropriacoes: { obraId: string; obraCodigo: string; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number }[] }>();
+      for (const x of r.rows) {
+        const q = Math.round(Number(x.qtd) * 1000) / 1000;
+        const it = mapa.get(x.obra_item_id) ?? { obraItemId: x.obra_item_id, codigo: x.codigo, descricao: x.descricao, unidade: x.unidade, saldo: 0, apropriacoes: [] };
+        it.saldo = Math.round((it.saldo + q) * 1000) / 1000;
+        it.apropriacoes.push({ obraId: x.obra_id, obraCodigo: x.obra_codigo, eapNoId: x.eap_no_id, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, quantidade: q });
+        mapa.set(x.obra_item_id, it);
+      }
+      return { itens: [...mapa.values()] };
+    });
+
+    app.post('/estoque/saidas', async (req, reply) => {
+      const d = z
+        .object({
+          obraId: z.string().uuid('Escolha a obra.'),
+          obraItemId: z.string().uuid('Escolha o insumo.'),
+          eapNoId: z.string().uuid('Escolha a etapa.'),
+          data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
+          quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
+          observacao: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
+        })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      const qtd = Math.round(d.quantidade * 1000) / 1000;
+      await emTransacao(banco, async (c) => {
+        await validarApropriacaoObra(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
+        const saldo = await saldoApropriacao(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
+        if (qtd > saldo + 0.0005) throw new ErroHttp(400, `Saldo insuficiente nesta etapa: ${saldo.toLocaleString('pt-BR')} disponível.`);
+        const mov = (
+          await c.query(
+            `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id)
+             VALUES ($1,$2,$3,$4,$5,'saida',$6,$7,$8) RETURNING id`,
+            [empresaId, d.obraId, d.obraItemId, d.eapNoId, d.data, qtd, d.observacao, u.id],
+          )
+        ).rows[0];
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'estoque_movimentos', entidadeId: mov.id, depois: { tipo: 'saida', quantidade: qtd, obraItemId: d.obraItemId, eapNoId: d.eapNoId } });
+      });
+      reply.code(201);
+      return { ok: true };
+    });
 
     // ----- Solicitações de compra: sempre de uma obra, com os insumos das necessidades apropriadas à EAP.
     app.get<{ Querystring: Record<string, string | undefined> }>('/solicitacoes', async (req) => {

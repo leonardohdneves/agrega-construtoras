@@ -23,7 +23,7 @@ export type LinhaSaida = {
 const GRUPOS: { linha: LinhaDre; nome: string; sinal: 1 | -1 }[] = [
   { linha: 'receita_bruta', nome: 'Receita bruta', sinal: 1 },
   { linha: 'deducoes', nome: '(−) Deduções e impostos sobre vendas', sinal: -1 },
-  { linha: 'custo_producao', nome: '(−) Custo de produção do concreto', sinal: -1 },
+  { linha: 'custo_producao', nome: '(−) Custo de produção de obras', sinal: -1 },
   { linha: 'custo_frota', nome: '(−) Custo da frota', sinal: -1 },
   { linha: 'custo_pessoal', nome: '(−) Custo de pessoal operacional', sinal: -1 },
   { linha: 'despesas_pessoal', nome: '(−) Despesas com pessoal administrativo', sinal: -1 },

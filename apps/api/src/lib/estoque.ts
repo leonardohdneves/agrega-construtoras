@@ -1,6 +1,7 @@
 // Estoque de insumos: entradas pelas notas de compra, consumo teórico das cargas e acerto por inventário.
 import type { Cliente } from '../db.ts';
 import { normalizar } from './sugestoes.ts';
+import { ErroHttp } from './erros.ts';
 
 /** Saldo de cada insumo ao fim do dia `ate` (entradas e acertos menos o consumo das cargas). */
 export const SQL_SALDOS = `
@@ -91,7 +92,7 @@ export async function removerEntradasNota(c: Cliente, notaId: string): Promise<v
     'DELETE FROM estoque_movimentos WHERE nota_item_id IN (SELECT id FROM notas_itens WHERE nota_id = $1) RETURNING insumo_id',
     [notaId],
   );
-  await atualizarCustos(c, r.rows.map((x) => x.insumo_id));
+  await atualizarCustos(c, r.rows.filter((x) => x.insumo_id).map((x) => x.insumo_id));
 }
 
 /** Sugestão de insumo para um item de nota: o que já foi ligado antes para este fornecedor e produto. */
@@ -125,4 +126,76 @@ export function fatorPadrao(unidadeNota: string | null, unidadeInsumo: string): 
   if (unidadeInsumo === 'm3' && ['M3', 'M³'].includes(u)) return 1;
   if (unidadeInsumo === 'un' && ['UN', 'UND', 'PC'].includes(u)) return 1;
   return null;
+}
+
+/**
+ * Confere a apropriação de um item da nota: o insumo da obra precisa ser da obra escolhida,
+ * e a etapa precisa ser um nó da EAP dessa mesma obra.
+ */
+export async function validarApropriacaoObra(c: Cliente, empresaId: string, obraId: string | null, obraItemId: string | null, eapNoId: string | null): Promise<void> {
+  if (obraId) {
+    const o = (await c.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2', [obraId, empresaId])).rows[0];
+    if (!o) throw new ErroHttp(400, 'Obra não encontrada.');
+  }
+  if (obraItemId) {
+    const oi = (await c.query(
+      `SELECT oi.obra_id FROM obra_itens oi JOIN obras o ON o.id = oi.obra_id
+        WHERE oi.id = $1 AND o.empresa_id = $2 AND oi.tipo = 'insumo'`,
+      [obraItemId, empresaId],
+    )).rows[0];
+    if (!oi) throw new ErroHttp(400, 'Insumo da obra não encontrado.');
+    if (obraId && oi.obra_id !== obraId) throw new ErroHttp(400, 'O insumo escolhido não é desta obra.');
+  }
+  if (eapNoId) {
+    const e = (await c.query(
+      `SELECT e.obra_id FROM eap_nos e JOIN obras o ON o.id = e.obra_id WHERE e.id = $1 AND o.empresa_id = $2`,
+      [eapNoId, empresaId],
+    )).rows[0];
+    if (!e) throw new ErroHttp(400, 'Etapa da EAP não encontrada.');
+    if (obraId && e.obra_id !== obraId) throw new ErroHttp(400, 'A etapa escolhida não é desta obra.');
+  }
+}
+
+/**
+ * Entradas da construtora: cada item da nota com obra, insumo da obra e etapa vira entrada na apropriação.
+ * Quando a nota veio de um pedido, a apropriação é a do item do pedido (que veio da solicitação).
+ * Item sem apropriação completa fica fora do estoque (não é erro para o lançamento).
+ */
+export async function registrarEntradasObra(c: Cliente, empresaId: string, notaId: string, usuarioId: string | null): Promise<number> {
+  const n = (await c.query('SELECT data_emissao, numero FROM notas_fiscais WHERE id = $1', [notaId])).rows[0];
+  const itens = (
+    await c.query(
+      `SELECT i.id, i.quantidade, i.valor_custo_centavos, i.unidade,
+              coalesce(i.obra_id, o.obra_id) AS obra_id,
+              coalesce(i.obra_item_id, pi.obra_item_id) AS obra_item_id,
+              coalesce(i.eap_no_id, pi.eap_no_id) AS eap_no_id
+         FROM notas_itens i
+         LEFT JOIN pedidos_itens pi ON pi.id = i.pedido_item_id
+         LEFT JOIN obra_itens o ON o.id = pi.obra_item_id
+        WHERE i.nota_id = $1`,
+      [notaId],
+    )
+  ).rows;
+  let feitas = 0;
+  for (const i of itens) {
+    const qtd = Number(i.quantidade);
+    if (!i.obra_item_id || !i.eap_no_id || !i.obra_id || !(qtd > 0)) continue;
+    await c.query(
+      `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_item_id, eap_no_id, data, tipo, quantidade, custo_unitario_centavos, nota_item_id, observacao, criado_por_id)
+       VALUES ($1,$2,$3,$4,$5,'entrada',$6,$7,$8,$9,$10)`,
+      [empresaId, i.obra_id, i.obra_item_id, i.eap_no_id, n.data_emissao, Math.round(qtd * 1000) / 1000, Number(i.valor_custo_centavos) / qtd, i.id, `NF ${n.numero ?? 's/n'}`, usuarioId],
+    );
+    feitas++;
+  }
+  return feitas;
+}
+
+/** Saldo de uma apropriação (insumo da obra + etapa) = entradas e ajustes menos saídas. */
+export async function saldoApropriacao(c: Cliente, empresaId: string, obraId: string, obraItemId: string, eapNoId: string): Promise<number> {
+  const r = await c.query(
+    `SELECT coalesce(sum(CASE WHEN tipo = 'saida' THEN -quantidade ELSE quantidade END), 0) AS saldo
+       FROM estoque_movimentos WHERE empresa_id = $1 AND obra_id = $2 AND obra_item_id = $3 AND eap_no_id = $4`,
+    [empresaId, obraId, obraItemId, eapNoId],
+  );
+  return Number(r.rows[0].saldo);
 }

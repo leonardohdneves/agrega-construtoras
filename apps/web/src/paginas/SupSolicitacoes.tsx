@@ -138,6 +138,14 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
   const [nivel, setNivel] = useState<string>('');
   const [marcadas, setMarcadas] = useState<Set<string>>(() => new Set(inicial?.itens.map((i) => i.necessidadeId).filter((x): x is string => !!x) ?? []));
   const [novos, setNovos] = useState<NovoItem[]>([]);
+  // Estoque da obra por insumo e etapa: mostra se o item pedido já está em estoque e onde.
+  const [estoqueObra, setEstoqueObra] = useState<{ obraItemId: string; saldo: number; unidade: string; apropriacoes: { eapNoId: string; eapCodigo: string; quantidade: number }[] }[]>([]);
+  useEffect(() => {
+    if (!f.obraId) { setEstoqueObra([]); return; }
+    api<{ itens: { obraItemId: string; saldo: number; unidade: string; apropriacoes: { eapNoId: string; eapCodigo: string; quantidade: number }[] }[] }>(`/sup/estoque?obraId=${f.obraId}`)
+      .then((r) => setEstoqueObra(r.itens))
+      .catch(() => setEstoqueObra([]));
+  }, [f.obraId]);
   const [add, setAdd] = useState({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '' });
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -275,6 +283,17 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
                 {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
               </select>
             </div>
+            {add.obraItemId && (() => {
+              const e = estoqueObra.find((x) => x.obraItemId === add.obraItemId);
+              const nesta = e?.apropriacoes.find((x) => x.eapNoId === add.eapNoId);
+              return (
+                <p className="small muted" style={{ flexBasis: '100%', margin: '0 0 8px' }}>
+                  {e ? `Em estoque: ${e.saldo.toLocaleString('pt-BR')} ${e.unidade}` : 'Sem estoque deste insumo nesta obra.'}
+                  {e && e.apropriacoes.length > 0 && ` · por etapa: ${e.apropriacoes.map((x) => `${x.eapCodigo} ${x.quantidade.toLocaleString('pt-BR')}`).join(' · ')}`}
+                  {add.eapNoId && nesta ? ` · nesta etapa: ${nesta.quantidade.toLocaleString('pt-BR')} ${e?.unidade ?? ''}` : ''}
+                </p>
+              );
+            })()}
             {nivel !== 'obra' && (
               <div className="campo">
                 <label htmlFor="sol-no">Nó da EAP ({(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel})</label>
