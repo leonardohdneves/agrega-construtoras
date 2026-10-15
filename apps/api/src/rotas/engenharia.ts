@@ -1,5 +1,6 @@
 // Engenharia (Fase 1): tabelas de referência (SINAPI e próprio), obras com centro de custo e nível de apropriação,
 // itens copiados para cada obra (editáveis só na obra), EAP por níveis e orçamento.
+import { estoqueRecebimento } from '../lib/estoque.ts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Banco, Cliente } from '../db.ts';
@@ -770,6 +771,7 @@ export function rotasEngenharia(banco: Banco) {
           )
         ).rows[0];
         if (d.responsaveis?.length) await gravarResponsaveis(c, empresaId, o.id, d.responsaveis);
+        await estoqueRecebimento(c, empresaId, o.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obras', entidadeId: o.id, depois: { ...d, codigo } });
         return o.id as string;
       });
