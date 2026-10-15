@@ -68,6 +68,7 @@ import { EngAcompanhamento } from './paginas/EngAcompanhamento';
 import { GerAcompanhamento } from './paginas/GerAcompanhamento';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
 import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
+import { GerAdministrativo, GerFinanceiro, GerObras } from './paginas/GerAbas';
 import { PaginaMinhasCargas } from './paginas/MinhasCargas';
 import { QualDemandas, QualRastreabilidade } from './paginas/QualRastreabilidade';
 import { MuralAvisos } from './paginas/Mural';
@@ -137,6 +138,9 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="fin/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelFinanceiro /></Protegido>} />
             <Route path="adm/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelAdm /></Protegido>} />
             <Route path="config/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelConfig /></Protegido>} />
+            <Route path="ger/financeiro" element={<Protegido perfis={['dono', 'gestor']}><GerFinanceiro /></Protegido>} />
+            <Route path="ger/obras" element={<Protegido perfis={['dono', 'gestor']}><GerObras /></Protegido>} />
+            <Route path="ger/administrativo" element={<Protegido perfis={['dono', 'gestor']}><GerAdministrativo /></Protegido>} />
             <Route path="ger/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelGerencial /></Protegido>} />
             <Route path="ger/acompanhamento" element={<Protegido perfis={['dono', 'gestor']}><GerAcompanhamento /></Protegido>} />
             <Route path="ger/indicadores" element={<Protegido perfis={['dono', 'gestor']}><Indicadores /></Protegido>} />

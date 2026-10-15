@@ -158,15 +158,12 @@ export const MODULOS: Modulo[] = [
     icone: <IconeGrafico />,
     perfis: GESTAO,
     itens: [
-      { rotulo: 'DRE gerencial', para: '/ger/dre' },
-      { rotulo: 'Fluxo de caixa', para: '/ger/fluxo' },
-      { rotulo: 'Custo por veículo', para: '/ger/custo-veiculo' },
+      { rotulo: 'Gerencial Financeiro', para: '/ger/financeiro' },
+      { rotulo: 'Gerencial Obras', para: '/ger/obras' },
+      { rotulo: 'Gerencial Administrativo', para: '/ger/administrativo' },
       { rotulo: 'Relatórios gerais', para: '/ger/relatorios' },
-      { rotulo: 'Acompanhamento de obra', para: '/ger/acompanhamento' },
       { rotulo: 'Autorizações de pagamento', para: '/sup/autorizacoes' },
-      { rotulo: 'Indicadores', para: '/ger/indicadores' },
       { rotulo: 'Aprovações', para: '/ger/aprovacoes' },
-      { rotulo: 'Produção da equipe', para: '/ger/producao-equipe' },
     ],
   },
   {
