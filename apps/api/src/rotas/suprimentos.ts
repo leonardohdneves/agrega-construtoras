@@ -5,7 +5,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
-import { saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
+import { estoqueRecebimento, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { normalizar } from '../lib/sugestoes.ts';
@@ -711,6 +711,7 @@ export function rotasSuprimentos(banco: Banco) {
           data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
           quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
           observacao: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
+          estoqueId: z.string().uuid().optional().nullable(),
         })
         .parse(req.body);
       const empresaId = empresaDo(req);
@@ -720,16 +721,77 @@ export function rotasSuprimentos(banco: Banco) {
         await validarApropriacaoObra(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
         const saldo = await saldoApropriacao(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
         if (qtd > saldo + 0.0005) throw new ErroHttp(400, `Saldo insuficiente nesta etapa: ${saldo.toLocaleString('pt-BR')} disponível.`);
+        // Sem estoque escolhido, a saída sai do estoque de recebimento da obra.
+        let estoqueId = d.estoqueId ?? null;
+        if (estoqueId) {
+          const ok = (await c.query('SELECT 1 FROM obra_estoques WHERE id = $1 AND obra_id = $2 AND ativo', [estoqueId, d.obraId])).rowCount;
+          if (!ok) throw new ErroHttp(400, 'Estoque não encontrado nesta obra ou inativo.');
+        } else {
+          estoqueId = await estoqueRecebimento(c, empresaId, d.obraId);
+        }
         const mov = (
           await c.query(
-            `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id)
-             VALUES ($1,$2,$3,$4,$5,'saida',$6,$7,$8) RETURNING id`,
-            [empresaId, d.obraId, d.obraItemId, d.eapNoId, d.data, qtd, d.observacao, u.id],
+            `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id)
+             VALUES ($1,$2,$3,$4,$5,$6,'saida',$7,$8,$9) RETURNING id`,
+            [empresaId, d.obraId, estoqueId, d.obraItemId, d.eapNoId, d.data, qtd, d.observacao, u.id],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'estoque_movimentos', entidadeId: mov.id, depois: { tipo: 'saida', quantidade: qtd, obraItemId: d.obraItemId, eapNoId: d.eapNoId } });
       });
       reply.code(201);
+      return { ok: true };
+    });
+
+    // ----- Estoques de cada obra: sempre há um de recebimento (ativo), onde entram as notas de compra.
+    app.get<{ Params: { obraId: string } }>('/obras/:obraId/estoques', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.obraId)) throw new ErroHttp(404, 'Obra não encontrada.');
+      const r = await banco.query(
+        `SELECT e.id, e.nome, e.recebimento, e.ativo, (SELECT count(*) FROM estoque_movimentos m WHERE m.obra_estoque_id = e.id)::int AS movimentos
+           FROM obra_estoques e JOIN obras o ON o.id = e.obra_id
+          WHERE e.obra_id = $1 AND o.empresa_id = $2
+          ORDER BY e.recebimento DESC, e.nome`,
+        [req.params.obraId, empresaId],
+      );
+      return { estoques: r.rows.map((x) => ({ id: x.id, nome: x.nome, recebimento: x.recebimento, ativo: x.ativo, movimentos: x.movimentos })) };
+    });
+
+    app.post<{ Params: { obraId: string } }>('/obras/:obraId/estoques', async (req, reply) => {
+      const d = z.object({ nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60) }).parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      if (!UUID.test(req.params.obraId)) throw new ErroHttp(404, 'Obra não encontrada.');
+      const id = await emTransacao(banco, async (c) => {
+        if (!(await c.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2', [req.params.obraId, empresaId])).rowCount) throw new ErroHttp(404, 'Obra não encontrada.');
+        if ((await c.query('SELECT 1 FROM obra_estoques WHERE obra_id = $1 AND lower(nome) = lower($2)', [req.params.obraId, d.nome])).rowCount)
+          throw new ErroHttp(400, 'Já existe um estoque com esse nome nesta obra.');
+        const e = (await c.query('INSERT INTO obra_estoques (empresa_id, obra_id, nome) VALUES ($1,$2,$3) RETURNING id', [empresaId, req.params.obraId, d.nome])).rows[0];
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'obra_estoques', entidadeId: e.id, depois: { obraId: req.params.obraId, nome: d.nome } });
+        return e.id as string;
+      });
+      reply.code(201);
+      return { ok: true, id };
+    });
+
+    app.put<{ Params: { id: string } }>('/estoques/:id', async (req) => {
+      const d = z.object({
+        nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60).optional(),
+        ativo: z.boolean().optional(),
+      }).parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      if (!UUID.test(req.params.id)) throw new ErroHttp(404, 'Estoque não encontrado.');
+      await emTransacao(banco, async (c) => {
+        const atual = (
+          await c.query('SELECT e.* FROM obra_estoques e JOIN obras o ON o.id = e.obra_id WHERE e.id = $1 AND o.empresa_id = $2', [req.params.id, empresaId])
+        ).rows[0];
+        if (!atual) throw new ErroHttp(404, 'Estoque não encontrado.');
+        if (atual.recebimento && d.ativo === false) throw new ErroHttp(400, 'O estoque de recebimento não pode ser desativado. Toda obra precisa dele.');
+        if (d.nome && d.nome.toLowerCase() !== String(atual.nome).toLowerCase() && (await c.query('SELECT 1 FROM obra_estoques WHERE obra_id = $1 AND lower(nome) = lower($2) AND id <> $3', [atual.obra_id, d.nome, atual.id])).rowCount)
+          throw new ErroHttp(400, 'Já existe um estoque com esse nome nesta obra.');
+        await c.query('UPDATE obra_estoques SET nome = coalesce($2, nome), ativo = coalesce($3, ativo) WHERE id = $1', [atual.id, d.nome ?? null, d.ativo ?? null]);
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'obra_estoques', entidadeId: atual.id, antes: { nome: atual.nome, ativo: atual.ativo }, depois: d });
+      });
       return { ok: true };
     });
 

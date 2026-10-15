@@ -157,6 +157,16 @@ export async function validarApropriacaoObra(c: Cliente, empresaId: string, obra
   }
 }
 
+/** Estoque de recebimento da obra: toda obra tem um (criado se faltar). É onde entram as notas de compra. */
+export async function estoqueRecebimento(c: Cliente, empresaId: string, obraId: string): Promise<string> {
+  const ex = (await c.query('SELECT id FROM obra_estoques WHERE obra_id = $1 AND recebimento', [obraId])).rows[0];
+  if (ex) return ex.id as string;
+  const novo = (
+    await c.query(`INSERT INTO obra_estoques (empresa_id, obra_id, nome, recebimento) VALUES ($1,$2,'Recebimento',true) RETURNING id`, [empresaId, obraId])
+  ).rows[0];
+  return novo.id as string;
+}
+
 /**
  * Entradas da construtora: cada item da nota com obra, insumo da obra e etapa vira entrada na apropriação.
  * Quando a nota veio de um pedido, a apropriação é a do item do pedido (que veio da solicitação).
@@ -182,16 +192,18 @@ export async function registrarEntradasObra(c: Cliente, empresaId: string, notaI
     )
   ).rows;
   let feitas = 0;
+  const recebimentos = new Map<string, string>();
   for (const i of itens) {
     const qtd = Number(i.quantidade);
     if (!i.obra_item_id || !i.eap_no_id || !i.obra_id || !(qtd > 0)) continue;
+    if (!recebimentos.has(i.obra_id)) recebimentos.set(i.obra_id, await estoqueRecebimento(c, empresaId, i.obra_id));
     // A nota vem na unidade de compra; o estoque é mantido na unidade base do orçamento (ex.: kg).
     const fator = fatorEntrada(i.unidade, i.unidade_base ?? '', i.fator_compra === null ? null : Number(i.fator_compra));
     const qtdBase = qtd * fator;
     await c.query(
-      `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_item_id, eap_no_id, data, tipo, quantidade, custo_unitario_centavos, nota_item_id, observacao, criado_por_id)
-       VALUES ($1,$2,$3,$4,$5,'entrada',$6,$7,$8,$9,$10)`,
-      [empresaId, i.obra_id, i.obra_item_id, i.eap_no_id, n.data_emissao, Math.round(qtdBase * 1000) / 1000, Number(i.valor_custo_centavos) / qtdBase, i.id, `NF ${n.numero ?? 's/n'}`, usuarioId],
+      `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, custo_unitario_centavos, nota_item_id, observacao, criado_por_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'entrada',$7,$8,$9,$10,$11)`,
+      [empresaId, i.obra_id, recebimentos.get(i.obra_id), i.obra_item_id, i.eap_no_id, n.data_emissao, Math.round(qtdBase * 1000) / 1000, Number(i.valor_custo_centavos) / qtdBase, i.id, `NF ${n.numero ?? 's/n'}`, usuarioId],
     );
     feitas++;
   }

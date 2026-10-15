@@ -6,6 +6,7 @@ type ItemEstoque = { obraItemId: string; codigo: string; descricao: string; unid
 type Obra = { id: string; codigo: string; nome: string };
 type NoEap = { id: string; codigo: string; descricao: string };
 type InsumoObra = { id: string; codigo: string; descricao: string; unidade: string };
+type EstoqueObra = { id: string; nome: string; recebimento: boolean; ativo: boolean; movimentos: number };
 
 const hoje = () => new Date().toISOString().slice(0, 10);
 const num = (v: number) => v.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
@@ -20,12 +21,42 @@ export function SupEstoque() {
   const [aviso, setAviso] = useState<string | null>(null);
   const [insumos, setInsumos] = useState<InsumoObra[]>([]);
   const [etapas, setEtapas] = useState<NoEap[]>([]);
-  const [saida, setSaida] = useState({ obraItemId: '', eapNoId: '', quantidade: '', data: hoje(), observacao: '' });
+  const [saida, setSaida] = useState({ obraItemId: '', eapNoId: '', quantidade: '', data: hoje(), observacao: '', estoqueId: '' });
   const [ocupado, setOcupado] = useState(false);
+  const [estoques, setEstoques] = useState<EstoqueObra[]>([]);
+  const [nomeNovo, setNomeNovo] = useState('');
 
   useEffect(() => {
     api<{ obras: Obra[] }>('/obras').then((r) => setObras(r.obras)).catch(() => setObras([]));
   }, []);
+
+  async function carregarEstoques(obra: string) {
+    const r = await api<{ estoques: EstoqueObra[] }>(`/sup/obras/${obra}/estoques`);
+    setEstoques(r.estoques);
+  }
+
+  async function criarEstoque(e: FormEvent) {
+    e.preventDefault();
+    setErro(null); setAviso(null);
+    try {
+      await api(`/sup/obras/${obraId}/estoques`, { metodo: 'POST', corpo: { nome: nomeNovo } });
+      setNomeNovo('');
+      setAviso('Estoque criado.');
+      await carregarEstoques(obraId);
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+  }
+
+  async function alternarEstoque(est: EstoqueObra) {
+    setErro(null); setAviso(null);
+    try {
+      await api(`/sup/estoques/${est.id}`, { metodo: 'PUT', corpo: { ativo: !est.ativo } });
+      await carregarEstoques(obraId);
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+  }
 
   async function carregar(obra: string) {
     setItens(null);
@@ -34,11 +65,13 @@ export function SupEstoque() {
   }
 
   useEffect(() => {
-    setSaida({ obraItemId: '', eapNoId: '', quantidade: '', data: hoje(), observacao: '' });
+    setSaida({ obraItemId: '', eapNoId: '', quantidade: '', data: hoje(), observacao: '', estoqueId: '' });
+    setEstoques([]);
     setInsumos([]);
     setEtapas([]);
     if (!obraId) { setItens(null); return; }
     carregar(obraId).catch((e) => setErro((e as Error).message));
+    carregarEstoques(obraId).catch((e) => setErro((e as Error).message));
     api<{ itens: InsumoObra[] }>(`/obras/${obraId}/itens?tipo=insumo`).then((r) => setInsumos(r.itens)).catch(() => setInsumos([]));
     api<{ nos: NoEap[] }>(`/obras/${obraId}/eap`).then((r) => setEtapas(r.nos)).catch(() => setEtapas([]));
   }, [obraId]);
@@ -53,10 +86,10 @@ export function SupEstoque() {
     try {
       await api('/sup/estoque/saidas', {
         metodo: 'POST',
-        corpo: { obraId, obraItemId: saida.obraItemId, eapNoId: saida.eapNoId, data: saida.data, quantidade: saida.quantidade, observacao: saida.observacao || null },
+        corpo: { obraId, obraItemId: saida.obraItemId, eapNoId: saida.eapNoId, data: saida.data, quantidade: saida.quantidade, observacao: saida.observacao || null, estoqueId: saida.estoqueId || null },
       });
       setAviso('Saída registrada.');
-      setSaida({ obraItemId: '', eapNoId: '', quantidade: '', data: hoje(), observacao: '' });
+      setSaida({ obraItemId: '', eapNoId: '', quantidade: '', data: hoje(), observacao: '', estoqueId: '' });
       await carregar(obraId);
     } catch (err) {
       setErro((err as Error).message);
@@ -87,6 +120,35 @@ export function SupEstoque() {
 
       {obraId && (
         <>
+          <div className="card">
+            <h2>Estoques da obra</h2>
+            <p className="muted small">As notas de compra entram no estoque de recebimento. Outros estoques servem para organizar as saídas; cada obra mantém sempre o de recebimento ativo.</p>
+            {estoques.length > 0 && (
+              <table className="tabela">
+                <thead><tr><th>Estoque</th><th>Situação</th><th className="n">Movimentos</th><th /></tr></thead>
+                <tbody>
+                  {estoques.map((est) => (
+                    <tr key={est.id}>
+                      <td>{est.nome}</td>
+                      <td>{est.recebimento ? 'Recebimento' : est.ativo ? 'Ativo' : 'Inativo'}</td>
+                      <td className="n">{est.movimentos}</td>
+                      <td>{!est.recebimento && <button className="btn btn-link" type="button" onClick={() => alternarEstoque(est)}>{est.ativo ? 'Desativar' : 'Ativar'}</button>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            <form className="campos" onSubmit={criarEstoque}>
+              <label className="campo">
+                <span>Novo estoque</span>
+                <input aria-label="Nome do novo estoque" required minLength={2} maxLength={60} value={nomeNovo} onChange={(e) => setNomeNovo(e.target.value)} />
+              </label>
+              <div className="acoes">
+                <button className="btn btn-secundario" type="submit">Criar estoque</button>
+              </div>
+            </form>
+          </div>
+
           <div className="card">
             <h2>Saldo por insumo</h2>
             {itens === null ? <p className="muted">Carregando…</p> : itens.length === 0 ? (
@@ -119,6 +181,13 @@ export function SupEstoque() {
                 <select aria-label="Insumo da obra" required value={saida.obraItemId} onChange={(e) => setSaida({ ...saida, obraItemId: e.target.value, eapNoId: '' })}>
                   <option value="">Escolha…</option>
                   {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+                </select>
+              </label>
+              <label className="campo">
+                <span>Estoque de saída</span>
+                <select aria-label="Estoque de saída" value={saida.estoqueId} onChange={(e) => setSaida({ ...saida, estoqueId: e.target.value })}>
+                  <option value="">Recebimento (padrão)</option>
+                  {estoques.filter((est) => est.ativo && !est.recebimento).map((est) => <option key={est.id} value={est.id}>{est.nome}</option>)}
                 </select>
               </label>
               <label className="campo">
