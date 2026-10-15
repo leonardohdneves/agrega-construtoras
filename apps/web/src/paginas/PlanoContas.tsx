@@ -89,7 +89,7 @@ export function PlanoContas() {
               )
             }
           >
-            {plano?.length ? 'Completar com o plano padrão' : 'Aplicar plano padrão de concreteira'}
+            {plano?.length ? 'Completar com o plano padrão' : 'Aplicar plano padrão de construtora'}
           </button>
           {!form && plano && (
             <button className="btn btn-primario" type="button" onClick={() => novaEm()}>
@@ -147,8 +147,8 @@ export function PlanoContas() {
           <p className="muted">Carregando…</p>
         ) : plano.length === 0 ? (
           <p className="muted" style={{ margin: 0 }}>
-            O plano de contas está vazio. Aplique o plano padrão de concreteira (receitas de concreto e bombeamento, cimento, agregados, diesel, manutenção, pessoal, administrativo,
-            financeiro e investimentos) e ajuste o que precisar.
+            O plano de contas está vazio. Aplique o plano padrão de construtora (receitas de vendas e medições de obras, materiais, serviços de obra, equipamentos, mão de obra,
+            administrativo, comercial, financeiro e investimentos) e ajuste o que precisar.
           </p>
         ) : (
           <>
