@@ -162,6 +162,8 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/solicitacoes" element={<Protegido perfis={['dono', 'gestor']}><SupSolicitacoes /></Protegido>} />
             <Route path="sup/solicitacoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaSolicitacao /></Protegido>} />
             <Route path="sup/solicitacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><SolicitacaoDetalhe /></Protegido>} />
+            <Route path="sup/solicitacoes-servico" element={<Protegido perfis={['dono', 'gestor']}><SupSolicitacoes tipo="servico" /></Protegido>} />
+            <Route path="sup/solicitacoes-servico/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaSolicitacao tipo="servico" /></Protegido>} />
             <Route path="sup/cotacoes" element={<Protegido perfis={['dono', 'gestor']}><SupCotacoes /></Protegido>} />
             <Route path="sup/cotacoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaCotacao /></Protegido>} />
             <Route path="sup/cotacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><CotacaoDetalhe /></Protegido>} />

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarDataHora, formatarDocumento, formatarMoeda, hojeLocal, lerNumero, moedaCampo, NOMES_FORMA, type FormaPagamento, type PlanoConta } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import {
@@ -353,7 +353,8 @@ export function ContratoDetalhe() {
   const navegar = useNavigate();
   const [k, setK] = useState<Contrato | null>(null);
   const [erro, setErro] = useState('');
-  const [aviso, setAviso] = useState('');
+  const local = useLocation();
+  const [aviso, setAviso] = useState((local.state as { aviso?: string } | null)?.aviso ?? '');
   const [editar, setEditar] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [reprovar, setReprovar] = useState<string | null>(null);
