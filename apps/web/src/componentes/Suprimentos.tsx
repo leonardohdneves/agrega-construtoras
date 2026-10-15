@@ -172,10 +172,12 @@ export type Medicao = {
   id: string; numero: number; sequencia: number; contratoId: string;
   contrato: { numero: number; objeto: string; tipo: 'itens' | 'global'; fornecedor: FornecedorDoc; retencoes: Retencoes; valor: number; status: StatusContrato; prazoPagamentoDias: number; formaPagamento: string | null };
   periodoInicio: string; periodoFim: string; data: string; valor: number; observacao: string | null; status: StatusMedicao; criadoPor: string | null;
+  base: 'quantidades' | 'percentual' | 'valor' | null; percentual: number | null;
+  descontos: { id: string; descricao: string; valor: number }[]; totalDescontos: number;
   enviadoAprovacaoEm: string | null; aprovadoPor: string | null; aprovadoEm: string | null; aprovacaoAutomatica: boolean; motivoReprovacao: string | null;
   itens: { contratoItemId: string; descricao: string; unidade: string; quantidadeContrato: number; precoUnitario: number; totalContrato: number; anterior: number; atual: number; acumulado: number; saldo: number; valorAnterior: number; valorAtual: number; percentualAcumulado: number }[];
   totais: { contrato: number; anterior: number; atual: number; acumulado: number; saldo: number; percentualAcumulado: number };
-  retencoesPrevistas: Retencoes & { liquido: number };
+  retencoesPrevistas: Retencoes & { liquido: number; descontos: number; liquidoAPagar: number };
   autorizacao: { id: string; numero: number; status: StatusAutorizacao } | null;
   podeAprovar: boolean; regrasAprovacao: string;
 };
@@ -189,6 +191,7 @@ export type Autorizacao = {
   contrato: { numero: number; objeto: string; fornecedor: FornecedorDoc; planoConta: string; centroCusto: string | null; retencoes: Retencoes };
   medicao: { id: string; numero: number; sequencia: number; periodoInicio: string; periodoFim: string } | null;
   data: string; vencimento: string; bruto: number; caucao: number; iss: number; inss: number; ir: number; pcc: number; impostos: number; liquido: number;
+  descontos: number;
   documento: string | null; formaPagamento: string | null; observacao: string | null; status: StatusAutorizacao; criadoPor: string | null; enviadoAprovacaoEm: string;
   aprovadoPor: string | null; aprovadoEm: string | null; aprovacaoAutomatica: boolean; motivoReprovacao: string | null; lancamentoId: string | null;
   lancamentoImpostosId: string | null; parcelas: ParcelaAut[]; parcelasImpostos: ParcelaAut[]; pago: boolean; podeAprovar: boolean; regrasAprovacao: string;
