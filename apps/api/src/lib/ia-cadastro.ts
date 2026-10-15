@@ -1,7 +1,7 @@
 // Leitura por IA de cadastros (fornecedor, credor, cliente e colaborador) a partir de foto ou PDF do documento:
 // cartão de CNPJ, contrato social, ficha, CNH, RG, carteira de trabalho, cartão de visita etc.
 // Só funciona com ANTHROPIC_API_KEY definida. Quem chama deve mostrar os dados para conferência antes de salvar.
-import { ErroIa } from './ia-nota.ts';
+import { blocoDocumento, chamarIaComFerramenta } from './ia-documento.ts';
 
 export type EntidadeCadastro = 'fornecedor' | 'credor' | 'cliente' | 'colaborador';
 export type DadosCadastro = Record<string, string | number | null>;
@@ -99,60 +99,13 @@ export function cadastroDaIa(entidade: EntidadeCadastro, bruto: Record<string, u
 
 /** Envia a foto ou o PDF do documento para a IA e devolve os campos do cadastro. */
 export async function lerCadastroComIa(arquivo: Buffer, tipoArquivo: string, entidade: EntidadeCadastro) {
-  const chave = process.env.ANTHROPIC_API_KEY?.trim();
-  if (!chave) throw new ErroIa('A leitura por IA não está configurada.');
-  const modelo = process.env.ANTHROPIC_MODEL?.trim() || 'claude-sonnet-5-5';
-  const bloco =
-    tipoArquivo === 'application/pdf'
-      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: arquivo.toString('base64') } }
-      : { type: 'image', source: { type: 'base64', media_type: tipoArquivo, data: arquivo.toString('base64') } };
-  const pedido = {
-    model: modelo,
-    max_tokens: 2000,
-    tools: [ferramenta(entidade)],
-    tool_choice: { type: 'auto' },
-    messages: [
-      {
-        role: 'user',
-        content: [
-          bloco,
-          {
-            type: 'text',
-            text:
-              `Este documento brasileiro traz os dados de ${DESCRICAO[entidade]}. Registre os dados chamando a ferramenta registrar_cadastro. ` +
-              'Copie os dados exatamente como impressos. Se um campo não aparecer ou estiver ilegível, deixe-o vazio e inclua-o em "duvidas". ' +
-              'Não invente dados e não complete campos a partir de suposições. Datas no formato AAAA-MM-DD.',
-          },
-        ],
-      },
-    ],
-  };
-  let resp: Response;
-  try {
-    resp = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-api-key': chave, 'anthropic-version': '2023-06-01' },
-      body: JSON.stringify(pedido),
-      signal: AbortSignal.timeout(90_000),
-    });
-  } catch {
-    throw new ErroIa('Não consegui falar com o serviço de IA agora. Tente de novo em instantes.');
-  }
-  if (!resp.ok) {
-    // A mensagem da API diz o motivo (crédito, modelo, pedido inválido); nunca inclui a chave.
-    const detalhe = await resp
-      .json()
-      .then((j: { error?: { message?: string } }) => j?.error?.message ?? '')
-      .catch(() => '');
-    console.error(`[ia-cadastro] Anthropic ${resp.status}: ${detalhe}`);
-    if (/credit balance/i.test(detalhe)) throw new ErroIa('A conta da IA está sem créditos. Adicione saldo em console.anthropic.com › Billing e tente de novo.');
-    if (resp.status === 401 || resp.status === 403) throw new ErroIa('A chave da IA foi recusada. Confira a variável ANTHROPIC_API_KEY.');
-    if (resp.status === 429 || resp.status === 529) throw new ErroIa('O serviço de IA está ocupado. Tente de novo em instantes.');
-    if (resp.status === 413) throw new ErroIa('O arquivo é grande demais para a leitura por IA.');
-    throw new ErroIa(`A leitura por IA falhou (código ${resp.status}${detalhe ? `: ${detalhe}` : ''}).`);
-  }
-  const corpo = (await resp.json()) as { content?: { type: string; name?: string; input?: Record<string, unknown> }[] };
-  const uso = corpo.content?.find((b) => b.type === 'tool_use' && b.name === 'registrar_cadastro');
-  if (!uso?.input) throw new ErroIa('A IA não devolveu os dados do cadastro. Tente de novo.');
-  return cadastroDaIa(entidade, uso.input);
+  const entrada = await chamarIaComFerramenta({
+    bloco: blocoDocumento(arquivo, tipoArquivo),
+    ferramenta: ferramenta(entidade),
+    instrucao:
+      `Este documento brasileiro traz os dados de ${DESCRICAO[entidade]}. Registre os dados chamando a ferramenta registrar_cadastro. ` +
+      'Copie os dados exatamente como impressos. Se um campo não aparecer ou estiver ilegível, deixe-o vazio e inclua-o em "duvidas". ' +
+      'Não invente dados e não complete campos a partir de suposições. Datas no formato AAAA-MM-DD.',
+  });
+  return cadastroDaIa(entidade, entrada);
 }

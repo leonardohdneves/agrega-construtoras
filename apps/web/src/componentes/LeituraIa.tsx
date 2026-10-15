@@ -8,7 +8,7 @@ export type DadosLidos = Record<string, string | number | null>;
 
 const LIMITE = 10 * 1024 * 1024;
 
-function arquivoParaBase64(arquivo: File): Promise<string> {
+export function arquivoParaBase64(arquivo: File): Promise<string> {
   return new Promise((resolver, rejeitar) => {
     const leitor = new FileReader();
     leitor.onload = () => resolver(String(leitor.result).split(',')[1] ?? '');
