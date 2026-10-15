@@ -372,9 +372,22 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
 type ComposicaoPlanilha = { id: string; codigo: string; descricao: string; unidade: string };
 type NovoServico = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string | null; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number };
 
+/** Nome completo da conta com as categorias acima dela, ex.: "3 · Despesas › 3.7 · Serviços Terceirizados". */
+function caminhoConta(p: PlanoConta, todas: PlanoConta[]): string {
+  const porId = new Map(todas.map((x) => [x.id, x]));
+  const partes: string[] = [];
+  const vistas = new Set<string>();
+  for (let atual: PlanoConta | undefined = p; atual && !vistas.has(atual.id); atual = atual.paiId ? porId.get(atual.paiId) : undefined) {
+    vistas.add(atual.id);
+    partes.unshift(`${atual.codigo} · ${atual.nome}`);
+  }
+  return partes.join(' › ');
+}
+
 function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao; aoSalvar: (s: Solicitacao) => void; aoCancelar?: () => void }) {
   const [obras, setObras] = useState<ObraLista[]>([]);
   const [planos, setPlanos] = useState<PlanoConta[]>([]);
+  const [contas, setContas] = useState<PlanoConta[]>([]);
   const [f, setF] = useState({
     obraId: inicial?.obraId ?? '',
     data: inicial?.data ?? hojeLocal(),
@@ -399,7 +412,11 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
       .then((r) => setObras(r.obras.filter((o) => o.ativo !== false)))
       .catch((e) => setErro((e as Error).message));
     api<{ contas: PlanoConta[] }>('/fin/plano-contas')
-      .then((r) => setPlanos(r.contas.filter((p) => p.tipo === 'despesa' && p.aceitaLancamento && p.ativo)))
+      .then((r) => {
+        const ativas = r.contas.filter((p) => p.tipo === 'despesa' && p.ativo);
+        setContas(ativas);
+        setPlanos(ativas.filter((p) => p.aceitaLancamento));
+      })
       .catch((e) => setErro((e as Error).message));
   }, []);
 
@@ -502,7 +519,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
           <label htmlFor="serv-cat">Categoria (plano de contas)</label>
           <select id="serv-cat" value={f.planoContaId} onChange={(e) => setF({ ...f, planoContaId: e.target.value })}>
             <option value="">Escolha…</option>
-            {planos.map((p) => <option key={p.id} value={p.id}>{p.codigo} · {p.nome}</option>)}
+            {planos.map((p) => <option key={p.id} value={p.id}>{caminhoConta(p, contas)}</option>)}
           </select>
         </div>
       </div>
@@ -532,7 +549,13 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
             )}
             <div className="campo">
               <label htmlFor="serv-qtd">Quantidade</label>
-              <input id="serv-qtd" className="mono" inputMode="decimal" value={add.quantidade} onChange={(e) => setAdd({ ...add, quantidade: e.target.value })} />
+              <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                <input id="serv-qtd" className="mono" inputMode="decimal" value={add.quantidade} onChange={(e) => setAdd({ ...add, quantidade: e.target.value })} />
+                {(() => {
+                  const unidade = composicoes?.find((i) => i.id === add.obraItemId)?.unidade;
+                  return unidade ? <span className="small muted">({unidadeTexto(unidade)})</span> : null;
+                })()}
+              </span>
             </div>
           </div>
           <div className="acoes">
