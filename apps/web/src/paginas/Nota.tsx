@@ -403,14 +403,16 @@ function ApropriacaoEstoque({ item, editavel, salvar }: { item: ItemNota; editav
   const [obras, setObras] = useState<{ id: string; codigo: string; nome: string }[]>([]);
   const [insumos, setInsumos] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
   const [etapas, setEtapas] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
+  const [estoques, setEstoques] = useState<{ id: string; codigo: string; nome: string; obraId: string | null }[]>([]);
   useEffect(() => {
     if (!editavel) return;
-    api<{ obras: { id: string; codigo: string; nome: string }[] }>('/obras').then((r) => setObras(r.obras)).catch(() => setObras([]));
+    api<{ obras: { id: string; codigo: string; nome: string }[] }>('/eng/obras').then((r) => setObras(r.obras)).catch(() => setObras([]));
   }, [editavel]);
   useEffect(() => {
-    if (!item.obraId) { setInsumos([]); setEtapas([]); return; }
-    api<{ itens: { id: string; codigo: string; descricao: string }[] }>(`/obras/${item.obraId}/itens?tipo=insumo`).then((r) => setInsumos(r.itens ?? [])).catch(() => setInsumos([]));
-    api<{ nos: { id: string; codigo: string; descricao: string }[] }>(`/obras/${item.obraId}/eap`).then((r) => setEtapas(r.nos ?? [])).catch(() => setEtapas([]));
+    if (!item.obraId) { setInsumos([]); setEtapas([]); setEstoques([]); return; }
+    api<{ itens: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/itens?tipo=insumo`).then((r) => setInsumos(r.itens ?? [])).catch(() => setInsumos([]));
+    api<{ nos: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/eap`).then((r) => setEtapas(r.nos ?? [])).catch(() => setEtapas([]));
+    api<{ estoques: { id: string; codigo: string; nome: string; obraId: string | null }[] }>(`/sup/estoques?obraId=${item.obraId}`).then((r) => setEstoques(r.estoques ?? [])).catch(() => setEstoques([]));
   }, [item.obraId]);
   if (!editavel) {
     return <span className="small">{item.obraItemDescricao ?? '—'}{item.eapCodigo ? ` · etapa ${item.eapCodigo}` : ''}</span>;
@@ -428,6 +430,10 @@ function ApropriacaoEstoque({ item, editavel, salvar }: { item: ItemNota; editav
       <select aria-label="Etapa da EAP" className="campo-tabela" value={item.eapNoId ?? ''} disabled={!item.obraId} onChange={(e) => salvar({ eapNoId: e.target.value || null })}>
         <option value="">Etapa…</option>
         {etapas.map((n) => <option key={n.id} value={n.id}>{n.codigo} {n.descricao}</option>)}
+      </select>
+      <select aria-label="Estoque de recebimento" className="campo-tabela" value={item.obraEstoqueId ?? ''} disabled={!item.obraId} onChange={(e) => salvar({ obraEstoqueId: e.target.value || null })}>
+        <option value="">Recebimento da obra</option>
+        {estoques.map((x) => <option key={x.id} value={x.id}>{x.codigo} · {x.nome}{x.obraId ? '' : ' (geral)'}</option>)}
       </select>
     </div>
   );

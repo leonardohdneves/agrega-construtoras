@@ -4,6 +4,8 @@ import type { Modulo, Perfil, Usuario } from './api';
 export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   admin_sistema: [],
   dono: ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
+  // Almoxarife: só Suprimentos › Estoque (entradas, etiquetas, saídas e funcionários).
+  almoxarife: ['suprimentos'],
   // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
   gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
@@ -20,7 +22,7 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
 };
 
 /** Perfis que a construtora pode dar aos usuários, na ordem da tela de usuários. */
-export const PERFIS_CONSTRUTORA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor'] as const;
+export const PERFIS_CONSTRUTORA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor', 'almoxarife'] as const;
 
 /** Só o dono e o perfil Financeiro veem saldo bancário, contas a pagar e a receber. */
 export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'financeiro'];
@@ -49,6 +51,7 @@ export function temModulo(usuario: Usuario | null, modulo: Modulo): boolean {
 /** Pode abrir a tela? Módulo liberado além do padrão do perfil dá acesso a todas as telas dele. */
 export function podeAcessar(usuario: Usuario | null, perfis: Perfil[] | undefined, caminho: string): boolean {
   if (!usuario) return false;
+  if (usuario.perfil === 'almoxarife') return /^\/sup\/estoque(\/|$)/.test(caminho) && temModulo(usuario, 'suprimentos');
   const porPerfil = !perfis || perfis.includes(usuario.perfil);
   const modulo = moduloDaPagina(caminho);
   if (!modulo || usuario.perfil === 'admin_sistema') return porPerfil;

@@ -26,6 +26,8 @@ export const NOMES_MODULO: Record<Modulo, string> = {
 export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   admin_sistema: [],
   dono: [...MODULOS],
+  // Almoxarife: só o estoque da construtora (Suprimentos › Estoque).
+  almoxarife: ['suprimentos'],
   // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
   gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
@@ -97,12 +99,17 @@ const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|pla
  * Decide o acesso: o perfil precisa estar entre os da rota e o módulo precisa estar liberado.
  * Módulo liberado além do padrão do perfil dá acesso completo a ele.
  */
+/** Almoxarife: estoques, saídas por etiqueta, funcionários e as leituras de obra e EAP que a tela usa. */
+const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|funcionarios|etiquetas|saidas-material)(\/|$)/];
+const ALMOXARIFADO_CONSULTAS = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/];
+
 export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; perfisRota: Perfil[]; url: string; metodo: string }): boolean {
   const porPerfil = !o.perfisRota.length || o.perfisRota.includes(o.perfil);
   const modulo = moduloDaRota(o.url);
   if (!modulo || o.perfil === 'admin_sistema') return porPerfil;
   const efetivos = modulosEfetivos(o.perfil, o.modulos);
   const path = o.url.split('?')[0];
+  if (o.perfil === 'almoxarife') return ALMOXARIFADO.some((rx) => rx.test(path)) || (o.metodo === 'GET' && ALMOXARIFADO_CONSULTAS.some((rx) => rx.test(path)));
   const consulta = o.metodo === 'GET' && CONSULTAS.some((rx) => rx.test(path));
   if (o.perfil === 'engenheiro_obra') {
     // Contratos e medições das obras dele (a rota confere a obra); listas de cadastro para preenchê-los.

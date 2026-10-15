@@ -5,7 +5,8 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
-import { estoqueDaMovimentacao, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
+import { estoqueDaMovimentacao, proximoCodigoEstoque, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
+import { chaveEtiqueta } from '../lib/etiquetas.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { normalizar } from '../lib/sugestoes.ts';
@@ -703,40 +704,6 @@ export function rotasSuprimentos(banco: Banco) {
       return { itens: [...mapa.values()] };
     });
 
-    app.post('/estoque/saidas', async (req, reply) => {
-      const d = z
-        .object({
-          obraId: z.string().uuid('Escolha a obra.'),
-          obraItemId: z.string().uuid('Escolha o insumo.'),
-          eapNoId: z.string().uuid('Escolha a etapa.'),
-          data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
-          quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
-          observacao: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
-          estoqueId: z.string().uuid().optional().nullable(),
-        })
-        .parse(req.body);
-      const empresaId = empresaDo(req);
-      const u = usuarioDe(req);
-      const qtd = Math.round(d.quantidade * 1000) / 1000;
-      await emTransacao(banco, async (c) => {
-        await validarApropriacaoObra(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
-        // Sem estoque escolhido, a saída sai do estoque de recebimento da obra. O saldo é o do estoque de origem.
-        const estoqueId = await estoqueDaMovimentacao(c, empresaId, d.obraId, d.estoqueId ?? null);
-        const saldo = await saldoApropriacao(c, empresaId, d.obraId, d.obraItemId, d.eapNoId, estoqueId);
-        if (qtd > saldo + 0.0005) throw new ErroHttp(400, `Saldo insuficiente neste estoque e etapa: ${saldo.toLocaleString('pt-BR')} disponível.`);
-        const mov = (
-          await c.query(
-            `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id)
-             VALUES ($1,$2,$3,$4,$5,$6,'saida',$7,$8,$9) RETURNING id`,
-            [empresaId, d.obraId, estoqueId, d.obraItemId, d.eapNoId, d.data, qtd, d.observacao, u.id],
-          )
-        ).rows[0];
-        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'estoque_movimentos', entidadeId: mov.id, depois: { tipo: 'saida', quantidade: qtd, obraItemId: d.obraItemId, eapNoId: d.eapNoId } });
-      });
-      reply.code(201);
-      return { ok: true };
-    });
-
     // ----- Transferência entre estoques da mesma obra: saída na origem e entrada no destino, com a mesma referência.
     app.post('/estoque/transferencias', async (req, reply) => {
       const d = z
@@ -803,7 +770,7 @@ export function rotasSuprimentos(banco: Banco) {
         if (!(await c.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2', [req.params.obraId, empresaId])).rowCount) throw new ErroHttp(404, 'Obra não encontrada.');
         if ((await c.query('SELECT 1 FROM obra_estoques WHERE obra_id = $1 AND lower(nome) = lower($2)', [req.params.obraId, d.nome])).rowCount)
           throw new ErroHttp(400, 'Já existe um estoque com esse nome nesta obra.');
-        const e = (await c.query('INSERT INTO obra_estoques (empresa_id, obra_id, nome) VALUES ($1,$2,$3) RETURNING id', [empresaId, req.params.obraId, d.nome])).rows[0];
+        const e = (await c.query('INSERT INTO obra_estoques (empresa_id, obra_id, nome, codigo) VALUES ($1,$2,$3,$4) RETURNING id', [empresaId, req.params.obraId, d.nome, await proximoCodigoEstoque(c, empresaId)])).rows[0];
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'obra_estoques', entidadeId: e.id, depois: { obraId: req.params.obraId, nome: d.nome } });
         return e.id as string;
       });
@@ -831,6 +798,226 @@ export function rotasSuprimentos(banco: Banco) {
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'obra_estoques', entidadeId: atual.id, antes: { nome: atual.nome, ativo: atual.ativo }, depois: d });
       });
       return { ok: true };
+    });
+
+    // ----- Estoques da empresa: com obra ou gerais, código automático.
+    app.get<{ Querystring: Record<string, string | undefined> }>('/estoques', async (req) => {
+      const empresaId = empresaDo(req);
+      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
+      const r = await banco.query(
+        `SELECT e.id, e.codigo, e.nome, e.recebimento, e.ativo, e.obra_id, o.codigo AS obra_codigo, o.nome AS obra_nome
+           FROM obra_estoques e LEFT JOIN obras o ON o.id = e.obra_id
+          WHERE e.empresa_id = $1 AND ($2::uuid IS NULL OR e.obra_id = $2 OR e.obra_id IS NULL)
+          ORDER BY e.recebimento DESC, e.codigo`,
+        [empresaId, obraId],
+      );
+      return { estoques: r.rows.map((x) => ({ id: x.id, codigo: x.codigo, nome: x.nome, recebimento: x.recebimento, ativo: x.ativo, obraId: x.obra_id ?? null, obraCodigo: x.obra_codigo ?? null, obraNome: x.obra_nome ?? null })) };
+    });
+
+    app.post('/estoques', async (req, reply) => {
+      const d = z
+        .object({
+          nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60),
+          obraId: z.string().uuid().optional().nullable().transform((v) => v || null),
+        })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      const criado = await emTransacao(banco, async (c) => {
+        if (d.obraId && !(await c.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2', [d.obraId, empresaId])).rowCount) throw new ErroHttp(400, 'Obra não encontrada.');
+        // Nome único dentro da obra (ou entre os gerais).
+        if ((await c.query('SELECT 1 FROM obra_estoques WHERE empresa_id = $1 AND coalesce(obra_id::text, $2) = coalesce($3::text, $2) AND lower(nome) = lower($4)', [empresaId, '-', d.obraId, d.nome])).rowCount)
+          throw new ErroHttp(400, 'Já existe um estoque com esse nome.');
+        const codigo = await proximoCodigoEstoque(c, empresaId);
+        const e = (await c.query('INSERT INTO obra_estoques (empresa_id, obra_id, nome, codigo) VALUES ($1,$2,$3,$4) RETURNING id, codigo', [empresaId, d.obraId, d.nome, codigo])).rows[0];
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'obra_estoques', entidadeId: e.id, depois: { codigo, nome: d.nome, obraId: d.obraId } });
+        return e;
+      });
+      reply.code(201);
+      return { ok: true, id: criado.id, codigo: criado.codigo };
+    });
+
+    // ----- Etiquetas (QR) das entradas de nota: cada item recebido tem a sua; a saída lê a etiqueta.
+    const SQL_ETIQUETAS = `
+      SELECT * FROM (
+        SELECT m.id, m.data, m.quantidade, m.observacao, m.obra_id, m.eap_no_id, m.obra_estoque_id, m.obra_item_id,
+               (m.quantidade - coalesce((SELECT sum(s.quantidade) FROM estoque_movimentos s WHERE s.etiqueta_id = m.id), 0)) AS saldo,
+               oi.codigo AS insumo_codigo, oi.descricao AS insumo_descricao, oi.unidade AS insumo_unidade,
+               o.codigo AS obra_codigo, o.nome AS obra_nome, e.codigo AS eap_codigo, e.descricao AS eap_descricao,
+               est.codigo AS estoque_codigo, est.nome AS estoque_nome, m.empresa_id
+          FROM estoque_movimentos m
+          JOIN obra_itens oi ON oi.id = m.obra_item_id
+          JOIN obras o ON o.id = m.obra_id
+          JOIN eap_nos e ON e.id = m.eap_no_id
+          LEFT JOIN obra_estoques est ON est.id = m.obra_estoque_id
+         WHERE m.tipo = 'entrada' AND m.nota_item_id IS NOT NULL AND m.obra_item_id IS NOT NULL
+      ) x`;
+    const etiquetaPublica = (x: Record<string, any>) => ({
+      id: x.id as string,
+      chave: chaveEtiqueta(x.id as string),
+      data: String(x.data).slice(0, 10),
+      quantidade: Number(x.quantidade),
+      saldo: Math.round(Number(x.saldo) * 1000) / 1000,
+      observacao: x.observacao ?? null,
+      insumo: { codigo: x.insumo_codigo as string, descricao: x.insumo_descricao as string, unidade: x.insumo_unidade as string },
+      obraId: x.obra_id as string,
+      obraCodigo: x.obra_codigo as string,
+      obraNome: x.obra_nome as string,
+      eapNoId: x.eap_no_id as string,
+      eapCodigo: x.eap_codigo as string,
+      eapDescricao: x.eap_descricao as string,
+      estoque: { id: (x.obra_estoque_id ?? null) as string | null, codigo: (x.estoque_codigo ?? null) as string | null, nome: (x.estoque_nome ?? null) as string | null },
+    });
+
+    app.get<{ Querystring: Record<string, string | undefined> }>('/etiquetas', async (req) => {
+      const empresaId = empresaDo(req);
+      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
+      const estoqueId = req.query.estoqueId && UUID.test(req.query.estoqueId) ? req.query.estoqueId : null;
+      const soSaldo = req.query.saldo !== '0';
+      const r = await banco.query(
+        `${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND ($2::uuid IS NULL OR x.obra_id = $2) AND ($3::uuid IS NULL OR x.obra_estoque_id = $3)
+            AND ($4::boolean = false OR x.saldo > 0) ORDER BY x.data DESC, x.insumo_descricao LIMIT 300`,
+        [empresaId, obraId, estoqueId, soSaldo],
+      );
+      return { etiquetas: r.rows.map(etiquetaPublica) };
+    });
+
+    app.get<{ Params: { id: string } }>('/etiquetas/:id', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw new ErroHttp(404, 'Etiqueta não encontrada.');
+      const r = await banco.query(`${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND x.id = $2`, [empresaId, req.params.id]);
+      if (!r.rows[0]) throw new ErroHttp(404, 'Etiqueta não encontrada.');
+      return { etiqueta: etiquetaPublica(r.rows[0]) };
+    });
+
+    // ----- Funcionários que recebem material na obra.
+    const cpfOpc = z.string().optional().nullable().transform((v) => (v ? v.replace(/\D/g, '') || null : null)).refine((v) => v === null || v.length === 11, 'CPF com 11 números.');
+    app.get('/funcionarios', async (req) => {
+      const r = await banco.query('SELECT id, nome, cpf, funcao, ativo FROM funcionarios WHERE empresa_id = $1 ORDER BY ativo DESC, nome', [empresaDo(req)]);
+      return { funcionarios: r.rows.map((x) => ({ id: x.id, nome: x.nome, cpf: x.cpf ?? null, funcao: x.funcao ?? null, ativo: x.ativo })) };
+    });
+
+    app.post('/funcionarios', async (req, reply) => {
+      const d = z
+        .object({
+          nome: z.string().trim().min(2, 'Informe o nome do funcionário.').max(120),
+          cpf: cpfOpc,
+          funcao: z.string().trim().max(60).optional().nullable().transform((v) => v || null),
+        })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      const id = await emTransacao(banco, async (c) => {
+        const f = (await c.query('INSERT INTO funcionarios (empresa_id, nome, cpf, funcao) VALUES ($1,$2,$3,$4) RETURNING id', [empresaId, d.nome, d.cpf, d.funcao])).rows[0];
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'funcionarios', entidadeId: f.id, depois: { nome: d.nome, funcao: d.funcao } });
+        return f.id as string;
+      });
+      reply.code(201);
+      return { ok: true, id };
+    });
+
+    app.put<{ Params: { id: string } }>('/funcionarios/:id', async (req) => {
+      const d = z
+        .object({
+          nome: z.string().trim().min(2, 'Informe o nome do funcionário.').max(120).optional(),
+          cpf: cpfOpc.optional(),
+          funcao: z.string().trim().max(60).optional().nullable().transform((v) => v || null),
+          ativo: z.boolean().optional(),
+        })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      if (!UUID.test(req.params.id)) throw new ErroHttp(404, 'Funcionário não encontrado.');
+      await emTransacao(banco, async (c) => {
+        const atual = (await c.query('SELECT id, nome FROM funcionarios WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
+        if (!atual) throw new ErroHttp(404, 'Funcionário não encontrado.');
+        await c.query(
+          'UPDATE funcionarios SET nome = coalesce($2, nome), cpf = CASE WHEN $3::boolean THEN $4 ELSE cpf END, funcao = CASE WHEN $5::boolean THEN $6 ELSE funcao END, ativo = coalesce($7, ativo) WHERE id = $1',
+          [atual.id, d.nome ?? null, d.cpf !== undefined, d.cpf ?? null, d.funcao !== undefined, d.funcao ?? null, d.ativo ?? null],
+        );
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'funcionarios', entidadeId: atual.id, antes: { nome: atual.nome }, depois: d });
+      });
+      return { ok: true };
+    });
+
+    // ----- Saída de material por etiqueta: cadastro com obra, etapa, funcionário e o almoxarife que entregou.
+    app.post('/saidas-material', async (req, reply) => {
+      const d = z
+        .object({
+          obraId: z.string().uuid('Escolha a obra.'),
+          eapNoId: z.string().uuid('Escolha a etapa.'),
+          funcionarioId: z.string().uuid('Escolha o funcionário.'),
+          data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
+          observacao: z.string().trim().max(500).optional().nullable().transform((v) => v || null),
+          itens: z
+            .array(
+              z.object({
+                etiquetaId: z.string().uuid('Leia a etiqueta de cada insumo.'),
+                quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
+              }),
+            )
+            .min(1, 'Leia ao menos um insumo.')
+            .max(200),
+        })
+        .parse(req.body);
+      if (new Set(d.itens.map((i) => i.etiquetaId)).size !== d.itens.length) throw new ErroHttp(400, 'A mesma etiqueta aparece mais de uma vez.');
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      const criada = await emTransacao(banco, async (c) => {
+        await validarApropriacaoObra(c, empresaId, d.obraId, null, d.eapNoId);
+        if (!(await c.query('SELECT 1 FROM funcionarios WHERE id = $1 AND empresa_id = $2 AND ativo', [d.funcionarioId, empresaId])).rowCount)
+          throw new ErroHttp(400, 'Funcionário não encontrado ou inativo.');
+        const numero = (await c.query("SELECT 'SAI-' || lpad((coalesce(max(substring(numero FROM '^SAI-([0-9]+)$')::int), 0) + 1)::text, 4, '0') AS numero FROM saidas_material WHERE empresa_id = $1", [empresaId])).rows[0].numero as string;
+        const cab = (
+          await c.query(
+            'INSERT INTO saidas_material (empresa_id, numero, data, obra_id, eap_no_id, funcionario_id, entregue_por_id, observacao) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id',
+            [empresaId, numero, d.data, d.obraId, d.eapNoId, d.funcionarioId, u.id, d.observacao],
+          )
+        ).rows[0];
+        for (const it of d.itens) {
+          // Trava a entrada: duas saídas ao mesmo tempo não podem gastar o mesmo saldo.
+          const e = (
+            await c.query(
+              `SELECT m.id, m.obra_id, m.eap_no_id, m.obra_estoque_id, m.obra_item_id,
+                      (m.quantidade - coalesce((SELECT sum(s.quantidade) FROM estoque_movimentos s WHERE s.etiqueta_id = m.id), 0)) AS saldo
+                 FROM estoque_movimentos m
+                WHERE m.id = $1 AND m.empresa_id = $2 AND m.tipo = 'entrada' AND m.nota_item_id IS NOT NULL
+                FOR UPDATE OF m`,
+              [it.etiquetaId, empresaId],
+            )
+          ).rows[0];
+          if (!e || !e.obra_estoque_id) throw new ErroHttp(400, 'Etiqueta não encontrada.');
+          if (e.obra_id !== d.obraId) throw new ErroHttp(400, 'Este insumo é de outra obra.');
+          if (e.eap_no_id !== d.eapNoId) throw new ErroHttp(400, 'Este insumo está apropriado a outra etapa. Escolha a etapa dele.');
+          const qtd = Math.round(it.quantidade * 1000) / 1000;
+          const saldoEtiqueta = Number(e.saldo);
+          if (qtd > saldoEtiqueta + 0.0005) throw new ErroHttp(400, `Saldo desta etiqueta insuficiente: ${saldoEtiqueta.toLocaleString('pt-BR')} disponível.`);
+          const saldoEstoque = await saldoApropriacao(c, empresaId, d.obraId, e.obra_item_id, d.eapNoId, e.obra_estoque_id);
+          if (qtd > saldoEstoque + 0.0005) throw new ErroHttp(400, `Saldo insuficiente neste estoque e etapa: ${saldoEstoque.toLocaleString('pt-BR')} disponível.`);
+          await c.query(
+            `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, observacao, criado_por_id, etiqueta_id, saida_material_id)
+             VALUES ($1,$2,$3,$4,$5,$6,'saida',$7,$8,$9,$10,$11)`,
+            [empresaId, d.obraId, e.obra_estoque_id, e.obra_item_id, d.eapNoId, d.data, qtd, `Saída ${numero}`, u.id, e.id, cab.id],
+          );
+        }
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'saidas_material', entidadeId: cab.id, depois: { numero, obraId: d.obraId, eapNoId: d.eapNoId, itens: d.itens.length } });
+        return { id: cab.id as string, numero };
+      });
+      reply.code(201);
+      return { ok: true, ...criada };
+    });
+
+    app.get('/saidas-material', async (req) => {
+      const r = await banco.query(
+        `SELECT s.id, s.numero, s.data, s.observacao, o.codigo AS obra_codigo, o.nome AS obra_nome, e.codigo AS eap_codigo, e.descricao AS eap_descricao,
+                f.nome AS funcionario_nome, u.nome AS entregue_por,
+                (SELECT count(*) FROM estoque_movimentos m WHERE m.saida_material_id = s.id)::int AS itens
+           FROM saidas_material s JOIN obras o ON o.id = s.obra_id JOIN eap_nos e ON e.id = s.eap_no_id
+           JOIN funcionarios f ON f.id = s.funcionario_id JOIN usuarios u ON u.id = s.entregue_por_id
+          WHERE s.empresa_id = $1 ORDER BY s.criado_em DESC LIMIT 200`,
+        [empresaDo(req)],
+      );
+      return { saidas: r.rows.map((x) => ({ id: x.id, numero: x.numero, data: String(x.data).slice(0, 10), observacao: x.observacao ?? null, obraCodigo: x.obra_codigo, obraNome: x.obra_nome, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, funcionario: x.funcionario_nome, entreguePor: x.entregue_por, itens: x.itens })) };
     });
 
     // ----- Solicitações de compra: sempre de uma obra, com os insumos das necessidades apropriadas à EAP.

@@ -14,7 +14,8 @@ export type Perfil =
   // Perfis da concreteira, mantidos só por compatibilidade com o código herdado.
   | 'motorista'
   | 'operador_usina'
-  | 'laboratorista';
+  | 'laboratorista'
+  | 'almoxarife';
 
 export type DadosSessao = {
   sub: string; // id do usuário
