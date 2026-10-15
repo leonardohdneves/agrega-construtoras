@@ -10,6 +10,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import {
   CENTROS_CUSTO_PADRAO,
+  type ContaPadrao,
   codigoPai,
   PLANO_CONTAS_PADRAO,
   proximaRecorrencia,
@@ -618,7 +619,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { conta: planoPublico(r) };
     });
 
-    // Aplica o plano padrão de concreteira e os centros de custo padrão (só cria o que falta).
+    // Aplica o plano padrão de construtora e os centros de custo padrão (só cria o que falta).
     app.post('/plano-contas/padrao', async (req) => {
       const empresaId = empresaDo(req);
       const criados = await emTransacao(banco, (c) => aplicarPlanoPadrao(c, empresaId));
@@ -994,9 +995,9 @@ export function rotasFinanceiro(banco: Banco) {
 }
 
 /** Cria o que falta do plano de contas padrão e dos centros de custo padrão. */
-export async function aplicarPlanoPadrao(c: Cliente, empresaId: string) {
+export async function aplicarPlanoPadrao(c: Cliente, empresaId: string, plano: ContaPadrao[] = PLANO_CONTAS_PADRAO, centros: string[] = CENTROS_CUSTO_PADRAO) {
   let contas = 0;
-  for (const p of PLANO_CONTAS_PADRAO) {
+  for (const p of plano) {
     const r = await c.query(
       `INSERT INTO plano_contas (empresa_id, codigo, nome, tipo, linha_dre, aceita_lancamento) VALUES ($1,$2,$3,$4,$5,$6)
        ON CONFLICT (empresa_id, codigo) DO NOTHING`,
@@ -1012,7 +1013,7 @@ export async function aplicarPlanoPadrao(c: Cliente, empresaId: string) {
     [empresaId],
   );
   let centros = 0;
-  for (const nome of CENTROS_CUSTO_PADRAO) {
+  for (const nome of centros) {
     const r = await c.query(
       `INSERT INTO centros_custo (empresa_id, nome) SELECT $1, $2 WHERE NOT EXISTS (SELECT 1 FROM centros_custo WHERE empresa_id = $1 AND lower(nome) = lower($2))`,
       [empresaId, nome],

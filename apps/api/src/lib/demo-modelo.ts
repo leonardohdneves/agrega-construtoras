@@ -215,7 +215,8 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
 
   // ----- plano de contas e centros de custo
   const { aplicarPlanoPadrao } = await import('../rotas/financeiro.ts');
-  await aplicarPlanoPadrao(c, e);
+  const { PLANO_CONTAS_CONCRETEIRA, CENTROS_CUSTO_CONCRETEIRA } = await import('./financeiro.ts');
+  await aplicarPlanoPadrao(c, e, PLANO_CONTAS_CONCRETEIRA, CENTROS_CUSTO_CONCRETEIRA);
   const mapa = async (sql: string) => Object.fromEntries((await q(sql, [e])).rows.map((x) => [x.k, x.id])) as Record<string, string>;
   const plano = await mapa('SELECT codigo AS k, id FROM plano_contas WHERE empresa_id = $1');
   const centro = await mapa('SELECT nome AS k, id FROM centros_custo WHERE empresa_id = $1');

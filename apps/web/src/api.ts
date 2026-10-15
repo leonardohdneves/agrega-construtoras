@@ -540,14 +540,14 @@ export const NOMES_FORMA: Record<FormaPagamento, string> = {
 };
 export const NOMES_TIPO_CONTA: Record<ContaFinanceira['tipo'], string> = { banco: 'Conta bancária', caixa: 'Caixa', cartao: 'Cartão de crédito', aplicacao: 'Aplicação' };
 export const NOMES_LINHA_DRE: Record<LinhaDre, string> = {
-  receita_bruta: 'Receita bruta',
+  receita_bruta: 'Receita operacional bruta',
   deducoes: 'Deduções e impostos sobre vendas',
-  custo_producao: 'Custo de produção do concreto',
-  custo_frota: 'Custo da frota',
-  custo_pessoal: 'Custo de pessoal operacional',
-  despesas_pessoal: 'Despesas com pessoal administrativo',
+  custo_producao: 'Custo das obras (materiais e serviços)',
+  custo_frota: 'Equipamentos e transporte de obra',
+  custo_pessoal: 'Mão de obra direta',
+  despesas_pessoal: 'Pessoal administrativo e técnico',
   despesas_administrativas: 'Despesas administrativas',
-  despesas_comerciais: 'Despesas comerciais',
+  despesas_comerciais: 'Despesas comerciais e de vendas',
   receitas_financeiras: 'Receitas financeiras',
   despesas_financeiras: 'Despesas financeiras',
   outras_receitas: 'Outras receitas',

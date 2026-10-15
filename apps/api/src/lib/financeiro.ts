@@ -71,14 +71,14 @@ export type LinhaDre =
   | 'impostos_lucro' | 'fora_dre';
 
 export const NOMES_LINHA_DRE: Record<LinhaDre, string> = {
-  receita_bruta: 'Receita bruta',
+  receita_bruta: 'Receita operacional bruta',
   deducoes: 'Deduções e impostos sobre vendas',
-  custo_producao: 'Custo de produção do concreto',
-  custo_frota: 'Custo da frota',
-  custo_pessoal: 'Custo de pessoal operacional',
-  despesas_pessoal: 'Despesas com pessoal administrativo',
+  custo_producao: 'Custo das obras (materiais e serviços)',
+  custo_frota: 'Equipamentos e transporte de obra',
+  custo_pessoal: 'Mão de obra direta',
+  despesas_pessoal: 'Pessoal administrativo e técnico',
   despesas_administrativas: 'Despesas administrativas',
-  despesas_comerciais: 'Despesas comerciais',
+  despesas_comerciais: 'Despesas comerciais e de vendas',
   receitas_financeiras: 'Receitas financeiras',
   despesas_financeiras: 'Despesas financeiras',
   outras_receitas: 'Outras receitas',
@@ -87,12 +87,13 @@ export const NOMES_LINHA_DRE: Record<LinhaDre, string> = {
   fora_dre: 'Fora da DRE (investimentos, empréstimos e sócios)',
 };
 
-type ContaPadrao = { codigo: string; nome: string; tipo: 'receita' | 'despesa'; linha: LinhaDre; grupo?: boolean };
+export type ContaPadrao = { codigo: string; nome: string; tipo: 'receita' | 'despesa'; linha: LinhaDre; grupo?: boolean };
 
 const g = (codigo: string, nome: string, tipo: 'receita' | 'despesa', linha: LinhaDre): ContaPadrao => ({ codigo, nome, tipo, linha, grupo: true });
 const c = (codigo: string, nome: string, tipo: 'receita' | 'despesa', linha: LinhaDre): ContaPadrao => ({ codigo, nome, tipo, linha });
 
-export const PLANO_CONTAS_PADRAO: ContaPadrao[] = [
+/** Plano de contas da concreteira: usado só no modelo de demonstração (frota e usina). */
+export const PLANO_CONTAS_CONCRETEIRA: ContaPadrao[] = [
   g('1', 'Receitas operacionais', 'receita', 'receita_bruta'),
   c('1.1', 'Venda de concreto', 'receita', 'receita_bruta'),
   c('1.2', 'Serviço de bombeamento', 'receita', 'receita_bruta'),
@@ -166,7 +167,112 @@ export const PLANO_CONTAS_PADRAO: ContaPadrao[] = [
   c('11.6', 'Aporte dos sócios', 'receita', 'fora_dre'),
 ];
 
-export const CENTROS_CUSTO_PADRAO = ['Usina', 'Frota', 'Bombas', 'Administrativo', 'Comercial'];
+export const CENTROS_CUSTO_CONCRETEIRA = ['Usina', 'Frota', 'Bombas', 'Administrativo', 'Comercial'];
+
+// ---------- Plano de contas padrão de construtora e incorporadora ----------
+export const PLANO_CONTAS_PADRAO: ContaPadrao[] = [
+  g('1', 'Receitas operacionais', 'receita', 'receita_bruta'),
+  c('1.1', 'Venda de unidades (incorporação)', 'receita', 'receita_bruta'),
+  c('1.2', 'Medições de contratos de obra', 'receita', 'receita_bruta'),
+  c('1.3', 'Receita de projetos e serviços de engenharia', 'receita', 'receita_bruta'),
+  c('1.4', 'Outras receitas operacionais', 'receita', 'receita_bruta'),
+
+  g('2', 'Deduções da receita', 'despesa', 'deducoes'),
+  c('2.1', 'Impostos sobre faturamento (RET, Simples, ISS, PIS, COFINS)', 'despesa', 'deducoes'),
+  c('2.2', 'Distratos e devoluções de vendas', 'despesa', 'deducoes'),
+
+  g('3', 'Materiais de obra', 'despesa', 'custo_producao'),
+  c('3.1', 'Cimento, areia e agregados', 'despesa', 'custo_producao'),
+  c('3.2', 'Concreto usinado', 'despesa', 'custo_producao'),
+  c('3.3', 'Aço e armação', 'despesa', 'custo_producao'),
+  c('3.4', 'Alvenaria, blocos e argamassa', 'despesa', 'custo_producao'),
+  c('3.5', 'Madeiras, formas e escoramentos', 'despesa', 'custo_producao'),
+  c('3.6', 'Impermeabilização e cobertura', 'despesa', 'custo_producao'),
+  c('3.7', 'Instalações elétricas e hidráulicas (materiais)', 'despesa', 'custo_producao'),
+  c('3.8', 'Esquadrias, vidros e ferragens', 'despesa', 'custo_producao'),
+  c('3.9', 'Revestimentos, pisos, louças e metais', 'despesa', 'custo_producao'),
+  c('3.10', 'Pintura e acabamentos', 'despesa', 'custo_producao'),
+  c('3.11', 'Materiais diversos de obra', 'despesa', 'custo_producao'),
+
+  g('4', 'Serviços de obra', 'despesa', 'custo_producao'),
+  c('4.1', 'Subempreiteiros (estrutura, alvenaria, pintura e outros)', 'despesa', 'custo_producao'),
+  c('4.2', 'Terraplenagem e fundações', 'despesa', 'custo_producao'),
+  c('4.3', 'Projetos, consultorias e laudos técnicos', 'despesa', 'custo_producao'),
+  c('4.4', 'Ensaios e controle tecnológico', 'despesa', 'custo_producao'),
+  c('4.5', 'Licenças, alvarás e taxas da obra', 'despesa', 'custo_producao'),
+  c('4.6', 'Seguro de obra (risco de engenharia)', 'despesa', 'custo_producao'),
+
+  g('5', 'Equipamentos e transporte de obra', 'despesa', 'custo_frota'),
+  c('5.1', 'Locação de equipamentos (grua, andaimes, betoneira, compactador)', 'despesa', 'custo_frota'),
+  c('5.2', 'Combustível e manutenção de equipamentos e veículos de obra', 'despesa', 'custo_frota'),
+  c('5.3', 'Fretes e transporte de materiais', 'despesa', 'custo_frota'),
+  c('5.4', 'Ferramentas e consumíveis de obra', 'despesa', 'custo_frota'),
+  c('5.5', 'IPVA, licenciamento e seguro de veículos de obra', 'despesa', 'custo_frota'),
+  c('5.6', 'Pedágios e estadias', 'despesa', 'custo_frota'),
+
+  g('6', 'Mão de obra direta', 'despesa', 'custo_pessoal'),
+  c('6.1', 'Salários da mão de obra direta (pedreiros, serventes, encarregados)', 'despesa', 'custo_pessoal'),
+  c('6.2', 'Encargos e benefícios da mão de obra direta', 'despesa', 'custo_pessoal'),
+  c('6.3', 'Rescisões e verbas de obra', 'despesa', 'custo_pessoal'),
+  c('6.4', 'EPIs, uniformes e exames ocupacionais', 'despesa', 'custo_pessoal'),
+  c('6.5', 'Alimentação e transporte da equipe de obra', 'despesa', 'custo_pessoal'),
+
+  g('7', 'Pessoal administrativo e técnico', 'despesa', 'despesas_pessoal'),
+  c('7.1', 'Salários administrativos e de engenharia do escritório', 'despesa', 'despesas_pessoal'),
+  c('7.2', 'Encargos e benefícios administrativos', 'despesa', 'despesas_pessoal'),
+  c('7.3', 'Pró-labore', 'despesa', 'despesas_pessoal'),
+  c('7.4', 'Treinamentos e capacitação', 'despesa', 'despesas_pessoal'),
+
+  g('8', 'Despesas administrativas', 'despesa', 'despesas_administrativas'),
+  c('8.1', 'Aluguel do escritório', 'despesa', 'despesas_administrativas'),
+  c('8.2', 'Energia, água, internet e telefone', 'despesa', 'despesas_administrativas'),
+  c('8.3', 'Contabilidade e honorários', 'despesa', 'despesas_administrativas'),
+  c('8.4', 'Softwares e sistemas (gestão, CAD, BIM)', 'despesa', 'despesas_administrativas'),
+  c('8.5', 'Material de escritório e limpeza', 'despesa', 'despesas_administrativas'),
+  c('8.6', 'Anuidades e registros profissionais (CREA, CAU, CRA)', 'despesa', 'despesas_administrativas'),
+  c('8.7', 'Seguros empresariais', 'despesa', 'despesas_administrativas'),
+  c('8.8', 'Viagens e deslocamentos administrativos', 'despesa', 'despesas_administrativas'),
+  c('8.9', 'Manutenção predial da sede', 'despesa', 'despesas_administrativas'),
+  c('8.10', 'Outras despesas administrativas', 'despesa', 'despesas_administrativas'),
+
+  g('9', 'Despesas comerciais', 'despesa', 'despesas_comerciais'),
+  c('9.1', 'Comissões de corretagem e vendas', 'despesa', 'despesas_comerciais'),
+  c('9.2', 'Publicidade e marketing', 'despesa', 'despesas_comerciais'),
+  c('9.3', 'Portais imobiliários e anúncios', 'despesa', 'despesas_comerciais'),
+  c('9.4', 'Stand de vendas e decoração', 'despesa', 'despesas_comerciais'),
+  c('9.5', 'Eventos e brindes', 'despesa', 'despesas_comerciais'),
+
+  g('10', 'Resultado financeiro', 'despesa', 'despesas_financeiras'),
+  c('10.1', 'Juros de financiamentos e empréstimos', 'despesa', 'despesas_financeiras'),
+  c('10.2', 'Juros e multas pagos', 'despesa', 'despesas_financeiras'),
+  c('10.3', 'Tarifas bancárias', 'despesa', 'despesas_financeiras'),
+  c('10.4', 'Rendimentos de aplicações', 'receita', 'receitas_financeiras'),
+  c('10.5', 'Juros e correção recebidos de clientes', 'receita', 'receitas_financeiras'),
+
+  g('11', 'Impostos sobre o lucro', 'despesa', 'impostos_lucro'),
+  c('11.1', 'IRPJ e CSLL', 'despesa', 'impostos_lucro'),
+
+  g('12', 'Outras receitas', 'receita', 'outras_receitas'),
+  c('12.1', 'Venda de bens do ativo imobilizado', 'receita', 'outras_receitas'),
+  c('12.2', 'Outras receitas não operacionais', 'receita', 'outras_receitas'),
+
+  g('13', 'Outras despesas', 'despesa', 'outras_despesas'),
+  c('13.1', 'Multas contratuais e de obra', 'despesa', 'outras_despesas'),
+  c('13.2', 'Indenizações e perdas judiciais', 'despesa', 'outras_despesas'),
+  c('13.3', 'Garantias e assistência técnica pós-entrega', 'despesa', 'outras_despesas'),
+  c('13.4', 'Multas de trânsito e outras multas', 'despesa', 'outras_despesas'),
+
+  g('14', 'Investimentos, financiamentos e sócios (fora da DRE)', 'despesa', 'fora_dre'),
+  c('14.1', 'Aquisição de terrenos para incorporação', 'despesa', 'fora_dre'),
+  c('14.2', 'Compra de imóveis e equipamentos próprios', 'despesa', 'fora_dre'),
+  c('14.3', 'Amortização de financiamentos e empréstimos', 'despesa', 'fora_dre'),
+  c('14.4', 'Distribuição de lucros', 'despesa', 'fora_dre'),
+  c('14.5', 'Empréstimos e financiamentos recebidos', 'receita', 'fora_dre'),
+  c('14.6', 'Aporte dos sócios', 'receita', 'fora_dre'),
+  c('14.7', 'Repasses de financiamento bancário de obra (SFH)', 'receita', 'fora_dre'),
+];
+
+export const CENTROS_CUSTO_PADRAO = ['Administrativo', 'Comercial', 'Engenharia', 'Suprimentos', 'Canteiro de obras'];
 
 /** Código do pai: '4.2' → '4'; '4' → null. */
 export function codigoPai(codigo: string): string | null {
