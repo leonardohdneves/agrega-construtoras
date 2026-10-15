@@ -1,18 +1,21 @@
 // Troca o plano de contas de concreteira pelo plano padrão de construtora, numa empresa que já tem o plano antigo.
 // Uso:  DATABASE_URL=postgres://... EMPRESA_ID=<uuid> node scripts/trocar-plano-construtora.ts            (só confere, não altera)
-//       DATABASE_URL=postgres://... EMPRESA_ID=<uuid> node scripts/trocar-plano-construtora.ts --aplicar  (aplica)
+//       DATABASE_URL=postgres://... EMPRESA_ID=<uuid> node scripts/trocar-plano-construtora.ts --aplicar  (aplica, desativando o antigo)
+//       DATABASE_URL=postgres://... EMPRESA_ID=<uuid> node scripts/trocar-plano-construtora.ts --apagar   (aplica, apagando o antigo)
 //
 // Regras de segurança:
 // - Sem --aplicar, tudo roda numa transação que termina em ROLLBACK: é só um relatório.
 // - Se alguma conta ou centro de custo antigo estiver em uso (lançamento, nota, contrato, pedido, solicitação, fornecedor...),
 //   o script para e não altera nada. Nesse caso a troca precisa ser decidida caso a caso.
-// - As contas antigas não são apagadas: são renomeadas com o prefixo 'antigo-' e desativadas, para manter o histórico.
-// - Faça o backup completo antes de usar --aplicar.
+// - Por padrão, as contas antigas são renomeadas com o prefixo 'antigo-' e desativadas, para manter o histórico.
+// - Com --apagar, as contas e centros antigos são apagados de verdade (só se não estiverem em uso). Use com backup novo feito antes.
+// - Faça o backup completo antes de usar --aplicar ou --apagar.
 import { criarBanco, emTransacao, type Cliente } from '../src/db.ts';
 import { aplicarPlanoPadrao, PLANO_CONTAS_PADRAO, CENTROS_CUSTO_PADRAO } from '../src/rotas/financeiro.ts';
 import { PLANO_CONTAS_CONCRETEIRA, CENTROS_CUSTO_CONCRETEIRA } from '../src/lib/financeiro.ts';
 
-const aplicar = process.argv.includes('--aplicar');
+const apagar = process.argv.includes('--apagar');
+const aplicar = process.argv.includes('--aplicar') || apagar;
 const empresaId = process.env.EMPRESA_ID;
 const url = process.env.DATABASE_URL;
 if (!url || !empresaId) {
@@ -95,15 +98,23 @@ async function main() {
         throw new Parou('__conferencia__');
       }
 
-      // Aplicação: desativa e renomeia o antigo, depois cria o novo.
-      for (const x of antigas) {
-        await c.query("UPDATE plano_contas SET codigo = $2, ativo = false, pai_id = NULL, atualizado_em = now() WHERE id = $1", [x.id, `antigo-${x.codigo}`]);
-      }
-      for (const x of centrosAntigos) {
-        await c.query('UPDATE centros_custo SET ativo = false, atualizado_em = now() WHERE id = $1', [x.id]);
+      if (apagar) {
+        // Apaga de verdade (só chega aqui sem nenhum uso, conferido acima). Primeiro solta a hierarquia, depois apaga.
+        await c.query('UPDATE plano_contas SET pai_id = NULL WHERE empresa_id = $1 AND pai_id = ANY($2::uuid[])', [empresaId, antigas.map((x) => x.id)]);
+        const apagadas = await c.query('DELETE FROM plano_contas WHERE empresa_id = $1 AND id = ANY($2::uuid[])', [empresaId, antigas.map((x) => x.id)]);
+        const centrosApagados = await c.query('DELETE FROM centros_custo WHERE empresa_id = $1 AND id = ANY($2::uuid[])', [empresaId, centrosAntigos.map((x) => x.id)]);
+        console.log(`Apagadas: ${apagadas.rowCount} contas e ${centrosApagados.rowCount} centros de custo.`);
+      } else {
+        // Sem --apagar: desativa e renomeia o antigo, para manter o histórico.
+        for (const x of antigas) {
+          await c.query("UPDATE plano_contas SET codigo = $2, ativo = false, pai_id = NULL, atualizado_em = now() WHERE id = $1", [x.id, `antigo-${x.codigo}`]);
+        }
+        for (const x of centrosAntigos) {
+          await c.query('UPDATE centros_custo SET ativo = false, atualizado_em = now() WHERE id = $1', [x.id]);
+        }
       }
       const criados = await aplicarPlanoPadrao(c, empresaId, PLANO_CONTAS_PADRAO, CENTROS_CUSTO_PADRAO);
-      return { renomeadas: antigas.length, ...criados };
+      return { [apagar ? 'apagadas' : 'renomeadas']: antigas.length, ...criados };
     });
     console.log('Concluído:', resultado);
   } catch (e) {
