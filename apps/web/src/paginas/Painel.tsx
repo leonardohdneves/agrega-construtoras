@@ -1,6 +1,7 @@
 import { InicioVendedor } from './Comercial';
 import { CardMural } from './Mural';
 import { MinhasCargas } from './MinhasCargas';
+import { lerEscolha } from '../componentes/EscolhaTipo';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {
@@ -452,6 +453,10 @@ function AbaFinanceiro({ d }: { d: Dados }) {
 }
 
 // ---------- Aba Indicadores (só o dono) ----------
+// Indicadores da concreteira (frota, produção, equipamentos): não aparecem no painel da construtora.
+const IND_CONCRETEIRA = new Set(['disponibilidade', 'revisoes_em_dia', 'perda_inventario', 'calibracoes_vencidas', 'frota_sobre_receita', 'consumo_bet', 'consumo_bomba', 'preco_diesel', 'custo_km', 'custo_hora_bomba', 'dias_parado_os', 'custo_manutencao', 'volume_produzido', 'm3_betoneira_dia', 'cimento_m3', 'material_teorico_m3', 'material_real_m3', 'frota_m3', 'devolvido_pct']);
+const ehConstrutora = lerEscolha() === 'construtora';
+const soDaConstrutora = (id: string) => !(ehConstrutora && IND_CONCRETEIRA.has(id));
 const RETRATO = ['disponibilidade', 'cobertura_caixa', 'inadimplencia', 'revisoes_em_dia', 'notas_pendentes', 'perda_inventario', 'calibracoes_vencidas'];
 const GRUPOS_IND: { titulo: string; ids: string[] }[] = [
   { titulo: 'Resultado', ids: ['receita_bruta', 'margem_bruta', 'margem_liquida', 'frota_sobre_receita'] },
@@ -490,7 +495,7 @@ function AbaIndicadores() {
           <Link to="/ger/indicadores" className="small cartao-link">Conferir fórmulas ›</Link>
         </div>
         <div className="ind-hoje">
-          {RETRATO.map((id) => {
+          {RETRATO.filter(soDaConstrutora).map((id) => {
             const i = porId.get(id);
             if (!i) return null;
             return (
@@ -504,7 +509,7 @@ function AbaIndicadores() {
         </div>
       </section>
 
-      {GRUPOS_IND.map((g) => (
+      {GRUPOS_IND.filter((g) => !(ehConstrutora && (g.titulo === 'Frota' || g.titulo === 'Produção'))).map((g) => (
         <section key={g.titulo} className="ind-bloco">
           <div className="ind-bloco-topo">
             <h2>{g.titulo}</h2>

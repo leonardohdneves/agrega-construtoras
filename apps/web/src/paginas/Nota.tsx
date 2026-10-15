@@ -398,6 +398,41 @@ function Vinculos({ item, emissao, aoSalvar, aoFechar }: { item: ItemNota; emiss
 }
 
 // ======================= Item da nota (linha) =======================
+/** Obra, insumo da obra e etapa da EAP do item: é daqui que sai a apropriação do estoque da construtora. */
+function ApropriacaoEstoque({ item, editavel, salvar }: { item: ItemNota; editavel: boolean; salvar: (corpo: Record<string, unknown>) => void }) {
+  const [obras, setObras] = useState<{ id: string; codigo: string; nome: string }[]>([]);
+  const [insumos, setInsumos] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
+  const [etapas, setEtapas] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
+  useEffect(() => {
+    if (!editavel) return;
+    api<{ obras: { id: string; codigo: string; nome: string }[] }>('/obras').then((r) => setObras(r.obras)).catch(() => setObras([]));
+  }, [editavel]);
+  useEffect(() => {
+    if (!item.obraId) { setInsumos([]); setEtapas([]); return; }
+    api<{ itens: { id: string; codigo: string; descricao: string }[] }>(`/obras/${item.obraId}/itens?tipo=insumo`).then((r) => setInsumos(r.itens ?? [])).catch(() => setInsumos([]));
+    api<{ nos: { id: string; codigo: string; descricao: string }[] }>(`/obras/${item.obraId}/eap`).then((r) => setEtapas(r.nos ?? [])).catch(() => setEtapas([]));
+  }, [item.obraId]);
+  if (!editavel) {
+    return <span className="small">{item.obraItemDescricao ?? '—'}{item.eapCodigo ? ` · etapa ${item.eapCodigo}` : ''}</span>;
+  }
+  return (
+    <div className="estoque-apropriacao">
+      <select aria-label="Obra do estoque" className="campo-tabela" value={item.obraId ?? ''} onChange={(e) => salvar({ obraId: e.target.value || null, obraItemId: null, eapNoId: null })}>
+        <option value="">Obra…</option>
+        {obras.map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}
+      </select>
+      <select aria-label="Insumo da obra" className="campo-tabela" value={item.obraItemId ?? ''} disabled={!item.obraId} onChange={(e) => salvar({ obraItemId: e.target.value || null })}>
+        <option value="">Insumo…</option>
+        {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+      </select>
+      <select aria-label="Etapa da EAP" className="campo-tabela" value={item.eapNoId ?? ''} disabled={!item.obraId} onChange={(e) => salvar({ eapNoId: e.target.value || null })}>
+        <option value="">Etapa…</option>
+        {etapas.map((n) => <option key={n.id} value={n.id}>{n.codigo} {n.descricao}</option>)}
+      </select>
+    </div>
+  );
+}
+
 function LinhaItem({
   item,
   nota,
@@ -569,6 +604,11 @@ function LinhaItem({
             <span className="small">{item.centroNome ?? '—'}</span>
           )}
         </td>
+        {nota.direcao === 'entrada' && (
+          <td>
+            <ApropriacaoEstoque item={item} editavel={!!editavel} salvar={salvar} />
+          </td>
+        )}
         {nota.direcao === 'entrada' && (
           <td>
             {item.abastecimentos || (item.os && item.os.ordens?.includes(',')) ? (

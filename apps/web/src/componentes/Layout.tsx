@@ -25,7 +25,7 @@ import {
   IconeVenda,
 } from './Icones';
 
-type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[]; soDemo?: boolean; soAdmin?: boolean; livre?: boolean };
+type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; perfis?: Perfil[]; soDemo?: boolean; soAdmin?: boolean; livre?: boolean; soConstrutora?: boolean; soConcreteira?: boolean };
 type Modulo = { id: string; numero?: number; titulo: string; icone: ReactNode; perfis?: Perfil[]; itens: Item[] };
 
 const GESTAO: Perfil[] = ['dono', 'gestor'];
@@ -101,6 +101,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Pedidos de compra', para: '/sup/pedidos' },
       { rotulo: 'Contratos', para: '/sup/contratos' },
       { rotulo: 'Medições', para: '/sup/medicoes' },
+      { rotulo: 'Estoque', para: '/sup/estoque' },
       { rotulo: 'Relatórios', para: '/sup/relatorios' },
     ],
   },
@@ -191,9 +192,9 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Mural de avisos', para: '/mural', livre: true },
       { rotulo: 'Minha conta', para: '/conta', livre: true },
       { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
-      // O manual atual é o da concreteira; volta ao menu quando o manual da construtora estiver pronto.
+      { rotulo: 'Manual de operação', arquivo: '/manual/agrega-construtoras-manual-de-operacao.pdf', livre: true, soConstrutora: true },
       { rotulo: 'Extrato OFX de demonstração', arquivo: '/api/demo/extrato.ofx', perfis: GESTAO, soDemo: true },
-      { rotulo: 'NF-e de demonstração (XML)', arquivo: '/api/demo/nfe-posto.xml', perfis: GESTAO, soDemo: true },
+      { rotulo: 'NF-e de demonstração (XML)', arquivo: '/api/demo/nfe-posto.xml', perfis: GESTAO, soDemo: true, soConcreteira: true },
     ],
   },
 ];
@@ -210,6 +211,8 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
   // Módulos liberados para o usuário; dentro deles, as telas do perfil (ou todas, se o módulo foi dado a mais).
   const itemOk = (m: Modulo, i: Item) => {
     if (i.soDemo && !demo) return false;
+    if (i.soConcreteira && lerEscolha() === 'construtora') return false;
+    if (i.soConstrutora && lerEscolha() !== 'construtora') return false;
     if (i.livre) return true;
     if (i.soAdmin) return !!usuario?.administrador;
     if (i.arquivo) return permitido(i.perfis, perfil) && temModulo(usuario, 'configuracoes');

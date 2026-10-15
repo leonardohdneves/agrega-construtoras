@@ -18,7 +18,7 @@ import { cnpjValido } from '../lib/cnpj.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
 import { atualizarStatusRecebimento } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
-import { fatorPadrao, registrarEntradasNota, removerEntradasNota } from '../lib/estoque.ts';
+import { fatorPadrao, registrarEntradasNota, registrarEntradasObra, removerEntradasNota, validarApropriacaoObra } from '../lib/estoque.ts';
 import { cadastrosParaIa, vinculoDoItem } from '../lib/vinculos.ts';
 import { baixarParcela, dinheiro, esquemaBaixa, numeroBr } from './financeiro.ts';
 
@@ -90,6 +90,10 @@ const esquemaAlterarItem = z
     centroCustoId: uuidOpc,
     veiculoId: uuidOpc,
     // Estoque: insumo e quantas unidades do insumo vale cada unidade da nota (t → kg = 1000).
+    // Construtora: obra, insumo da obra e etapa da EAP (apropriação do estoque).
+    obraId: uuidOpc,
+    obraItemId: uuidOpc,
+    eapNoId: uuidOpc,
     insumoId: uuidOpc,
     fatorEstoque: z.union([z.preprocess(numeroBr, z.number({ invalid_type_error: 'Fator inválido.' }).positive('O fator precisa ser maior que zero.').max(1_000_000)), z.null()]),
     // Só para notas lançadas à mão:
@@ -139,8 +143,8 @@ async function detalharNota(c: Cliente, empresaId: string, id: string) {
                                         'ordens', string_agg(DISTINCT '#' || o.numero || ' ' || vo.codigo, ', '))
                  FROM os_itens oi JOIN ordens_servico o ON o.id = oi.os_id JOIN veiculos vo ON vo.id = o.veiculo_id
                 WHERE oi.nota_item_id = i.id AND oi.excluido_em IS NULL) AS os
-         , ins.nome AS insumo_nome, ins.unidade AS insumo_unidade
-         FROM notas_itens i LEFT JOIN plano_contas pc ON pc.id = i.plano_conta_id LEFT JOIN insumos ins ON ins.id = i.insumo_id
+         , ins.nome AS insumo_nome, ins.unidade AS insumo_unidade, obi.descricao AS obra_item_descricao, en.codigo AS eap_codigo
+         FROM notas_itens i LEFT JOIN plano_contas pc ON pc.id = i.plano_conta_id LEFT JOIN insumos ins ON ins.id = i.insumo_id LEFT JOIN obra_itens obi ON obi.id = i.obra_item_id LEFT JOIN eap_nos en ON en.id = i.eap_no_id
          LEFT JOIN centros_custo cc ON cc.id = i.centro_custo_id LEFT JOIN veiculos v ON v.id = i.veiculo_id
         WHERE i.nota_id = $1 ORDER BY i.numero_item, i.criado_em`,
       [n.id],
@@ -237,6 +241,11 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
       centroNome: i.centro_nome ?? null,
       veiculoId: i.veiculo_id,
       veiculoCodigo: i.veiculo_codigo ?? null,
+      obraId: i.obra_id ?? null,
+      obraItemId: i.obra_item_id ?? null,
+      obraItemDescricao: i.obra_item_descricao ?? null,
+      eapNoId: i.eap_no_id ?? null,
+      eapCodigo: i.eap_codigo ?? null,
       insumoId: i.insumo_id ?? null,
       insumoNome: i.insumo_nome ?? null,
       insumoUnidade: i.insumo_unidade ?? null,
@@ -926,6 +935,17 @@ export function rotasNotas(banco: Banco) {
         const fiscais = (['descricao', 'unidade', 'quantidade', 'valor'] as const).filter((k) => d[k] !== undefined);
         if (!DIGITAVEL.has(n.origem) && fiscais.length) throw new ErroHttp(400, 'Descrição, quantidade e valor vêm do XML e não podem ser alterados.');
         await validarApropriacao(c, empresaId, n.direcao === 'saida' ? 'receita' : 'despesa', d);
+        // Apropriação para o estoque da construtora: obra, insumo da obra e etapa.
+        if (d.obraId !== undefined || d.obraItemId !== undefined || d.eapNoId !== undefined) {
+          if (n.direcao !== 'entrada') throw new ErroHttp(400, 'Só notas de compra têm apropriação de estoque.');
+          const obraId = d.obraId !== undefined ? d.obraId : i.obra_id;
+          const obraItemId = d.obraItemId !== undefined ? d.obraItemId : i.obra_item_id;
+          const eapNoId = d.eapNoId !== undefined ? d.eapNoId : i.eap_no_id;
+          if (obraItemId && !obraId) throw new ErroHttp(400, 'Escolha a obra do insumo.');
+          if (eapNoId && !obraId) throw new ErroHttp(400, 'Escolha a obra da etapa.');
+          await validarApropriacaoObra(c, empresaId, obraId, obraItemId, eapNoId);
+          await c.query('UPDATE notas_itens SET obra_id = $2, obra_item_id = $3, eap_no_id = $4 WHERE id = $1', [i.id, obraId, obraItemId, eapNoId]);
+        }
         // Ligação com o insumo do estoque.
         let fator = d.fatorEstoque;
         if (d.insumoId) {
@@ -1221,6 +1241,7 @@ export function rotasNotas(banco: Banco) {
         );
         if (n.direcao === 'entrada') {
           await registrarEntradasNota(c, empresaId, n.id, usuarioId);
+          await registrarEntradasObra(c, empresaId, n.id, usuarioId);
         }
         await auditar(c, { empresaId, usuarioId, acao: 'confirmar', entidade: 'notas_fiscais', entidadeId: n.id, depois: { lancamentoId: l.id, parcelas: parcelas.length, baixa: !!d.baixa } });
       });

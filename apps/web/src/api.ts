@@ -609,6 +609,11 @@ export type ModeloNota = 'nfe' | 'nfce' | 'nfse' | 'cte' | 'cupom' | 'recibo' | 
 export type ItemNota = {
   id: string;
   numeroItem: number;
+  obraId: string | null;
+  obraItemId: string | null;
+  obraItemDescricao: string | null;
+  eapNoId: string | null;
+  eapCodigo: string | null;
   codigoProduto: string | null;
   descricao: string;
   ncm: string | null;
