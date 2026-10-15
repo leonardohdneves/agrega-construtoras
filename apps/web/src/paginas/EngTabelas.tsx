@@ -1,7 +1,7 @@
 // Engenharia · Tabelas de referência: SINAPI (importada, imutável) e tabela própria da empresa (editável).
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, formatarMoeda, lerNumero, type ErroApi } from '../api';
+import { api, formatarData, formatarMoeda, lerNumero, type ErroApi } from '../api';
 import { abrirXlsx, linhasParaTexto, type Planilha } from '../lib/xlsx';
 
 export type Tabela = {
@@ -410,6 +410,19 @@ export function EngTabelaDetalhe() {
     setAberto(item.tipo === 'composicao' ? { item } : null);
   }
 
+  /** Preço do insumo pela última compra confirmada na obra (convertida para a unidade do cadastro). */
+  async function usarUltimaCompra(item: Item) {
+    setErro('');
+    setMsg('');
+    try {
+      const r = await api<{ preco: number; data: string }>(`/eng/tabelas/${id}/itens/${item.id}/preco-ultima-compra`, { metodo: 'POST' });
+      setMsg(`Preço de ${item.codigo} atualizado pela última compra de ${formatarData(r.data)}: ${formatarMoeda(r.preco)} por ${item.unidade}.`);
+      await carregarItens();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
   async function excluir(item: Item) {
     setErro('');
     try {
@@ -502,7 +515,12 @@ export function EngTabelaDetalhe() {
                   </td>
                   <td>{i.unidade}</td>
                   <td className="num">{i.preco === null ? '—' : formatarMoeda(i.preco)}</td>
-                  <td>{tabela?.editavel && <button className="btn btn-link" type="button" onClick={() => excluir(i)}>Excluir</button>}</td>
+                  <td>
+                    {tabela?.editavel && i.tipo === 'insumo' && (
+                      <button className="btn btn-link" type="button" onClick={() => usarUltimaCompra(i)}>Usar última compra</button>
+                    )}
+                    {tabela?.editavel && <button className="btn btn-link" type="button" onClick={() => excluir(i)}>Excluir</button>}
+                  </td>
                 </tr>
               ))}
             </tbody>
