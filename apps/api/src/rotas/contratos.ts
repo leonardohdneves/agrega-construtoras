@@ -344,6 +344,8 @@ async function detalharMedicao(c: Cliente, empresaId: string, id: string, usuari
       [m.id],
     )
   ).rows[0];
+  const descontos = (await c.query('SELECT id, descricao, valor_centavos FROM medicoes_descontos WHERE medicao_id = $1 ORDER BY ordem', [m.id])).rows;
+  const totalDescontos = descontos.reduce((s, x) => s + Number(x.valor_centavos), 0);
   return {
     id: m.id as string,
     numero: m.numero as number,
@@ -355,6 +357,10 @@ async function detalharMedicao(c: Cliente, empresaId: string, id: string, usuari
     data: m.data as string,
     valor: reais(valorAtual)!,
     observacao: m.observacao as string | null,
+    base: m.base as 'quantidades' | 'percentual' | 'valor' | null,
+    percentual: m.percentual === null ? null : Number(m.percentual),
+    descontos: descontos.map((x) => ({ id: x.id as string, descricao: x.descricao as string, valor: reais(x.valor_centavos)! })),
+    totalDescontos: reais(totalDescontos)!,
     status: m.status as 'rascunho' | 'aguardando_aprovacao' | 'aprovada' | 'reprovada' | 'cancelada',
     criadoPor: m.criado_por as string | null,
     enviadoAprovacaoEm: m.enviado_aprovacao_em as string | null,
@@ -373,7 +379,7 @@ async function detalharMedicao(c: Cliente, empresaId: string, id: string, usuari
     },
     retencoesPrevistas: (() => {
       const x = calcularRetencoes({ caucao_pct: k.retencoes.caucao, iss_pct: k.retencoes.iss, inss_pct: k.retencoes.inss, ir_pct: k.retencoes.ir, pcc_pct: k.retencoes.pcc }, valorAtual);
-      return { caucao: reais(x.caucao)!, iss: reais(x.iss)!, inss: reais(x.inss)!, ir: reais(x.ir)!, pcc: reais(x.pcc)!, liquido: reais(x.liquido)! };
+      return { caucao: reais(x.caucao)!, iss: reais(x.iss)!, inss: reais(x.inss)!, ir: reais(x.ir)!, pcc: reais(x.pcc)!, liquido: reais(x.liquido)!, descontos: reais(totalDescontos)!, liquidoAPagar: reais(x.liquido - totalDescontos)! };
     })(),
     autorizacao: aut ? { id: aut.id as string, numero: aut.numero as number, status: aut.status as string } : null,
     podeAprovar: usuario ? podeAprovar(usuario, valorAtual, regras) : false,
@@ -390,6 +396,12 @@ const esquemaMedicao = z.object({
   itens: z.array(z.object({ contratoItemId: z.string().regex(UUID), quantidade: naoNegativo('Quantidade inválida.') })).max(200).optional().default([]),
   valor: z.union([positivo('Valor inválido.'), z.null()]).optional().default(null),
   percentual: z.union([positivo('Percentual inválido.'), z.null()]).optional().default(null),
+  // Valores a deduzir do pagamento ao terceiro (adiantamento, alimentação, EPI...).
+  descontos: z
+    .array(z.object({ descricao: z.string({ required_error: 'Informe o que é o desconto.' }).trim().min(1, 'Informe o que é o desconto.').max(120), valor: positivo('Valor do desconto inválido.') }))
+    .max(50, 'Até 50 descontos por medição.')
+    .optional()
+    .default([]),
 });
 
 /** Grava os itens (ou o valor do contrato global) e confere o saldo. Devolve o valor em centavos. */
@@ -406,7 +418,9 @@ async function gravarMedicao(c: Cliente, empresaId: string, medicaoId: string, k
         [k.id, medicaoId],
       )
     ).rows;
-    for (const l of d.itens) {
+    // Por percentual: aplica o % a cada item, sobre o quantitativo contratado. Por quantitativos: o que foi digitado.
+    const lista = d.percentual !== null ? itens.map((i) => ({ contratoItemId: i.id as string, quantidade: (Number(i.quantidade) * d.percentual!) / 100 })) : d.itens;
+    for (const l of lista) {
       if (!l.quantidade) continue;
       const i = itens.find((x) => x.id === l.contratoItemId);
       if (!i) throw new ErroHttp(400, 'Item não pertence ao contrato.');
@@ -428,7 +442,14 @@ async function gravarMedicao(c: Cliente, empresaId: string, medicaoId: string, k
     if (v) await c.query('INSERT INTO medicoes_itens (empresa_id, medicao_id, contrato_item_id, quantidade, valor_centavos) VALUES ($1,$2,NULL,0,$3)', [empresaId, medicaoId, v]);
   }
   if (total <= 0) throw new ErroHttp(400, 'Informe o que foi executado no período.');
-  await c.query('UPDATE medicoes SET valor_centavos = $2, atualizado_em = now() WHERE id = $1', [medicaoId, total]);
+  const descontos = d.descontos ?? [];
+  const somaDescontos = descontos.reduce((s, x) => s + cent(x.valor), 0);
+  if (somaDescontos > total) throw new ErroHttp(400, 'Os descontos passam do valor da medição.');
+  await c.query('DELETE FROM medicoes_descontos WHERE medicao_id = $1', [medicaoId]);
+  for (const [i, x] of descontos.entries())
+    await c.query('INSERT INTO medicoes_descontos (empresa_id, medicao_id, ordem, descricao, valor_centavos) VALUES ($1,$2,$3,$4,$5)', [empresaId, medicaoId, i + 1, x.descricao, cent(x.valor)]);
+  const base = k.tipo === 'itens' ? (d.percentual !== null ? 'percentual' : 'quantidades') : d.valor !== null ? 'valor' : d.percentual !== null ? 'percentual' : null;
+  await c.query('UPDATE medicoes SET valor_centavos = $2, base = $3, percentual = $4, atualizado_em = now() WHERE id = $1', [medicaoId, total, base, d.percentual]);
   return total;
 }
 
@@ -469,6 +490,7 @@ async function detalharAutorizacao(c: Cliente, empresaId: string, id: string, us
     ir: reais(a.ir_centavos)!,
     pcc: reais(a.pcc_centavos)!,
     impostos: reais(Number(a.iss_centavos) + Number(a.inss_centavos) + Number(a.ir_centavos) + Number(a.pcc_centavos))!,
+    descontos: reais(a.descontos_centavos)!,
     liquido: reais(a.liquido_centavos)!,
     documento: a.documento as string | null,
     formaPagamento: a.forma_pagamento as string | null,
@@ -937,16 +959,19 @@ export function rotasContratos(banco: Banco) {
           if (bruto <= 0) throw new ErroHttp(409, 'Não há caução retida a liberar neste contrato.');
           ret = { caucao: 0, iss: 0, inss: 0, ir: 0, pcc: 0, liquido: bruto };
         }
-        if (ret.liquido <= 0) throw new ErroHttp(400, 'As retenções não podem somar o valor todo.');
+        // Descontos da medição (adiantamento, alimentação, EPI...) também saem do que será pago.
+        const descontos = medicaoId ? Number((await c.query('SELECT coalesce(sum(valor_centavos), 0) AS v FROM medicoes_descontos WHERE medicao_id = $1', [medicaoId])).rows[0].v) : 0;
+        const liquido = ret.liquido - descontos;
+        if (liquido <= 0) throw new ErroHttp(400, 'As retenções e os descontos não podem somar o valor todo.');
         const numero = await proximoNumero(c, 'autorizacoes_pagamento', empresaId);
         const hoje = hojeBrasil();
         const vencimento = d.vencimento ?? somarDias(hoje, Number(k.prazo_pagamento_dias ?? 15));
         const a = (
           await c.query(
             `INSERT INTO autorizacoes_pagamento (empresa_id, numero, tipo, contrato_id, medicao_id, data, vencimento, bruto_centavos, caucao_centavos, iss_centavos, inss_centavos,
-                                                 ir_centavos, pcc_centavos, liquido_centavos, documento, forma_pagamento, observacao, criado_por_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
-            [empresaId, numero, d.tipo, k.id, medicaoId, hoje, vencimento, bruto, ret.caucao, ret.iss, ret.inss, ret.ir, ret.pcc, ret.liquido, d.documento,
+                                                 ir_centavos, pcc_centavos, descontos_centavos, liquido_centavos, documento, forma_pagamento, observacao, criado_por_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING id`,
+            [empresaId, numero, d.tipo, k.id, medicaoId, hoje, vencimento, bruto, ret.caucao, ret.iss, ret.inss, ret.ir, ret.pcc, descontos, liquido, d.documento,
               d.formaPagamento ?? k.forma_pagamento, d.observacao, u.id],
           )
         ).rows[0];
@@ -956,7 +981,7 @@ export function rotasContratos(banco: Banco) {
           await c.query("UPDATE autorizacoes_pagamento SET status = 'aprovada', aprovado_em = now(), aprovado_por_id = NULL, aprovacao_automatica = true WHERE id = $1", [a.id]);
           await gerarContasAPagar(c, empresaId, a.id, u.id);
         }
-        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'autorizacoes_pagamento', entidadeId: a.id, depois: { numero, tipo: d.tipo, bruto: bruto / 100, liquido: ret.liquido / 100 } });
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'criar', entidade: 'autorizacoes_pagamento', entidadeId: a.id, depois: { numero, tipo: d.tipo, bruto: bruto / 100, descontos: descontos / 100, liquido: liquido / 100 } });
         return a.id as string;
       });
       reply.code(201);

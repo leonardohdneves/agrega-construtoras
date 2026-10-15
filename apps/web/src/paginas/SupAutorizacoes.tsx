@@ -160,6 +160,7 @@ export function AutorizacaoDetalhe() {
             {linhasRet.map(([k, nome, pct, v]) => (
               <tr key={k}><td>(−) {nome}{pct ? ` · ${pct.toLocaleString('pt-BR')}%` : ''}</td><td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(v)}</td></tr>
             ))}
+            {a.descontos > 0 && <tr><td>(−) Descontos (adiantamento, alimentação, EPI...)</td><td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(a.descontos)}</td></tr>}
             <tr className="linha-liquido"><td className="forte">Líquido a pagar</td><td className="mono forte" style={{ textAlign: 'right' }}>{formatarMoeda(a.liquido)}</td></tr>
           </tbody>
         </table>
@@ -230,7 +231,7 @@ export function AutorizacaoDetalhe() {
         <p>
           Recebi(emos) de <b>{empresa?.razaoSocial}</b>{empresa?.cnpj ? `, CNPJ ${formatarDocumento(empresa.cnpj)},` : ''} a importância de <b>{formatarMoeda(a.liquido)}</b> ({porExtenso(a.liquido)}), referente à {ref}, conforme a ordem de pagamento nº {numeroDoc(a.numero)}
           {a.documento ? ` e o documento ${a.documento}` : ''}.
-          {linhasRet.length > 0 && ` Valor bruto de ${formatarMoeda(a.bruto)}, com retenções de ${formatarMoeda(a.bruto - a.liquido)}.`} Para clareza, firmo(amos) o presente recibo, dando plena quitação do valor recebido.
+          {linhasRet.length > 0 && ` Valor bruto de ${formatarMoeda(a.bruto)}, com retenções de ${formatarMoeda(a.bruto - a.liquido - a.descontos)}.`}{a.descontos > 0 && ` Descontos de ${formatarMoeda(a.descontos)} já deduzidos.`} Para clareza, firmo(amos) o presente recibo, dando plena quitação do valor recebido.
         </p>
         <p className="recibo-data">{cidade}, _____ de ____________________ de {a.vencimento.slice(0, 4)}.</p>
         <div className="assinaturas">

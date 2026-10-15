@@ -100,22 +100,39 @@ function FormMedicao({ contrato, inicial, aoSalvar, aoCancelar }: { contrato: Co
   const [qs, setQs] = useState<Record<string, string>>(() => Object.fromEntries((inicial?.itens ?? []).map((i) => [i.contratoItemId, i.atual ? campoNumero(i.atual) : ''])));
   const [modoGlobal, setModoGlobal] = useState<'valor' | 'percentual'>('valor');
   const [valorGlobal, setValorGlobal] = useState(inicial && contrato.tipo === 'global' ? moedaCampo(inicial.valor) : '');
+  // Contrato por itens: medir pelos quantitativos digitados ou por um percentual do quantitativo contratado.
+  const [modoItens, setModoItens] = useState<'quantidades' | 'percentual'>(inicial?.base === 'percentual' ? 'percentual' : 'quantidades');
+  const [pctItens, setPctItens] = useState(inicial?.base === 'percentual' && inicial.percentual !== null ? String(inicial.percentual) : '');
+  const [ds, setDs] = useState<{ descricao: string; valor: string }[]>(() => (inicial?.descontos ?? []).map((x) => ({ descricao: x.descricao, valor: moedaCampo(x.valor) })));
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
+  const pctLido = lerNumero(pctItens) ?? 0;
+  // Quantidade medida de cada item: pelo digitado, ou pelo % do contratado.
+  const qtdItem = (i: { id: string; quantidade: number }) => (modoItens === 'percentual' ? (i.quantidade * pctLido) / 100 : lerNumero(qs[i.id] ?? '') ?? 0);
+  const totalDescontos = ds.reduce((s, x) => s + (lerNumero(x.valor) ?? 0), 0);
+
   const total =
     contrato.tipo === 'itens'
-      ? contrato.itens.reduce((s, i) => s + (lerNumero(qs[i.id] ?? '') ?? 0) * i.precoUnitario, 0)
+      ? contrato.itens.reduce((s, i) => s + qtdItem(i) * i.precoUnitario, 0)
       : modoGlobal === 'valor'
         ? lerNumero(valorGlobal) ?? 0
         : ((lerNumero(valorGlobal) ?? 0) * (contrato.valorGlobal ?? 0)) / 100;
+
+  function atualizarDesconto(n: number, campo: 'descricao' | 'valor', v: string) {
+    setDs(ds.map((x, i) => (i === n ? { ...x, [campo]: v } : x)));
+  }
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro('');
     try {
       const corpo: Record<string, unknown> = { contratoId: contrato.id, ...f, observacao: f.observacao || null };
-      if (contrato.tipo === 'itens') {
+      if (contrato.tipo === 'itens' && modoItens === 'percentual') {
+        if (!pctLido || pctLido <= 0) throw new Error('Informe o percentual executado.');
+        corpo.percentual = pctLido;
+        corpo.itens = [];
+      } else if (contrato.tipo === 'itens') {
         corpo.itens = contrato.itens.map((i) => ({ contratoItemId: i.id, quantidade: lerNumero(qs[i.id] ?? '') ?? 0 })).filter((x) => x.quantidade > 0);
         if (!(corpo.itens as unknown[]).length) throw new Error('Informe a quantidade executada de pelo menos um item.');
       } else {
@@ -123,6 +140,15 @@ function FormMedicao({ contrato, inicial, aoSalvar, aoCancelar }: { contrato: Co
         if (!v || v <= 0) throw new Error(modoGlobal === 'valor' ? 'Informe o valor executado.' : 'Informe o percentual executado.');
         corpo[modoGlobal] = v;
       }
+      const descontos = [];
+      for (const x of ds) {
+        if (!x.descricao.trim() && !x.valor.trim()) continue;
+        if (!x.descricao.trim()) throw new Error('Informe o que é cada desconto (ex.: adiantamento, alimentação, EPI).');
+        const v = lerNumero(x.valor);
+        if (!v || v <= 0) throw new Error(`Valor inválido para o desconto "${x.descricao.trim()}".`);
+        descontos.push({ descricao: x.descricao.trim(), valor: v });
+      }
+      corpo.descontos = descontos;
       setOcupado(true);
       const r = inicial
         ? await api<{ medicao: Medicao }>(`/sup/medicoes/${inicial.id}`, { metodo: 'PUT', corpo })
@@ -151,6 +177,25 @@ function FormMedicao({ contrato, inicial, aoSalvar, aoCancelar }: { contrato: Co
           <input id="md-data" type="date" value={f.data} onChange={(e) => setF({ ...f, data: e.target.value })} />
         </div>
       </div>
+      {contrato.tipo === 'itens' && (
+        <div className="campo">
+          <span className="rotulo" id="md-modo-itens">Medir por</span>
+          <div className="segmentado" role="group" aria-labelledby="md-modo-itens">
+            {(['quantidades', 'percentual'] as const).map((t) => (
+              <button key={t} type="button" aria-pressed={modoItens === t} className={modoItens === t ? 'ativo' : ''} onClick={() => setModoItens(t)}>
+                {t === 'quantidades' ? 'Quantitativos' : '% do contratado'}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+      {contrato.tipo === 'itens' && modoItens === 'percentual' && (
+        <div className="campo" style={{ maxWidth: 260 }}>
+          <label htmlFor="md-pct">Percentual executado (%)</label>
+          <input id="md-pct" className="mono" inputMode="decimal" value={pctItens} onChange={(e) => setPctItens(e.target.value)} />
+          <span className="small muted">Aplicado a cada item: quantidade contratada × percentual.</span>
+        </div>
+      )}
       {contrato.tipo === 'itens' ? (
         <table className="tabela tabela-compacta">
           <thead>
@@ -158,7 +203,7 @@ function FormMedicao({ contrato, inicial, aoSalvar, aoCancelar }: { contrato: Co
           </thead>
           <tbody>
             {contrato.itens.map((i) => {
-              const q = lerNumero(qs[i.id] ?? '') ?? 0;
+              const q = qtdItem(i);
               // Saldo disponível para esta medição = saldo aprovado − pendentes de outras medições.
               const proprio = inicial?.itens.find((x) => x.contratoItemId === i.id)?.atual ?? 0;
               const disponivel = i.saldo - i.pendente + proprio;
@@ -169,11 +214,17 @@ function FormMedicao({ contrato, inicial, aoSalvar, aoCancelar }: { contrato: Co
                   <td className="mono" style={{ textAlign: 'right' }}>{qtd(disponivel, i.unidade)}</td>
                   <td className="mono" style={{ textAlign: 'right' }}>{precoUn(i.precoUnitario)}</td>
                   <td>
-                    <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
-                      <input aria-label={`Executado de ${i.descricao}`} className="mono" inputMode="decimal" style={{ maxWidth: 120 }} value={qs[i.id] ?? ''} onChange={(e) => setQs({ ...qs, [i.id]: e.target.value })} />
-                      <span className="small muted">{i.unidade}</span>
-                    </span>
-                    {q > disponivel + 0.0005 && <div className="small tom-perigo">passa do saldo</div>}
+                    {modoItens === 'percentual' ? (
+                      <span className="mono">{q ? qtd(q, i.unidade) : '—'}</span>
+                    ) : (
+                      <>
+                        <span style={{ display: 'inline-flex', gap: 6, alignItems: 'center' }}>
+                          <input aria-label={`Executado de ${i.descricao}`} className="mono" inputMode="decimal" style={{ maxWidth: 120 }} value={qs[i.id] ?? ''} onChange={(e) => setQs({ ...qs, [i.id]: e.target.value })} />
+                          <span className="small muted">{i.unidade}</span>
+                        </span>
+                        {q > disponivel + 0.0005 && <div className="small tom-perigo">passa do saldo</div>}
+                      </>
+                    )}
                   </td>
                   <td className="mono" style={{ textAlign: 'right' }}>{q ? formatarMoeda(q * i.precoUnitario) : '—'}</td>
                 </tr>
@@ -203,6 +254,23 @@ function FormMedicao({ contrato, inicial, aoSalvar, aoCancelar }: { contrato: Co
       <p className="small" style={{ margin: 0 }}>
         Valor da medição: <b className="mono">{formatarMoeda(total)}</b> · retenções do contrato: {textoRetencoes(contrato.retencoes)}
       </p>
+      <div className="campo">
+        <span className="rotulo">Descontos a deduzir do pagamento</span>
+        <span className="small muted">Adiantamentos, alimentação, EPI e outros valores que a obra desconta do terceiro.</span>
+        {ds.map((x, n) => (
+          <div key={n} style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 6 }}>
+            <input aria-label={`Descrição do desconto ${n + 1}`} style={{ flex: '1 1 220px' }} maxLength={120} value={x.descricao} placeholder="Ex.: adiantamento, alimentação, EPI" onChange={(e) => atualizarDesconto(n, 'descricao', e.target.value)} />
+            <input aria-label={`Valor do desconto ${n + 1}`} className="mono" inputMode="decimal" style={{ maxWidth: 140 }} value={x.valor} placeholder="0,00" onChange={(e) => atualizarDesconto(n, 'valor', e.target.value)} />
+            <button type="button" className="btn btn-link" onClick={() => setDs(ds.filter((_, i) => i !== n))}>Remover</button>
+          </div>
+        ))}
+        <div>
+          <button type="button" className="btn btn-link" style={{ paddingLeft: 0 }} onClick={() => setDs([...ds, { descricao: '', valor: '' }])}>+ Adicionar desconto</button>
+        </div>
+        {totalDescontos > 0 && (
+          <span className="small">Total de descontos: <b className="mono">{formatarMoeda(totalDescontos)}</b> · sai do valor a pagar ao fornecedor</span>
+        )}
+      </div>
       <div className="campo">
         <label htmlFor="md-obs">Observação</label>
         <textarea id="md-obs" rows={2} maxLength={1000} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} placeholder="Frentes de serviço, ocorrências, fotos arquivadas…" />
@@ -267,7 +335,7 @@ function FormAutorizacao({ m, aoCriar, aoFechar }: { m: Medicao; aoCriar: (id: s
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const somaRet = (Object.keys(ret) as (keyof Retencoes)[]).reduce((s, k) => s + (lerNumero(ret[k]) ?? 0), 0);
-  const liquido = Math.round((m.valor - somaRet) * 100) / 100;
+  const liquido = Math.round((m.valor - somaRet - (m.totalDescontos ?? 0)) * 100) / 100;
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
@@ -322,7 +390,7 @@ function FormAutorizacao({ m, aoCriar, aoFechar }: { m: Medicao; aoCriar: (id: s
         ))}
       </div>
       <p style={{ margin: 0 }}>
-        Bruto <b className="mono">{formatarMoeda(m.valor)}</b> − retenções <b className="mono">{formatarMoeda(somaRet)}</b> = líquido a pagar <b className="mono">{formatarMoeda(liquido)}</b>
+        Bruto <b className="mono">{formatarMoeda(m.valor)}</b> − retenções <b className="mono">{formatarMoeda(somaRet)}</b>{m.totalDescontos > 0 && <> − descontos <b className="mono">{formatarMoeda(m.totalDescontos)}</b></>} = líquido a pagar <b className="mono">{formatarMoeda(liquido)}</b>
       </p>
       <div className="campo">
         <label htmlFor="ap-obs">Observação</label>
@@ -456,6 +524,15 @@ export function MedicaoDetalhe() {
               <p className="small" style={{ marginBottom: 0 }}>
                 Retenções previstas: caução {formatarMoeda(m.retencoesPrevistas.caucao)} · impostos {formatarMoeda(m.retencoesPrevistas.iss + m.retencoesPrevistas.inss + m.retencoesPrevistas.ir + m.retencoesPrevistas.pcc)} · líquido previsto <b className="mono">{formatarMoeda(m.retencoesPrevistas.liquido)}</b>
               </p>
+            )}
+            {m.descontos.length > 0 && (
+              <div className="small" style={{ marginBottom: 8 }}>
+                <b>Descontos a deduzir do pagamento:</b>{' '}
+                {m.descontos.map((x, n) => (
+                  <span key={x.id}>{n > 0 && ' · '}{x.descricao} <span className="mono">{formatarMoeda(x.valor)}</span></span>
+                ))}{' '}
+                = <b className="mono">{formatarMoeda(m.totalDescontos)}</b> · líquido a pagar após descontos <b className="mono">{formatarMoeda(m.retencoesPrevistas.liquidoAPagar)}</b>
+              </div>
             )}
             {m.observacao && <p className="small"><b>Observação:</b> {m.observacao}</p>}
           </div>
