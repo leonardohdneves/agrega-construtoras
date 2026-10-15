@@ -4,6 +4,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
+import { SeletorBusca } from '../componentes/SeletorBusca';
 import type { ItemObra, Obra } from './EngObras';
 
 export type NivelPlanilha = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
@@ -170,10 +171,9 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
       </td>
       <td colSpan={2}>
         {tarefa ? (
-          <select aria-label="Serviço" value={itemId} onChange={(e) => setItemId(e.target.value)} style={{ maxWidth: 260 }}>
-            <option value="">Sem serviço</option>
-            {servicos.map((s) => <option key={s.id} value={s.id}>{s.codigo} · {s.descricao}</option>)}
-          </select>
+          <div style={{ maxWidth: 360 }}>
+            <SeletorBusca id="ed-servico" label="Serviço" semRotulo opcoes={servicos.map((s) => ({ id: s.id, rotulo: `${s.codigo} · ${s.descricao}` }))} valor={itemId} onChange={setItemId} vazio="Sem serviço" />
+          </div>
         ) : null}
       </td>
       <td className="num">
@@ -260,16 +260,20 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
         </div>
         {nivel === 'tarefa' && (
           <>
-            <div className="campo" style={{ gridColumn: 'span 2' }}>
-              <label htmlFor="pl-servico">Serviço da obra</label>
-              <select id="pl-servico" value={itemId} onChange={(e) => escolherServico(e.target.value)} disabled={servicos.length === 0}>
-                <option value="">{servicos.length === 0 ? 'Nenhum serviço na obra' : 'Sem serviço (só a descrição)'}</option>
-                {servicos.map((s) => <option key={s.id} value={s.id}>{s.codigo} · {s.descricao} ({s.unidade})</option>)}
-              </select>
+            <SeletorBusca
+              id="pl-servico"
+              label="Serviço da obra"
+              style={{ gridColumn: 'span 2' }}
+              disabled={servicos.length === 0}
+              opcoes={servicos.map((s) => ({ id: s.id, rotulo: `${s.codigo} · ${s.descricao} (${s.unidade})` }))}
+              valor={itemId}
+              onChange={escolherServico}
+              vazio={servicos.length === 0 ? 'Nenhum serviço na obra' : 'Sem serviço (só a descrição)'}
+            >
               <span className="ajuda">
                 Só os serviços incluídos na obra. <Link to={`/eng/servicos?obra=${obraId}`}>Incluir serviços</Link>
               </span>
-            </div>
+            </SeletorBusca>
             {itemId && (
               <div className="campo">
                 <label htmlFor="pl-qtd">Quantidade ({servicos.find((s) => s.id === itemId)?.unidade})</label>
