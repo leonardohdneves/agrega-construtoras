@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, formatarDocumento, type Fornecedor } from '../api';
+import { LeituraIa, type DadosLidos } from '../componentes/LeituraIa';
 
 type Dados = {
   id?: string;
@@ -58,6 +59,25 @@ const TEXTOS = {
     ramo: 'Natureza (ex.: financiamento, tributo, aluguel)',
   },
 };
+
+/** Junta os campos lidos pela IA no formulário; campos que a IA não leu ficam como estavam. */
+function mesclarLeitura(f: Dados, d: DadosLidos): Dados {
+  const txt = (k: string, atual: string) => (d[k] !== undefined && d[k] !== null ? String(d[k]) : atual);
+  return {
+    ...f,
+    tipoPessoa: d.tipoPessoa === 'PF' || d.tipoPessoa === 'PJ' ? d.tipoPessoa : f.tipoPessoa,
+    cnpjCpf: d.cnpjCpf ? formatarDocumento(String(d.cnpjCpf)) : f.cnpjCpf,
+    razaoSocial: txt('razaoSocial', f.razaoSocial),
+    nomeFantasia: txt('nomeFantasia', f.nomeFantasia),
+    ramo: txt('ramo', f.ramo),
+    telefone: txt('telefone', f.telefone),
+    email: txt('email', f.email),
+    cidade: txt('cidade', f.cidade),
+    uf: txt('uf', f.uf),
+    chavePix: txt('chavePix', f.chavePix),
+    observacoes: txt('observacoes', f.observacoes),
+  };
+}
 
 export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor' | 'cliente' }) {
   const t = TEXTOS[categoria];
@@ -141,6 +161,7 @@ export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor'
       {form && (
         <form className="card form" onSubmit={salvar}>
           <h2>{form.id ? `Editar ${form.nomeFantasia || form.razaoSocial}` : t.novo}</h2>
+          {!form.id && <LeituraIa entidade={categoria} aoLer={(d) => setForm((f) => (f ? mesclarLeitura(f, d) : f))} />}
           <div className="campos">
             <div className="campo">
               <span className="rotulo" id="f-pessoa">Pessoa</span>

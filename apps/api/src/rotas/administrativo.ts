@@ -6,7 +6,9 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { cnpjValido } from '../lib/cnpj.ts';
 import { cpfValido } from '../lib/frota.ts';
-import { naoEncontrado } from '../lib/erros.ts';
+import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { lerCadastroComIa, type EntidadeCadastro } from '../lib/ia-cadastro.ts';
+import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 
 const texto = z.string().trim().max(200).optional().nullable().transform((v) => v || null);
@@ -82,6 +84,29 @@ export function clientePublico(r: Record<string, any>) {
 export function rotasAdministrativo(banco: Banco) {
   return async function (app: FastifyInstance) {
     const gestao = exigir(banco, 'dono', 'gestor');
+
+    // ----- Leitura de cadastros por IA (foto ou PDF do documento) -----
+    // A IA só sugere os campos; quem salva é o formulário, depois de conferido pelo usuário.
+    app.get('/cadastros/leitura', { preHandler: gestao }, async () => ({ ia: iaDisponivel() }));
+
+    app.post('/cadastros/leitura', { preHandler: gestao, bodyLimit: 16 * 1024 * 1024 }, async (req) => {
+      const d = z
+        .object({
+          arquivo: z.string({ required_error: 'Envie a foto ou o PDF.' }).min(20, 'Arquivo vazio.'),
+          tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
+          entidade: z.enum(['fornecedor', 'credor', 'cliente', 'colaborador']),
+        })
+        .parse(req.body);
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
+      const bytes = Buffer.from(d.arquivo, 'base64');
+      if (bytes.length > 10 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo grande demais (máximo 10 MB).');
+      try {
+        return await lerCadastroComIa(bytes, d.tipo, d.entidade as EntidadeCadastro);
+      } catch (e) {
+        if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
+        throw e;
+      }
+    });
 
     // ----- Clientes (quem compra o concreto) -----
     app.get('/clientes', { preHandler: gestao }, async (req) => {

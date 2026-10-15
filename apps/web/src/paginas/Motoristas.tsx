@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, formatarData, FUNCOES_FROTA, NOMES_FUNCAO, seloVencimento, type Funcao, type Motorista, type Usuario } from '../api';
+import { LeituraIa, type DadosLidos } from '../componentes/LeituraIa';
 
 type Dados = {
   id?: string;
@@ -36,6 +37,26 @@ function paraDados(m: Motorista): Dados {
     email: m.email ?? '',
     dataAdmissao: m.dataAdmissao ?? '',
     dataNascimento: m.dataNascimento ?? '',
+  };
+}
+
+/** Junta os campos lidos pela IA no formulário do colaborador; campos não lidos ficam como estavam. */
+function mesclarLeitura(f: Dados, d: DadosLidos): Dados {
+  const txt = (k: string, atual: string) => (d[k] !== undefined && d[k] !== null ? String(d[k]) : atual);
+  const funcao = typeof d.funcao === 'string' && d.funcao in NOMES_FUNCAO ? (d.funcao as Funcao) : f.funcao;
+  return {
+    ...f,
+    nome: txt('nome', f.nome),
+    cpf: txt('cpf', f.cpf),
+    telefone: txt('telefone', f.telefone),
+    email: txt('email', f.email),
+    cargo: txt('cargo', f.cargo),
+    funcao,
+    cnhNumero: txt('cnhNumero', f.cnhNumero),
+    cnhCategoria: txt('cnhCategoria', f.cnhCategoria),
+    cnhVencimento: txt('cnhVencimento', f.cnhVencimento),
+    dataNascimento: txt('dataNascimento', f.dataNascimento),
+    dataAdmissao: txt('dataAdmissao', f.dataAdmissao),
   };
 }
 
@@ -141,6 +162,7 @@ export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores
       {form && (
         <form className="card form" onSubmit={salvar}>
           <h2>{form.id ? `Editar ${form.nome}` : colab ? 'Novo colaborador' : 'Novo motorista'}</h2>
+          {!form.id && <LeituraIa entidade="colaborador" aoLer={(d) => setForm((f) => (f ? mesclarLeitura(f, d) : f))} />}
           <div className="campos">
             <div className="campo">
               <label htmlFor="m-nome">Nome</label>
