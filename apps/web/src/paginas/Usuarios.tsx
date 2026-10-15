@@ -4,7 +4,7 @@ import { MODULOS_PADRAO } from '../acesso';
 import { useSessao } from '../sessao';
 
 type PerfilEmpresa = Exclude<Perfil, 'admin_sistema'>;
-const PERFIS: PerfilEmpresa[] = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor'];
+const PERFIS: PerfilEmpresa[] = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor', 'almoxarife'];
 
 type Acesso = { perfil: PerfilEmpresa; administrador: boolean; padrao: boolean; modulos: Modulo[] };
 type Novo = { nome: string; email: string; senha: string; telefoneWhatsapp: string } & Acesso;

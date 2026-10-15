@@ -50,6 +50,7 @@ export type Perfil =
   | 'administrativo'
   | 'vendedor'
   | 'financeiro'
+  | 'almoxarife'
   // Perfis da concreteira, mantidos só por compatibilidade com o código herdado.
   | 'motorista'
   | 'operador_usina'
@@ -110,6 +111,7 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   engenheiro_obra: 'Engenheiro de obra',
   comprador: 'Comprador',
   financeiro: 'Financeiro',
+  almoxarife: 'Almoxarife',
   administrativo: 'Administrativo',
   vendedor: 'Comercial',
   motorista: 'Motorista',
@@ -610,6 +612,7 @@ export type ItemNota = {
   id: string;
   numeroItem: number;
   obraId: string | null;
+  obraEstoqueId?: string | null;
   obraItemId: string | null;
   obraItemDescricao: string | null;
   eapNoId: string | null;

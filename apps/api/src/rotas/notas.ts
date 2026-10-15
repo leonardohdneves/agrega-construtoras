@@ -94,6 +94,7 @@ const esquemaAlterarItem = z
     obraId: uuidOpc,
     obraItemId: uuidOpc,
     eapNoId: uuidOpc,
+    obraEstoqueId: uuidOpc,
     insumoId: uuidOpc,
     fatorEstoque: z.union([z.preprocess(numeroBr, z.number({ invalid_type_error: 'Fator inválido.' }).positive('O fator precisa ser maior que zero.').max(1_000_000)), z.null()]),
     // Só para notas lançadas à mão:
@@ -242,6 +243,7 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
       veiculoId: i.veiculo_id,
       veiculoCodigo: i.veiculo_codigo ?? null,
       obraId: i.obra_id ?? null,
+      obraEstoqueId: i.obra_estoque_id ?? null,
       obraItemId: i.obra_item_id ?? null,
       obraItemDescricao: i.obra_item_descricao ?? null,
       eapNoId: i.eap_no_id ?? null,
@@ -936,7 +938,7 @@ export function rotasNotas(banco: Banco) {
         if (!DIGITAVEL.has(n.origem) && fiscais.length) throw new ErroHttp(400, 'Descrição, quantidade e valor vêm do XML e não podem ser alterados.');
         await validarApropriacao(c, empresaId, n.direcao === 'saida' ? 'receita' : 'despesa', d);
         // Apropriação para o estoque da construtora: obra, insumo da obra e etapa.
-        if (d.obraId !== undefined || d.obraItemId !== undefined || d.eapNoId !== undefined) {
+        if (d.obraId !== undefined || d.obraItemId !== undefined || d.eapNoId !== undefined || d.obraEstoqueId !== undefined) {
           if (n.direcao !== 'entrada') throw new ErroHttp(400, 'Só notas de compra têm apropriação de estoque.');
           const obraId = d.obraId !== undefined ? d.obraId : i.obra_id;
           const obraItemId = d.obraItemId !== undefined ? d.obraItemId : i.obra_item_id;
@@ -944,7 +946,14 @@ export function rotasNotas(banco: Banco) {
           if (obraItemId && !obraId) throw new ErroHttp(400, 'Escolha a obra do insumo.');
           if (eapNoId && !obraId) throw new ErroHttp(400, 'Escolha a obra da etapa.');
           await validarApropriacaoObra(c, empresaId, obraId, obraItemId, eapNoId);
-          await c.query('UPDATE notas_itens SET obra_id = $2, obra_item_id = $3, eap_no_id = $4 WHERE id = $1', [i.id, obraId, obraItemId, eapNoId]);
+          // Estoque de recebimento: se a obra muda e nenhum estoque é escolhido, volta ao padrão da obra.
+          const obraEstoqueId = d.obraEstoqueId !== undefined ? d.obraEstoqueId : d.obraId !== undefined ? null : i.obra_estoque_id;
+          if (obraEstoqueId) {
+            const est = (await c.query('SELECT obra_id FROM obra_estoques WHERE id = $1 AND empresa_id = $2 AND ativo', [obraEstoqueId, empresaId])).rows[0];
+            if (!est) throw new ErroHttp(400, 'Estoque não encontrado ou inativo.');
+            if (est.obra_id && est.obra_id !== obraId) throw new ErroHttp(400, 'Este estoque é de outra obra.');
+          }
+          await c.query('UPDATE notas_itens SET obra_id = $2, obra_item_id = $3, eap_no_id = $4, obra_estoque_id = $5 WHERE id = $1', [i.id, obraId, obraItemId, eapNoId, obraEstoqueId ?? null]);
         }
         // Ligação com o insumo do estoque.
         let fator = d.fatorEstoque;

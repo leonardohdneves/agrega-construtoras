@@ -157,12 +157,20 @@ export async function validarApropriacaoObra(c: Cliente, empresaId: string, obra
   }
 }
 
-/** Estoque de recebimento da obra: toda obra tem um (criado se faltar). É onde entram as notas de compra. */
+/** Próximo código de estoque da empresa (EST-0001, EST-0002…). */
+export async function proximoCodigoEstoque(c: Cliente, empresaId: string): Promise<string> {
+  await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`estoques:${empresaId}`]);
+  const r = await c.query(`SELECT 'EST-' || lpad((coalesce(max(substring(codigo FROM '^EST-([0-9]+)$')::int), 0) + 1)::text, 4, '0') AS codigo FROM obra_estoques WHERE empresa_id = $1`, [empresaId]);
+  return r.rows[0].codigo as string;
+}
+
+/** Estoque de recebimento da obra: toda obra tem um (criado se faltar). É o padrão de entrada das notas. */
 export async function estoqueRecebimento(c: Cliente, empresaId: string, obraId: string): Promise<string> {
   const ex = (await c.query('SELECT id FROM obra_estoques WHERE obra_id = $1 AND recebimento', [obraId])).rows[0];
   if (ex) return ex.id as string;
+  const codigo = await proximoCodigoEstoque(c, empresaId);
   const novo = (
-    await c.query(`INSERT INTO obra_estoques (empresa_id, obra_id, nome, recebimento) VALUES ($1,$2,'Recebimento',true) RETURNING id`, [empresaId, obraId])
+    await c.query(`INSERT INTO obra_estoques (empresa_id, obra_id, nome, recebimento, codigo) VALUES ($1,$2,'Recebimento',true,$3) RETURNING id`, [empresaId, obraId, codigo])
   ).rows[0];
   return novo.id as string;
 }
@@ -176,7 +184,7 @@ export async function registrarEntradasObra(c: Cliente, empresaId: string, notaI
   const n = (await c.query('SELECT data_emissao, numero FROM notas_fiscais WHERE id = $1', [notaId])).rows[0];
   const itens = (
     await c.query(
-      `SELECT i.id, i.quantidade, i.valor_custo_centavos, i.unidade,
+      `SELECT i.id, i.obra_estoque_id, i.quantidade, i.valor_custo_centavos, i.unidade,
               coalesce(i.obra_id, o.obra_id) AS obra_id,
               coalesce(i.obra_item_id, pi.obra_item_id) AS obra_item_id,
               coalesce(i.eap_no_id, pi.eap_no_id) AS eap_no_id,
@@ -196,14 +204,19 @@ export async function registrarEntradasObra(c: Cliente, empresaId: string, notaI
   for (const i of itens) {
     const qtd = Number(i.quantidade);
     if (!i.obra_item_id || !i.eap_no_id || !i.obra_id || !(qtd > 0)) continue;
-    if (!recebimentos.has(i.obra_id)) recebimentos.set(i.obra_id, await estoqueRecebimento(c, empresaId, i.obra_id));
+    // Destino: o estoque escolhido no item; sem escolha, o recebimento da obra.
+    let destino: string = i.obra_estoque_id ?? '';
+    if (!destino) {
+      if (!recebimentos.has(i.obra_id)) recebimentos.set(i.obra_id, await estoqueRecebimento(c, empresaId, i.obra_id));
+      destino = recebimentos.get(i.obra_id)!;
+    }
     // A nota vem na unidade de compra; o estoque é mantido na unidade base do orçamento (ex.: kg).
     const fator = fatorEntrada(i.unidade, i.unidade_base ?? '', i.fator_compra === null ? null : Number(i.fator_compra));
     const qtdBase = qtd * fator;
     await c.query(
       `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, custo_unitario_centavos, nota_item_id, observacao, criado_por_id)
        VALUES ($1,$2,$3,$4,$5,$6,'entrada',$7,$8,$9,$10,$11)`,
-      [empresaId, i.obra_id, recebimentos.get(i.obra_id), i.obra_item_id, i.eap_no_id, n.data_emissao, Math.round(qtdBase * 1000) / 1000, Number(i.valor_custo_centavos) / qtdBase, i.id, `NF ${n.numero ?? 's/n'}`, usuarioId],
+      [empresaId, i.obra_id, destino, i.obra_item_id, i.eap_no_id, n.data_emissao, Math.round(qtdBase * 1000) / 1000, Number(i.valor_custo_centavos) / qtdBase, i.id, `NF ${n.numero ?? 's/n'}`, usuarioId],
     );
     feitas++;
   }

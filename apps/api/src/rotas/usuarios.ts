@@ -31,7 +31,7 @@ export function rotasUsuarios(banco: Banco) {
       if (!req.usuario!.administrador && !['dono', 'gestor'].includes(req.usuario!.perfil)) throw semPermissao();
       const r = await banco.query(
         `SELECT * FROM usuarios WHERE empresa_id = $1 AND excluido_em IS NULL
-          ORDER BY ativo DESC, array_position(ARRAY['dono','gestor','orcamentista','engenheiro_obra','comprador','financeiro','administrativo','vendedor','operador_usina','laboratorista','motorista']::perfil[], perfil), nome`,
+          ORDER BY ativo DESC, array_position(ARRAY['dono','gestor','orcamentista','engenheiro_obra','comprador','financeiro','administrativo','vendedor','almoxarife','operador_usina','laboratorista','motorista']::perfil[], perfil), nome`,
         [empresaDo(req)],
       );
       return { usuarios: r.rows.map(usuarioPublico), padrao: MODULOS_PADRAO };

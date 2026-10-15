@@ -2,7 +2,7 @@
 import type { Perfil } from './token.ts';
 
 /** Perfis que a construtora pode dar aos seus usuários. */
-export const PERFIS_EMPRESA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor'] as const satisfies readonly Perfil[];
+export const PERFIS_EMPRESA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor', 'almoxarife'] as const satisfies readonly Perfil[];
 
 export const NOMES_PERFIL: Record<Perfil, string> = {
   admin_sistema: 'Administrador do sistema',
@@ -16,6 +16,7 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   laboratorista: 'Laboratorista',
   administrativo: 'Administrativo',
   vendedor: 'Comercial',
+  almoxarife: 'Almoxarife',
   financeiro: 'Financeiro',
 };
 
