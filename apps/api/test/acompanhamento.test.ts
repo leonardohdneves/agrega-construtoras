@@ -67,3 +67,33 @@ test('previsto x executado soma as folhas abaixo de cada etapa e calcula o SPI',
   assert.equal(etapa.spi, 0.5);
   assert.equal(etapa.saldo, 1000);
 });
+
+test('Curva S inclui o mês em que termina o planejamento, mesmo antes do último dia', () => {
+  const pontos = curvaS({
+    custos: new Map([['a', 1000]]),
+    medicoes: [],
+    atividades: [{ eapNoId: 'a', inicio: '2026-05-01', fim: '2026-06-08', custo: 1000 }],
+    despesas: [],
+    de: '2026-05-01',
+    ate: '2026-06-08',
+    hoje: '2026-05-09',
+  });
+  assert.deepEqual(pontos.map((p) => p.data), ['2026-05-31', '2026-06-30']);
+  assert.equal(pontos[1].previsto, 1000);
+});
+
+test('Curva S vai até o mês de hoje quando o planejamento já terminou', () => {
+  const pontos = curvaS({
+    custos: new Map([['a', 1000]]),
+    medicoes: [{ data: '2026-05-09', itens: new Map([['a', 50]]) }],
+    atividades: [{ eapNoId: 'a', inicio: '2026-05-01', fim: '2026-05-20', custo: 1000 }],
+    despesas: [{ data: '2026-09-10', valor: 300 }],
+    de: '2026-05-01',
+    ate: '2026-05-20',
+    hoje: '2026-10-15',
+  });
+  assert.deepEqual(pontos.map((p) => p.data), ['2026-05-31', '2026-06-30', '2026-07-31', '2026-08-31', '2026-09-30', '2026-10-31']);
+  assert.equal(pontos[4].realizado, 300);
+  assert.equal(pontos[4].executado, 500);
+  assert.equal(pontos[5].executado, null); // 31/10 ainda não chegou
+});

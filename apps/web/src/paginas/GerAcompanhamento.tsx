@@ -117,6 +117,13 @@ function GraficoCurva({ pontos }: { pontos: PontoCurva[] }) {
           <text key={p.data} x={x(i)} y={A - M + 16} fontSize="10" textAnchor="middle">{dataBr(p.data).slice(3)}</text>
         ))}
         {series.map((s) => s.d && <path key={s.nome} d={s.d} fill="none" stroke={s.cor} strokeWidth={2.5} />)}
+        {/* Marcadores em cada mês: com um só mês, a linha não aparece e o ponto precisa ficar visível. */}
+        {series.map((s) =>
+          pontos.map((p, i) => {
+            const v = s.nome === 'Previsto' ? p.previsto : s.nome === 'Executado' ? p.executado : p.realizado;
+            return v === null ? null : <circle key={`${s.nome}-${i}`} cx={x(i)} cy={y(v)} r={4} fill={s.cor} />;
+          }),
+        )}
       </svg>
       <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }} className="small">
         {series.map((s) => (

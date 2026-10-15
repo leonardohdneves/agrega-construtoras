@@ -88,7 +88,12 @@ export function curvaS(args: {
   despesas: { data: string; valor: number }[]; de: string; ate: string; hoje: string;
 }): PontoCurva[] {
   const { custos, medicoes, atividades, despesas, de, ate, hoje } = args;
-  const pontos = fimsDeMes(de, ate);
+  // A curva vai até o fim do planejamento ou até o mês de hoje, o que vier depois (para mostrar executado e realizado até agora).
+  // Inclui também o mês em que termina, mesmo que o término caia antes do último dia do mês.
+  const fim = hoje > ate ? hoje : ate;
+  const pontos = fimsDeMes(de, fim);
+  const fimDoMesFinal = paraIso(Date.UTC(Number(fim.slice(0, 4)), Number(fim.slice(5, 7)), 0));
+  if (fimDoMesFinal >= de && (pontos.length === 0 || pontos[pontos.length - 1] < fimDoMesFinal)) pontos.push(fimDoMesFinal);
   const ultimaMedicao = medicoes.reduce((m, x) => (x.data > m ? x.data : m), '');
   return pontos.map((data) => {
     const passado = data <= hoje;
