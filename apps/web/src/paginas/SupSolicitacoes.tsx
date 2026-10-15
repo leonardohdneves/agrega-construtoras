@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, hojeLocal, lerNumero, somarDias, type PlanoConta } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
+import { SeletorBusca } from '../componentes/SeletorBusca';
 import {
   Assinatura,
   nomeFornecedor,
@@ -280,16 +281,17 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
       {f.obraId && necessidades !== null && (
         <>
           <div className="campos editor-linha">
-            <div className="campo">
-              <label htmlFor="sol-ins">Insumo</label>
-              <select id="sol-ins" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value, unidade: '' })}>
-                <option value="">Escolha o insumo</option>
-                {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
-              </select>
-            </div>
+            <SeletorBusca
+              id="sol-ins"
+              label="Insumo"
+              opcoes={insumos.map((i) => ({ id: i.id, rotulo: `${i.codigo} · ${i.descricao}` }))}
+              valor={add.obraItemId}
+              onChange={(v) => setAdd({ ...add, obraItemId: v, unidade: '' })}
+              vazio="Escolha o insumo"
+            />
             {(() => {
               const ins = insumos.find((x) => x.id === add.obraItemId);
-              if (!ins || ins.unidadesCompra.length === 0) return null;
+              if (!ins) return null;
               return (
                 <div className="campo">
                   <label htmlFor="sol-un">Unidade do pedido</label>
@@ -297,6 +299,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
                     <option value="">{ins.unidade} (orçamento)</option>
                     {ins.unidadesCompra.map((u) => <option key={u.unidade} value={u.unidade}>{u.unidade} (1 {u.unidade} = {u.fator.toLocaleString('pt-BR')} {ins.unidade})</option>)}
                   </select>
+                  {ins.unidadesCompra.length === 0 && <span className="ajuda">Sem outra unidade de compra cadastrada para este insumo.</span>}
                 </div>
               );
             })()}
@@ -586,13 +589,14 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
         <>
           {composicoes.length === 0 && <p className="small muted">Esta obra ainda não tem serviços cadastrados no orçamento.</p>}
           <div className="campos editor-linha">
-            <div className="campo">
-              <label htmlFor="serv-item">Serviço</label>
-              <select id="serv-item" value={add.obraItemId} onChange={(e) => setAdd({ ...add, obraItemId: e.target.value })}>
-                <option value="">Escolha o serviço</option>
-                {composicoes.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
-              </select>
-            </div>
+            <SeletorBusca
+              id="serv-item"
+              label="Serviço"
+              opcoes={composicoes.map((i) => ({ id: i.id, rotulo: `${i.codigo} · ${i.descricao}` }))}
+              valor={add.obraItemId}
+              onChange={(v) => setAdd({ ...add, obraItemId: v })}
+              vazio="Escolha o serviço"
+            />
             {nivel !== 'obra' && (
               <div className="campo">
                 <label htmlFor="serv-no">Nó da EAP ({(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel})</label>
