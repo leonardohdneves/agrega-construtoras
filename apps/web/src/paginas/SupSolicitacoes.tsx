@@ -370,6 +370,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
 
 // ---------- Formulário de serviços: composições cadastradas na obra ----------
 type ComposicaoPlanilha = { id: string; codigo: string; descricao: string; unidade: string };
+type SaldoServico = { orcado: number; contratado: number; medido: number; saldoContratar: number; unidade: string | null };
 type NovoServico = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string | null; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number };
 
 /** Nome completo da conta com as categorias acima dela, ex.: "3 · Despesas › 3.7 · Serviços Terceirizados". */
@@ -396,6 +397,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
     observacao: inicial?.observacao ?? '',
   });
   const [composicoes, setComposicoes] = useState<ComposicaoPlanilha[] | null>(null);
+  const [saldo, setSaldo] = useState<SaldoServico | null>(null);
   const [nos, setNos] = useState<NoEapLista[]>([]);
   const [nivel, setNivel] = useState<string>('');
   const [novos, setNovos] = useState<NovoServico[]>(() =>
@@ -419,6 +421,23 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
       })
       .catch((e) => setErro((e as Error).message));
   }, []);
+
+  // Saldo do serviço escolhido na obra: orçado, já contratado, já medido e o que ainda pode ser contratado.
+  useEffect(() => {
+    setSaldo(null);
+    if (!f.obraId || !add.obraItemId) return;
+    let vivo = true;
+    api<{ saldo: SaldoServico }>(`/sup/servicos/${add.obraItemId}/saldo?obraId=${f.obraId}`)
+      .then((r) => {
+        if (vivo) setSaldo(r.saldo);
+      })
+      .catch(() => {
+        if (vivo) setSaldo(null);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [f.obraId, add.obraItemId]);
 
   // Só carrega os dados da obra; a troca de obra (no onChange) é que limpa os serviços já escolhidos.
   useEffect(() => {
@@ -558,6 +577,12 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
               </span>
             </div>
           </div>
+          {saldo && (
+            <div className="alerta" role="status" style={{ marginTop: 8 }}>
+              <b>Referência da obra:</b> orçado {qtd(saldo.orcado, saldo.unidade ?? undefined)} · já contratado {qtd(saldo.contratado, saldo.unidade ?? undefined)} · já medido {qtd(saldo.medido, saldo.unidade ?? undefined)} ·{' '}
+              <b>saldo a contratar {qtd(saldo.saldoContratar, saldo.unidade ?? undefined)}</b>
+            </div>
+          )}
           <div className="acoes">
             <button className="btn btn-secundario" type="button" onClick={incluirNovo}>Incluir serviço</button>
           </div>

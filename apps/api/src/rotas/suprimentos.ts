@@ -962,6 +962,39 @@ export function rotasSuprimentos(banco: Banco) {
       return { cotacao: await detalharCotacao(banco, empresaId, req.params.id) };
     });
 
+    // ----- Saldo de um serviço da obra: orçado, já contratado, já medido e o que ainda pode ser contratado -----
+    app.get<{ Params: { obraItemId: string }; Querystring: { obraId?: string } }>('/servicos/:obraItemId/saldo', async (req) => {
+      const empresaId = empresaDo(req);
+      const obraId = req.query.obraId ?? '';
+      const itemId = req.params.obraItemId;
+      if (!UUID.test(obraId) || !UUID.test(itemId)) throw new ErroHttp(400, 'Informe a obra e o serviço.');
+      if (!(await banco.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2', [obraId, empresaId])).rowCount) throw naoEncontrado('Obra');
+      const v = (
+        await banco.query(
+          `SELECT
+             (SELECT coalesce(sum(oq.quantidade), 0) FROM orcamento_itens oq WHERE oq.obra_id = $1 AND oq.obra_item_id = $2) AS orcado,
+             (SELECT coalesce(sum(ci.quantidade), 0) FROM contratos_itens ci JOIN contratos k ON k.id = ci.contrato_id
+                WHERE k.obra_id = $1 AND ci.obra_item_id = $2 AND k.empresa_id = $3 AND k.status <> 'cancelado') AS contratado,
+             (SELECT coalesce(sum(mi.quantidade), 0) FROM medicoes_itens mi JOIN medicoes m ON m.id = mi.medicao_id
+                JOIN contratos_itens ci ON ci.id = mi.contrato_item_id JOIN contratos k ON k.id = ci.contrato_id
+                WHERE k.obra_id = $1 AND ci.obra_item_id = $2 AND k.empresa_id = $3 AND m.status = 'aprovada') AS medido,
+             (SELECT unidade FROM obra_itens WHERE id = $2 AND obra_id = $1) AS unidade`,
+          [obraId, itemId, empresaId],
+        )
+      ).rows[0];
+      const orcado = Number(v.orcado);
+      const contratado = Number(v.contratado);
+      return {
+        saldo: {
+          orcado: r3(orcado),
+          contratado: r3(contratado),
+          medido: r3(Number(v.medido)),
+          saldoContratar: r3(orcado - contratado),
+          unidade: (v.unidade as string | null) ?? null,
+        },
+      };
+    });
+
     // ----- Leitura da proposta do fornecedor por IA (PDF ou foto) -----
     // Só sugere preços e condições: nada é gravado aqui. O usuário confere na tela e salva pela resposta do fornecedor.
     app.get('/cotacoes/leitura-ia', async () => ({ ia: iaDisponivel() }));
