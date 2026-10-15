@@ -1,45 +1,171 @@
-// Comercial · Propostas: orçamento para o cliente. A IA redige o texto com o histórico de preço; aceita, vira venda.
+// Comercial · Propostas de execução de obras: cinco tipos, preço do orçamento ou informado.
+// Aceita pelo cliente, gera o contrato e os lançamentos em contas a receber.
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda, lerNumero } from '../api';
 import { useSessao } from '../sessao';
-import { CabecalhoDocumento } from '../componentes/Documento';
-import { Assinatura } from '../componentes/Suprimentos';
-import type { PropostaBase } from './Comercial';
 
-type Status = 'rascunho' | 'enviada' | 'aceita' | 'recusada';
-type Proposta = {
-  id: string; numero: number; clienteId: string; clienteNome: string; tracoId: string; tracoCodigo: string; tracoDescricao: string | null;
-  vendedorNome: string; obra: string | null; endereco: string | null; volume: number; precoM3: number; total: number; condicoes: string | null;
-  validadeDias: number; texto: string | null; textoIa: boolean; status: Status; vendaId: string | null; vendaNumero: number | null; criadoEm: string;
-};
-type Opcoes = {
-  clientes: { id: string; nome: string; cidade: string | null }[];
-  tracos: { id: string; codigo: string; descricao: string | null; fck: number | null; slump: string | null }[];
-  ultimoPreco: Record<string, number>;
-};
-type Historico = { preco: number; data: string };
+type Tipo = 'acompanhamento' | 'administracao' | 'preco_global' | 'preco_unitario' | 'laudo';
+type Origem = 'orcamento' | 'informado';
+type Status = 'rascunho' | 'enviada' | 'aceita' | 'recusada' | 'cancelada';
 
-const ROTULO: Record<Status, string> = { rascunho: 'Rascunho', enviada: 'Enviada', aceita: 'Aceita', recusada: 'Recusada' };
-const SELO: Record<Status, string> = { rascunho: 'selo-neutro', enviada: 'selo-aviso', aceita: 'selo-ok', recusada: 'selo-perigo' };
+const TIPOS: { id: Tipo; nome: string; ajuda: string; origens: Origem[]; dataLabel: string }[] = [
+  {
+    id: 'acompanhamento',
+    nome: 'Acompanhamento de obra',
+    ajuda: 'Honorário mensal fixo, ou um percentual do valor da obra dividido pelos meses. Cobre o período de acompanhamento da obra.',
+    origens: ['orcamento', 'informado'],
+    dataLabel: 'Início do acompanhamento',
+  },
+  {
+    id: 'administracao',
+    nome: 'Administração de obra',
+    ajuda: 'Taxa de administração sobre o custo direto ou sobre o valor da obra, paga em parcelas mensais.',
+    origens: ['orcamento', 'informado'],
+    dataLabel: 'Início da administração',
+  },
+  {
+    id: 'preco_global',
+    nome: 'Contrato de preço global',
+    ajuda: 'Valor fechado para a obra inteira, recebido por marcos de medição. Os percentuais dos marcos precisam somar 100%.',
+    origens: ['orcamento', 'informado'],
+    dataLabel: 'Data de assinatura (base dos marcos)',
+  },
+  {
+    id: 'preco_unitario',
+    nome: 'Contrato de preços unitários',
+    ajuda: 'Serviços com quantidade estimada e preço unitário. O total é a soma; o recebimento segue um número de parcelas mensais.',
+    origens: ['orcamento', 'informado'],
+    dataLabel: 'Início dos pagamentos',
+  },
+  {
+    id: 'laudo',
+    nome: 'Laudos técnicos',
+    ajuda: 'Laudos avulsos com preço informado: uma entrada na aceitação e o saldo na entrega dos laudos.',
+    origens: ['informado'],
+    dataLabel: 'Data da aceitação (entrada)',
+  },
+];
+const infoTipo = (t: Tipo) => TIPOS.find((x) => x.id === t) ?? TIPOS[0];
+const ROTULO: Record<Status, string> = { rascunho: 'Rascunho', enviada: 'Enviada', aceita: 'Aceita', recusada: 'Recusada', cancelada: 'Cancelada' };
+const SELO: Record<Status, string> = { rascunho: 'selo-neutro', enviada: 'selo-aviso', aceita: 'selo-ok', recusada: 'selo-perigo', cancelada: 'selo-neutro' };
 const numeroFmt = (n: number) => String(n).padStart(4, '0');
-const campo = (n: number) => String(n).replace('.', ',');
+const hoje = () => new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' });
+const campo = (n: unknown) => (n === null || n === undefined || n === '' ? '' : String(n).replace('.', ','));
+const gestao = (perfil?: string) => perfil === 'dono' || perfil === 'gestor';
 
-function corpoDe(p: Proposta, texto: string | null) {
-  return { clienteId: p.clienteId, tracoId: p.tracoId, obra: p.obra ?? '', endereco: p.endereco ?? '', volume: p.volume, precoM3: p.precoM3, condicoes: p.condicoes ?? '', validadeDias: p.validadeDias, texto };
+type Opcoes = {
+  clientes: { id: string; nome: string }[];
+  obras: { id: string; codigo: string; nome: string; bdi: number; custoDireto: number; valorObra: number }[];
+};
+type Servico = { id: string; codigo: string; descricao: string; unidade: string; preco: number };
+type Parcela = { descricao: string; vencimento: string; valor: number };
+type Previa = { valorTotal: number; parcelas: Parcela[] };
+type Linha = { obraItemId: string | null; descricao: string; unidade: string; quantidade: string; precoUnitario: string };
+type Marco = { descricao: string; percentual: string; dias: string };
+type Form = {
+  tipo: Tipo; clienteId: string; obraId: string; titulo: string; objeto: string; endereco: string; prazoDias: string; validadeDias: string;
+  origemPreco: Origem; dataInicio: string; meses: string; modo: 'valor_mensal' | 'percentual_obra'; honorarioMensal: string; percentualObra: string;
+  taxaPct: string; baseAdm: 'custo_direto' | 'valor_obra'; valorBaseInformado: string; valorInformado: string; marcos: Marco[];
+  numeroParcelas: string; entradaPct: string; prazoEntregaDias: string; itens: Linha[]; condicoes: string;
+};
+type Detalhe = {
+  id: string; numero: number; tipo: Tipo; tipoNome: string; titulo: string; status: Status; valorTotal: number; origemPreco: Origem;
+  clienteId: string; clienteNome: string | null; obraId: string | null; obraCodigo: string | null; objeto: string | null; endereco: string | null;
+  prazoDias: number | null; validadeDias: number; parametros: Record<string, any>; condicoes: string | null; enviadaEm: string | null;
+  decididaEm: string | null; contratoNumero: number | null; criadoEm: string;
+  itens: { obraItemId: string | null; descricao: string; unidade: string; quantidade: number; precoUnitario: number }[];
+  parcelas: Parcela[];
+};
+
+const FORM_VAZIO: Form = {
+  tipo: 'acompanhamento', clienteId: '', obraId: '', titulo: '', objeto: '', endereco: '', prazoDias: '', validadeDias: '30',
+  origemPreco: 'informado', dataInicio: '', meses: '', modo: 'valor_mensal', honorarioMensal: '', percentualObra: '', taxaPct: '',
+  baseAdm: 'custo_direto', valorBaseInformado: '', valorInformado: '', marcos: [{ descricao: '', percentual: '', dias: '' }],
+  numeroParcelas: '', entradaPct: '', prazoEntregaDias: '', itens: [], condicoes: '',
+};
+
+function deProposta(p: Detalhe): Form {
+  const q = p.parametros ?? {};
+  return {
+    ...FORM_VAZIO,
+    tipo: p.tipo,
+    clienteId: p.clienteId,
+    obraId: p.obraId ?? '',
+    titulo: p.titulo,
+    objeto: p.objeto ?? '',
+    endereco: p.endereco ?? '',
+    prazoDias: campo(p.prazoDias),
+    validadeDias: String(p.validadeDias),
+    origemPreco: p.origemPreco,
+    dataInicio: q.dataInicio ?? hoje(),
+    meses: campo(q.meses),
+    modo: q.modo ?? 'valor_mensal',
+    honorarioMensal: campo(q.honorarioMensal),
+    percentualObra: campo(q.percentualObra),
+    taxaPct: campo(q.taxaPct),
+    baseAdm: q.baseAdm ?? 'custo_direto',
+    valorBaseInformado: campo(q.valorBaseInformado),
+    valorInformado: campo(q.valorInformado),
+    marcos: Array.isArray(q.marcos) ? q.marcos.map((m: any) => ({ descricao: m.descricao, percentual: campo(m.percentual), dias: campo(m.dias) })) : FORM_VAZIO.marcos,
+    numeroParcelas: campo(q.numeroParcelas),
+    entradaPct: campo(q.entradaPct),
+    prazoEntregaDias: campo(q.prazoEntregaDias),
+    itens: p.itens.map((i) => ({ obraItemId: i.obraItemId, descricao: i.descricao, unidade: i.unidade, quantidade: campo(i.quantidade), precoUnitario: campo(i.precoUnitario) })),
+    condicoes: p.condicoes ?? '',
+  };
+}
+
+/** Corpo enviado ao servidor. Números vazios viram undefined; o servidor valida e calcula. */
+function corpoDe(f: Form) {
+  const n = (s: string) => lerNumero(s) ?? undefined;
+  return {
+    tipo: f.tipo,
+    clienteId: f.clienteId,
+    obraId: f.obraId || null,
+    titulo: f.titulo.trim(),
+    objeto: f.objeto,
+    endereco: f.endereco,
+    prazoDias: n(f.prazoDias) ?? null,
+    validadeDias: n(f.validadeDias) ?? 30,
+    origemPreco: f.origemPreco,
+    parametros: {
+      dataInicio: f.dataInicio,
+      meses: n(f.meses),
+      modo: f.modo,
+      honorarioMensal: n(f.honorarioMensal),
+      percentualObra: n(f.percentualObra),
+      taxaPct: n(f.taxaPct),
+      baseAdm: f.baseAdm,
+      valorBaseInformado: n(f.valorBaseInformado),
+      valorInformado: n(f.valorInformado),
+      marcos: f.marcos.map((m) => ({ descricao: m.descricao, percentual: n(m.percentual) ?? 0, dias: n(m.dias) ?? 0 })),
+      numeroParcelas: n(f.numeroParcelas),
+      entradaPct: n(f.entradaPct),
+      prazoEntregaDias: n(f.prazoEntregaDias),
+    },
+    itens: f.itens.map((i) => ({
+      obraItemId: i.obraItemId,
+      descricao: i.descricao,
+      unidade: i.unidade || 'un',
+      quantidade: n(i.quantidade) ?? 0,
+      precoUnitario: n(i.precoUnitario) ?? 0,
+    })),
+    condicoes: f.condicoes,
+  };
+}
+
+function ErroCampo({ erro }: { erro: string }) {
+  return erro ? <div className="alerta alerta-erro" role="alert">{erro}</div> : null;
 }
 
 export function ComPropostas() {
-  const [lista, setLista] = useState<Proposta[] | null>(null);
-  const [ia, setIa] = useState(true);
+  const [lista, setLista] = useState<Detalhe[] | null>(null);
   const [erro, setErro] = useState('');
 
   useEffect(() => {
-    api<{ propostas: Proposta[]; ia: boolean }>('/com/propostas')
-      .then((r) => {
-        setLista(r.propostas);
-        setIa(r.ia);
-      })
+    api<{ propostas: Array<Record<string, any>> }>('/com/obra-propostas')
+      .then((r) => setLista(r.propostas as Detalhe[]))
       .catch((e) => setErro((e as Error).message));
   }, []);
 
@@ -48,18 +174,17 @@ export function ComPropostas() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Propostas</h1>
-          <span className="muted">Orçamento para o cliente. A IA redige o texto com o histórico de preço; quando o cliente aceita, a proposta vira venda.</span>
+          <span className="muted">Propostas para execução de obras. Aceitas pelo cliente, geram contrato e lançamentos em contas a receber.</span>
         </div>
         <div className="acoes">
           <Link className="btn btn-primario" to="/com/propostas/nova">Nova proposta</Link>
         </div>
       </div>
-      {!ia && <div className="alerta alerta-aviso">A IA não está configurada. Os textos saem no modelo padrão e você pode ajustá-los.</div>}
-      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <ErroCampo erro={erro} />
       {lista === null && !erro && <p className="muted">Carregando…</p>}
       {lista?.length === 0 && (
         <div className="card">
-          <p className="muted" style={{ margin: 0 }}>Nenhuma proposta ainda. Crie a primeira com o cliente, o traço e o preço.</p>
+          <p className="muted" style={{ margin: 0 }}>Nenhuma proposta ainda. Crie a primeira escolhendo o tipo, o cliente e a origem do preço.</p>
         </div>
       )}
       {lista && lista.length > 0 && (
@@ -68,24 +193,24 @@ export function ComPropostas() {
             <thead>
               <tr>
                 <th>Nº</th>
+                <th>Tipo</th>
                 <th>Cliente</th>
-                <th>Traço</th>
-                <th className="num">Volume</th>
-                <th className="num">Preço/m³</th>
-                <th className="num">Total</th>
+                <th>Obra</th>
+                <th className="num">Valor</th>
                 <th>Situação</th>
+                <th>Contrato</th>
               </tr>
             </thead>
             <tbody>
               {lista.map((p) => (
                 <tr key={p.id}>
                   <td className="mono"><Link to={`/com/propostas/${p.id}`}>{numeroFmt(p.numero)}</Link></td>
-                  <td><Link to={`/com/propostas/${p.id}`}>{p.clienteNome}</Link>{p.obra && <div className="small muted">{p.obra}</div>}</td>
-                  <td>{p.tracoCodigo}</td>
-                  <td className="num">{p.volume.toLocaleString('pt-BR')} m³</td>
-                  <td className="num">{formatarMoeda(p.precoM3)}</td>
-                  <td className="num">{formatarMoeda(p.total)}</td>
-                  <td><span className={`selo ${SELO[p.status]}`}>{ROTULO[p.status]}</span>{p.vendaNumero && <div className="small muted">venda {numeroFmt(p.vendaNumero)}</div>}</td>
+                  <td>{p.tipoNome}<div className="small muted">{p.titulo}</div></td>
+                  <td>{p.clienteNome}</td>
+                  <td>{p.obraCodigo ?? <span className="muted">—</span>}</td>
+                  <td className="num">{formatarMoeda(p.valorTotal)}</td>
+                  <td><span className={`selo ${SELO[p.status]}`}>{ROTULO[p.status]}</span></td>
+                  <td>{p.contratoNumero ? `Nº ${numeroFmt(p.contratoNumero)}` : <span className="muted">—</span>}</td>
                 </tr>
               ))}
             </tbody>
@@ -96,66 +221,107 @@ export function ComPropostas() {
   );
 }
 
-function PropostaForm({ editando }: { editando?: Proposta }) {
+function PropostaForm({ editando }: { editando?: Detalhe }) {
   const navegar = useNavigate();
   const [op, setOp] = useState<Opcoes | null>(null);
-  const [d, setD] = useState({
-    clienteId: editando?.clienteId ?? '',
-    tracoId: editando?.tracoId ?? '',
-    obra: editando?.obra ?? '',
-    endereco: editando?.endereco ?? '',
-    volume: editando ? campo(editando.volume) : '',
-    precoM3: editando ? campo(editando.precoM3) : '',
-    condicoes: editando?.condicoes ?? '',
-    validadeDias: String(editando?.validadeDias ?? 7),
-    texto: editando?.texto ?? '',
-  });
-  const [hist, setHist] = useState<Historico[]>([]);
+  const [f, setF] = useState<Form>(() => (editando ? deProposta(editando) : { ...FORM_VAZIO, dataInicio: hoje() }));
+  const [servicos, setServicos] = useState<Servico[]>([]);
+  const [previa, setPrevia] = useState<Previa | null>(null);
+  const [erroPrevia, setErroPrevia] = useState('');
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
+  const info = infoTipo(f.tipo);
+  const obra = op?.obras.find((o) => o.id === f.obraId) ?? null;
+  const usaOrcamento = f.origemPreco === 'orcamento';
+
+  function set<K extends keyof Form>(k: K, v: Form[K]) {
+    setF((x) => ({ ...x, [k]: v }));
+  }
+
+  function mudarTipo(t: Tipo) {
+    const origens = infoTipo(t).origens;
+    setF((x) => ({ ...x, tipo: t, origemPreco: origens.includes(x.origemPreco) ? x.origemPreco : 'informado' }));
+  }
+
+  function mudarOrigem(o: Origem) {
+    // Ao informar o preço, a ligação com serviços do orçamento se desfaz.
+    setF((x) => ({ ...x, origemPreco: o, itens: o === 'informado' ? x.itens.map((i) => ({ ...i, obraItemId: null })) : x.itens }));
+  }
+
   useEffect(() => {
-    api<Opcoes>('/com/opcoes').then(setOp).catch((e) => setErro((e as Error).message));
+    api<Opcoes>('/com/obra-propostas/opcoes').then(setOp).catch((e) => setErro((e as Error).message));
   }, []);
 
-  // Histórico de preço deste cliente neste traço: a referência para o vendedor e para a IA.
+  // Serviços do orçamento da obra escolhida (para contratos de preços unitários com preço do orçamento).
   useEffect(() => {
-    if (!d.clienteId || !d.tracoId) {
-      setHist([]);
+    let cancelado = false;
+    if (!f.obraId) {
+      setServicos([]);
       return;
     }
-    api<{ historico: Historico[] }>(`/com/propostas/referencia?clienteId=${d.clienteId}&tracoId=${d.tracoId}`)
-      .then((r) => setHist(r.historico))
-      .catch(() => setHist([]));
-  }, [d.clienteId, d.tracoId]);
+    api<{ servicos: Servico[] }>(`/com/obra-propostas/servicos?obraId=${f.obraId}`)
+      .then((r) => !cancelado && setServicos(r.servicos))
+      .catch((e) => !cancelado && setErro((e as Error).message));
+    return () => {
+      cancelado = true;
+    };
+  }, [f.obraId]);
 
-  // Ao escolher o traço, sugere o último preço aprovado dele (só se o preço ainda estiver vazio).
-  function escolherTraco(id: string) {
-    setD((x) => ({ ...x, tracoId: id, precoM3: x.precoM3 || (op?.ultimoPreco[id] ? campo(op.ultimoPreco[id]) : '') }));
+  // Prévia do cálculo, com atraso para não consultar a cada tecla.
+  useEffect(() => {
+    let cancelado = false;
+    const t = setTimeout(() => {
+      api<Previa>('/com/obra-propostas/calcular', { corpo: corpoDe(f) })
+        .then((r) => {
+          if (cancelado) return;
+          setPrevia(r);
+          setErroPrevia('');
+        })
+        .catch((e) => {
+          if (cancelado) return;
+          setPrevia(null);
+          setErroPrevia((e as Error).message);
+        });
+    }, 400);
+    return () => {
+      cancelado = true;
+      clearTimeout(t);
+    };
+  }, [f]);
+
+  // Itens (preços unitários e laudos)
+  function novaLinha(): Linha {
+    return { obraItemId: null, descricao: '', unidade: 'un', quantidade: '1', precoUnitario: '' };
   }
+  function atualizarItem(i: number, parcial: Partial<Linha>) {
+    setF((x) => ({ ...x, itens: x.itens.map((it, k) => (k === i ? { ...it, ...parcial } : it)) }));
+  }
+  function escolherServico(i: number, id: string) {
+    const s = servicos.find((x) => x.id === id);
+    if (!s) return atualizarItem(i, { obraItemId: null });
+    atualizarItem(i, { obraItemId: s.id, descricao: `${s.codigo} · ${s.descricao}`, unidade: s.unidade, precoUnitario: campo(s.preco) });
+  }
+  function removerItem(i: number) {
+    setF((x) => ({ ...x, itens: x.itens.filter((_, k) => k !== i) }));
+  }
+
+  // Marcos (preço global)
+  function atualizarMarco(i: number, parcial: Partial<Marco>) {
+    setF((x) => ({ ...x, marcos: x.marcos.map((m, k) => (k === i ? { ...m, ...parcial } : m)) }));
+  }
+  const somaMarcos = f.marcos.reduce((s, m) => s + (lerNumero(m.percentual) ?? 0), 0);
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro('');
-    const volume = lerNumero(d.volume);
-    const preco = lerNumero(d.precoM3);
-    if (!d.clienteId) return setErro('Escolha o cliente.');
-    if (!d.tracoId) return setErro('Escolha o traço.');
-    if (volume === null || volume <= 0) return setErro('Informe o volume em m³.');
-    if (preco === null || preco < 0) return setErro('Informe o preço por m³.');
-    const corpo = {
-      clienteId: d.clienteId, tracoId: d.tracoId, obra: d.obra, endereco: d.endereco, volume, precoM3: preco,
-      condicoes: d.condicoes, validadeDias: Number(d.validadeDias) || 7, texto: d.texto,
-    };
     setOcupado(true);
     try {
+      const corpo = corpoDe(f);
       const r = editando
-        ? await api<{ proposta: Proposta }>(`/com/propostas/${editando.id}`, { metodo: 'PUT', corpo })
-        : await api<{ proposta: Proposta }>('/com/propostas', { corpo });
-      navegar(`/com/propostas/${r.proposta.id}`, {
-        replace: true,
-        state: { aviso: editando ? 'Proposta alterada.' : 'Proposta criada. Use "Redigir com IA" para o texto, ou escreva o seu.' },
-      });
+        ? await api<{ id: string }>(`/com/obra-propostas/${editando.id}`, { metodo: 'PUT', corpo })
+        : await api<{ id: string }>('/com/obra-propostas', { corpo });
+      navegar(`/com/propostas/${r.id}`);
     } catch (err) {
       setErro((err as Error).message);
     } finally {
@@ -163,131 +329,367 @@ function PropostaForm({ editando }: { editando?: Proposta }) {
     }
   }
 
-  const sel = (valor: string, onChange: (v: string) => void, opcoes: { id: string; rotulo: string }[], rotulo: string, id: string) => (
-    <div className="campo">
-      <label htmlFor={id}>{rotulo}</label>
-      <select id={id} value={valor} onChange={(e) => onChange(e.target.value)}>
-        <option value="">Escolha…</option>
-        {opcoes.map((o) => (
-          <option key={o.id} value={o.id}>{o.rotulo}</option>
-        ))}
-      </select>
-    </div>
-  );
+  const mostraItens = f.tipo === 'preco_unitario' || f.tipo === 'laudo';
+  const precoDoOrcamento = usaOrcamento && f.tipo === 'preco_unitario';
 
   return (
-    <form className="card form" onSubmit={salvar}>
-      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))', gap: 12 }}>
-        {sel(d.clienteId, (v) => setD({ ...d, clienteId: v }), (op?.clientes ?? []).map((c) => ({ id: c.id, rotulo: `${c.nome}${c.cidade ? ` · ${c.cidade}` : ''}` })), 'Cliente', 'pr-cliente')}
-        {sel(d.tracoId, escolherTraco, (op?.tracos ?? []).map((t) => ({ id: t.id, rotulo: `${t.codigo}${t.descricao ? ` · ${t.descricao}` : ''}` })), 'Traço', 'pr-traco')}
-        <div className="campo">
-          <label htmlFor="pr-obra">Obra</label>
-          <input id="pr-obra" value={d.obra} onChange={(e) => setD({ ...d, obra: e.target.value })} />
+    <>
+      <div className="cabecalho">
+        <div className="titulo">
+          <h1>{editando ? `Editar proposta ${numeroFmt(editando.numero)}` : 'Nova proposta de obra'}</h1>
+          <span className="muted">{info.ajuda}</span>
         </div>
-        <div className="campo">
-          <label htmlFor="pr-endereco">Endereço da obra</label>
-          <input id="pr-endereco" value={d.endereco} onChange={(e) => setD({ ...d, endereco: e.target.value })} />
-        </div>
-        <div className="campo">
-          <label htmlFor="pr-volume">Volume (m³)</label>
-          <input id="pr-volume" inputMode="decimal" value={d.volume} onChange={(e) => setD({ ...d, volume: e.target.value })} />
-        </div>
-        <div className="campo">
-          <label htmlFor="pr-preco">Preço por m³ (R$)</label>
-          <input id="pr-preco" inputMode="decimal" value={d.precoM3} onChange={(e) => setD({ ...d, precoM3: e.target.value })} />
-          {hist.length > 0 ? (
-            <span className="small">Este cliente, neste traço: {hist.slice(0, 3).map((h) => `${formatarMoeda(h.preco)}/m³ em ${h.data}`).join(' · ')}</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 340px)', gap: 16, alignItems: 'start' }}>
+        <form className="card form" onSubmit={salvar}>
+          <ErroCampo erro={erro} />
+
+          <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>1. Tipo e partes</h2>
+          <div className="campos">
+            <div className="campo">
+              <label htmlFor="p-tipo">Tipo de proposta</label>
+              <select id="p-tipo" value={f.tipo} onChange={(e) => mudarTipo(e.target.value as Tipo)}>
+                {TIPOS.map((t) => (
+                  <option key={t.id} value={t.id}>{t.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="campo">
+              <label htmlFor="p-cli">Cliente</label>
+              <select id="p-cli" value={f.clienteId} onChange={(e) => set('clienteId', e.target.value)} required>
+                <option value="">Escolha o cliente</option>
+                {op?.clientes.map((c) => (
+                  <option key={c.id} value={c.id}>{c.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="campo">
+              <label htmlFor="p-obra">Obra {usaOrcamento ? '(obrigatória para o orçamento)' : '(opcional)'}</label>
+              <select id="p-obra" value={f.obraId} onChange={(e) => set('obraId', e.target.value)}>
+                <option value="">Sem obra vinculada</option>
+                {op?.obras.map((o) => (
+                  <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>
+                ))}
+              </select>
+            </div>
+            <div className="campo" style={{ gridColumn: '1 / -1' }}>
+              <label htmlFor="p-titulo">Título da proposta</label>
+              <input id="p-titulo" value={f.titulo} onChange={(e) => set('titulo', e.target.value)} placeholder="Ex.: Administração da obra Residencial Vale Verde" required />
+            </div>
+            <div className="campo" style={{ gridColumn: '1 / -1' }}>
+              <label htmlFor="p-objeto">Objeto (o que está incluído)</label>
+              <textarea id="p-objeto" rows={3} value={f.objeto} onChange={(e) => set('objeto', e.target.value)} />
+            </div>
+            <div className="campo">
+              <label htmlFor="p-end">Endereço da obra</label>
+              <input id="p-end" value={f.endereco} onChange={(e) => set('endereco', e.target.value)} />
+            </div>
+            <div className="campo">
+              <label htmlFor="p-prazo">Prazo de execução (dias)</label>
+              <input id="p-prazo" inputMode="numeric" value={f.prazoDias} onChange={(e) => set('prazoDias', e.target.value)} />
+            </div>
+            <div className="campo">
+              <label htmlFor="p-validade">Validade da proposta (dias)</label>
+              <input id="p-validade" inputMode="numeric" value={f.validadeDias} onChange={(e) => set('validadeDias', e.target.value)} />
+            </div>
+            <div className="campo">
+              <label htmlFor="p-inicio">{info.dataLabel}</label>
+              <input id="p-inicio" type="date" value={f.dataInicio} onChange={(e) => set('dataInicio', e.target.value)} required />
+            </div>
+          </div>
+
+          <h2 style={{ fontSize: 16, margin: '20px 0 8px' }}>2. Origem do preço</h2>
+          {info.origens.length > 1 ? (
+            <div className="segmentado" role="group" aria-label="Origem do preço" style={{ maxWidth: 480 }}>
+              <button type="button" aria-pressed={f.origemPreco === 'orcamento'} className={f.origemPreco === 'orcamento' ? 'ativo' : ''} onClick={() => mudarOrigem('orcamento')}>
+                Puxar do orçamento da obra
+              </button>
+              <button type="button" aria-pressed={f.origemPreco === 'informado'} className={f.origemPreco === 'informado' ? 'ativo' : ''} onClick={() => mudarOrigem('informado')}>
+                Informar valores
+              </button>
+            </div>
           ) : (
-            d.clienteId && d.tracoId && <span className="small muted">Sem vendas anteriores deste traço para este cliente.</span>
+            <p className="muted small" style={{ margin: 0 }}>Laudos técnicos têm preço informado pelo usuário.</p>
           )}
-        </div>
-        <div className="campo">
-          <label htmlFor="pr-condicoes">Condições de pagamento</label>
-          <input id="pr-condicoes" placeholder="ex.: 28 dias, boleto" value={d.condicoes} onChange={(e) => setD({ ...d, condicoes: e.target.value })} />
-        </div>
-        <div className="campo">
-          <label htmlFor="pr-validade">Validade (dias)</label>
-          <input id="pr-validade" inputMode="numeric" value={d.validadeDias} onChange={(e) => setD({ ...d, validadeDias: e.target.value })} />
-        </div>
+          {usaOrcamento && (
+            <div className="alerta" style={{ marginTop: 10 }}>
+              {obra ? (
+                <>
+                  <strong>{obra.codigo} · {obra.nome}</strong>: custo direto {formatarMoeda(obra.custoDireto)}, BDI {obra.bdi.toLocaleString('pt-BR')}%, valor da obra {formatarMoeda(obra.valorObra)}.
+                </>
+              ) : (
+                'Escolha a obra para puxar os valores do orçamento.'
+              )}
+            </div>
+          )}
+
+          <h2 style={{ fontSize: 16, margin: '20px 0 8px' }}>3. Condições do tipo</h2>
+          <div className="campos">
+            {f.tipo === 'acompanhamento' && (
+              <>
+                <div className="campo" style={{ gridColumn: '1 / -1' }}>
+                  <span className="small muted">Forma de cobrança</span>
+                  <div className="segmentado" role="group" aria-label="Forma de cobrança" style={{ maxWidth: 480 }}>
+                    <button type="button" aria-pressed={f.modo === 'valor_mensal'} className={f.modo === 'valor_mensal' ? 'ativo' : ''} onClick={() => set('modo', 'valor_mensal')}>Honorário mensal fixo</button>
+                    <button type="button" disabled={!usaOrcamento} aria-pressed={f.modo === 'percentual_obra'} className={f.modo === 'percentual_obra' ? 'ativo' : ''} onClick={() => set('modo', 'percentual_obra')}>
+                      Percentual da obra
+                    </button>
+                  </div>
+                  {!usaOrcamento && <span className="small muted">O percentual sobre a obra precisa do orçamento da obra.</span>}
+                </div>
+                {f.modo === 'valor_mensal' ? (
+                  <div className="campo">
+                    <label htmlFor="p-hon">Honorário mensal (R$)</label>
+                    <input id="p-hon" inputMode="decimal" value={f.honorarioMensal} onChange={(e) => set('honorarioMensal', e.target.value)} />
+                  </div>
+                ) : (
+                  <div className="campo">
+                    <label htmlFor="p-perc">Percentual sobre o valor da obra (%)</label>
+                    <input id="p-perc" inputMode="decimal" value={f.percentualObra} onChange={(e) => set('percentualObra', e.target.value)} />
+                  </div>
+                )}
+                <div className="campo">
+                  <label htmlFor="p-meses">Duração (meses)</label>
+                  <input id="p-meses" inputMode="numeric" value={f.meses} onChange={(e) => set('meses', e.target.value)} />
+                </div>
+              </>
+            )}
+
+            {f.tipo === 'administracao' && (
+              <>
+                {usaOrcamento ? (
+                  <div className="campo">
+                    <label htmlFor="p-base">Base de cálculo da taxa</label>
+                    <select id="p-base" value={f.baseAdm} onChange={(e) => set('baseAdm', e.target.value as Form['baseAdm'])}>
+                      <option value="custo_direto">Custo direto da obra</option>
+                      <option value="valor_obra">Valor da obra (com BDI)</option>
+                    </select>
+                  </div>
+                ) : (
+                  <div className="campo">
+                    <label htmlFor="p-basev">Valor da obra sobre o qual incide a taxa (R$)</label>
+                    <input id="p-basev" inputMode="decimal" value={f.valorBaseInformado} onChange={(e) => set('valorBaseInformado', e.target.value)} />
+                  </div>
+                )}
+                <div className="campo">
+                  <label htmlFor="p-taxa">Taxa de administração (%)</label>
+                  <input id="p-taxa" inputMode="decimal" value={f.taxaPct} onChange={(e) => set('taxaPct', e.target.value)} />
+                </div>
+                <div className="campo">
+                  <label htmlFor="p-meses2">Parcelas mensais (meses)</label>
+                  <input id="p-meses2" inputMode="numeric" value={f.meses} onChange={(e) => set('meses', e.target.value)} />
+                </div>
+              </>
+            )}
+
+            {f.tipo === 'preco_global' && (
+              <div className="campo">
+                <label htmlFor="p-valor">Valor do contrato (R$)</label>
+                {usaOrcamento ? (
+                  <input id="p-valor" value={obra ? formatarMoeda(obra.valorObra) : ''} disabled />
+                ) : (
+                  <input id="p-valor" inputMode="decimal" value={f.valorInformado} onChange={(e) => set('valorInformado', e.target.value)} />
+                )}
+              </div>
+            )}
+
+            {f.tipo === 'preco_unitario' && (
+              <div className="campo">
+                <label htmlFor="p-nparc">Número de parcelas mensais</label>
+                <input id="p-nparc" inputMode="numeric" value={f.numeroParcelas} onChange={(e) => set('numeroParcelas', e.target.value)} />
+              </div>
+            )}
+
+            {f.tipo === 'laudo' && (
+              <>
+                <div className="campo">
+                  <label htmlFor="p-entrada">Entrada na aceitação (%)</label>
+                  <input id="p-entrada" inputMode="decimal" value={f.entradaPct} onChange={(e) => set('entradaPct', e.target.value)} />
+                </div>
+                <div className="campo">
+                  <label htmlFor="p-prazoent">Prazo de entrega dos laudos (dias)</label>
+                  <input id="p-prazoent" inputMode="numeric" value={f.prazoEntregaDias} onChange={(e) => set('prazoEntregaDias', e.target.value)} />
+                </div>
+              </>
+            )}
+          </div>
+
+          {f.tipo === 'preco_global' && (
+            <>
+              <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>Marcos de pagamento</h3>
+              {f.marcos.map((m, i) => (
+                <div key={i} className="editor-linha" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px 120px auto', gap: 8, alignItems: 'end', marginBottom: 8 }}>
+                  <div className="campo">
+                    <label htmlFor={`m-d-${i}`}>Marco</label>
+                    <input id={`m-d-${i}`} value={m.descricao} onChange={(e) => atualizarMarco(i, { descricao: e.target.value })} placeholder="Ex.: Fundação concluída" />
+                  </div>
+                  <div className="campo">
+                    <label htmlFor={`m-p-${i}`}>% do valor</label>
+                    <input id={`m-p-${i}`} inputMode="decimal" value={m.percentual} onChange={(e) => atualizarMarco(i, { percentual: e.target.value })} />
+                  </div>
+                  <div className="campo">
+                    <label htmlFor={`m-n-${i}`}>Dias após o início</label>
+                    <input id={`m-n-${i}`} inputMode="numeric" value={m.dias} onChange={(e) => atualizarMarco(i, { dias: e.target.value })} />
+                  </div>
+                  <button type="button" className="btn btn-link" onClick={() => set('marcos', f.marcos.filter((_, k) => k !== i))} disabled={f.marcos.length === 1}>Remover</button>
+                </div>
+              ))}
+              <div className="acoes" style={{ justifyContent: 'space-between' }}>
+                <button type="button" className="btn btn-secundario" onClick={() => set('marcos', [...f.marcos, { descricao: '', percentual: '', dias: '' }])}>Adicionar marco</button>
+                <span className="small" style={{ color: Math.abs(somaMarcos - 100) < 0.001 ? undefined : 'var(--erro, #b42318)' }}>
+                  Soma dos marcos: {somaMarcos.toLocaleString('pt-BR')}% (precisa ser 100%)
+                </span>
+              </div>
+            </>
+          )}
+
+          {mostraItens && (
+            <>
+              <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>{f.tipo === 'laudo' ? 'Laudos' : 'Serviços'}</h3>
+              {f.itens.length === 0 && <p className="muted small">Nenhum item. Adicione ao menos um.</p>}
+              {f.itens.map((it, i) => {
+                const subtotal = (lerNumero(it.quantidade) ?? 0) * (lerNumero(it.precoUnitario) ?? 0);
+                return (
+                  <div key={i} className="editor-linha" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,2fr) 110px 80px 120px 120px auto', gap: 8, alignItems: 'end', marginBottom: 8 }}>
+                    {precoDoOrcamento ? (
+                      <div className="campo">
+                        <label htmlFor={`i-s-${i}`}>Serviço do orçamento</label>
+                        <select id={`i-s-${i}`} value={it.obraItemId ?? ''} onChange={(e) => escolherServico(i, e.target.value)}>
+                          <option value="">{obra ? 'Escolha o serviço' : 'Escolha a obra primeiro'}</option>
+                          {servicos.map((s) => (
+                            <option key={s.id} value={s.id}>{s.codigo} · {s.descricao}</option>
+                          ))}
+                        </select>
+                      </div>
+                    ) : (
+                      <div className="campo">
+                        <label htmlFor={`i-d-${i}`}>{f.tipo === 'laudo' ? 'Laudo' : 'Serviço'}</label>
+                        <input id={`i-d-${i}`} value={it.descricao} onChange={(e) => atualizarItem(i, { descricao: e.target.value })} />
+                      </div>
+                    )}
+                    <div className="campo">
+                      <label htmlFor={`i-q-${i}`}>Quantidade</label>
+                      <input id={`i-q-${i}`} inputMode="decimal" value={it.quantidade} onChange={(e) => atualizarItem(i, { quantidade: e.target.value })} />
+                    </div>
+                    <div className="campo">
+                      <label htmlFor={`i-u-${i}`}>Unidade</label>
+                      <input id={`i-u-${i}`} value={it.unidade} onChange={(e) => atualizarItem(i, { unidade: e.target.value })} />
+                    </div>
+                    <div className="campo">
+                      <label htmlFor={`i-p-${i}`}>Preço unitário</label>
+                      <input id={`i-p-${i}`} inputMode="decimal" value={it.precoUnitario} disabled={precoDoOrcamento && !!it.obraItemId} onChange={(e) => atualizarItem(i, { precoUnitario: e.target.value })} />
+                    </div>
+                    <div className="campo">
+                      <label>Subtotal</label>
+                      <input value={formatarMoeda(subtotal)} disabled />
+                    </div>
+                    <button type="button" className="btn btn-link" onClick={() => removerItem(i)}>Remover</button>
+                  </div>
+                );
+              })}
+              <button type="button" className="btn btn-secundario" onClick={() => set('itens', [...f.itens, novaLinha()])}>Adicionar {f.tipo === 'laudo' ? 'laudo' : 'serviço'}</button>
+            </>
+          )}
+
+          <h2 style={{ fontSize: 16, margin: '20px 0 8px' }}>4. Condições gerais</h2>
+          <div className="campo">
+            <textarea id="p-cond" rows={4} value={f.condicoes} onChange={(e) => set('condicoes', e.target.value)} placeholder="Forma de pagamento, reajuste, responsabilidades, exclusões…" />
+          </div>
+
+          <div className="acoes" style={{ marginTop: 16 }}>
+            <button type="submit" className="btn btn-primario" disabled={ocupado || !op}>{ocupado ? 'Salvando…' : 'Salvar rascunho'}</button>
+            <Link className="btn btn-secundario" to={editando ? `/com/propostas/${editando.id}` : '/com/propostas'}>Cancelar</Link>
+          </div>
+        </form>
+
+        <aside className="card" style={{ position: 'sticky', top: 16 }}>
+          <h2 style={{ fontSize: 16, margin: '0 0 8px' }}>Prévia do cálculo</h2>
+          {erroPrevia && <div className="alerta alerta-aviso" style={{ marginBottom: 8 }}>{erroPrevia}</div>}
+          {previa ? (
+            <>
+              <div className="small muted">Valor total da proposta</div>
+              <div style={{ fontSize: 24, fontWeight: 600, marginBottom: 12 }}>{formatarMoeda(previa.valorTotal)}</div>
+              {previa.parcelas.length > 0 && (
+                <table className="tabela">
+                  <thead>
+                    <tr>
+                      <th>Parcela</th>
+                      <th>Vencimento</th>
+                      <th className="num">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previa.parcelas.map((p, i) => (
+                      <tr key={i}>
+                        <td>{p.descricao}</td>
+                        <td>{formatarData(p.vencimento)}</td>
+                        <td className="num">{formatarMoeda(p.valor)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+              <p className="small muted" style={{ marginTop: 10 }}>
+                Ao ser aceita pelo cliente, a proposta gera o contrato e estes lançamentos em contas a receber.
+              </p>
+            </>
+          ) : (
+            !erroPrevia && <p className="muted small">Preencha os campos para ver o cálculo.</p>
+          )}
+        </aside>
       </div>
-      <div className="campo">
-        <label htmlFor="pr-texto">Texto da proposta (opcional)</label>
-        <textarea id="pr-texto" rows={6} value={d.texto} onChange={(e) => setD({ ...d, texto: e.target.value })} placeholder="Deixe em branco: a IA redige na tela da proposta." />
-      </div>
-      <div className="acoes">
-        <button className="btn btn-primario" type="submit" disabled={ocupado}>{ocupado ? 'Salvando…' : 'Salvar proposta'}</button>
-        <Link className="btn btn-link" to={editando ? `/com/propostas/${editando.id}` : '/com/propostas'}>Cancelar</Link>
-      </div>
-    </form>
+    </>
   );
 }
 
 export function PropostaNova() {
-  return (
-    <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>Nova proposta</h1>
-          <span className="muted">Cliente, traço e preço. O histórico de preço do cliente aparece ao lado.</span>
-        </div>
-      </div>
-      <PropostaForm />
-    </>
-  );
+  return <PropostaForm />;
 }
 
 export function PropostaEditar() {
   const { id } = useParams();
-  const [p, setP] = useState<Proposta | null>(null);
+  const [p, setP] = useState<Detalhe | null>(null);
   const [erro, setErro] = useState('');
+
   useEffect(() => {
-    api<{ proposta: Proposta }>(`/com/propostas/${id}`).then((r) => setP(r.proposta)).catch((e) => setErro((e as Error).message));
+    api<{ proposta: Detalhe }>(`/com/obra-propostas/${id}`)
+      .then((r) => setP(r.proposta))
+      .catch((e) => setErro((e as Error).message));
   }, [id]);
-  if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
+
+  if (erro) return <ErroCampo erro={erro} />;
   if (!p) return <p className="muted">Carregando…</p>;
-  return (
-    <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>Alterar proposta nº {numeroFmt(p.numero)}</h1>
-        </div>
-      </div>
-      <PropostaForm editando={p} />
-    </>
-  );
+  if (p.status !== 'rascunho') return <div className="alerta alerta-aviso">Só é possível editar proposta em rascunho.</div>;
+  return <PropostaForm key={p.id} editando={p} />;
 }
 
 export function PropostaDetalhe() {
   const { id } = useParams();
-  const { empresa } = useSessao();
-  const local = useLocation();
-  const navegar = useNavigate();
-  const [p, setP] = useState<Proposta | null>(null);
-  const [texto, setTexto] = useState('');
-  const [aviso, setAviso] = useState((local.state as { aviso?: string } | null)?.aviso ?? '');
+  const { usuario } = useSessao();
+  const pode = gestao(usuario?.perfil);
+  const [p, setP] = useState<Detalhe | null>(null);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [contrato, setContrato] = useState<{ numero: number } | null>(null);
+
+  function carregar() {
+    api<{ proposta: Detalhe }>(`/com/obra-propostas/${id}`)
+      .then((r) => setP(r.proposta))
+      .catch((e) => setErro((e as Error).message));
+  }
 
   useEffect(() => {
-    api<{ proposta: Proposta }>(`/com/propostas/${id}`)
-      .then((r) => {
-        setP(r.proposta);
-        setTexto(r.proposta.texto ?? '');
-      })
-      .catch((e) => setErro((e as Error).message));
+    carregar();
   }, [id]);
 
-  async function executar(fn: () => Promise<void>, msg?: string) {
-    setOcupado(true);
+  async function acao(caminho: string, confirmacao?: string) {
+    if (confirmacao && !window.confirm(confirmacao)) return;
     setErro('');
-    setAviso('');
+    setOcupado(true);
     try {
-      await fn();
-      const r = await api<{ proposta: Proposta }>(`/com/propostas/${id}`);
-      setP(r.proposta);
-      setTexto(r.proposta.texto ?? '');
-      if (msg) setAviso(msg);
+      const r = await api<{ ok?: boolean; contrato?: { numero: number } }>(`/com/obra-propostas/${id}${caminho}`, { metodo: 'POST' });
+      if (r.contrato) setContrato(r.contrato);
+      carregar();
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -295,91 +697,135 @@ export function PropostaDetalhe() {
     }
   }
 
-  if (erro && !p) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
-  if (!p) return <p className="muted">Carregando…</p>;
-
-  const editavel = p.status === 'rascunho' || p.status === 'enviada';
-  const mudou = texto !== (p.texto ?? '');
-
-  const redigir = () =>
-    executar(async () => {
-      const r = await api<{ proposta: Proposta; aviso: string | null }>(`/com/propostas/${p.id}/redigir`, { metodo: 'POST' });
-      setAviso(r.aviso ?? 'Texto redigido pela IA. Confira antes de enviar ao cliente.');
-    });
-
-  const salvarTexto = () => executar(async () => { await api(`/com/propostas/${p.id}`, { metodo: 'PUT', corpo: corpoDe(p, texto) }); }, 'Texto salvo.');
-  const mudarStatus = (status: 'enviada' | 'aceita' | 'recusada', msg: string) =>
-    executar(async () => { await api(`/com/propostas/${p.id}/status`, { corpo: { status } }); }, msg);
-
-  const lancarVenda = () => {
-    const base: PropostaBase = {
-      propostaId: p.id, numero: p.numero, clienteId: p.clienteId, tracoId: p.tracoId, obra: p.obra, endereco: p.endereco, volume: p.volume, precoM3: p.precoM3, condicoes: p.condicoes,
-    };
-    navegar('/com/vendas/nova', { state: { proposta: base } });
-  };
+  if (!p) return erro ? <ErroCampo erro={erro} /> : <p className="muted">Carregando…</p>;
+  const info = infoTipo(p.tipo);
+  const q = p.parametros ?? {};
+  const aceitavel = p.status === 'enviada' && pode;
 
   return (
     <>
-      <Link to="/com/propostas" className="small nao-imprimir">← Propostas</Link>
-      <CabecalhoDocumento
-        modulo="Comercial"
-        titulo={`Proposta nº ${numeroFmt(p.numero)}`}
-        descricao={`Para ${p.clienteNome}${p.obra ? `, obra ${p.obra}` : ''}.`}
-        filtros={[`Situação: ${ROTULO[p.status]}`, `Vendedor: ${p.vendedorNome}`]}
-      />
-      {aviso && <div className="alerta nao-imprimir" role="status">{aviso}</div>}
-      {erro && <div className="alerta alerta-erro nao-imprimir" role="alert">{erro}</div>}
-
-      <div className="card" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 12 }}>
-        <div><div className="small muted">Traço</div><b>{p.tracoCodigo}{p.tracoDescricao ? ` · ${p.tracoDescricao}` : ''}</b></div>
-        <div><div className="small muted">Volume</div><b>{p.volume.toLocaleString('pt-BR')} m³</b></div>
-        <div><div className="small muted">Preço por m³</div><b>{formatarMoeda(p.precoM3)}</b></div>
-        <div><div className="small muted">Total estimado</div><b>{formatarMoeda(p.total)}</b></div>
-        <div><div className="small muted">Condições</div><b>{p.condicoes || '—'}</b></div>
-        <div><div className="small muted">Validade</div><b>{p.validadeDias} {p.validadeDias === 1 ? 'dia' : 'dias'}</b></div>
-        <div><div className="small muted">Vendedor</div><b>{p.vendedorNome}</b></div>
-        <div><div className="small muted">Criada em</div><b>{formatarData(p.criadoEm)}</b></div>
-      </div>
-
-      <div className="card" style={{ marginTop: 12 }}>
-        <div className="cabecalho" style={{ marginBottom: 8 }}>
-          <h2 style={{ margin: 0 }}>Texto da proposta</h2>
-          {p.textoIa && <span className="small muted">redigido pela IA</span>}
+      <div className="cabecalho">
+        <div className="titulo">
+          <h1>Proposta {numeroFmt(p.numero)} · {p.tipoNome}</h1>
+          <span className="muted">{p.titulo}</span>
         </div>
-        {editavel && (
-          <textarea className="nao-imprimir" aria-label="Texto da proposta" rows={12} value={texto} onChange={(e) => setTexto(e.target.value)} placeholder="Ainda sem texto. Use Redigir com IA ou escreva o seu." style={{ width: '100%' }} />
-        )}
-        <p className={editavel ? 'so-imprimir' : undefined} style={{ whiteSpace: 'pre-wrap', margin: 0 }}>
-          {editavel ? texto || '—' : p.texto || '—'}
-        </p>
+        <div className="acoes">
+          <span className={`selo ${SELO[p.status]}`}>{ROTULO[p.status]}</span>
+          {p.status === 'rascunho' && <Link className="btn btn-secundario" to={`/com/propostas/${p.id}/editar`}>Editar</Link>}
+          {p.status === 'rascunho' && <button type="button" className="btn btn-primario" disabled={ocupado} onClick={() => acao('/enviar')}>Marcar como enviada</button>}
+          {aceitavel && (
+            <button
+              type="button"
+              className="btn btn-primario"
+              disabled={ocupado}
+              onClick={() => acao('/aceitar', 'Aceitar esta proposta gera o contrato e os lançamentos a receber. Confirmar?')}
+            >
+              Registrar aceitação
+            </button>
+          )}
+          {aceitavel && <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => acao('/recusar', 'Registrar a recusa desta proposta?')}>Registrar recusa</button>}
+          {(p.status === 'rascunho' || p.status === 'enviada') && (
+            <button type="button" className="btn btn-link" disabled={ocupado} onClick={() => acao('/cancelar', 'Cancelar esta proposta?')}>Cancelar proposta</button>
+          )}
+        </div>
       </div>
+      <ErroCampo erro={erro} />
+      {contrato && (
+        <div className="alerta" role="status">
+          Proposta aceita. Contrato nº {numeroFmt(contrato.numero)} gerado e lançamentos criados em{' '}
+          {pode ? <Link to="/fin/pagar-receber">contas a pagar e receber</Link> : 'contas a receber'}.
+        </div>
+      )}
+      {p.status === 'aceita' && p.contratoNumero && !contrato && (
+        <div className="alerta" role="status">
+          Contrato nº {numeroFmt(p.contratoNumero)} gerado; lançamentos criados em contas a receber.
+        </div>
+      )}
 
-      <div className="so-imprimir assinaturas">
-        <Assinatura nome={empresa?.nomeFantasia || empresa?.razaoSocial || ''} papel="Construtora (responsável comercial)" />
-        <Assinatura nome={p.clienteNome} papel="Aceite do cliente" />
-      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(260px, 340px)', gap: 16, alignItems: 'start' }}>
+        <div className="card">
+          <div className="campos">
+            <div className="campo"><span className="small muted">Cliente</span><div>{p.clienteNome}</div></div>
+            <div className="campo"><span className="small muted">Obra</span><div>{p.obraCodigo ?? '—'}</div></div>
+            <div className="campo"><span className="small muted">Origem do preço</span><div>{p.origemPreco === 'orcamento' ? 'Orçamento da obra' : 'Informado'}</div></div>
+            <div className="campo"><span className="small muted">Validade</span><div>{p.validadeDias} dias</div></div>
+            <div className="campo"><span className="small muted">Prazo de execução</span><div>{p.prazoDias ? `${p.prazoDias} dias` : '—'}</div></div>
+            <div className="campo"><span className="small muted">Endereço</span><div>{p.endereco || '—'}</div></div>
+          </div>
+          {p.objeto && <p style={{ whiteSpace: 'pre-wrap', marginTop: 12 }}>{p.objeto}</p>}
+          <p className="small muted" style={{ marginTop: 8 }}>{info.ajuda}</p>
 
-      <div className="acoes nao-imprimir" style={{ marginTop: 12, flexWrap: 'wrap' }}>
-        {editavel && (
-          <>
-            <button className="btn btn-primario" type="button" disabled={ocupado} onClick={redigir}>{p.texto ? 'Redigir de novo com IA' : 'Redigir com IA'}</button>
-            <button className="btn btn-secundario" type="button" disabled={ocupado || !mudou} onClick={salvarTexto}>Salvar texto</button>
-            <Link className="btn btn-secundario" to={`/com/propostas/${p.id}/editar`}>Alterar dados</Link>
-          </>
-        )}
-        {p.status === 'rascunho' && (
-          <button className="btn btn-secundario" type="button" disabled={ocupado || !p.texto} onClick={() => mudarStatus('enviada', 'Proposta marcada como enviada ao cliente.')}>Marcar como enviada</button>
-        )}
-        {editavel && (
-          <>
-            <button className="btn btn-secundario" type="button" disabled={ocupado} onClick={() => mudarStatus('aceita', 'Proposta aceita. Agora você pode lançar a venda.')}>Cliente aceitou</button>
-            <button className="btn btn-link" type="button" disabled={ocupado} onClick={() => mudarStatus('recusada', 'Proposta marcada como recusada.')}>Cliente recusou</button>
-          </>
-        )}
-        {p.status === 'aceita' && !p.vendaId && (
-          <button className="btn btn-primario" type="button" onClick={lancarVenda}>Lançar venda</button>
-        )}
-        {p.vendaId && <Link className="btn btn-secundario" to={`/com/vendas/${p.vendaId}`}>Ver a venda nº {numeroFmt(p.vendaNumero ?? 0)}</Link>}
+          {p.tipo === 'acompanhamento' && (
+            <p className="small">
+              {q.modo === 'percentual_obra' ? `${q.percentualObra}% do valor da obra` : `Honorário mensal de ${formatarMoeda(Number(q.honorarioMensal))}`} · {q.meses} meses
+            </p>
+          )}
+          {p.tipo === 'administracao' && (
+            <p className="small">Taxa de {q.taxaPct}% sobre {q.baseAdm === 'valor_obra' ? 'o valor da obra' : 'o custo direto'} · {q.meses} parcelas mensais</p>
+          )}
+
+          {p.itens.length > 0 && (
+            <>
+              <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>{p.tipo === 'laudo' ? 'Laudos' : 'Serviços'}</h3>
+              <table className="tabela">
+                <thead>
+                  <tr>
+                    <th>Descrição</th>
+                    <th className="num">Quantidade</th>
+                    <th>Unidade</th>
+                    <th className="num">Preço unit.</th>
+                    <th className="num">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {p.itens.map((i, k) => (
+                    <tr key={k}>
+                      <td>{i.descricao}</td>
+                      <td className="num">{i.quantidade.toLocaleString('pt-BR')}</td>
+                      <td>{i.unidade}</td>
+                      <td className="num">{formatarMoeda(i.precoUnitario)}</td>
+                      <td className="num">{formatarMoeda(i.quantidade * i.precoUnitario)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
+
+          {p.condicoes && (
+            <>
+              <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>Condições</h3>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{p.condicoes}</p>
+            </>
+          )}
+        </div>
+
+        <aside className="card">
+          <div className="small muted">Valor total</div>
+          <div style={{ fontSize: 24, fontWeight: 600, marginBottom: 12 }}>{formatarMoeda(p.valorTotal)}</div>
+          <table className="tabela">
+            <thead>
+              <tr>
+                <th>Recebimento</th>
+                <th>Vencimento</th>
+                <th className="num">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              {p.parcelas.map((x, i) => (
+                <tr key={i}>
+                  <td>{x.descricao}</td>
+                  <td>{formatarData(x.vencimento)}</td>
+                  <td className="num">{formatarMoeda(x.valor)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          <p className="small muted" style={{ marginTop: 10 }}>
+            {p.enviadaEm ? `Enviada em ${formatarData(p.enviadaEm.slice(0, 10))}. ` : ''}
+            {p.decididaEm ? `Decidida em ${formatarData(p.decididaEm.slice(0, 10))}.` : ''}
+          </p>
+        </aside>
       </div>
     </>
   );
