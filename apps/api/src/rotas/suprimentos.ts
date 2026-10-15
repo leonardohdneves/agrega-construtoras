@@ -10,6 +10,8 @@ import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { normalizar } from '../lib/sugestoes.ts';
 import { dispensaAprovacao, lerRegras, lerRegrasDe, podeAprovar, proximoNumero, textoRegras, type RegrasAprovacao } from '../lib/aprovacao.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
+import { lerPropostaComIa } from '../lib/ia-cotacao.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -958,6 +960,42 @@ export function rotasSuprimentos(banco: Banco) {
         await auditar(c, { empresaId, usuarioId: usuarioDe(req).id, acao: 'alterar', entidade: 'cotacoes_fornecedores', entidadeId: req.params.cf, depois: { precos: d.precos.filter((p) => p.precoUnitario !== null).length } });
       });
       return { cotacao: await detalharCotacao(banco, empresaId, req.params.id) };
+    });
+
+    // ----- Leitura da proposta do fornecedor por IA (PDF ou foto) -----
+    // Só sugere preços e condições: nada é gravado aqui. O usuário confere na tela e salva pela resposta do fornecedor.
+    app.get('/cotacoes/leitura-ia', async () => ({ ia: iaDisponivel() }));
+
+    app.post<{ Params: { id: string } }>('/cotacoes/:id/leitura-ia', { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
+      const d = z
+        .object({
+          arquivo: z.string({ required_error: 'Envie a foto ou o PDF da proposta.' }).min(20, 'Arquivo vazio.'),
+          tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
+        })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Cotação');
+      const ct = (await banco.query('SELECT status FROM cotacoes WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
+      if (!ct) throw naoEncontrado('Cotação');
+      if (ct.status !== 'aberta') throw new ErroHttp(409, 'Esta cotação já foi concluída ou cancelada.');
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os preços manualmente.');
+      const bytes = Buffer.from(d.arquivo, 'base64');
+      if (bytes.length > 10 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo grande demais (máximo 10 MB).');
+      const itens = (
+        await banco.query(
+          `SELECT ci.id, oi.codigo, ci.descricao, ci.unidade, ci.quantidade
+             FROM cotacoes_itens ci LEFT JOIN obra_itens oi ON oi.id = ci.obra_item_id
+            WHERE ci.cotacao_id = $1 ORDER BY ci.descricao`,
+          [req.params.id],
+        )
+      ).rows.map((x) => ({ id: x.id as string, codigo: (x.codigo as string | null) ?? null, descricao: x.descricao as string, unidade: x.unidade as string, quantidade: Number(x.quantidade) }));
+      if (!itens.length) throw new ErroHttp(400, 'Esta cotação não tem itens.');
+      try {
+        return await lerPropostaComIa(bytes, d.tipo, itens);
+      } catch (e) {
+        if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
+        throw e;
+      }
     });
 
     // Escolha do vencedor de cada item. Sem `vencedorId` em nenhum item = aplicar o menor preço em todos.

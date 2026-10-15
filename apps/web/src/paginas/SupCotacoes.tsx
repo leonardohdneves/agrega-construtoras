@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarDataHora, formatarDocumento, formatarMoeda, lerNumero, moedaCampo } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
+import { arquivoParaBase64 } from '../componentes/LeituraIa';
 import {
   Assinatura,
   campoNumero,
@@ -140,6 +141,68 @@ export function NovaCotacao() {
   );
 }
 
+type RespostaLidaIa = {
+  precos: { itemId: string; precoUnitario: number }[];
+  prazoEntregaDias: number | null;
+  condicaoPagamento: string | null;
+  frete: number | null;
+  validade: string | null;
+  observacao: string | null;
+  duvidas: string[];
+};
+
+// Botão "Ler proposta": a IA lê o PDF ou a foto e preenche o formulário. Nada é salvo aqui.
+function LeituraProposta({ cotacaoId, aoLer }: { cotacaoId: string; aoLer: (r: RespostaLidaIa) => void }) {
+  const [disponivel, setDisponivel] = useState(false);
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  const [duvidas, setDuvidas] = useState<string[]>([]);
+
+  useEffect(() => {
+    api<{ ia: boolean }>('/sup/cotacoes/leitura-ia')
+      .then((r) => setDisponivel(r.ia))
+      .catch(() => setDisponivel(false));
+  }, []);
+
+  if (!disponivel) return null;
+
+  async function aoEscolher(e: ChangeEvent<HTMLInputElement>) {
+    const arquivo = e.target.files?.[0];
+    e.target.value = '';
+    if (!arquivo) return;
+    setErro('');
+    setDuvidas([]);
+    if (arquivo.size > 10 * 1024 * 1024) return setErro('Arquivo grande demais (máximo 10 MB).');
+    setOcupado(true);
+    try {
+      const base = await arquivoParaBase64(arquivo);
+      const r = await api<RespostaLidaIa>(`/sup/cotacoes/${cotacaoId}/leitura-ia`, { corpo: { arquivo: base, tipo: arquivo.type } });
+      aoLer(r);
+      setDuvidas(r.duvidas);
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="nao-imprimir" style={{ marginBottom: 12 }}>
+      <label className="btn btn-secundario" style={{ cursor: ocupado ? 'wait' : 'pointer' }}>
+        {ocupado ? 'Lendo a proposta…' : 'Ler proposta (PDF ou foto)'}
+        <input type="file" accept="application/pdf,image/jpeg,image/png,image/webp" onChange={aoEscolher} disabled={ocupado} hidden />
+      </label>
+      <span className="small muted" style={{ marginLeft: 10 }}>Os preços lidos entram na tabela para você conferir antes de salvar.</span>
+      {erro && <div className="alerta alerta-erro" role="alert" style={{ marginTop: 8 }}>{erro}</div>}
+      {duvidas.length > 0 && (
+        <div className="alerta" role="status" style={{ marginTop: 8 }}>
+          Confira com atenção: {duvidas.join('. ')}.
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ---------- Lançar a resposta de um fornecedor ----------
 function FormResposta({ cotacao, f, aoSalvar, aoFechar }: { cotacao: Cotacao; f: FornecedorCotacao; aoSalvar: (c: Cotacao) => void; aoFechar: () => void }) {
   const [precos, setPrecos] = useState<Record<string, string>>(() =>
@@ -188,6 +251,23 @@ function FormResposta({ cotacao, f, aoSalvar, aoFechar }: { cotacao: Cotacao; f:
     <form className="card form nao-imprimir" onSubmit={salvar}>
       <h2>Preços de {f.nome}</h2>
       <span className="small muted">Preço por unidade de cada item. Deixe em branco o que o fornecedor não cotou.</span>
+      <LeituraProposta
+        cotacaoId={cotacao.id}
+        aoLer={(r) => {
+          setPrecos((atual) => {
+            const proximo = { ...atual };
+            for (const p of r.precos) proximo[p.itemId] = campoNumero(p.precoUnitario, 4);
+            return proximo;
+          });
+          setD((atual) => ({
+            prazo: r.prazoEntregaDias === null ? atual.prazo : String(r.prazoEntregaDias),
+            condicao: r.condicaoPagamento ?? atual.condicao,
+            frete: r.frete === null ? atual.frete : moedaCampo(r.frete),
+            validade: r.validade ?? atual.validade,
+            observacao: r.observacao ?? atual.observacao,
+          }));
+        }}
+      />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       <table className="tabela">
         <thead>
