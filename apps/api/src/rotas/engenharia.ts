@@ -162,6 +162,14 @@ function resolverBdi(d: { bdiModo?: 'calculado' | 'informado'; bdiPercentual?: n
   return { modo, parametros, percentual };
 }
 
+/** Confere o limite de obras ativas (não concluídas) do contrato antes de criar mais uma. */
+async function limiteObrasAtivas(c: Cliente, empresaId: string) {
+  const e = (await c.query('SELECT limite_obras FROM empresas WHERE id = $1 FOR UPDATE', [empresaId])).rows[0];
+  if (!e?.limite_obras) return;
+  const n = (await c.query(`SELECT count(*)::int AS n FROM obras WHERE empresa_id = $1 AND status <> 'concluida'`, [empresaId])).rows[0].n;
+  if (n >= e.limite_obras) throw new ErroHttp(403, `Seu contrato permite até ${e.limite_obras} obras ativas. Conclua uma obra ou amplie o contrato.`);
+}
+
 export function rotasEngenharia(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
@@ -755,6 +763,7 @@ export function rotasEngenharia(banco: Banco) {
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
         await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`obras:${empresaId}`]);
+        await limiteObrasAtivas(c, empresaId);
         const codigo =
           d.codigo ??
           `OB-${String(Number((await c.query(`SELECT coalesce(max(substring(codigo FROM '^OB-(\\d+)$')::int), 0) + 1 AS n FROM obras WHERE empresa_id = $1`, [empresaId])).rows[0].n)).padStart(4, '0')}`;

@@ -82,7 +82,9 @@ export const NOMES_MODULO: Record<Modulo, string> = {
 };
 export type Impressao = { orientacao: 'retrato' | 'paisagem'; papel: 'A4' | 'Carta' | 'Oficio' };
 
+export type PacoteContrato = 'obra' | 'obra_gestao' | 'completo' | 'personalizado';
 export type Empresa = {
+  contrato?: { pacote: PacoteContrato; nomePacote: string; modulos: Modulo[]; limiteObras: number | null; limiteUsuarios: number | null };
   id: string;
   razaoSocial: string;
   nomeFantasia: string | null;

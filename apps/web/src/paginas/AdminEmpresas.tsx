@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, formatarCnpj, type Empresa } from '../api';
+import { api, formatarCnpj, type Empresa, type PacoteContrato } from '../api';
 
 type Nova = {
   razaoSocial: string;
@@ -14,12 +14,114 @@ type Nova = {
 const VAZIA: Nova = { razaoSocial: '', nomeFantasia: '', cnpj: '', regimeTributario: 'simples', cidade: '', uf: '', dono: { nome: '', email: '', senha: '' } };
 const REGIMES = { simples: 'Simples Nacional', presumido: 'Lucro Presumido', real: 'Lucro Real' };
 
+/** Pacotes vendidos. Os valores preenchem o formulário; o servidor confirma e grava. */
+const PACOTES_TELA: { v: PacoteContrato; nome: string; resumo: string }[] = [
+  { v: 'obra', nome: 'Obra', resumo: 'Engenharia e Suprimentos (estoque e compras)' },
+  { v: 'obra_gestao', nome: 'Obra + Gestão', resumo: 'Obra mais Financeiro, Gerencial e Administrativo' },
+  { v: 'completo', nome: 'Completo', resumo: 'Todos os módulos, incluindo Comercial' },
+  { v: 'personalizado', nome: 'Personalizado', resumo: 'Você escolhe os módulos e os limites' },
+];
+const PREDEFINIDO: Record<Exclude<PacoteContrato, 'personalizado'>, { modulos: string[]; obras: number; usuarios: number }> = {
+  obra: { modulos: ['engenharia', 'suprimentos'], obras: 3, usuarios: 5 },
+  obra_gestao: { modulos: ['engenharia', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'], obras: 3, usuarios: 5 },
+  completo: { modulos: ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'], obras: 10, usuarios: 10 },
+};
+const MODULOS_CONTRATO: [string, string][] = [
+  ['engenharia', 'Engenharia'],
+  ['comercial', 'Comercial'],
+  ['suprimentos', 'Suprimentos'],
+  ['financeiro', 'Financeiro'],
+  ['gerencial', 'Gerencial'],
+  ['administrativo', 'Administrativo'],
+];
+
+type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; limiteObras: string; limiteUsuarios: string };
+
+function editarContrato(e: Empresa): EdicaoContrato {
+  return {
+    id: e.id,
+    nome: e.nomeFantasia || e.razaoSocial,
+    pacote: e.contrato?.pacote ?? 'completo',
+    modulos: (e.contrato?.modulos ?? []).filter((m) => m !== 'configuracoes'),
+    limiteObras: e.contrato?.limiteObras?.toString() ?? '',
+    limiteUsuarios: e.contrato?.limiteUsuarios?.toString() ?? '',
+  };
+}
+
+/** Campo de limite: vazio = sem limite. Devolve null se o valor for inválido. */
+function lerLimite(v: string): number | null | undefined {
+  if (v.trim() === '') return null;
+  const n = Number(v);
+  return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { edicao: EdicaoContrato; aoMudar: (e: EdicaoContrato) => void; aoSalvar: (ev: FormEvent) => void; aoFechar: () => void; salvando: boolean }) {
+  function escolherPacote(pacote: PacoteContrato) {
+    if (pacote === 'personalizado') return aoMudar({ ...edicao, pacote });
+    const p = PREDEFINIDO[pacote];
+    aoMudar({ ...edicao, pacote, modulos: p.modulos, limiteObras: String(p.obras), limiteUsuarios: String(p.usuarios) });
+  }
+  function alternarModulo(m: string) {
+    const modulos = edicao.modulos.includes(m) ? edicao.modulos.filter((x) => x !== m) : [...edicao.modulos, m];
+    aoMudar({ ...edicao, modulos });
+  }
+  return (
+    <form className="card form" onSubmit={aoSalvar}>
+      <h2>Contrato de {edicao.nome}</h2>
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="ct-pacote">Pacote</label>
+          <select id="ct-pacote" value={edicao.pacote} onChange={(e) => escolherPacote(e.target.value as PacoteContrato)}>
+            {PACOTES_TELA.map((p) => (
+              <option key={p.v} value={p.v}>
+                {p.nome}
+              </option>
+            ))}
+          </select>
+          <span className="ajuda">{PACOTES_TELA.find((p) => p.v === edicao.pacote)?.resumo}</span>
+        </div>
+        <div className="campo">
+          <label htmlFor="ct-obras">Limite de obras ativas</label>
+          <input id="ct-obras" inputMode="numeric" value={edicao.limiteObras} placeholder="Sem limite" onChange={(e) => aoMudar({ ...edicao, limiteObras: e.target.value })} />
+          <span className="ajuda">Obras concluídas não contam.</span>
+        </div>
+        <div className="campo">
+          <label htmlFor="ct-usuarios">Limite de usuários ativos</label>
+          <input id="ct-usuarios" inputMode="numeric" value={edicao.limiteUsuarios} placeholder="Sem limite" onChange={(e) => aoMudar({ ...edicao, limiteUsuarios: e.target.value })} />
+        </div>
+      </div>
+      {edicao.pacote === 'personalizado' ? (
+        <fieldset className="campo">
+          <legend className="rotulo">Módulos liberados</legend>
+          {MODULOS_CONTRATO.map(([v, nome]) => (
+            <label key={v} style={{ display: 'block' }}>
+              <input type="checkbox" checked={edicao.modulos.includes(v)} onChange={() => alternarModulo(v)} /> {nome}
+            </label>
+          ))}
+          <span className="ajuda">Configurações está sempre liberado.</span>
+        </fieldset>
+      ) : (
+        <p className="ajuda">Módulos do pacote: {PREDEFINIDO[edicao.pacote].modulos.map((m) => MODULOS_CONTRATO.find(([v]) => v === m)?.[1]).join(', ')}, mais Configurações.</p>
+      )}
+      <div className="acoes">
+        <button className="btn btn-primario" type="submit" disabled={salvando}>
+          {salvando ? 'Salvando…' : 'Salvar contrato'}
+        </button>
+        <button className="btn btn-secundario" type="button" onClick={aoFechar}>
+          Fechar
+        </button>
+      </div>
+    </form>
+  );
+}
+
 export function AdminEmpresas() {
   const [lista, setLista] = useState<Empresa[] | null>(null);
   const [nova, setNova] = useState<Nova | null>(null);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [salvando, setSalvando] = useState(false);
+  const [contrato, setContrato] = useState<EdicaoContrato | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -42,6 +144,33 @@ export function AdminEmpresas() {
       await api('/admin/empresas', { corpo: { ...nova, aliquotasDre: {} } });
       setAviso(`${nova.nomeFantasia || nova.razaoSocial} foi cadastrada. Passe o e-mail e a senha inicial ao dono.`);
       setNova(null);
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function salvarContrato(ev: FormEvent) {
+    ev.preventDefault();
+    if (!contrato) return;
+    const obras = lerLimite(contrato.limiteObras);
+    const usuarios = lerLimite(contrato.limiteUsuarios);
+    if (obras === undefined || usuarios === undefined) {
+      setErro('Os limites precisam ser números inteiros maiores que zero (ou vazios, para sem limite).');
+      return;
+    }
+    setErro('');
+    setAviso('');
+    setSalvando(true);
+    try {
+      await api(`/admin/empresas/${contrato.id}/contrato`, {
+        metodo: 'PUT',
+        corpo: { pacote: contrato.pacote, modulos: contrato.pacote === 'personalizado' ? contrato.modulos : undefined, limiteObras: obras, limiteUsuarios: usuarios },
+      });
+      setAviso(`Contrato de ${contrato.nome} salvo. Os novos limites valem a partir de agora.`);
+      setContrato(null);
       await carregar();
     } catch (e) {
       setErro((e as Error).message);
@@ -129,6 +258,16 @@ export function AdminEmpresas() {
         </form>
       )}
 
+      {contrato && (
+        <ContratoEmpresa
+          edicao={contrato}
+          aoMudar={setContrato}
+          aoSalvar={salvarContrato}
+          aoFechar={() => setContrato(null)}
+          salvando={salvando}
+        />
+      )}
+
       <div className="card tabela-caixa">
         {!lista ? (
           <p className="muted">Carregando…</p>
@@ -145,7 +284,8 @@ export function AdminEmpresas() {
                 <th>Cidade</th>
                 <th>Regime</th>
                 <th>Usuários</th>
-                <th>Plano</th>
+                <th>Contrato</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -157,7 +297,15 @@ export function AdminEmpresas() {
                   <td>{REGIMES[e.regimeTributario]}</td>
                   <td className="mono">{e.totalUsuarios ?? 0}</td>
                   <td>
-                    <span className="selo selo-neutro">{e.plano}</span>
+                    <span className="selo selo-neutro">{e.contrato?.nomePacote ?? e.plano}</span>
+                    <div className="ajuda">
+                      Obras: {e.contrato?.limiteObras ?? 'sem limite'} · Usuários: {e.contrato?.limiteUsuarios ?? 'sem limite'}
+                    </div>
+                  </td>
+                  <td>
+                    <button className="btn btn-link" type="button" onClick={() => setContrato(editarContrato(e))}>
+                      Editar contrato
+                    </button>
                   </td>
                 </tr>
               ))}

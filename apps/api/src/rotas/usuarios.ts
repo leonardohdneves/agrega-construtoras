@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import type { Banco } from '../db.ts';
+import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { esquemaAlterarUsuario, esquemaNovoUsuario } from '../esquemas.ts';
@@ -17,6 +17,19 @@ function exigirAdministrador(req: FastifyRequest) {
 }
 
 /** Lista igual ao padrão do perfil vira null (segue o padrão se o padrão mudar). */
+/** Módulos do contrato da empresa (undefined = sem empresa, todos valem). */
+async function modulosDaEmpresa(banco: Banco, empresaId: string): Promise<string[] | undefined> {
+  return (await banco.query('SELECT modulos_contratados FROM empresas WHERE id = $1', [empresaId])).rows[0]?.modulos_contratados;
+}
+
+/** Confere o limite de usuários ativos do contrato antes de ativar mais um. */
+async function limiteUsuarios(c: Cliente, empresaId: string) {
+  const e = (await c.query('SELECT limite_usuarios FROM empresas WHERE id = $1 FOR UPDATE', [empresaId])).rows[0];
+  if (!e?.limite_usuarios) return;
+  const n = (await c.query('SELECT count(*)::int AS n FROM usuarios WHERE empresa_id = $1 AND ativo AND excluido_em IS NULL', [empresaId])).rows[0].n;
+  if (n >= e.limite_usuarios) throw new ErroHttp(403, `Seu contrato permite até ${e.limite_usuarios} usuários ativos. Desative um usuário ou amplie o contrato.`);
+}
+
 function normalizarModulos(perfil: Perfil, modulos: string[] | null | undefined) {
   if (modulos === undefined) return undefined;
   if (modulos === null || perfil === 'dono') return null;
@@ -34,7 +47,8 @@ export function rotasUsuarios(banco: Banco) {
           ORDER BY ativo DESC, array_position(ARRAY['dono','gestor','orcamentista','engenheiro_obra','comprador','financeiro','administrativo','vendedor','almoxarife','operador_usina','laboratorista','motorista']::perfil[], perfil), nome`,
         [empresaDo(req)],
       );
-      return { usuarios: r.rows.map(usuarioPublico), padrao: MODULOS_PADRAO };
+      const contratados = (await banco.query('SELECT modulos_contratados FROM empresas WHERE id = $1', [empresaDo(req)])).rows[0]?.modulos_contratados;
+      return { usuarios: r.rows.map((u) => usuarioPublico(u, contratados)), padrao: MODULOS_PADRAO };
     });
 
     app.post('/', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req, reply) => {
@@ -44,6 +58,7 @@ export function rotasUsuarios(banco: Banco) {
       const empresaId = empresaDo(req);
       const hash = await gerarHashSenha(d.senha);
       const novo = await emTransacao(banco, async (c) => {
+        await limiteUsuarios(c, empresaId);
         const u = (
           await c.query(
             `INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil, telefone_whatsapp, administrador, modulos)
@@ -55,7 +70,7 @@ export function rotasUsuarios(banco: Banco) {
         return u;
       });
       reply.code(201);
-      return { usuario: usuarioPublico(novo) };
+      return { usuario: usuarioPublico(novo, await modulosDaEmpresa(banco, empresaId)) };
     });
 
     app.patch<{ Params: { id: string } }>('/:id', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req) => {
@@ -68,6 +83,7 @@ export function rotasUsuarios(banco: Banco) {
           await c.query('SELECT * FROM usuarios WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])
         ).rows[0];
         if (!antes) throw naoEncontrado('Usuário');
+        if (d.ativo === true && !antes.ativo) await limiteUsuarios(c, empresaId);
         if (!podeGerenciarPerfil(eu.perfil, antes.perfil)) throw semPermissao();
         if (d.perfil && !podeGerenciarPerfil(eu.perfil, d.perfil)) throw semPermissao();
         if (antes.id === eu.id && ((d.perfil && d.perfil !== antes.perfil) || d.ativo === false || d.administrador === false || d.modulos !== undefined)) {
@@ -105,7 +121,7 @@ export function rotasUsuarios(banco: Banco) {
         await auditar(c, { empresaId, usuarioId: eu.id, acao: 'alterar', entidade: 'usuarios', entidadeId: antes.id, antes, depois });
         return depois;
       });
-      return { usuario: usuarioPublico(atualizado) };
+      return { usuario: usuarioPublico(atualizado, await modulosDaEmpresa(banco, empresaId)) };
     });
   };
 }

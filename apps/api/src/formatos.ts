@@ -1,7 +1,9 @@
 // Formatos de dados devolvidos pela API (nomes em camelCase).
-import { listaDoUsuario, modulosEfetivos } from './lib/modulos.ts';
+import { contratoComBase, listaDoUsuario, modulosEfetivos } from './lib/modulos.ts';
+import { NOMES_PACOTE } from './lib/pacotes.ts';
 
-export function usuarioPublico(r: Record<string, any>) {
+/** `contratados`: módulos do contrato da empresa do usuário (sem ele, todos valem). */
+export function usuarioPublico(r: Record<string, any>, contratados?: readonly string[] | null) {
   return {
     id: r.id,
     nome: r.nome,
@@ -15,7 +17,7 @@ export function usuarioPublico(r: Record<string, any>) {
     administrador: r.perfil === 'dono' || !!r.administrador,
     // null = segue o padrão do perfil
     modulos: r.perfil === 'dono' ? null : (r.modulos ?? null),
-    modulosEfetivos: r.perfil === 'admin_sistema' ? [] : modulosEfetivos(r.perfil, listaDoUsuario(r.perfil, r.modulos, r.perfil === 'dono' || !!r.administrador)),
+    modulosEfetivos: r.perfil === 'admin_sistema' ? [] : modulosEfetivos(r.perfil, listaDoUsuario(r.perfil, r.modulos, r.perfil === 'dono' || !!r.administrador), contratados ? contratoComBase(contratados) : undefined),
   };
 }
 
@@ -34,6 +36,13 @@ export function empresaPublica(r: Record<string, any>) {
     cidade: r.cidade,
     uf: r.uf ? String(r.uf).trim() : null,
     plano: r.plano,
+    contrato: {
+      pacote: r.contrato_pacote ?? 'completo',
+      nomePacote: NOMES_PACOTE[(r.contrato_pacote ?? 'completo') as keyof typeof NOMES_PACOTE] ?? 'Completo',
+      modulos: contratoComBase(r.modulos_contratados),
+      limiteObras: r.limite_obras ?? null,
+      limiteUsuarios: r.limite_usuarios ?? null,
+    },
     ativo: r.ativo,
     temLogo: !!r.logo_tipo,
     logoVersao: r.logo_atualizado_em ? new Date(r.logo_atualizado_em).getTime() : null,

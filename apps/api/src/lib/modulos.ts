@@ -46,11 +46,13 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
 /** Perfis cujo acesso é definido só pelos módulos (todas as telas dos módulos que têm). */
 export const PERFIS_POR_MODULO: Perfil[] = ['financeiro', 'administrativo', 'vendedor', 'orcamentista', 'comprador'];
 
-/** O dono acessa tudo; os demais, a lista escolhida ou o padrão do perfil. */
-export function modulosEfetivos(perfil: Perfil, modulos: string[] | null | undefined): Modulo[] {
-  if (perfil === 'dono') return [...MODULOS];
-  const lista = modulos ?? MODULOS_PADRAO[perfil] ?? [];
-  return MODULOS.filter((m) => lista.includes(m));
+/**
+ * O dono acessa tudo o que a empresa contratou; os demais, a lista escolhida ou o padrão do perfil.
+ * `contratados` são os módulos do contrato da empresa (sem ele, todos valem).
+ */
+export function modulosEfetivos(perfil: Perfil, modulos: string[] | null | undefined, contratados: readonly string[] = MODULOS): Modulo[] {
+  const lista = perfil === 'dono' ? [...MODULOS] : (modulos ?? MODULOS_PADRAO[perfil] ?? []);
+  return MODULOS.filter((m) => lista.includes(m) && contratados.includes(m));
 }
 
 /** Módulo a que pertence cada endereço da API (null = comum a todos). */
@@ -103,13 +105,16 @@ const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|pla
 const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|colaboradores|etiquetas|saidas-material)(\/|$)/];
 const ALMOXARIFADO_CONSULTAS = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/];
 
-export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; perfisRota: Perfil[]; url: string; metodo: string }): boolean {
+export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; perfisRota: Perfil[]; url: string; metodo: string; contratados?: readonly string[] }): boolean {
   const porPerfil = !o.perfisRota.length || o.perfisRota.includes(o.perfil);
   const modulo = moduloDaRota(o.url);
   if (!modulo || o.perfil === 'admin_sistema') return porPerfil;
-  const efetivos = modulosEfetivos(o.perfil, o.modulos);
+  const efetivos = modulosEfetivos(o.perfil, o.modulos, o.contratados);
   const path = o.url.split('?')[0];
-  if (o.perfil === 'almoxarife') return ALMOXARIFADO.some((rx) => rx.test(path)) || (o.metodo === 'GET' && ALMOXARIFADO_CONSULTAS.some((rx) => rx.test(path)));
+  if (o.perfil === 'almoxarife') {
+    if (!(o.contratados ?? MODULOS).includes('suprimentos')) return false;
+    return ALMOXARIFADO.some((rx) => rx.test(path)) || (o.metodo === 'GET' && ALMOXARIFADO_CONSULTAS.some((rx) => rx.test(path)));
+  }
   const consulta = o.metodo === 'GET' && CONSULTAS.some((rx) => rx.test(path));
   if (o.perfil === 'engenheiro_obra') {
     // Contratos e medições das obras dele (a rota confere a obra); listas de cadastro para preenchê-los.
@@ -128,6 +133,12 @@ export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; p
   if (PERFIS_POR_MODULO.includes(o.perfil)) return true;
   // Módulo dado a mais pelo administrador: acesso completo (as aprovações têm regra própria).
   return !(MODULOS_PADRAO[o.perfil] as string[]).includes(modulo);
+}
+
+/** Módulos do contrato, mais os que todo contrato inclui (Configurações). */
+export function contratoComBase(modulos: readonly string[] | null | undefined): Modulo[] {
+  if (!modulos) return [...MODULOS];
+  return MODULOS.filter((m) => modulos.includes(m) || m === 'configuracoes');
 }
 
 /** Lista de módulos gravada no usuário, com Configurações garantida para administradores. */

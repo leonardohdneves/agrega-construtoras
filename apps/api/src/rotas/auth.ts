@@ -17,7 +17,7 @@ export function rotasAuth(banco: Banco) {
       async (req, reply) => {
         const dados = z.object({ email: esquemaEmail, senha: z.string().min(1, 'Informe a senha.') }).parse(req.body);
         const r = await banco.query(
-          `SELECT u.*, e.ativo AS empresa_ativa FROM usuarios u
+          `SELECT u.*, e.ativo AS empresa_ativa, e.modulos_contratados FROM usuarios u
              LEFT JOIN empresas e ON e.id = u.empresa_id
             WHERE lower(u.email) = $1 AND u.excluido_em IS NULL`,
           [dados.email],
@@ -29,7 +29,7 @@ export function rotasAuth(banco: Banco) {
         if (u.empresa_id && !u.empresa_ativa) throw new ErroHttp(403, 'O acesso desta empresa está suspenso.');
         await banco.query('UPDATE usuarios SET ultimo_acesso = now() WHERE id = $1', [u.id]);
         gravarSessao(reply, { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id });
-        return { usuario: usuarioPublico(u) };
+        return { usuario: usuarioPublico(u, u.empresa_id ? u.modulos_contratados : undefined) };
       },
     );
 
@@ -41,11 +41,13 @@ export function rotasAuth(banco: Banco) {
     app.get('/eu', { preHandler: exigir(banco) }, async (req) => {
       const u = (await banco.query('SELECT * FROM usuarios WHERE id = $1', [req.usuario!.id])).rows[0];
       let empresa = null;
+      let contratados: string[] | undefined;
       if (u.empresa_id) {
         const e = (await banco.query('SELECT * FROM empresas WHERE id = $1', [u.empresa_id])).rows[0];
         empresa = e ? empresaPublica(e) : null;
+        contratados = e?.modulos_contratados;
       }
-      return { usuario: usuarioPublico(u), empresa };
+      return { usuario: usuarioPublico(u, contratados), empresa };
     });
 
     app.put('/senha', { preHandler: exigir(banco) }, async (req) => {
