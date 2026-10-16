@@ -1,0 +1,101 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Curso de Orçamento para WhatsApp</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Imagem para WhatsApp: 1080 x 1080 px. Paleta e tipografia do manual de operação. */
+  :root {
+    --azul: #1f5fad; --azul-claro: #5b92d6; --ink: #1f2328; --cinza-claro: #c9ccd1; --cinza-escuro: #2b3036; --cinza-borda: #4a5058;
+    --papel: #ffffff;
+    color-scheme: light;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f4f3f0; color: var(--ink);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+  }
+  .card {
+    position: relative; overflow: hidden; container-type: inline-size;
+    width: 100%; max-width: 1080px; aspect-ratio: 1 / 1; margin: 0 auto;
+    background: var(--ink); color: #fff; border-radius: 14px;
+    display: flex; flex-direction: column; padding: 5.6cqw 6cqw 5cqw;
+  }
+  .arte { position: absolute; right: -16cqw; top: -14cqw; width: 52cqw; height: 52cqw; z-index: 0; pointer-events: none; }
+  .arte svg { width: 100%; height: 100%; display: block; }
+  .topo { position: relative; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 3cqw; }
+  .marca { display: flex; align-items: center; gap: 1.2cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3cqw; letter-spacing: -0.02em; }
+  .marca svg { width: 5cqw; height: 5cqw; flex: none; }
+  .marca .fino { font-weight: 500; color: var(--cinza-claro); }
+  .selo { font-size: 2.2cqw; font-weight: 600; background: var(--azul); color: #fff; padding: 0.8cqw 2cqw; border-radius: 99px; white-space: nowrap; }
+  h1 {
+    position: relative; z-index: 1; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 6.4cqw; line-height: 1.04;
+    letter-spacing: -0.03em; margin: 4cqw 0 0; text-wrap: balance; max-width: 88%;
+  }
+  h1 em { font-style: normal; color: var(--azul-claro); }
+  .lista { position: relative; z-index: 1; list-style: none; margin: 3.6cqw 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2cqw; }
+  .lista li { border: 1px solid var(--cinza-borda); border-radius: 12px; padding: 2cqw 2.4cqw; background: rgba(31, 95, 173, 0.12); min-width: 0; }
+  .lista .n { display: block; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2.2cqw; color: var(--azul-claro); }
+  .lista h2 { margin: 0.4cqw 0 0.6cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.2cqw; letter-spacing: -0.01em; }
+  .lista p { margin: 0; font-size: 2.1cqw; line-height: 1.38; color: var(--cinza-claro); }
+  .lista p b { color: #fff; font-weight: 600; }
+  .rodape { position: relative; z-index: 1; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 3cqw; }
+  .botao { display: inline-block; background: var(--azul); color: #fff; text-decoration: none; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.2cqw; padding: 1.8cqw 3.6cqw; border-radius: 12px; }
+  .botao:focus-visible { outline: 3px solid var(--azul-claro); outline-offset: 3px; }
+  .qrbox { display: flex; align-items: center; gap: 2cqw; background: #fff; color: var(--ink); border-radius: 12px; padding: 1.4cqw; }
+  .qrbox img { width: 13cqw; height: 13cqw; display: block; }
+  .qrbox span { font-size: 1.9cqw; font-weight: 600; line-height: 1.25; max-width: 18cqw; }
+  .realizacao { position: relative; z-index: 1; margin-top: 2.4cqw; font-size: 1.9cqw; color: var(--cinza-claro); }
+  .realizacao b { color: #fff; font-weight: 600; }
+</style>
+
+<main>
+  <article class="card" aria-label="Curso de Orçamento e Planejamento de Obras">
+    <div class="arte" aria-hidden="true">
+      <svg viewBox="0 0 500 500" preserveAspectRatio="xMidYMid slice">
+        <circle cx="250" cy="250" r="200" fill="#1f5fad"/>
+        <circle cx="420" cy="120" r="110" fill="#2b3036"/>
+        <circle cx="120" cy="440" r="50" fill="#5b92d6" opacity="0.8"/>
+      </svg>
+    </div>
+
+    <div class="topo">
+      <div class="marca">
+        <svg viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg>
+        <span>agrega <span class="fino">ERP</span></span>
+      </div>
+      <span class="selo">Curso online</span>
+    </div>
+
+    <h1>Curso de <em>Orçamento e Planejamento de Obras</em></h1>
+
+    <ul class="lista">
+      <li>
+        <span class="n">01</span>
+        <h2>Composições</h2>
+        <p><b>Na prática:</b> monte o custo de cada serviço a partir de insumos reais, sem chutar o preço.</p>
+      </li>
+      <li>
+        <span class="n">02</span>
+        <h2>Quantitativos</h2>
+        <p><b>Na prática:</b> meça do projeto e confira cada item antes de fechar o orçamento.</p>
+      </li>
+      <li>
+        <span class="n">03</span>
+        <h2>Cronograma</h2>
+        <p><b>Na prática:</b> transforme o orçamento em prazos que a equipe consegue cumprir.</p>
+      </li>
+      <li>
+        <span class="n">04</span>
+        <h2>Curva S</h2>
+        <p><b>Na prática:</b> acompanhe o avanço físico e financeiro, e veja o desvio antes que vire problema.</p>
+      </li>
+    </ul>
+
+    <div class="rodape">
+      <a class="botao" href="https://agrega-construtoras-app-production.up.railway.app/interesse?origem=curso-orcamento">Quero participar</a>
+      <div class="qrbox"><img src="qr-curso-orcamento.svg" alt="QR code para inscrição no curso"><span>Escaneie e inscreva-se</span></div>
+    </div>
+    <p class="realizacao">Realização <b>Agrega Construtoras</b></p>
+  </article>
+</main>
