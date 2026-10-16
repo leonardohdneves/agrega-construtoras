@@ -1,277 +1,229 @@
-// Gerencial › Produção da equipe: operador de usina, gestor de pátio e vendedor, pelas faixas de R$/m³ do mês.
+// Gerencial › Produção da equipe (construtora): cada serviço da EAP tem uma equipe e um preço por unidade.
+// A produção do mês é a quantidade executada no mês (diferença das medições) vezes o preço unitário da equipe.
 import { Fragment, useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, formatarData, formatarMoeda, formatarNumero, hojeLocal, lerNumero, moedaCampo, nomeMes, somarMeses } from '../api';
+import { api, formatarMoeda, formatarNumero, hojeLocal, lerNumero, moedaCampo, nomeMes, somarMeses } from '../api';
+import { SecaoObra } from './EngSecoes';
 
-type Funcao = 'operador_usina' | 'gestor_patio' | 'vendedor';
-type Regra = { id: string; funcao: Funcao; base: 'usina' | 'vendas'; modo: 'progressiva' | 'faixa'; vigencia: string; faixas: { ate: number | null; valorM3: number }[]; texto: string; criadoPor: string | null };
-type Parte = { de: number; ate: number | null; m3: number; valorM3: number; valor: number };
-type Resp = {
+type ServicoMes = { eapNoId: string; codigo: string; descricao: string; unidade: string | null; quantidadeMes: number | null; precoCentavos: number | null; valorCentavos: number | null };
+type Producao = {
   mes: string;
-  usinaM3: number;
-  total: number;
-  funcoes: { funcao: Funcao; nome: string; regra: Regra | null; total: number; pessoas: { id: string; nome: string; baseM3: number; valor: number; partes: Parte[] }[] }[];
+  colaboradores: { id: string; nome: string; valorCentavos: number; servicos: ServicoMes[] }[];
+  semEquipe: ServicoMes[];
+  totalCentavos: number;
 };
+type Folha = { eapNoId: string; codigo: string; descricao: string; unidade: string | null; quantidade: number | null; colaboradorId: string | null; colaboradorNome: string | null; precoUnitario: number | null };
+type Equipes = { folhas: Folha[]; colaboradores: { id: string; nome: string; funcao: string | null }[] };
 
-const NOMES: Record<Funcao, string> = { operador_usina: 'Operador de usina', gestor_patio: 'Gestor de pátio', vendedor: 'Vendedor' };
-const m3 = (n: number) => `${formatarNumero(n, Number.isInteger(n) ? 0 : 1)} m³`;
-const textoBase = (r: Regra) => (r.base === 'vendas' ? 'm³ entregues das vendas dele' : 'produção da usina no mês');
-const textoModo = (r: Regra) => (r.modo === 'progressiva' ? 'progressiva (cada faixa paga o seu volume)' : 'faixa atingida (todo o volume no valor da faixa)');
-
-type Form = { funcao: Funcao; base: 'usina' | 'vendas'; modo: 'progressiva' | 'faixa'; vigencia: string; faixas: { ate: string; valorM3: string }[] };
+const quantidade = (n: number | null, unidade: string | null) =>
+  n === null ? 'unidade não definida' : `${formatarNumero(n, Number.isInteger(n) ? 0 : 2)} ${unidade ?? ''}`.trim();
 
 export function GerProducaoEquipe() {
+  return (
+    <SecaoObra titulo="Produção da equipe" ajuda="Cada serviço da EAP tem uma equipe responsável e um preço por unidade. A produção do mês vem das medições.">
+      {(c) => <PainelProducao obraId={c.obra.id} setErro={c.setErro} />}
+    </SecaoObra>
+  );
+}
+
+function PainelProducao({ obraId, setErro }: { obraId: string; setErro: (m: string) => void }) {
   const [mes, setMes] = useState(hojeLocal().slice(0, 7));
-  const [r, setR] = useState<Resp | null>(null);
-  const [regras, setRegras] = useState<Regra[]>([]);
-  const [erro, setErro] = useState('');
-  const [aviso, setAviso] = useState('');
+  const [producao, setProducao] = useState<Producao | null>(null);
+  const [equipes, setEquipes] = useState<Equipes | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
-  const [form, setForm] = useState<Form | null>(null);
+  const [aviso, setAviso] = useState('');
+  const [form, setForm] = useState({ eapNoId: '', colaboradorId: '', precoUnitario: '' });
+  const [salvando, setSalvando] = useState(false);
 
   const carregar = useCallback(() => {
-    setR(null);
-    api<Resp>(`/ger/producao-equipe?mes=${mes}`).then(setR).catch((e) => setErro((e as Error).message));
-    api<{ regras: Regra[] }>('/ger/regras-producao').then((x) => setRegras(x.regras)).catch(() => {});
-  }, [mes]);
+    setProducao(null);
+    api<Producao>(`/eng/obras/${obraId}/producao-equipe?mes=${mes}`).then(setProducao).catch((e) => setErro((e as Error).message));
+    api<Equipes>(`/eng/obras/${obraId}/equipes-servicos`).then(setEquipes).catch((e) => setErro((e as Error).message));
+  }, [obraId, mes, setErro]);
   useEffect(carregar, [carregar]);
 
-  function novaRegra(funcao: Funcao, atual: Regra | null) {
+  function escolherServico(eapNoId: string) {
+    const f = equipes?.folhas.find((x) => x.eapNoId === eapNoId);
     setForm({
-      funcao,
-      base: atual?.base ?? (funcao === 'vendedor' ? 'vendas' : 'usina'),
-      modo: atual?.modo ?? 'progressiva',
-      vigencia: `${mes}-01`,
-      faixas: atual
-        ? atual.faixas.map((f) => ({ ate: f.ate === null ? '' : String(f.ate), valorM3: moedaCampo(f.valorM3) }))
-        : [{ ate: '1000', valorM3: '2,00' }, { ate: '', valorM3: '1,50' }],
+      eapNoId,
+      colaboradorId: f?.colaboradorId ?? '',
+      precoUnitario: f?.precoUnitario !== null && f?.precoUnitario !== undefined ? moedaCampo(f.precoUnitario) : '',
     });
   }
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
-    if (!form) return;
-    setErro('');
+    setAviso('');
+    const preco = lerNumero(form.precoUnitario);
+    if (preco === null || preco < 0) return setErro('Informe o preço por unidade.');
+    setSalvando(true);
     try {
-      await api('/ger/regras-producao', {
-        corpo: {
-          ...form,
-          faixas: form.faixas.map((f, i) => ({ ate: i === form.faixas.length - 1 ? null : lerNumero(f.ate), valorM3: lerNumero(f.valorM3) ?? -1 })),
-        },
-      });
-      setAviso(`Regra do ${NOMES[form.funcao].toLowerCase()} salva, valendo a partir de ${formatarData(form.vigencia)}.`);
-      setForm(null);
+      await api(`/eng/obras/${obraId}/equipes-servicos`, { metodo: 'PUT', corpo: { eapNoId: form.eapNoId, colaboradorId: form.colaboradorId, precoUnitario: preco } });
+      setAviso('Equipe e preço salvos.');
+      setForm({ eapNoId: '', colaboradorId: '', precoUnitario: '' });
+      carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
+
+  async function remover(eapNoId: string) {
+    setAviso('');
+    try {
+      await api(`/eng/obras/${obraId}/equipes-servicos/${eapNoId}`, { metodo: 'DELETE' });
+      setAviso('Equipe removida do serviço.');
       carregar();
     } catch (err) {
       setErro((err as Error).message);
     }
   }
 
-  async function excluir(regra: Regra) {
-    setErro('');
-    try {
-      await api(`/ger/regras-producao/${regra.id}`, { metodo: 'DELETE' });
-      setAviso('Regra excluída.');
-      carregar();
-    } catch (err) {
-      setErro((err as Error).message);
-    }
-  }
+  const folhasComEquipe = equipes?.folhas.filter((f) => f.colaboradorId) ?? [];
+  const folhasSemEquipe = equipes?.folhas.filter((f) => !f.colaboradorId) ?? [];
 
   return (
     <>
-      <div className="cabecalho">
-        <div className="titulo">
-          <h1>Produção da equipe</h1>
-          <span className="muted">Operador de usina, gestor de pátio e vendedor: R$ por m³ em faixas de volume do mês.</span>
-        </div>
-      </div>
-      <div className="filtros">
+      <div className="filtros" style={{ marginBottom: 12 }}>
         <div className="navegar-mes">
           <button className="btn btn-secundario" type="button" aria-label="Mês anterior" onClick={() => setMes(somarMeses(`${mes}-01`, -1).slice(0, 7))}>‹</button>
           <input type="month" value={mes} onChange={(e) => e.target.value && setMes(e.target.value)} aria-label="Mês" />
           <button className="btn btn-secundario" type="button" aria-label="Próximo mês" onClick={() => setMes(somarMeses(`${mes}-01`, 1).slice(0, 7))}>›</button>
         </div>
       </div>
-      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
 
-      {!r ? (
+      {!producao || !equipes ? (
         <p className="muted">Carregando…</p>
       ) : (
         <>
-          <div className="grade">
-            <div className="card indicador"><span className="rotulo-ind">Produção da usina · {nomeMes(mes)}</span><span className="valor-ind mono">{m3(r.usinaM3)}</span></div>
-            <div className="card indicador"><span className="rotulo-ind">Total da equipe</span><span className="valor-ind mono">{formatarMoeda(r.total)}</span></div>
-            <div className="card indicador"><span className="rotulo-ind">Custo por m³ produzido</span><span className="valor-ind mono">{r.usinaM3 ? formatarMoeda(r.total / r.usinaM3) : '—'}</span></div>
+          <div className="kpis" style={{ marginBottom: 16 }}>
+            <div className="kpi"><div className="kpi-rotulo">A pagar às equipes · {nomeMes(mes)}</div><div className="kpi-valor">{formatarMoeda(producao.totalCentavos / 100)}</div></div>
+            <div className="kpi"><div className="kpi-rotulo">Serviços com equipe</div><div className="kpi-valor">{folhasComEquipe.length}</div><div className="kpi-detalhe">de {equipes.folhas.length} serviços</div></div>
+            <div className={"kpi" + (producao.semEquipe.length ? " kpi-aviso" : "")}><div className="kpi-rotulo">Medidos sem equipe</div><div className="kpi-valor">{producao.semEquipe.length}</div><div className="kpi-detalhe">no mês, sem responsável</div></div>
           </div>
 
-          {r.funcoes.map((f) => (
-            <section key={f.funcao} className="card relatorio">
-              <div className="cartao-topo">
-                <h2>{f.nome}</h2>
-                <button className="btn btn-link" type="button" onClick={() => novaRegra(f.funcao, f.regra)}>{f.regra ? 'Mudar regra' : 'Definir regra'}</button>
-              </div>
-              {f.regra ? (
-                <p className="small muted" style={{ marginTop: 0 }}>
-                  {f.regra.texto}. Base: {textoBase(f.regra)}. Cálculo: {textoModo(f.regra)}. Desde {formatarData(f.regra.vigencia)}.
-                </p>
-              ) : (
-                <div className="alerta alerta-aviso">Sem regra para este mês. Defina as faixas de R$/m³ para calcular.</div>
-              )}
-              {f.pessoas.length === 0 ? (
-                <p className="muted small" style={{ margin: 0 }}>
-                  {f.funcao === 'vendedor' ? 'Nenhum usuário com perfil Vendedor.' : `Nenhum colaborador com a função ${f.nome.toLowerCase()}. Cadastre em Administrativo › Colaboradores.`}
-                </p>
-              ) : (
-                <div className="tabela-caixa">
-                  <table className="tabela">
-                    <thead>
-                      <tr>
-                        <th>{f.funcao === 'vendedor' ? 'Vendedor' : 'Colaborador'}</th>
-                        <th style={{ textAlign: 'right' }}>Base do cálculo</th>
-                        <th style={{ textAlign: 'right' }}>Valor</th>
-                        <th />
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {f.pessoas.map((p) => {
-                        const chave = `${f.funcao}:${p.id}`;
-                        return (
-                          <Fragment key={chave}>
-                            <tr>
-                              <td>{p.nome}</td>
-                              <td className="mono" style={{ textAlign: 'right' }}>{m3(p.baseM3)}</td>
-                              <td className="mono" style={{ textAlign: 'right' }}><b>{formatarMoeda(p.valor)}</b></td>
-                              <td style={{ textAlign: 'right' }}>
-                                {p.partes.length > 0 && (
-                                  <button className="btn btn-link" type="button" aria-expanded={aberto === chave} onClick={() => setAberto(aberto === chave ? null : chave)}>
-                                    {aberto === chave ? 'Fechar' : 'Ver cálculo'}
-                                  </button>
-                                )}
-                              </td>
-                            </tr>
-                            {aberto === chave &&
-                              p.partes.map((x, i) => (
-                                <tr key={`${chave}:${i}`} className="small">
-                                  <td className="muted" style={{ paddingLeft: 24 }}>
-                                    {f.regra?.modo === 'faixa' ? 'Faixa atingida' : x.ate === null ? `Acima de ${formatarNumero(x.de)} m³` : `De ${formatarNumero(x.de)} a ${formatarNumero(x.ate)} m³`}
-                                  </td>
-                                  <td className="mono muted" style={{ textAlign: 'right' }}>{m3(x.m3)} × {formatarMoeda(x.valorM3)}</td>
-                                  <td className="mono muted" style={{ textAlign: 'right' }}>{formatarMoeda(x.valor)}</td>
-                                  <td />
-                                </tr>
-                              ))}
-                          </Fragment>
-                        );
-                      })}
-                    </tbody>
-                    {f.pessoas.length > 1 && (
-                      <tfoot>
+          <section className="card" style={{ marginBottom: 12 }}>
+            <h2 style={{ marginTop: 0 }}>Produção por equipe</h2>
+            {producao.colaboradores.length === 0 ? (
+              <p className="muted small" style={{ margin: 0 }}>Nenhuma equipe produziu no mês. Defina a equipe de cada serviço abaixo.</p>
+            ) : (
+              <div className="tabela-caixa">
+                <table className="tabela">
+                  <thead><tr><th>Colaborador</th><th className="num">Serviços</th><th className="num">A pagar</th><th /></tr></thead>
+                  <tbody>
+                    {producao.colaboradores.map((c) => (
+                      <Fragment key={c.id}>
                         <tr>
-                          <td>Total</td>
-                          <td />
-                          <td className="mono" style={{ textAlign: 'right' }}><b>{formatarMoeda(f.total)}</b></td>
-                          <td />
+                          <td>{c.nome}</td>
+                          <td className="num">{c.servicos.length}</td>
+                          <td className="num"><b>{formatarMoeda(c.valorCentavos / 100)}</b></td>
+                          <td style={{ textAlign: 'right' }}>
+                            <button className="btn btn-link" type="button" aria-expanded={aberto === c.id} onClick={() => setAberto(aberto === c.id ? null : c.id)}>
+                              {aberto === c.id ? 'Fechar' : 'Ver serviços'}
+                            </button>
+                          </td>
                         </tr>
-                      </tfoot>
-                    )}
-                  </table>
-                </div>
-              )}
+                        {aberto === c.id && (
+                          <tr>
+                            <td colSpan={4}>
+                              <table className="tabela" style={{ margin: 0 }}>
+                                <thead><tr><th>Serviço</th><th className="num">Executado no mês</th><th className="num">Preço/un.</th><th className="num">Valor</th></tr></thead>
+                                <tbody>
+                                  {c.servicos.map((s) => (
+                                    <tr key={s.eapNoId}>
+                                      <td>{s.codigo} {s.descricao}</td>
+                                      <td className="num">{quantidade(s.quantidadeMes, s.unidade)}</td>
+                                      <td className="num">{s.precoCentavos !== null ? formatarMoeda(s.precoCentavos / 100) : '—'}</td>
+                                      <td className="num">{s.valorCentavos !== null ? formatarMoeda(s.valorCentavos / 100) : '—'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+
+          {producao.semEquipe.length > 0 && (
+            <section className="card" style={{ marginBottom: 12 }}>
+              <h2 style={{ marginTop: 0 }}>Serviços medidos sem equipe</h2>
+              <p className="small muted" style={{ marginTop: 0 }}>Houve produção no mês, mas nenhuma equipe está definida para estes serviços. Defina abaixo para que a produção seja paga.</p>
+              <div className="tabela-caixa">
+                <table className="tabela">
+                  <thead><tr><th>Serviço</th><th className="num">Executado no mês</th><th /></tr></thead>
+                  <tbody>
+                    {producao.semEquipe.map((s) => (
+                      <tr key={s.eapNoId}>
+                        <td>{s.codigo} {s.descricao}</td>
+                        <td className="num">{quantidade(s.quantidadeMes, s.unidade)}</td>
+                        <td style={{ textAlign: 'right' }}><button className="btn btn-link" type="button" onClick={() => escolherServico(s.eapNoId)}>Definir equipe</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
-          ))}
-        </>
-      )}
+          )}
 
-      {form && (
-        <form className="card form" onSubmit={salvar}>
-          <h2>Regra do {NOMES[form.funcao].toLowerCase()}</h2>
-          <div className="campos">
-            <div className="campo">
-              <label htmlFor="r-base">Base do cálculo</label>
-              <select id="r-base" value={form.base} onChange={(e) => setForm({ ...form, base: e.target.value as Form['base'] })}>
-                <option value="usina">Produção da usina no mês</option>
-                {form.funcao === 'vendedor' && <option value="vendas">m³ entregues das vendas dele</option>}
-              </select>
-            </div>
-            <div className="campo">
-              <label htmlFor="r-modo">Cálculo</label>
-              <select id="r-modo" value={form.modo} onChange={(e) => setForm({ ...form, modo: e.target.value as Form['modo'] })}>
-                <option value="progressiva">Progressiva: cada faixa paga o seu volume</option>
-                <option value="faixa">Faixa atingida: todo o volume no valor da faixa</option>
-              </select>
-            </div>
-            <div className="campo">
-              <label htmlFor="r-vig">Vale a partir de</label>
-              <input id="r-vig" type="date" value={form.vigencia} onChange={(e) => setForm({ ...form, vigencia: e.target.value })} />
-            </div>
-          </div>
-          <div className="faixas-editor">
-            {form.faixas.map((f, i) => {
-              const ultima = i === form.faixas.length - 1;
-              const anterior = i > 0 ? form.faixas[i - 1].ate : '0';
-              return (
-                <div key={i} className="faixa">
-                  <div className="campo">
-                    <label htmlFor={`r-ate-${i}`}>{ultima ? `Acima de ${anterior || '…'} m³` : `De ${anterior || '0'} até (m³)`}</label>
-                    <input id={`r-ate-${i}`} className="mono" inputMode="decimal" disabled={ultima} placeholder={ultima ? 'sem limite' : 'ex.: 1000'} value={ultima ? '' : f.ate}
-                      onChange={(e) => setForm({ ...form, faixas: form.faixas.map((x, j) => (j === i ? { ...x, ate: e.target.value } : x)) })} />
-                  </div>
-                  <div className="campo">
-                    <label htmlFor={`r-val-${i}`}>R$ por m³</label>
-                    <input id={`r-val-${i}`} className="mono" inputMode="decimal" value={f.valorM3}
-                      onChange={(e) => setForm({ ...form, faixas: form.faixas.map((x, j) => (j === i ? { ...x, valorM3: e.target.value } : x)) })} />
-                  </div>
-                  <button className="btn btn-link" type="button" disabled={form.faixas.length === 1} aria-label={`Tirar a faixa ${i + 1}`}
-                    onClick={() => setForm({ ...form, faixas: form.faixas.filter((_, j) => j !== i) })}>
-                    Tirar
-                  </button>
+          <section className="card" style={{ marginBottom: 12 }}>
+            <h2 style={{ marginTop: 0 }}>Equipe de cada serviço</h2>
+            <form onSubmit={salvar} className="form">
+              <div className="campos">
+                <div className="campo">
+                  <label htmlFor="eq-servico">Serviço (EAP)</label>
+                  <select id="eq-servico" value={form.eapNoId} onChange={(e) => escolherServico(e.target.value)}>
+                    <option value="">Escolha o serviço…</option>
+                    {equipes.folhas.map((f) => (
+                      <option key={f.eapNoId} value={f.eapNoId}>{f.codigo} {f.descricao}{f.unidade ? ` (${f.unidade})` : ' (sem unidade)'}</option>
+                    ))}
+                  </select>
                 </div>
-              );
-            })}
-            <button className="btn btn-secundario" type="button" style={{ justifySelf: 'start' }} disabled={form.faixas.length >= 10}
-              onClick={() => setForm({ ...form, faixas: [...form.faixas.slice(0, -1), { ate: '', valorM3: '' }, form.faixas[form.faixas.length - 1]] })}>
-              + Faixa
-            </button>
-          </div>
-          <span className="small muted">
-            Exemplo progressivo: até 1.000 m³ a R$ 2,00 e acima a R$ 1,50 → 1.200 m³ = 1.000 × 2,00 + 200 × 1,50 = R$ 2.300,00. Na faixa atingida, 1.200 m³ × 1,50 = R$ 1.800,00.
-          </span>
-          <div className="acoes">
-            <button className="btn btn-primario" type="submit">Salvar regra</button>
-            <button className="btn btn-link" type="button" onClick={() => setForm(null)}>Cancelar</button>
-          </div>
-        </form>
-      )}
+                <div className="campo">
+                  <label htmlFor="eq-colab">Equipe responsável</label>
+                  <select id="eq-colab" value={form.colaboradorId} onChange={(e) => setForm({ ...form, colaboradorId: e.target.value })}>
+                    <option value="">Escolha o colaborador…</option>
+                    {equipes.colaboradores.map((c) => <option key={c.id} value={c.id}>{c.nome}{c.funcao ? ` · ${c.funcao}` : ''}</option>)}
+                  </select>
+                </div>
+                <div className="campo">
+                  <label htmlFor="eq-preco">Preço por unidade (R$)</label>
+                  <input id="eq-preco" inputMode="decimal" value={form.precoUnitario} onChange={(e) => setForm({ ...form, precoUnitario: e.target.value })} placeholder="0,00" />
+                </div>
+              </div>
+              <div className="acoes">
+                <button className="btn btn-primario" type="submit" disabled={salvando || !form.eapNoId || !form.colaboradorId}>Salvar equipe</button>
+              </div>
+            </form>
 
-      {regras.length > 0 && (
-        <section className="card tabela-caixa">
-          <h2>Histórico de regras</h2>
-          <table className="tabela tabela-compacta">
-            <thead>
-              <tr>
-                <th>Função</th>
-                <th>Desde</th>
-                <th>Faixas</th>
-                <th>Base e cálculo</th>
-                <th />
-              </tr>
-            </thead>
-            <tbody>
-              {regras.map((g) => (
-                <tr key={g.id}>
-                  <td>{NOMES[g.funcao]}</td>
-                  <td className="mono">{formatarData(g.vigencia)}</td>
-                  <td className="small">{g.texto}</td>
-                  <td className="small muted">{g.base === 'vendas' ? 'vendas dele' : 'usina'} · {g.modo === 'progressiva' ? 'progressiva' : 'faixa atingida'}</td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button className="btn btn-link" type="button" onClick={() => excluir(g)}>Excluir</button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </section>
+            {folhasComEquipe.length > 0 && (
+              <div className="tabela-caixa" style={{ marginTop: 12 }}>
+                <table className="tabela">
+                  <thead><tr><th>Serviço</th><th>Equipe</th><th className="num">Preço/un.</th><th /></tr></thead>
+                  <tbody>
+                    {folhasComEquipe.map((f) => (
+                      <tr key={f.eapNoId}>
+                        <td>{f.codigo} {f.descricao}</td>
+                        <td>{f.colaboradorNome}</td>
+                        <td className="num">{f.precoUnitario !== null ? formatarMoeda(f.precoUnitario) : '—'}</td>
+                        <td style={{ textAlign: 'right' }}><button className="btn btn-link" type="button" onClick={() => remover(f.eapNoId)}>Remover</button></td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            {folhasSemEquipe.length > 0 && (
+              <p className="small muted" style={{ marginBottom: 0 }}>{folhasSemEquipe.length} serviço(s) ainda sem equipe.</p>
+            )}
+          </section>
+        </>
       )}
     </>
   );

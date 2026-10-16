@@ -13,6 +13,7 @@ import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColu
 import { empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
+import { producaoDoMes } from '../lib/equipes-servicos.ts';
 import { curvaS, percentualDeQuantidade, previstoXExecutado, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import {
   abcInsumos,
@@ -1639,6 +1640,133 @@ export function rotasEngenharia(banco: Banco) {
         },
         observacao: 'O realizado é o total das despesas confirmadas apropriadas ao centro de custo da obra. Os lançamentos não são apropriados por etapa, então o realizado aparece só no total.',
       };
+    });
+
+    const esquemaEquipeServico = z.object({
+      eapNoId: z.string().uuid('Escolha o serviço.'),
+      colaboradorId: z.string().uuid('Escolha o colaborador.'),
+      precoUnitario: z.number({ invalid_type_error: 'Informe o preço por unidade.' }).min(0, 'O preço não pode ser negativo.'),
+    });
+
+    // ---------------------------------------------------------------- produção da equipe (construtora)
+
+    /** Equipe de cada serviço (folha da EAP) e preço por unidade. A produção do mês sai das medições. */
+    async function orcadoDosServicos(c: Cliente, obraId: string) {
+      const linhas = (await c.query(
+        `SELECT oq.eap_no_id, count(*)::int AS linhas, max(oi.unidade) AS unidade, sum(oq.quantidade)::float AS quantidade
+           FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id
+          WHERE oq.obra_id = $1 AND oq.eap_no_id IS NOT NULL GROUP BY oq.eap_no_id`,
+        [obraId],
+      )).rows;
+      const orcado = new Map<string, { unidade: string | null; quantidade: number | null }>();
+      for (const l of linhas) {
+        orcado.set(l.eap_no_id as string, Number(l.linhas) === 1 ? { unidade: l.unidade as string, quantidade: Number(l.quantidade) } : { unidade: null, quantidade: null });
+      }
+      return orcado;
+    }
+
+    app.get<{ Params: { id: string }; Querystring: { mes?: string } }>('/obras/:id/producao-equipe', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const mes = req.query.mes && /^\d{4}-\d{2}$/.test(req.query.mes) ? req.query.mes : hojeIso().slice(0, 7);
+      const [ano, mesNum] = mes.split('-').map(Number);
+      const de = `${mes}-01`;
+      const ate = new Date(Date.UTC(ano, mesNum, 0)).toISOString().slice(0, 10);
+      const atribuicoes = (await banco.query(
+        `SELECT e.eap_no_id, e.colaborador_id, m.nome, e.preco_unitario_centavos, n.codigo, n.descricao
+           FROM equipes_servicos e JOIN motoristas m ON m.id = e.colaborador_id JOIN eap_nos n ON n.id = e.eap_no_id
+          WHERE e.obra_id = $1 AND e.empresa_id = $2`,
+        [obra.id, empresaId],
+      )).rows;
+      const medicoes: Medicao[] = [];
+      const mapa = new Map<string, Medicao>();
+      for (const i of (await banco.query(
+        `SELECT m.id, m.data, i.eap_no_id, i.percentual::float AS percentual
+           FROM obra_medicoes m JOIN obra_medicao_itens i ON i.medicao_id = m.id WHERE m.obra_id = $1`,
+        [obra.id],
+      )).rows) {
+        const m = mapa.get(i.id as string) ?? { data: dataIso(i.data), itens: new Map<string, number>() };
+        m.itens.set(i.eap_no_id as string, Number(i.percentual));
+        mapa.set(i.id as string, m);
+      }
+      medicoes.push(...mapa.values());
+      const nos = (await banco.query('SELECT id, codigo, descricao FROM eap_nos WHERE obra_id = $1', [obra.id])).rows;
+      const r = producaoDoMes({
+        atribuicoes: atribuicoes.map((a) => ({ eapNoId: a.eap_no_id as string, codigo: a.codigo as string, descricao: a.descricao as string, colaboradorId: a.colaborador_id as string, nome: a.nome as string, precoCentavos: Number(a.preco_unitario_centavos) })),
+        medicoes,
+        orcado: await orcadoDosServicos(banco, obra.id),
+        noEmMedicao: new Map(nos.map((n) => [n.id as string, { codigo: n.codigo as string, descricao: n.descricao as string }])),
+        de,
+        ate,
+      });
+      return { mes, de, ate, ...r };
+    });
+
+    app.get<{ Params: { id: string } }>('/obras/:id/equipes-servicos', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const orcado = await orcadoDosServicos(banco, obra.id);
+      const equipes = (await banco.query(
+        `SELECT e.eap_no_id, e.colaborador_id, m.nome, e.preco_unitario_centavos
+           FROM equipes_servicos e JOIN motoristas m ON m.id = e.colaborador_id WHERE e.obra_id = $1`,
+        [obra.id],
+      )).rows;
+      const porNo = new Map(equipes.map((e) => [e.eap_no_id as string, e]));
+      // Folhas da EAP: são elas que recebem equipe (etapas e subetapas só agrupam).
+      const folhas = (await banco.query(
+        `SELECT n.id, n.codigo, n.descricao FROM eap_nos n
+          WHERE n.obra_id = $1 AND NOT EXISTS (SELECT 1 FROM eap_nos f WHERE f.pai_id = n.id) ORDER BY n.codigo`,
+        [obra.id],
+      )).rows;
+      const colaboradores = (await banco.query(
+        'SELECT id, nome, funcao FROM motoristas WHERE empresa_id = $1 AND excluido_em IS NULL AND ativo ORDER BY nome',
+        [empresaId],
+      )).rows;
+      return {
+        folhas: folhas.map((f) => {
+          const o = orcado.get(f.id as string);
+          const e = porNo.get(f.id as string);
+          return {
+            eapNoId: f.id, codigo: f.codigo, descricao: f.descricao,
+            unidade: o?.unidade ?? null, quantidade: o?.quantidade ?? null,
+            colaboradorId: e?.colaborador_id ?? null, colaboradorNome: e?.nome ?? null,
+            precoUnitario: e ? Number(e.preco_unitario_centavos) / 100 : null,
+          };
+        }),
+        colaboradores: colaboradores.map((c) => ({ id: c.id, nome: c.nome, funcao: c.funcao ?? null })),
+      };
+    });
+
+    app.put<{ Params: { id: string } }>('/obras/:id/equipes-servicos', async (req) => {
+      const empresaId = empresaDo(req);
+      const d = esquemaEquipeServico.parse(req.body);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      return emTransacao(banco, async (c) => {
+        const no = (await c.query('SELECT id FROM eap_nos WHERE id = $1 AND obra_id = $2', [d.eapNoId, obra.id])).rows[0];
+        if (!no) throw naoEncontrado('Serviço');
+        const colab = (await c.query('SELECT id FROM motoristas WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL', [d.colaboradorId, empresaId])).rows[0];
+        if (!colab) throw naoEncontrado('Colaborador');
+        const r = await c.query(
+          `INSERT INTO equipes_servicos (empresa_id, obra_id, eap_no_id, colaborador_id, preco_unitario_centavos)
+           VALUES ($1, $2, $3, $4, $5)
+           ON CONFLICT (obra_id, eap_no_id) DO UPDATE SET colaborador_id = EXCLUDED.colaborador_id, preco_unitario_centavos = EXCLUDED.preco_unitario_centavos, atualizado_em = now()
+           RETURNING id`,
+          [empresaId, obra.id, d.eapNoId, d.colaboradorId, cent(d.precoUnitario)],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'equipes_servicos', entidadeId: r.rows[0].id, depois: { eapNoId: d.eapNoId, colaboradorId: d.colaboradorId, precoUnitario: cent(d.precoUnitario) } });
+        return { ok: true };
+      });
+    });
+
+    app.delete<{ Params: { id: string; noId: string } }>('/obras/:id/equipes-servicos/:noId', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      return emTransacao(banco, async (c) => {
+        const r = (await c.query('DELETE FROM equipes_servicos WHERE obra_id = $1 AND eap_no_id = $2 AND empresa_id = $3 RETURNING id', [obra.id, req.params.noId, empresaId])).rows[0];
+        if (!r) throw naoEncontrado('Equipe do serviço');
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'equipes_servicos', entidadeId: r.id, depois: null });
+        return { ok: true };
+      });
     });
 
     // ---------------------------------------------------------------- apropriação de insumos (fase 2)
