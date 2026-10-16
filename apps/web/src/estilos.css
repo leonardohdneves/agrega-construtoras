@@ -272,7 +272,8 @@ select.busca { appearance: auto; }
 /* ---------- Financeiro ---------- */
 .texto-perigo { color: var(--status-danger-ink); font-weight: 600; }
 @media (min-width: 760px) { .campos .largo { grid-column: span 2; } }
-.segmentado.tres-opcoes { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.segmentado.tres-opcoes { grid-template-columns: repeat(3, minmax(0, 1fr)); width: 100%; }
+.segmentado.tres-opcoes button { min-height: 44px; padding: 8px 10px; line-height: 1.2; }
 .linha-ap { grid-template-columns: minmax(220px, 2fr) minmax(150px, 1fr) minmax(110px, .8fr) minmax(150px, 1fr); align-items: end; padding: 6px 0; border-bottom: 1px dashed var(--border); }
 .linha-ap:last-of-type { border-bottom: 0; }
 @media (max-width: 760px) { .linha-ap { grid-template-columns: 1fr 1fr; } .linha-ap .campo:first-child { grid-column: 1 / -1; } }

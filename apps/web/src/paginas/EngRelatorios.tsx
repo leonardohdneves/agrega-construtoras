@@ -132,9 +132,9 @@ export function EngRelatorios() {
             {(obras ?? []).map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}
           </select>
         </div>
-        <div className="campo">
+        <div className="campo" style={{ flex: '1 1 100%', width: '100%' }}>
           <span className="rotulo">Relatório</span>
-          <div className="segmentado" role="group" aria-label="Relatório">
+          <div className="segmentado tres-opcoes" role="group" aria-label="Relatório">
             {TIPOS.map((t) => (
               <button key={t.id} type="button" aria-pressed={tipo === t.id} className={tipo === t.id ? 'ativo' : ''} onClick={() => mudar({ tipo: t.id })}>{t.texto}</button>
             ))}
