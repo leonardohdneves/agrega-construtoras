@@ -127,8 +127,6 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
     prazoPagamentoDias: String(inicial?.prazoPagamentoDias ?? 15),
     formaPagamento: inicial?.formaPagamento ?? '',
     observacao: inicial?.observacao ?? '',
-    enderecoContratante: inicial?.enderecoContratante ?? '',
-    enderecoContratada: inicial?.enderecoContratada ?? '',
     prazoCorrecaoDias: inicial?.prazoCorrecaoDias ? String(inicial.prazoCorrecaoDias) : '',
     garantiaMeses: inicial?.garantiaMeses ? String(inicial.garantiaMeses) : '',
   });
@@ -177,8 +175,6 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
         prazoPagamentoDias: Math.max(0, Math.round(Number(f.prazoPagamentoDias) || 0)),
         formaPagamento: f.formaPagamento || null,
         observacao: f.observacao || null,
-        enderecoContratante: f.enderecoContratante.trim() || null,
-        enderecoContratada: f.enderecoContratada.trim() || null,
         prazoCorrecaoDias: f.prazoCorrecaoDias ? Number(f.prazoCorrecaoDias) : null,
         garantiaMeses: f.garantiaMeses ? Number(f.garantiaMeses) : null,
         retencoes,
@@ -310,17 +306,9 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
         </div>
       </div>
 
-      <h2>Partes e prazos do termo jurídico</h2>
-      <p className="small muted" style={{ marginTop: 0 }}>Usados na minuta impressa. Preencha antes de entregar o contrato ao prestador.</p>
+      <h2>Prazos do termo jurídico</h2>
+      <p className="small muted" style={{ marginTop: 0 }}>Usados na minuta impressa. Os endereços vêm do cadastro da obra (empresa que executa) e do fornecedor.</p>
       <div className="campos">
-        <div className="campo" style={{ gridColumn: 'span 2' }}>
-          <label htmlFor="ct-end-contratante">Endereço da construtora (contratante)</label>
-          <input id="ct-end-contratante" maxLength={300} value={f.enderecoContratante} onChange={(e) => setF({ ...f, enderecoContratante: e.target.value })} placeholder="Rua, número, bairro, cidade/UF, CEP" />
-        </div>
-        <div className="campo" style={{ gridColumn: 'span 2' }}>
-          <label htmlFor="ct-end-contratada">Endereço do prestador (contratada)</label>
-          <input id="ct-end-contratada" maxLength={300} value={f.enderecoContratada} onChange={(e) => setF({ ...f, enderecoContratada: e.target.value })} placeholder="Rua, número, bairro, cidade/UF, CEP" />
-        </div>
         <div className="campo">
           <label htmlFor="ct-correcao">Prazo para corrigir vícios (dias)</label>
           <input id="ct-correcao" inputMode="numeric" value={f.prazoCorrecaoDias} onChange={(e) => setF({ ...f, prazoCorrecaoDias: e.target.value.replace(/\D/g, '') })} />

@@ -61,10 +61,11 @@ function calcularRetencoes(k: LinhaContrato, bruto: number) {
 async function detalharContrato(c: Cliente, empresaId: string, id: string, usuario?: { perfil: string; administrador: boolean }) {
   const k = (
     await c.query(
-      `SELECT k.*, f.razao_social, f.nome_fantasia, f.cnpj_cpf, f.telefone, f.email, f.cidade, f.uf, f.chave_pix,
+      `SELECT k.*, f.razao_social, f.nome_fantasia, f.cnpj_cpf, f.telefone, f.email, f.cidade, f.uf, f.chave_pix, f.endereco AS fornecedor_endereco, eg.endereco AS obra_endereco,
               pc.codigo AS plano_codigo, pc.nome AS plano_nome, cc.nome AS centro_custo, u.nome AS criado_por, ua.nome AS aprovado_por
          FROM contratos k JOIN fornecedores f ON f.id = k.fornecedor_id JOIN plano_contas pc ON pc.id = k.plano_conta_id
          LEFT JOIN centros_custo cc ON cc.id = k.centro_custo_id LEFT JOIN usuarios u ON u.id = k.criado_por_id LEFT JOIN usuarios ua ON ua.id = k.aprovado_por_id
+         LEFT JOIN obras ob ON ob.id = k.obra_id LEFT JOIN empresas_grupo eg ON eg.id = ob.empresa_grupo_id
         WHERE k.id = $1 AND k.empresa_id = $2`,
       [UUID.test(id) ? id : '00000000-0000-0000-0000-000000000000', empresaId],
     )
@@ -162,8 +163,9 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
     formaPagamento: k.forma_pagamento as string | null,
     retencoes: { caucao: pctNum(k.caucao_pct), iss: pctNum(k.iss_pct), inss: pctNum(k.inss_pct), ir: pctNum(k.ir_pct), pcc: pctNum(k.pcc_pct) },
     observacao: k.observacao as string | null,
-    enderecoContratante: k.endereco_contratante as string | null,
-    enderecoContratada: k.endereco_contratada as string | null,
+    // Endereços vêm do cadastro: a empresa que executa a obra (cadastro da obra) e o prestador (cadastro do fornecedor).
+    enderecoContratante: (k.obra_endereco as string | null) || null,
+    enderecoContratada: (k.fornecedor_endereco as string | null) || null,
     prazoCorrecaoDias: k.prazo_correcao_dias as number | null,
     garantiaMeses: k.garantia_meses as number | null,
     encerradoEm: k.encerrado_em as string | null,

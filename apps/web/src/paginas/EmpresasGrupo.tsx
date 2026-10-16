@@ -11,6 +11,7 @@ export type EmpresaGrupo = {
   regimeTributario: 'simples' | 'presumido' | 'real';
   simplesAnexo: string | null;
   simplesFaixa: number | null;
+  endereco: string | null;
   cidade: string | null;
   uf: string | null;
   ativo: boolean;
@@ -25,12 +26,13 @@ type Formulario = {
   regimeTributario: EmpresaGrupo['regimeTributario'];
   simplesAnexo: string;
   simplesFaixa: string;
+  endereco: string;
   cidade: string;
   uf: string;
   ativo: boolean;
 };
 
-const VAZIO: Formulario = { razaoSocial: '', nomeFantasia: '', cnpj: '', regimeTributario: 'simples', simplesAnexo: '', simplesFaixa: '', cidade: '', uf: '', ativo: true };
+const VAZIO: Formulario = { razaoSocial: '', nomeFantasia: '', cnpj: '', regimeTributario: 'simples', simplesAnexo: '', simplesFaixa: '', endereco: '', cidade: '', uf: '', ativo: true };
 
 function paraFormulario(e: EmpresaGrupo): Formulario {
   return {
@@ -40,6 +42,7 @@ function paraFormulario(e: EmpresaGrupo): Formulario {
     regimeTributario: e.regimeTributario,
     simplesAnexo: e.simplesAnexo ?? '',
     simplesFaixa: e.simplesFaixa === null ? '' : String(e.simplesFaixa),
+    endereco: e.endereco ?? '',
     cidade: e.cidade ?? '',
     uf: e.uf ?? '',
     ativo: e.ativo,
@@ -123,6 +126,7 @@ function FormEmpresaGrupo({ inicial, aoSalvar, aoCancelar, setErro }: { inicial:
       regimeTributario: f.regimeTributario,
       simplesAnexo: simples && f.simplesAnexo ? f.simplesAnexo : null,
       simplesFaixa: simples && f.simplesFaixa ? Number(f.simplesFaixa) : null,
+      endereco: f.endereco.trim() || null,
       cidade: f.cidade.trim() || null,
       uf: f.uf.trim().toUpperCase() || null,
       ativo: f.ativo,
@@ -179,6 +183,10 @@ function FormEmpresaGrupo({ inicial, aoSalvar, aoCancelar, setErro }: { inicial:
             </div>
           </>
         )}
+        <div className="campo" style={{ gridColumn: 'span 2' }}>
+          <label htmlFor="eg-endereco">Endereço completo (para contratos)</label>
+          <input id="eg-endereco" maxLength={300} value={f.endereco} onChange={(e) => mudar('endereco', e.target.value)} placeholder="Rua, número, bairro, cidade/UF, CEP" />
+        </div>
         <div className="campo">
           <label htmlFor="eg-cidade">Cidade</label>
           <input id="eg-cidade" value={f.cidade} onChange={(e) => mudar('cidade', e.target.value)} />

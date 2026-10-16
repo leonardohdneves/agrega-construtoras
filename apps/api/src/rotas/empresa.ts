@@ -51,9 +51,9 @@ export function rotasEmpresa(banco: Banco) {
           throw new ErroHttp(409, 'Já existe uma empresa do grupo com este CNPJ.');
         const r = (
           await c.query(
-            `INSERT INTO empresas_grupo (empresa_id, razao_social, nome_fantasia, cnpj, regime_tributario, simples_anexo, simples_faixa, cidade, uf, ativo)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
-            [empresaId, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, d.simplesAnexo ?? null, d.simplesFaixa ?? null, d.cidade, d.uf ?? null, d.ativo ?? true],
+            `INSERT INTO empresas_grupo (empresa_id, razao_social, nome_fantasia, cnpj, regime_tributario, simples_anexo, simples_faixa, cidade, uf, ativo, endereco)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+            [empresaId, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, d.simplesAnexo ?? null, d.simplesFaixa ?? null, d.cidade, d.uf ?? null, d.ativo ?? true, d.endereco],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'empresas_grupo', entidadeId: r.id, depois: d });
@@ -73,9 +73,9 @@ export function rotasEmpresa(banco: Banco) {
         const r = (
           await c.query(
             `UPDATE empresas_grupo SET razao_social = $3, nome_fantasia = $4, cnpj = $5, regime_tributario = $6, simples_anexo = $7,
-                    simples_faixa = $8, cidade = $9, uf = $10, ativo = $11, atualizado_em = now()
+                    simples_faixa = $8, cidade = $9, uf = $10, ativo = $11, endereco = $12, atualizado_em = now()
               WHERE id = $1 AND empresa_id = $2 RETURNING *`,
-            [antes.id, empresaId, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, d.simplesAnexo ?? null, d.simplesFaixa ?? null, d.cidade, d.uf ?? null, d.ativo ?? true],
+            [antes.id, empresaId, d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, d.simplesAnexo ?? null, d.simplesFaixa ?? null, d.cidade, d.uf ?? null, d.ativo ?? true, d.endereco],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas_grupo', entidadeId: antes.id, antes, depois: d });
