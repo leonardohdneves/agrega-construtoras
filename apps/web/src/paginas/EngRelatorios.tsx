@@ -31,12 +31,12 @@ type RelatorioAbc = {
   total: number;
   classes: Record<'A' | 'B' | 'C', { itens: number; valor: number; percentual: number }>;
 };
-type Gran = 'dia' | 'semana' | 'quinzena' | 'mes';
-const GRANULARIDADES: { id: Gran; texto: string }[] = [
-  { id: 'dia', texto: 'Dias' },
-  { id: 'semana', texto: 'Semanas' },
-  { id: 'quinzena', texto: 'Quinzenas' },
-  { id: 'mes', texto: 'Meses' },
+export type Gran = 'dia' | 'semana' | 'quinzena' | 'mes';
+export const GRANULARIDADES: { id: Gran; texto: string }[] = [
+  { id: 'dia', texto: 'Diário' },
+  { id: 'semana', texto: 'Semanal' },
+  { id: 'quinzena', texto: 'Quinzenal' },
+  { id: 'mes', texto: 'Mensal' },
 ];
 type PeriodoRel = { rotulo: string; inicio: string; fim: string; dias: number };
 type GanttRel = {
@@ -44,17 +44,21 @@ type GanttRel = {
   atividades: { id: string; descricao: string; eapCodigo: string | null; inicio: string; fim: string; duracaoDias: number; deslocamentoDias: number }[];
   atividadesSemEap: number;
 };
-type EquipesRel = {
+export type CalendarioRel = {
+  granularidade: Gran; inicio: string | null; fim: string | null;
+  blocos: { rotulo: string; inicio: string; fim: string; dias: string[]; linhas: { id: string; descricao: string; eapCodigo: string | null; marcas: Record<string, 'inicio' | 'continua' | 'fim' | 'unico'> }[] }[];
+};
+export type EquipesRel = {
   granularidade: Gran; horasDia: number; inicio: string; fim: string; periodos: string[];
   porTipo: { codigo: string; descricao: string; pico: number; periodos: { rotulo: string; trabalhadores: number }[] }[];
   porAtividade: { id: string; descricao: string; inicio: string; fim: string; duracaoDias: number; recursos: { codigo: string; descricao: string; horas: number; trabalhadores: number }[] }[];
   mensalistasNaoCalculados: string[]; atividadesSemOrcamento: number;
 };
-type ComprasRel = {
+export type ComprasRel = {
   itens: { codigo: string; descricao: string; unidade: string; grupo: string | null; total: number; primeira: string; usos: { atividade: string; inicio: string; quantidade: number }[] }[];
   semClasse: number; atividadesSemOrcamento: number;
 };
-type Tipo = 'sintetico' | 'analitico' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'gantt' | 'equipes' | 'compras';
+type Tipo = 'sintetico' | 'analitico' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'gantt' | 'equipes' | 'compras' | 'calendario';
 const TIPOS: { id: Tipo; texto: string; titulo: string }[] = [
   { id: 'sintetico', texto: 'Orçamento sintético', titulo: 'Orçamento sintético' },
   { id: 'analitico', texto: 'Orçamento analítico', titulo: 'Orçamento analítico' },
@@ -64,8 +68,9 @@ const TIPOS: { id: Tipo; texto: string; titulo: string }[] = [
   { id: 'gantt', texto: 'Gantt', titulo: 'Cronograma (Gantt)' },
   { id: 'equipes', texto: 'Equipes', titulo: 'Equipes necessárias' },
   { id: 'compras', texto: 'Compras', titulo: 'Necessidade de compras' },
+  { id: 'calendario', texto: 'Calendário de produção', titulo: 'Calendário de produção' },
 ];
-const ehPlanejamento = (t: Tipo) => t === 'gantt' || t === 'equipes' || t === 'compras';
+const ehPlanejamento = (t: Tipo) => t === 'gantt' || t === 'equipes' || t === 'compras' || t === 'calendario';
 const dataCurta = (iso: string) => iso.split('-').reverse().join('/');
 
 const num = (n: number, casas = 4) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: casas });
@@ -76,7 +81,7 @@ export function EngRelatorios() {
   const [obras, setObras] = useState<Obra[] | null>(null);
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [abc, setAbc] = useState<RelatorioAbc | null>(null);
-  const [plan, setPlan] = useState<GanttRel | EquipesRel | ComprasRel | null>(null);
+  const [plan, setPlan] = useState<GanttRel | EquipesRel | ComprasRel | CalendarioRel | null>(null);
   const [erro, setErro] = useState('');
   const obraId = params.get('obra') ?? obras?.[0]?.id ?? '';
   const tipo: Tipo = TIPOS.find((t) => t.id === params.get('tipo'))?.id ?? 'sintetico';
@@ -95,7 +100,7 @@ export function EngRelatorios() {
     setPlan(null);
     setErro('');
     const pedido = ehPlanejamento(tipo)
-      ? api<GanttRel | EquipesRel | ComprasRel>(
+      ? api<GanttRel | EquipesRel | ComprasRel | CalendarioRel>(
           tipo === 'compras'
             ? `/eng/obras/${obraId}/relatorios-planejamento/compras`
             : `/eng/obras/${obraId}/relatorios-planejamento/${tipo}?granularidade=${gran}`,
@@ -140,7 +145,7 @@ export function EngRelatorios() {
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {obras?.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhuma obra cadastrada.</p></div>}
       {tipo === 'comparacao' && obraId && <ComparacaoVersoes key={obraId} obraId={obraId} />}
-      {tipo === 'gantt' || tipo === 'equipes' ? (
+      {tipo === 'gantt' || tipo === 'equipes' || tipo === 'calendario' ? (
         <div className="card nao-imprimir" style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
           <div className="campo">
             <span className="rotulo">Período</span>
@@ -156,6 +161,7 @@ export function EngRelatorios() {
       {plan && tipo === 'gantt' && <GanttView g={plan as GanttRel} />}
       {plan && tipo === 'equipes' && <EquipesView e={plan as EquipesRel} />}
       {plan && tipo === 'compras' && <ComprasView c={plan as ComprasRel} />}
+      {plan && tipo === 'calendario' && <CalendarioView c={plan as CalendarioRel} />}
       {abc && (abc.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abc.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abc} />)}
       {rel && rel.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
       {rel && rel.linhas.length > 0 && (rel.tipo === 'sintetico' ? <Sintetico rel={rel} /> : <Analitico rel={rel} />)}
@@ -702,7 +708,7 @@ function GanttView({ g }: { g: GanttRel }) {
 }
 
 /** Equipes: trabalhadores por dia em cada tipo de mão de obra, no pico de cada período. */
-function EquipesView({ e }: { e: EquipesRel }) {
+export function EquipesView({ e }: { e: EquipesRel }) {
   if (!e.porTipo.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhuma mão de obra horista encontrada no orçamento das atividades.</p></div>;
   return (
     <>
@@ -768,19 +774,22 @@ function EquipesView({ e }: { e: EquipesRel }) {
 }
 
 /** Compras: materiais a entregar, com a data da primeira atividade que usa cada insumo. Mão de obra, equipamentos e terceirizados ficam de fora. */
-function ComprasView({ c }: { c: ComprasRel }) {
-  if (!c.itens.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhum material encontrado para as atividades do planejamento.</p></div>;
+/** Materiais ou equipamentos necessários. `classe` diz o que a lista traz: a quantidade e a data de entrega valem para os dois. */
+export function ComprasView({ c, classe = 'material' }: { c: ComprasRel; classe?: 'material' | 'equipamento' }) {
+  const rotulo = classe === 'material' ? 'Material' : 'Equipamento';
+  if (!c.itens.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhum {classe === 'material' ? 'material' : 'equipamento'} encontrado para as atividades do planejamento.</p></div>;
   return (
     <div className="card">
       <p className="small muted" style={{ marginTop: 0 }}>
-        Quantidade total de cada material, com a data em que ele deve estar na obra (início da primeira atividade que o usa).
-        Ficam de fora mão de obra, equipamentos e serviços terceirizados.
+        {classe === 'material'
+          ? 'Quantidade total de cada material, com a data em que ele deve estar na obra (início da primeira atividade que o usa). Ficam de fora mão de obra, equipamentos e serviços terceirizados.'
+          : 'Quantidade total de cada equipamento, com a data em que ele deve estar na obra (início da primeira atividade que o usa). Ficam de fora materiais, mão de obra e serviços terceirizados.'}
       </p>
       <div style={{ overflowX: 'auto' }}>
         <table className="tabela">
           <thead>
             <tr>
-              <th>Material</th>
+              <th>{rotulo}</th>
               <th>Un.</th>
               <th className="num">Quantidade</th>
               <th>Entregar até</th>
@@ -802,8 +811,71 @@ function ComprasView({ c }: { c: ComprasRel }) {
           </tbody>
         </table>
       </div>
-      {c.semClasse > 0 && <p className="small muted">{c.semClasse} material(is) sem classe identificada: conferir antes de comprar.</p>}
+      {c.semClasse > 0 && <p className="small muted">{c.semClasse} item(ns) sem classe identificada: conferir antes de comprar.</p>}
       {c.atividadesSemOrcamento > 0 && <p className="small muted">{c.atividadesSemOrcamento} atividade(s) sem orçamento vinculado: não entram na lista.</p>}
     </div>
+  );
+}
+
+/** Calendário de produção: um bloco por período (dia, semana, quinzena ou mês). Cada atividade marca o dia de início, a continuação e o término. */
+function CalendarioView({ c }: { c: CalendarioRel }) {
+  if (!c.blocos.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Não há atividades programadas. Monte o planejamento em Planejamento.</p></div>;
+  const letra = ['D', 'S', 'T', 'Q', 'Q', 'S', 'S'];
+  const diaSemana = (iso: string) => new Date(`${iso}T12:00:00Z`).getUTCDay();
+  const simbolo = { inicio: '▶', continua: '', fim: '■', unico: '◆' } as const;
+  const titulo = { inicio: 'Início', continua: 'Continuação', fim: 'Término', unico: 'Início e término no mesmo dia' } as const;
+  return (
+    <>
+      <div className="card">
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Programação de {dataCurta(c.inicio!)} a {dataCurta(c.fim!)}. Cada linha é uma atividade (tarefa da EAP) e cada coluna é um dia.
+        </p>
+        <div className="cal-legenda small">
+          <span><b className="cal-celula cal-inicio">▶</b> início</span>
+          <span><b className="cal-celula cal-continua" /> continuação</span>
+          <span><b className="cal-celula cal-fim">■</b> término</span>
+          <span><b className="cal-celula cal-unico">◆</b> início e término no mesmo dia</span>
+        </div>
+      </div>
+      {c.blocos.map((b) => (
+        <div className="card cal-bloco" key={`${b.inicio}-${b.rotulo}`}>
+          <h2 style={{ marginTop: 0 }}>{b.rotulo} <span className="small muted">· {dataCurta(b.inicio)} a {dataCurta(b.fim)}</span></h2>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tabela cal-tabela">
+              <thead>
+                <tr>
+                  <th className="cal-atividade">Atividade</th>
+                  {b.dias.map((d) => (
+                    <th key={d} className={`cal-dia${diaSemana(d) === 0 || diaSemana(d) === 6 ? ' fds' : ''}`} title={dataCurta(d)}>
+                      <div>{letra[diaSemana(d)]}</div>
+                      <div>{d.slice(8, 10)}</div>
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {b.linhas.map((l) => (
+                  <tr key={l.id}>
+                    <td className="cal-atividade">
+                      {l.eapCodigo && <span className="mono small muted">{l.eapCodigo} </span>}
+                      {l.descricao}
+                    </td>
+                    {b.dias.map((d) => {
+                      const m = l.marcas[d];
+                      return (
+                        <td key={d} className={`cal-celula${m ? ` cal-${m}` : ''}`} title={m ? `${l.descricao}: ${titulo[m]} · ${dataCurta(d)}` : undefined}>
+                          {m ? simbolo[m] : ''}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ))}
+      <p className="small muted">Períodos sem atividades não aparecem. Os dias são corridos.</p>
+    </>
   );
 }

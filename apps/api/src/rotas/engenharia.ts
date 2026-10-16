@@ -12,7 +12,7 @@ import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
-import { GRANULARIDADES, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
+import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import { curvaS, percentualDeQuantidade, previstoXExecutado, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import {
   abcInsumos,
@@ -1261,15 +1261,21 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true };
     });
 
-    /** Cria uma atividade por folha da EAP que ainda não tem atividade. Início: data de início da obra (ou hoje); duração 1 dia. */
+    /**
+     * Cria uma atividade por tarefa da EAP (folha: nó sem filhos) que ainda não tem atividade.
+     * Etapas e subetapas não viram atividade: aparecem no planejamento como resumo, com início e fim das tarefas abaixo.
+     * Início: data de início da obra (ou hoje); duração 1 dia.
+     */
     app.post<{ Params: { id: string } }>('/obras/:id/planejamento/gerar-da-eap', async (req) => {
       const empresaId = empresaDo(req);
       return emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
         const linhas = (await c.query('SELECT id, pai_id, codigo, descricao FROM eap_nos WHERE obra_id = $1 ORDER BY string_to_array(codigo, \'.\')::int[]', [obra.id])).rows;
         const comAtividade = new Set((await c.query('SELECT eap_no_id FROM obra_atividades WHERE obra_id = $1 AND eap_no_id IS NOT NULL', [obra.id])).rows.map((r) => r.eap_no_id as string));
-        // Todas as linhas da EAP (etapas, subetapas e tarefas). Etapas e subetapas viram resumo: as datas vêm das atividades abaixo.
-        const folhas = linhas.filter((l) => !comAtividade.has(l.id as string)).map((l) => ({ id: l.id as string, descricao: l.descricao as string }));
+        const comFilhos = resumosDaEap(linhas.map((l) => ({ id: l.id as string, paiId: (l.pai_id ?? null) as string | null })));
+        const folhas = linhas
+          .filter((l) => !comFilhos.has(l.id as string) && !comAtividade.has(l.id as string))
+          .map((l) => ({ id: l.id as string, descricao: l.descricao as string }));
         if (!folhas.length) return { criadas: 0 };
         const inicio = obra.data_inicio ? dataIso(obra.data_inicio) : new Date().toISOString().slice(0, 10);
         let ordem = (await c.query('SELECT coalesce(max(ordem), 0) AS n FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows[0].n as number;
@@ -1311,6 +1317,7 @@ export function rotasEngenharia(banco: Banco) {
         linhas.map((a) => ({ id: a.id as string, eapNoId: (a.eap_no_id ?? null) as string | null })),
         nosObra,
       );
+      const resumos = resumosDaEap(nosObra);
       const insumos = (await c.query(
         `SELECT a.id AS atividade_id, i.codigo, i.descricao, i.unidade, i.grupo, sum(oq.quantidade * ci.coeficiente)::float AS quantidade
            FROM obra_atividades a
@@ -1337,6 +1344,7 @@ export function rotasEngenharia(banco: Banco) {
           fim: d.fim,
           duracaoDias: Number(a.duracao_dias),
           predecessoraId: (a.predecessora_id ?? null) as string | null,
+          resumo: !!a.eap_no_id && resumos.has(a.eap_no_id as string),
           insumos: porAtividade.get(a.id as string) ?? [],
         };
       });
@@ -1385,11 +1393,25 @@ export function rotasEngenharia(banco: Banco) {
       };
     });
 
-    app.get<{ Params: { id: string } }>('/obras/:id/relatorios-planejamento/compras', async (req) => {
+    /** Calendário de produção: as atividades (tarefas) em cada período, com início, continuação e término. */
+    app.get<{ Params: { id: string }; Querystring: { granularidade?: string } }>('/obras/:id/relatorios-planejamento/calendario', async (req) => {
       const empresaId = empresaDo(req);
       await obraDaEmpresa(banco, empresaId, req.params.id);
       const atividades = await atividadesComRecursos(banco, req.params.id);
-      const itens = montarCompras(atividades.map((a) => ({ id: a.id, descricao: a.descricao, inicio: a.inicio, insumos: a.insumos })));
+      const cal = montarCalendario(
+        atividades.map((a) => ({ id: a.id, descricao: a.descricao, eapCodigo: a.eapCodigo, inicio: a.inicio, fim: a.fim })),
+        granularidadeDe(req.query.granularidade),
+      );
+      return { granularidade: granularidadeDe(req.query.granularidade), ...cal };
+    });
+
+    /** Materiais ou equipamentos necessários (?classe=material | equipamento). Sem classe, a lista de compras completa. */
+    app.get<{ Params: { id: string }; Querystring: { classe?: string } }>('/obras/:id/relatorios-planejamento/compras', async (req) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const atividades = await atividadesComRecursos(banco, req.params.id);
+      const classe = req.query.classe === 'material' ? 'Material' : req.query.classe === 'equipamento' ? 'Equipamento' : undefined;
+      const itens = montarCompras(atividades.map((a) => ({ id: a.id, descricao: a.descricao, inicio: a.inicio, insumos: a.insumos })), classe);
       return {
         // Cada item tem a data da primeira atividade que o usa (primeira): a entrega deve chegar até essa data.
         itens,
