@@ -22,6 +22,7 @@ const camposFornecedor = {
   ramo: texto,
   telefone: texto,
   email: z.string().trim().toLowerCase().email('E-mail inválido.').optional().nullable().or(z.literal('').transform(() => null)),
+  endereco: texto,
   cidade: texto,
   uf: z.string().trim().toUpperCase().length(2, 'UF com 2 letras.').optional().nullable().or(z.literal('').transform(() => null)),
   chavePix: texto,
@@ -49,6 +50,7 @@ const COLUNAS: Record<string, string> = {
   ramo: 'ramo',
   telefone: 'telefone',
   email: 'email',
+  endereco: 'endereco',
   cidade: 'cidade',
   uf: 'uf',
   chavePix: 'chave_pix',
@@ -67,6 +69,7 @@ export function fornecedorPublico(r: Record<string, any>) {
     ramo: r.ramo,
     telefone: r.telefone,
     email: r.email,
+    endereco: r.endereco,
     cidade: r.cidade,
     uf: r.uf ? String(r.uf).trim() : null,
     chavePix: r.chave_pix,
@@ -173,9 +176,9 @@ export function rotasAdministrativo(banco: Banco) {
       const f = await emTransacao(banco, async (c) => {
         const novo = (
           await c.query(
-            `INSERT INTO fornecedores (empresa_id, categoria, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, telefone, email, cidade, uf, chave_pix, observacoes, ativo)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
-            [empresaId, d.categoria, d.tipoPessoa, d.cnpjCpf, d.razaoSocial, d.nomeFantasia, d.ramo, d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.chavePix, d.observacoes, d.ativo],
+            `INSERT INTO fornecedores (empresa_id, categoria, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, telefone, email, cidade, uf, chave_pix, observacoes, ativo, endereco)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+            [empresaId, d.categoria, d.tipoPessoa, d.cnpjCpf, d.razaoSocial, d.nomeFantasia, d.ramo, d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.chavePix, d.observacoes, d.ativo, d.endereco],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'fornecedores', entidadeId: novo.id, depois: novo });

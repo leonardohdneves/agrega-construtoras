@@ -50,6 +50,7 @@ export const esquemaEmpresaGrupo = z.object({
   regimeTributario: z.enum(['simples', 'presumido', 'real'], { message: 'Escolha o regime tributário.' }),
   simplesAnexo: z.enum(['I', 'II', 'III', 'IV', 'V']).nullable().optional(),
   simplesFaixa: z.number().int().min(1, 'Faixa de 1 a 6.').max(6, 'Faixa de 1 a 6.').nullable().optional(),
+  endereco: opcional,
   cidade: opcional,
   uf: z.string().trim().toUpperCase().length(2, 'UF com 2 letras.').optional().nullable().or(z.literal('').transform(() => null)),
   ativo: z.boolean().optional(),

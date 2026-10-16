@@ -126,10 +126,10 @@ export function clausulasContrato(k: Contrato, contratante: string): Clausula[] 
 /** Dados que o termo jurídico exige e que ainda não foram preenchidos no contrato. */
 export function pendenciasMinuta(k: Contrato): string[] {
   const p: string[] = [];
-  if (!k.enderecoContratante) p.push('endereço da construtora');
-  if (!k.enderecoContratada) p.push('endereço do prestador');
-  if (!k.prazoCorrecaoDias) p.push('prazo para corrigir vícios');
-  if (!k.garantiaMeses) p.push('garantia dos serviços');
+  if (!k.enderecoContratante) p.push('endereço da empresa que executa a obra (cadastro da empresa do grupo, na obra)');
+  if (!k.enderecoContratada) p.push('endereço do prestador (cadastro do fornecedor)');
+  if (!k.prazoCorrecaoDias) p.push('prazo para corrigir vícios (no contrato)');
+  if (!k.garantiaMeses) p.push('garantia dos serviços (no contrato)');
   return p;
 }
 
@@ -148,7 +148,7 @@ export function ContratoJuridico({ k }: { k: Contrato }) {
         <button className="btn btn-primario" type="button" onClick={imprimirMinuta} disabled={pendencias.length > 0}>Imprimir minuta</button>
       </div>
       {pendencias.length > 0 && (
-        <div className="alerta alerta-erro nao-imprimir">Antes de imprimir, preencha no contrato: {pendencias.join(', ')}.</div>
+        <div className="alerta alerta-erro nao-imprimir">Antes de imprimir, complete: {pendencias.join('; ')}.</div>
       )}
       <div className="alerta alerta-info nao-imprimir">
         Aviso interno: esta minuta precisa ser revisada por advogado antes de ser entregue ao cliente. Os campos entre colchetes precisam ser preenchidos. Este aviso não sai na impressão.

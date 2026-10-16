@@ -11,13 +11,14 @@ type Dados = {
   ramo: string;
   telefone: string;
   email: string;
+  endereco: string;
   cidade: string;
   uf: string;
   chavePix: string;
   observacoes: string;
 };
 
-const VAZIO: Dados = { tipoPessoa: 'PJ', cnpjCpf: '', razaoSocial: '', nomeFantasia: '', ramo: '', telefone: '', email: '', cidade: '', uf: '', chavePix: '', observacoes: '' };
+const VAZIO: Dados = { tipoPessoa: 'PJ', cnpjCpf: '', razaoSocial: '', nomeFantasia: '', ramo: '', telefone: '', email: '', endereco: '', cidade: '', uf: '', chavePix: '', observacoes: '' };
 
 function paraDados(f: Fornecedor): Dados {
   return {
@@ -29,6 +30,7 @@ function paraDados(f: Fornecedor): Dados {
     ramo: f.ramo ?? '',
     telefone: f.telefone ?? '',
     email: f.email ?? '',
+    endereco: f.endereco ?? '',
     cidade: f.cidade ?? '',
     uf: f.uf ?? '',
     chavePix: f.chavePix ?? '',
@@ -72,6 +74,7 @@ function mesclarLeitura(f: Dados, d: DadosLidos): Dados {
     ramo: txt('ramo', f.ramo),
     telefone: txt('telefone', f.telefone),
     email: txt('email', f.email),
+    endereco: txt('endereco', f.endereco),
     cidade: txt('cidade', f.cidade),
     uf: txt('uf', f.uf),
     chavePix: txt('chavePix', f.chavePix),
@@ -197,6 +200,10 @@ export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor'
             <div className="campo">
               <label htmlFor="f-email">E-mail</label>
               <input id="f-email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            </div>
+            <div className="campo">
+              <label htmlFor="f-endereco">Endereço completo (para contratos)</label>
+              <input id="f-endereco" maxLength={300} value={form.endereco} onChange={(e) => setForm({ ...form, endereco: e.target.value })} placeholder="Rua, número, bairro, cidade/UF, CEP" />
             </div>
             <div className="campo">
               <label htmlFor="f-cidade">Cidade</label>

@@ -61,6 +61,7 @@ export function empresaGrupoPublica(r: Record<string, any>) {
     regimeTributario: r.regime_tributario as 'simples' | 'presumido' | 'real',
     simplesAnexo: (r.simples_anexo as string | null) ?? null,
     simplesFaixa: r.simples_faixa === null || r.simples_faixa === undefined ? null : Number(r.simples_faixa),
+    endereco: (r.endereco as string | null) ?? null,
     cidade: (r.cidade as string | null) ?? null,
     uf: (r.uf as string | null) ?? null,
     ativo: !!r.ativo,
