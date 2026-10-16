@@ -594,7 +594,7 @@ export function ContratoDetalhe() {
           </div>
 
           {emitindo ? (
-            <ContratoJuridico k={k} />
+            <ContratoJuridico k={k} aoAtualizar={(n) => setK(n)} />
           ) : (
             <div className="so-imprimir assinaturas">
               <Assinatura nome={k.fornecedor.razaoSocial} papel="Contratada" />

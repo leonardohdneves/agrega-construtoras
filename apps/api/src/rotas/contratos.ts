@@ -688,7 +688,34 @@ export function rotasContratos(banco: Banco) {
       return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
     });
 
-    const mudarStatusContrato = (rota: string, de: string[], para: string, msg: string, extra?: (c: Cliente, k: LinhaContrato) => Promise<void>) =>
+    // Prazos do termo jurídico, salvos direto da minuta (sem reabrir o formulário completo).
+    app.patch<{ Params: { id: string } }>('/contratos/:id/prazos', async (req) => {
+      const d = z
+        .object({
+          prazoCorrecaoDias: z.union([z.number().int().min(1).max(365), z.null()]),
+          garantiaMeses: z.union([z.number().int().min(1).max(120), z.null()]),
+        })
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      await emTransacao(banco, async (c) => {
+        const k = await carregarContrato(c, empresaId, req.params.id, true);
+        if (!['rascunho', 'reprovado', 'vigente'].includes(k.status)) throw new ErroHttp(409, 'Contrato neste status não muda os prazos.');
+        await c.query('UPDATE contratos SET prazo_correcao_dias = $2, garantia_meses = $3, atualizado_em = now() WHERE id = $1', [k.id, d.prazoCorrecaoDias, d.garantiaMeses]);
+        await auditar(c, {
+          empresaId,
+          usuarioId: u.id,
+          acao: 'alterar',
+          entidade: 'contratos',
+          entidadeId: k.id,
+          antes: { prazoCorrecaoDias: k.prazo_correcao_dias, garantiaMeses: k.garantia_meses },
+          depois: { prazoCorrecaoDias: d.prazoCorrecaoDias, garantiaMeses: d.garantiaMeses },
+        });
+      });
+      return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
+    });
+
+    const mudarStatusContrato =(rota: string, de: string[], para: string, msg: string, extra?: (c: Cliente, k: LinhaContrato) => Promise<void>) =>
       app.post<{ Params: { id: string } }>(`/contratos/:id/${rota}`, async (req) => {
         const empresaId = empresaDo(req);
         const u = usuarioDe(req);
