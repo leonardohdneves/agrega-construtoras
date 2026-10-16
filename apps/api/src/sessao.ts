@@ -4,7 +4,7 @@ import { config } from './config.ts';
 import type { Banco } from './db.ts';
 import { naoAutenticado, semPermissao, ErroHttp } from './lib/erros.ts';
 import { lerToken, criarToken, type DadosSessao, type Perfil } from './lib/token.ts';
-import { acessoPermitido, listaDoUsuario, modulosEfetivos, type Modulo } from './lib/modulos.ts';
+import { acessoPermitido, contratoComBase, listaDoUsuario, modulosEfetivos, type Modulo } from './lib/modulos.ts';
 
 export const COOKIE_SESSAO = 'agrega_sessao';
 const VALIDADE = 60 * 60 * 12; // 12 horas
@@ -54,7 +54,7 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
   return async function (req: FastifyRequest): Promise<void> {
     if (!req.sessao) throw naoAutenticado();
     const r = await banco.query(
-      `SELECT u.id, u.nome, u.email, u.perfil, u.empresa_id, u.ativo, u.administrador, u.modulos, e.ativo AS empresa_ativa
+      `SELECT u.id, u.nome, u.email, u.perfil, u.empresa_id, u.ativo, u.administrador, u.modulos, e.ativo AS empresa_ativa, e.modulos_contratados
          FROM usuarios u LEFT JOIN empresas e ON e.id = u.empresa_id
         WHERE u.id = $1 AND u.excluido_em IS NULL`,
       [req.sessao.sub],
@@ -64,8 +64,10 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
     if (u.empresa_id && !u.empresa_ativa) throw new ErroHttp(403, 'O acesso desta empresa está suspenso.');
     const administrador = u.perfil === 'dono' || !!u.administrador;
     const lista = listaDoUsuario(u.perfil, u.modulos, administrador);
-    req.usuario = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id, administrador, modulos: modulosEfetivos(u.perfil, lista) };
-    if (!acessoPermitido({ perfil: u.perfil, modulos: lista, perfisRota: perfis, url: req.url, metodo: req.method })) throw semPermissao();
+    // Sem empresa (administrador do sistema) não há contrato; com empresa, vale o que foi vendido.
+    const contratados = u.empresa_id ? contratoComBase(u.modulos_contratados) : undefined;
+    req.usuario = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id, administrador, modulos: modulosEfetivos(u.perfil, lista, contratados) };
+    if (!acessoPermitido({ perfil: u.perfil, modulos: lista, perfisRota: perfis, url: req.url, metodo: req.method, contratados })) throw semPermissao();
   };
 }
 

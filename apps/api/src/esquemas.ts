@@ -105,6 +105,18 @@ export const esquemaAlterarUsuario = z
   })
   .strict();
 
+/** Contrato vendido: o pacote define os módulos; o personalizado usa a lista escolhida. */
+export const esquemaContrato = z
+  .object({
+    pacote: z.enum(['obra', 'obra_gestao', 'completo', 'personalizado'], { message: 'Escolha o pacote.' }),
+    modulos: z.array(z.enum(['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'])).optional(),
+    limiteObras: z.number().int('Use número inteiro.').positive('O limite de obras precisa ser maior que zero.').nullable(),
+    limiteUsuarios: z.number().int('Use número inteiro.').positive('O limite de usuários precisa ser maior que zero.').nullable(),
+  })
+  .superRefine((c, ctx) => {
+    if (c.pacote === 'personalizado' && !c.modulos?.length) ctx.addIssue({ code: 'custom', message: 'Escolha pelo menos um módulo.', path: ['modulos'] });
+  });
+
 export const esquemaNovaEmpresa = esquemaEmpresa.extend({
   dono: z.object({ nome: texto('o nome do dono', 2), email: esquemaEmail, senha: esquemaSenha }),
 });

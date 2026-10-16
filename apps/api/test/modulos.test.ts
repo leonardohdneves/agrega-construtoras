@@ -76,3 +76,25 @@ test('regras de acesso', () => {
   // rota comum
   assert.equal(g('laboratorista', ['qualidade'], [], '/api/auth/eu'), true);
 });
+
+test('contrato da empresa limita os módulos, inclusive do dono', () => {
+  assert.deepEqual(modulosEfetivos('dono', null, ['engenharia', 'suprimentos', 'configuracoes']), ['engenharia', 'suprimentos', 'configuracoes']);
+  assert.deepEqual(modulosEfetivos('gestor', null, ['engenharia', 'suprimentos', 'configuracoes']), ['engenharia', 'suprimentos']);
+});
+
+test('contrato Obra: financeiro e comercial ficam fora, mesmo para o dono', () => {
+  const contrato = ['engenharia', 'suprimentos', 'configuracoes'];
+  const g = (perfil: any, url: string, metodo = 'GET') => acessoPermitido({ perfil, modulos: null, perfisRota: [], url, metodo, contratados: contrato });
+  assert.equal(g('dono', '/api/eng/obras'), true);
+  assert.equal(g('dono', '/api/sup/solicitacoes'), true);
+  assert.equal(g('dono', '/api/fin/lancamentos'), false);
+  assert.equal(g('dono', '/api/com/propostas'), false);
+  // lista de cadastro usada por outro módulo continua respondendo
+  assert.equal(g('dono', '/api/fin/plano-contas'), true);
+  assert.equal(g('dono', '/api/fin/plano-contas', 'POST'), false);
+});
+
+test('contrato sem suprimentos: almoxarife não entra no estoque', () => {
+  const g = (url: string) => acessoPermitido({ perfil: 'almoxarife', modulos: null, perfisRota: ['almoxarife'], url, metodo: 'GET', contratados: ['engenharia', 'configuracoes'] });
+  assert.equal(g('/api/sup/estoques'), false);
+});

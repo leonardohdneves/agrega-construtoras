@@ -3,8 +3,11 @@ import type { FastifyInstance } from 'fastify';
 import type { Banco } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
-import { esquemaNovaEmpresa } from '../esquemas.ts';
+import { esquemaContrato, esquemaNovaEmpresa } from '../esquemas.ts';
 import { empresaPublica } from '../formatos.ts';
+import { contratoComBase } from '../lib/modulos.ts';
+import { PACOTES } from '../lib/pacotes.ts';
+import { naoEncontrado } from '../lib/erros.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import { exigir } from '../sessao.ts';
 
@@ -18,15 +21,37 @@ export function rotasAdmin(banco: Banco) {
       return { empresas: r.rows.map((e) => ({ ...empresaPublica(e), totalUsuarios: e.total_usuarios })) };
     });
 
+    // Contrato da construtora: pacote vendido, módulos liberados e limites de obras e usuários.
+    app.put<{ Params: { id: string } }>('/empresas/:id/contrato', { preHandler: exigir(banco, 'admin_sistema') }, async (req) => {
+      const d = esquemaContrato.parse(req.body);
+      const modulos: string[] = d.pacote === 'personalizado' ? (d.modulos ?? []) : PACOTES[d.pacote].modulos;
+      const empresa = await emTransacao(banco, async (c) => {
+        const antes = (await c.query('SELECT * FROM empresas WHERE id = $1 AND excluido_em IS NULL FOR UPDATE', [req.params.id])).rows[0];
+        if (!antes) throw naoEncontrado('Empresa');
+        const depois = (
+          await c.query(
+            `UPDATE empresas SET contrato_pacote = $2, modulos_contratados = $3, limite_obras = $4, limite_usuarios = $5, atualizado_em = now()
+              WHERE id = $1 RETURNING *`,
+            [antes.id, d.pacote, contratoComBase(modulos), d.limiteObras, d.limiteUsuarios],
+          )
+        ).rows[0];
+        await auditar(c, { empresaId: antes.id, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas', entidadeId: antes.id, antes: { contrato: antes.modulos_contratados, limites: [antes.limite_obras, antes.limite_usuarios] }, depois: { pacote: d.pacote, modulos: contratoComBase(modulos), limiteObras: d.limiteObras, limiteUsuarios: d.limiteUsuarios } });
+        return depois;
+      });
+      return { empresa: empresaPublica(empresa) };
+    });
+
     app.post('/empresas', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
       const d = esquemaNovaEmpresa.parse(req.body);
       const hash = await gerarHashSenha(d.dono.senha);
       const empresa = await emTransacao(banco, async (c) => {
         const e = (
           await c.query(
-            `INSERT INTO empresas (razao_social, nome_fantasia, cnpj, regime_tributario, aliquotas_dre, telefone, email, cidade, uf)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
-            [d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, JSON.stringify(d.aliquotasDre), d.telefone, d.email ?? null, d.cidade, d.uf ?? null],
+            `INSERT INTO empresas (razao_social, nome_fantasia, cnpj, regime_tributario, aliquotas_dre, telefone, email, cidade, uf,
+                                   contrato_pacote, modulos_contratados, limite_obras, limite_usuarios)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'obra', $10, $11, $12) RETURNING *`,
+            [d.razaoSocial, d.nomeFantasia, d.cnpj, d.regimeTributario, JSON.stringify(d.aliquotasDre), d.telefone, d.email ?? null, d.cidade, d.uf ?? null,
+              contratoComBase(PACOTES.obra.modulos), PACOTES.obra.limiteObras, PACOTES.obra.limiteUsuarios],
           )
         ).rows[0];
         const dono = (
