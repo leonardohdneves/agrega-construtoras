@@ -3,7 +3,8 @@
 import type { No } from './EngObras';
 
 export type Atividade = {
-  id: string; ordem: number; descricao: string; eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null;
+  id: string; numero: number; ordem: number; descricao: string; descricaoResumida: string; predecessoraNumero: number | null;
+  eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null;
   inicioInformado: string; duracaoDias: number; predecessoraId: string | null; inicio: string; fim: string;
   /** Atividade ligada a uma etapa ou subetapa (lançamento antigo): a etapa mostra as datas das tarefas abaixo dela. */
   resumo: boolean;
@@ -91,7 +92,7 @@ export function montarLinhas(nos: No[], atividades: Atividade[], fechados: Set<s
       // Atividade lançada direto numa etapa (lançamento antigo): aparece como uma tarefa a mais dentro dela.
       if (atividade) {
         linhas.push({
-          chave: atividade.id, profundidade: profundidade + 1, codigo: null, descricao: atividade.descricao, resumo: false, temFilhos: false,
+          chave: atividade.id, profundidade: profundidade + 1, codigo: null, descricao: atividade.descricaoResumida, resumo: false, temFilhos: false,
           aberta: true, noId: no.id, atividade, inicio: atividade.inicio, fim: atividade.fim, dias: atividade.duracaoDias,
         });
       }
@@ -99,14 +100,14 @@ export function montarLinhas(nos: No[], atividades: Atividade[], fechados: Set<s
       return;
     }
     linhas.push({
-      chave: no.id, profundidade, codigo: no.codigo, descricao: atividade ? atividade.descricao : no.descricao, resumo: false, temFilhos: false,
+      chave: no.id, profundidade, codigo: no.codigo, descricao: atividade ? atividade.descricaoResumida : no.descricao, resumo: false, temFilhos: false,
       aberta: true, noId: no.id, atividade, inicio: atividade?.inicio ?? null, fim: atividade?.fim ?? null, dias: atividade ? atividade.duracaoDias : null,
     });
   };
   for (const r of raizes) visitar(r, 0);
   for (const a of atividades.filter((x) => !x.eapNoId)) {
     linhas.push({
-      chave: a.id, profundidade: 0, codigo: null, descricao: a.descricao, resumo: false, temFilhos: false, aberta: true, noId: null,
+      chave: a.id, profundidade: 0, codigo: null, descricao: a.descricaoResumida, resumo: false, temFilhos: false, aberta: true, noId: null,
       atividade: a, inicio: a.inicio, fim: a.fim, dias: a.duracaoDias,
     });
   }
