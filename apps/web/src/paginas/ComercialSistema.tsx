@@ -8,7 +8,7 @@ const PACOTES = [
   { nome: 'Obra', mensal: 'R$ 379', obras: '3 obras ativas', usuarios: '3 usuários' },
   { nome: 'Obra + Gestão', mensal: 'R$ 578', obras: '3 obras ativas', usuarios: '5 usuários' },
   { nome: 'Completo', mensal: 'R$ 649', obras: '10 obras ativas', usuarios: '8 usuários (inclui Comercial)' },
-  { nome: 'Incorporação (adicional)', mensal: 'A definir', obras: 'Estudos aprovados no Viabiliza', usuarios: 'Contratado à parte, sobre qualquer pacote' },
+  { nome: 'Incorporação (adicional)', mensal: 'R$ 450', obras: 'Acesso ao Viabiliza e estudos aprovados', usuarios: 'Contratado à parte, sobre qualquer pacote' },
 ];
 
 function Cabecalho({ titulo, descricao }: { titulo: string; descricao: string }) {
