@@ -23,5 +23,6 @@ export const config = {
   adminSenha: process.env.ADMIN_SENHA || '',
   seedDemo: process.env.SEED_DEMO === 'true',
   demoSenha: process.env.DEMO_SENHA || '',
+  cursoSenha: process.env.CURSO_SENHA || '',
   cookieSeguro: producao,
 };
