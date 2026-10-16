@@ -2,13 +2,13 @@
 
 const MATERIAIS = [
   {
-    arquivo: '/material/proposta-comercial.html',
+    arquivo: '/api/admin/material/proposta-comercial.html',
     titulo: 'Proposta comercial',
     descricao: 'Modelo para enviar à construtora interessada: capa, módulos, pacotes com preços, investimento, etapas da implantação e condições.',
     dica: 'Substitua os campos entre colchetes para cada cliente. Os valores precisam bater com o contrato padrão.',
   },
   {
-    arquivo: '/material/banner-piloto.html',
+    arquivo: '/api/admin/material/banner-piloto.html',
     titulo: 'Banner de captação de pilotos',
     descricao: 'Banner 1200 × 628 para post e capa de divulgação, convidando construtoras para o programa piloto.',
     dica: 'Preencha os contatos antes de divulgar. Para salvar a imagem, use a captura de tela do navegador.',
