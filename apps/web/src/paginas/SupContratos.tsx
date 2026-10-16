@@ -240,7 +240,7 @@ function FormContrato({ inicial, aoSalvar, aoCancelar }: { inicial?: Contrato; a
               <div key={l.chave} className="campos editor-linha">
                 <div className="campo">
                   <label htmlFor={`ci-d-${l.chave}`}>Descrição no contrato</label>
-                  <input id={`ci-d-${l.chave}`} maxLength={200} value={l.descricao} onChange={(e) => mudarLinha(l.chave, { descricao: e.target.value })} placeholder="Ex.: hora técnica de mecânico" />
+                  <input id={`ci-d-${l.chave}`} maxLength={1000} value={l.descricao} onChange={(e) => mudarLinha(l.chave, { descricao: e.target.value })} placeholder="Ex.: hora técnica de mecânico" />
                 </div>
                 <div className="campo">
                   <label htmlFor={`ci-q-${l.chave}`}>Quantidade</label>

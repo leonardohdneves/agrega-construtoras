@@ -246,7 +246,7 @@ const esquemaContrato = z.object({
     .array(
       z.object({
         id: uuidOpc,
-        descricao: z.string().trim().min(1, 'Descreva cada item.').max(200),
+        descricao: z.string().trim().min(1, 'Descreva cada item.').max(1000, 'Descrição do item muito longa.'),
         unidade: z.string().trim().min(1).max(10),
         quantidade: positivo('Quantidade inválida.'),
         precoUnitario: naoNegativo('Preço inválido.'),
