@@ -34,6 +34,22 @@ export function rotasAdmin(banco: Banco) {
         .send(conteudo);
     });
 
+    // Avisos não lidos para o administrador do sistema (ex.: empresa acima do limite de empreendimentos).
+    app.get('/avisos', { preHandler: exigir(banco, 'admin_sistema') }, async () => {
+      const r = await banco.query(
+        `SELECT a.id, a.tipo, a.quantidade, a.mensagem, a.criado_em, e.razao_social
+           FROM avisos_sistema a JOIN empresas e ON e.id = a.empresa_id
+          WHERE a.lido_em IS NULL AND e.excluido_em IS NULL ORDER BY a.criado_em DESC`,
+      );
+      return { avisos: r.rows.map((a) => ({ id: a.id, tipo: a.tipo, quantidade: a.quantidade, mensagem: a.mensagem, criadoEm: a.criado_em, empresa: a.razao_social })) };
+    });
+
+    app.post<{ Params: { id: string } }>('/avisos/:id/lido', { preHandler: exigir(banco, 'admin_sistema') }, async (req) => {
+      const r = await banco.query(`UPDATE avisos_sistema SET lido_em = coalesce(lido_em, now()) WHERE id = $1 RETURNING id`, [req.params.id]);
+      if (!r.rows[0]) throw naoEncontrado('Aviso');
+      return { ok: true };
+    });
+
     app.get('/empresas', { preHandler: exigir(banco, 'admin_sistema') }, async () => {
       const r = await banco.query(
         `SELECT e.*, (SELECT count(*)::int FROM usuarios u WHERE u.empresa_id = e.id AND u.excluido_em IS NULL) AS total_usuarios

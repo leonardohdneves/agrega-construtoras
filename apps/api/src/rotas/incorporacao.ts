@@ -7,6 +7,7 @@ import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { buscarEstudoAprovado, entrarViabiliza, listarEstudosAprovados, planejarImportacao, type UnidadeExistente } from '../lib/estudo-importacao.ts';
+import { avisarLimiteEmpreendimentos } from '../lib/avisos.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const credenciais = z.object({
@@ -107,6 +108,7 @@ export function rotasIncorporacao(banco: Banco) {
           [empresaId, empId, estudo.versaoEstudo, usuarioId, JSON.stringify(plano.totais), JSON.stringify(plano.divergencias)],
         );
         await auditar(c, { empresaId, usuarioId, acao: atual ? 'alterar' : 'criar', entidade: 'incorporacao_empreendimentos', entidadeId: empId, depois: { versaoEstudo: estudo.versaoEstudo, totais: plano.totais } });
+        await avisarLimiteEmpreendimentos(c, empresaId);
         return { empreendimentoId: empId, importacao: { id: importacao.rows[0].id, importadoEm: importacao.rows[0].importado_em, totais: plano.totais, divergencias: plano.divergencias } };
       });
     });
