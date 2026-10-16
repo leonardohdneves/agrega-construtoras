@@ -1,0 +1,103 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Banner Conheça o Agrega ERP</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Paleta e tipografia do manual de operação. Formato 1200 x 628, para post e capa de divulgação. */
+  :root {
+    --azul: #1f5fad; --azul-claro: #5b92d6; --ink: #1f2328; --cinza-claro: #c9ccd1; --cinza-escuro: #2b3036;
+    --papel: #ffffff; --info: #e7eff9;
+    color-scheme: light;
+    font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: #f4f3f0; color: var(--ink);
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+  }
+  .banner {
+    position: relative; overflow: hidden; container-type: inline-size;
+    width: 100%; max-width: 1200px; aspect-ratio: 1200 / 628; margin: 0 auto;
+    background: var(--ink); color: #fff; border-radius: 12px;
+    display: grid; grid-template-columns: 1.6fr 1fr; align-items: center;
+  }
+  .banner .texto { position: relative; z-index: 2; max-width: 62%; padding: 4.6cqw 5cqw 4.4cqw; display: flex; flex-direction: column; height: 100%; justify-content: center; }
+  .marca { display: flex; align-items: center; gap: 1.2cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2cqw; letter-spacing: -0.02em; }
+  .marca span.fino { font-weight: 500; color: var(--cinza-claro); }
+  .selo {
+    display: inline-block; align-self: flex-start; margin-top: 3.2cqw; font-size: 1.25cqw; font-weight: 600;
+    background: var(--azul); color: #fff; padding: 0.6cqw 1.6cqw; border-radius: 99px; letter-spacing: 0.01em;
+  }
+  h1 {
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.4cqw; line-height: 1.06; letter-spacing: -0.025em;
+    margin: 1.8cqw 0 0; text-wrap: balance;
+  }
+  h1 em { font-style: normal; color: var(--azul-claro); }
+  .sub { font-size: 1.4cqw; line-height: 1.45; color: var(--cinza-claro); margin: 1.6cqw 0 0; max-width: 46cqw; }
+  ul.modulos { list-style: none; margin: 2.2cqw 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1cqw; }
+  ul.modulos li { font-size: 1.15cqw; font-weight: 600; border: 1px solid #4a5058; border-radius: 99px; padding: 0.5cqw 1.3cqw; color: #fff; }
+  .botao {
+    display: inline-block; align-self: flex-start; margin-top: 2.6cqw; background: var(--azul); color: #fff; text-decoration: none;
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 1.6cqw; padding: 0.9cqw 2.6cqw; border-radius: 10px;
+  }
+  .botao:focus-visible { outline: 3px solid var(--azul-claro); outline-offset: 3px; }
+  .arte { position: absolute; right: 0; top: 0; bottom: 0; width: 36%; z-index: 0; pointer-events: none; }
+  .arte svg { width: 100%; height: 100%; display: block; }
+  .qr { position: absolute; right: 5cqw; top: 50%; transform: translateY(-50%); width: 19cqw; z-index: 2; background: #fff; color: var(--ink); border-radius: 10px; padding: 1.2cqw; text-align: center; }
+  .qr img { display: block; width: 100%; height: auto; }
+  .qr span { display: block; margin-top: 0.8cqw; font-size: 1.05cqw; font-weight: 600; line-height: 1.25; }
+
+  /* Telas estreitas (celular): a altura acompanha o texto, e a arte some para caber a mensagem. */
+  @media (max-width: 700px) {
+    .banner { aspect-ratio: auto; grid-template-columns: 1fr; }
+    .arte { display: none; }
+    .texto { padding: 9cqw 8cqw 8cqw; }
+    h1 { font-size: 7.4cqw; }
+    .sub { font-size: 3.5cqw; max-width: none; }
+    .marca { font-size: 4.2cqw; }
+    .marca svg { width: 9cqw; height: 9cqw; }
+    .selo { font-size: 3.2cqw; margin-top: 6cqw; }
+    ul.modulos li { font-size: 3cqw; }
+    .botao { font-size: 3.6cqw; }
+    .qr { position: static; transform: none; width: 34cqw; margin: 0 8cqw 8cqw; }
+    .qr span { font-size: 2.6cqw; }
+  }
+</style>
+
+<main>
+  <section class="banner" aria-label="Banner de divulgação do Agrega ERP">
+    <div class="arte" aria-hidden="true">
+      <svg viewBox="0 0 500 628" preserveAspectRatio="xMidYMid slice">
+        <circle cx="330" cy="330" r="150" fill="#1f5fad"/>
+        <circle cx="440" cy="250" r="95" fill="#2b3036"/>
+        <circle cx="390" cy="520" r="110" fill="#2b3036"/>
+        <circle cx="480" cy="520" r="48" fill="#1f5fad" opacity="0.85"/>
+        <circle cx="260" cy="520" r="34" fill="#5b92d6" opacity="0.8"/>
+        <rect x="60" y="76" width="180" height="60" rx="12" fill="#2b3036"/>
+        <rect x="76" y="94" width="92" height="8" rx="4" fill="#5b92d6"/>
+        <rect x="76" y="110" width="140" height="8" rx="4" fill="#4a5058"/>
+      </svg>
+    </div>
+
+    <div class="texto">
+      <div class="marca">
+        <svg viewBox="0 0 512 512" aria-hidden="true" style="width:36px;height:36px;flex:none"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg>
+        <span>agrega <span class="fino">ERP</span></span>
+      </div>
+      <span class="selo">Para construtoras e incorporadoras</span>
+      <h1>Conheça o <em>Agrega ERP</em>.</h1>
+      <p class="sub">Orçamento, compras, estoque com etiqueta QR, contratos e financeiro num só sistema, do canteiro à diretoria.</p>
+      <ul class="modulos" aria-label="Módulos">
+        <li>Engenharia</li>
+        <li>Suprimentos</li>
+        <li>Financeiro</li>
+        <li>Gerencial</li>
+      </ul>
+      <a class="botao" href="https://agrega-construtoras-app-production.up.railway.app/interesse?origem=banner-saiba-mais">Saiba mais</a>
+    </div>
+    <div class="qr">
+      <img src="qr-banner-saiba-mais.svg" alt="QR code para saber mais sobre o Agrega ERP">
+      <span>Escaneie e saiba mais</span>
+    </div>
+  </section>
+</main>

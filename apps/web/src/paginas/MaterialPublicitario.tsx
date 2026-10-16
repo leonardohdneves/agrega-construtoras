@@ -13,6 +13,24 @@ const MATERIAIS = [
     dica: 'Substitua os campos entre colchetes para cada cliente. Os valores precisam bater com o contrato padrão.',
   },
   {
+    arquivo: '/api/admin/material/banner-saiba-mais.html',
+    titulo: 'Banner Conheça o Agrega ERP',
+    descricao: 'Banner 1200 × 628 para WhatsApp e Instagram, com módulos e botão Saiba mais. O botão e o QR code levam ao cadastro de interessados com a origem "banner-saiba-mais".',
+    dica: 'Para o Instagram, capture a tela do banner. No WhatsApp, envie a imagem e o link do botão.',
+  },
+  {
+    arquivo: '/api/admin/material/material-detalhado.html',
+    titulo: 'Material detalhado',
+    descricao: 'Apresentação completa para enviar a cada interessado: módulos, funcionalidades, vantagens, implantação, pacotes e condições, sem preços. Traz o botão de cadastro com a origem "banner-saiba-mais".',
+    dica: 'Para enviar em PDF, abra o modelo e use Imprimir > Salvar como PDF.',
+  },
+  {
+    arquivo: '/api/admin/material/banner-curso-orcamento.html',
+    titulo: 'Banner Curso de Orçamento, Planejamento e Gestão de Obras',
+    descricao: 'Banner 1200 × 628 do curso, com realização Agrega. O botão e o QR code levam ao cadastro com a origem "curso-orcamento".',
+    dica: 'Para o Instagram, capture a tela do banner. Confirme datas, valor e forma de inscrição antes de divulgar.',
+  },
+  {
     arquivo: '/api/admin/material/banner-piloto.html',
     titulo: 'Banner de captação de pilotos',
     descricao: 'Banner 1200 × 628 para post e capa de divulgação, convidando construtoras para o programa piloto. Traz o QR code de cadastro.',

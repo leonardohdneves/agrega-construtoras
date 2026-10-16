@@ -9,7 +9,11 @@ type Interessado = {
 };
 
 const NOMES_PACOTE: Record<string, string> = { obra: 'Obra', obra_gestao: 'Obra + Gestão', completo: 'Completo', ainda_nao_sei: 'Ainda não sei' };
-const NOMES_ORIGEM: Record<string, string> = { 'banner-piloto': 'Banner de captação de pilotos' };
+const NOMES_ORIGEM: Record<string, string> = {
+  'banner-piloto': 'Banner de captação de pilotos',
+  'banner-saiba-mais': 'Banner Conheça o Agrega ERP',
+  'curso-orcamento': 'Curso de Orçamento, Planejamento e Gestão de Obras',
+};
 const SEM_ORIGEM = '__sem__';
 
 const nomeOrigem = (o: string | null) => (o ? NOMES_ORIGEM[o] ?? o : 'Cadastro direto (sem material)');
