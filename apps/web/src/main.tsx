@@ -18,6 +18,7 @@ import { AdminEmpresas } from './paginas/AdminEmpresas';
 import { MaterialPublicitario } from './paginas/MaterialPublicitario';
 import { ContratosSistema, PropostasSistema } from './paginas/ComercialSistema';
 import { ComercialInteressados } from './paginas/ComercialInteressados';
+import { Interesse } from './paginas/Interesse';
 import { Veiculos } from './paginas/Veiculos';
 import { VeiculoDetalhe } from './paginas/VeiculoDetalhe';
 import { Motoristas } from './paginas/Motoristas';
