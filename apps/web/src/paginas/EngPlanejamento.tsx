@@ -12,6 +12,7 @@ import { ComprasView, EquipesView, GRANULARIDADES, type ComprasRel, type Equipes
 
 type FormAtividade = { descricao: string; eapNoId: string; inicio: string; duracaoDias: string; predecessoraId: string };
 const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
+const idDe = (n: number | null | undefined) => (n ? `#${n}` : '—');
 
 const ABAS_PLANEJAMENTO = [
   { id: 'planejamento', texto: 'Planejamento' },
@@ -107,8 +108,9 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
   const [d, setD] = useState<FormAtividade>(VAZIO);
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState('');
+  const [foco, setFoco] = useState<'pred' | 'dias' | null>(null);
   const linhas = useMemo(() => montarLinhas(nos, lista, fechados), [nos, lista, fechados]);
-  const nomeDe = (id: string | null) => lista.find((a) => a.id === id)?.descricao ?? '—';
+  const nomeDe = (id: string | null) => idDe(lista.find((a) => a.id === id)?.numero);
   // Só tarefas (nós sem filhos) recebem atividade. Etapas e subetapas são resumos.
   const comFilhos = useMemo(() => new Set(nos.map((n) => n.paiId).filter((x): x is string => !!x)), [nos]);
   const tarefas = nos.filter((n) => !comFilhos.has(n.id));
@@ -200,6 +202,7 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
             <table className="tabela">
               <thead>
                 <tr>
+                  <th>ID</th>
                   <th>Atividade</th>
                   <th>Predecessora</th>
                   <th>Início</th>
@@ -211,7 +214,8 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
               <tbody>
                 {linhas.map((l) => (
                   <tr key={l.chave} className={l.resumo ? 'arv-resumo' : !l.atividade ? 'arv-sem' : undefined}>
-                    <td style={{ paddingLeft: 12 + l.profundidade * 18 }}>
+                    <td className="mono small">{l.atividade ? `#${l.atividade.numero}` : ''}</td>
+                    <td style={{ paddingLeft: 12 + l.profundidade * 18 }} title={l.atividade?.descricao}>
                       {l.temFilhos ? (
                         <button className="arv-botao" type="button" aria-expanded={l.aberta} aria-label={`${l.aberta ? 'Recolher' : 'Expandir'} ${l.descricao}`} onClick={() => alternar(l.noId!)}>
                           {l.aberta ? '▾' : '▸'}
@@ -221,7 +225,7 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
                       {l.descricao}
                       {!l.atividade && !l.resumo && l.noId && <span className="small muted"> · sem atividade</span>}
                     </td>
-                    <td>{l.atividade?.predecessoraId ? nomeDe(l.atividade.predecessoraId) : '—'}</td>
+                    <td className="mono">{l.atividade?.predecessoraId ? nomeDe(l.atividade.predecessoraId) : '—'}</td>
                     <td>
                       {l.inicio ? dataBr(l.inicio) : '—'}
                       {l.atividade && l.atividade.inicio !== l.atividade.inicioInformado && <div className="small muted">informado: {dataBr(l.atividade.inicioInformado)}</div>}
@@ -248,8 +252,9 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
         <h2 style={{ margin: 0 }}>{editando ? 'Editar atividade' : 'Nova atividade'}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
           <div className="campo" style={{ gridColumn: 'span 2' }}>
-            <label htmlFor="at-desc">Atividade</label>
+            <label htmlFor="at-desc">Atividade (descrição completa)</label>
             <input id="at-desc" value={d.descricao} onChange={(e) => setD({ ...d, descricao: e.target.value })} />
+            <span className="ajuda">Na tabela aparece o início da descrição, cortado com “...” quando for longa.</span>
           </div>
           <div className="campo" style={{ gridColumn: 'span 2' }}>
             <label htmlFor="at-eap">Tarefa da EAP</label>
@@ -264,14 +269,18 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
           </div>
           <div className="campo">
             <label htmlFor="at-dias">Duração (dias corridos)</label>
-            <input id="at-dias" inputMode="numeric" value={d.duracaoDias} onChange={(e) => setD({ ...d, duracaoDias: e.target.value })} />
+            <input id="at-dias" inputMode="numeric" value={d.duracaoDias} onFocus={() => setFoco('dias')} onBlur={() => setFoco(null)} onChange={(e) => setD({ ...d, duracaoDias: e.target.value })} />
+            {foco === 'dias' && <span className="ajuda"><b>Descrição completa:</b> {d.descricao || '—'}</span>}
           </div>
           <div className="campo" style={{ gridColumn: 'span 2' }}>
             <label htmlFor="at-pred">Predecessora</label>
-            <select id="at-pred" value={d.predecessoraId} onChange={(e) => setD({ ...d, predecessoraId: e.target.value })}>
+            <select id="at-pred" value={d.predecessoraId} onFocus={() => setFoco('pred')} onBlur={() => setFoco(null)} onChange={(e) => setD({ ...d, predecessoraId: e.target.value })}>
               <option value="">Nenhuma</option>
-              {lista.filter((a) => a.id !== editando).map((a) => <option key={a.id} value={a.id}>{a.descricao}</option>)}
+              {lista.filter((a) => a.id !== editando).map((a) => <option key={a.id} value={a.id}>#{a.numero} · {a.descricao}</option>)}
             </select>
+            {foco === 'pred' && d.predecessoraId && (
+              <span className="ajuda"><b>Descrição completa da predecessora:</b> {lista.find((a) => a.id === d.predecessoraId)?.descricao}</span>
+            )}
           </div>
         </div>
         <div className="acoes">
