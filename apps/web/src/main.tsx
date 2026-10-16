@@ -113,6 +113,7 @@ createRoot(document.getElementById('raiz')!).render(
       <BrowserRouter>
         <Routes>
           <Route path="/entrar" element={<Entrar />} />
+          <Route path="/interesse" element={<Interesse />} />
           <Route
             element={
               <Protegido>
