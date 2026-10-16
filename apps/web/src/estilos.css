@@ -432,6 +432,12 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .so-imprimir { display: none; }
 .tabela tr.folga td { color: var(--ink-muted, #6b7280); }
 
+/* Cabeçalho discreto da minuta: logo e nome da empresa, sem a faixa da marca Agrega. */
+.minuta-cabecalho { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding-bottom: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--borda, #e4e4e7); text-align: right; }
+.minuta-empresa { display: grid; font-size: 12px; color: var(--ink-muted, #6b7280); }
+.minuta-empresa strong { color: inherit; font-size: 13px; }
+.minuta-logo { height: 40px; width: auto; max-width: 140px; object-fit: contain; }
+
 /* Impressão só da minuta do contrato (botão "Imprimir minuta"): o resto da página fica invisível. */
 @media print {
   html[data-impressao="minuta"] body * { visibility: hidden; }

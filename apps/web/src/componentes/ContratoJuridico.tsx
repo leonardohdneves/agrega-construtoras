@@ -153,6 +153,13 @@ export function ContratoJuridico({ k }: { k: Contrato }) {
       <div className="alerta alerta-info nao-imprimir">
         Aviso interno: esta minuta precisa ser revisada por advogado antes de ser entregue ao cliente. Os campos entre colchetes precisam ser preenchidos. Este aviso não sai na impressão.
       </div>
+      <header className="minuta-cabecalho">
+        {empresa?.temLogo && <img className="minuta-logo" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt="" />}
+        <div className="minuta-empresa">
+          <strong>{contratante}</strong>
+          {empresa?.cnpj && <span>CNPJ {cnpjContratante}</span>}
+        </div>
+      </header>
       <h2>Contrato de prestação de serviços nº {numeroDoc(k.numero)}</h2>
       <p>
         Este contrato é firmado entre <b>{contratante}</b>, CNPJ {cnpjContratante}, com sede em {k.enderecoContratante ?? '—'} (CONTRATANTE), e{' '}
