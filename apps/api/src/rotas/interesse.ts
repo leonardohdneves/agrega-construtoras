@@ -20,9 +20,12 @@ const esquemaInteresse = z.object({
   usuarios: z.number().int().min(0).max(500).optional().nullable(),
   pacote: z.enum(['obra', 'obra_gestao', 'completo', 'ainda_nao_sei'], { message: 'Escolha um pacote de interesse.' }),
   mensagem: z.string().trim().max(1000).optional().nullable(),
+  // De qual material veio o cadastro (parâmetro ?origem= do QR code). Só guarda o que for um código simples.
+  origem: z.string().trim().max(60).optional().nullable(),
   // Campo escondido do formulário: quem preenche é robô.
   site: z.string().optional(),
 });
+const ORIGEM_VALIDA = /^[a-z0-9-]{1,60}$/;
 
 export function rotasInteresse(banco: Banco) {
   return async function (app: FastifyInstance) {
@@ -32,17 +35,18 @@ export function rotasInteresse(banco: Banco) {
       if (uf && !/^[A-Z]{2}$/.test(uf)) throw new ErroHttp(400, 'Use a sigla do estado com 2 letras.');
       // Robô preencheu o campo escondido: responde como sucesso e não guarda nada.
       if (d.site) return reply.code(201).send({ ok: true });
+      const origem = d.origem && ORIGEM_VALIDA.test(d.origem) ? d.origem : null;
       await banco.query(
-        `INSERT INTO interessados (empresa, responsavel, email, telefone, cidade, uf, obras_ativas, usuarios, pacote, mensagem)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
-        [d.empresa, d.responsavel, d.email, d.telefone, d.cidade || null, uf, d.obrasAtivas ?? null, d.usuarios ?? null, d.pacote, d.mensagem || null],
+        `INSERT INTO interessados (empresa, responsavel, email, telefone, cidade, uf, obras_ativas, usuarios, pacote, mensagem, origem)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [d.empresa, d.responsavel, d.email, d.telefone, d.cidade || null, uf, d.obrasAtivas ?? null, d.usuarios ?? null, d.pacote, d.mensagem || null, origem],
       );
       return reply.code(201).send({ ok: true });
     });
 
     app.get('/', { preHandler: exigir(banco, 'admin_sistema') }, async () => {
       const r = await banco.query(
-        `SELECT id, empresa, responsavel, email, telefone, cidade, uf, obras_ativas, usuarios, pacote, mensagem, criado_em
+        `SELECT id, empresa, responsavel, email, telefone, cidade, uf, obras_ativas, usuarios, pacote, mensagem, origem, criado_em
            FROM interessados ORDER BY criado_em DESC LIMIT 500`,
       );
       return {
@@ -58,6 +62,7 @@ export function rotasInteresse(banco: Banco) {
           usuarios: i.usuarios ?? null,
           pacote: i.pacote,
           mensagem: i.mensagem ?? null,
+          origem: i.origem ?? null,
           criadoEm: i.criado_em,
         })),
       };

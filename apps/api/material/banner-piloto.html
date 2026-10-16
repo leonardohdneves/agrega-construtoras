@@ -36,11 +36,11 @@
   .sub { font-size: 1.5cqw; line-height: 1.45; color: var(--cinza-claro); margin: 1.6cqw 0 0; max-width: 56cqw; }
   ul.beneficios { list-style: none; margin: 2.2cqw 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1cqw; }
   ul.beneficios li { font-size: 1.15cqw; font-weight: 600; border: 1px solid #4a5058; border-radius: 99px; padding: 0.5cqw 1.3cqw; color: #fff; }
-  .contato { margin: 2.2cqw 0 0; font-size: 1.4cqw; color: #fff; }
-  .contato b { color: var(--azul-claro); font-weight: 700; }
   .arte { position: absolute; right: 0; top: 0; bottom: 0; width: 36%; pointer-events: none; }
   .arte svg { width: 100%; height: 100%; display: block; }
-  .rodape-banner { margin-top: 1.4cqw; font-size: 1cqw; color: #8a9099; }
+  .qr { position: absolute; right: 5cqw; top: 50%; transform: translateY(-50%); width: 19cqw; z-index: 2; background: #fff; color: var(--ink); border-radius: 10px; padding: 1.2cqw; text-align: center; }
+  .qr img { display: block; width: 100%; height: auto; }
+  .qr span { display: block; margin-top: 0.8cqw; font-size: 1.05cqw; font-weight: 600; line-height: 1.25; }
 
   /* Telas estreitas (celular): a altura acompanha o texto, e a arte some para caber a mensagem. */
   @media (max-width: 700px) {
@@ -53,8 +53,8 @@
     .marca svg { width: 9cqw; height: 9cqw; }
     .selo { font-size: 3.2cqw; margin-top: 6cqw; }
     ul.beneficios li { font-size: 3cqw; }
-    .contato { font-size: 3.6cqw; }
-    .rodape-banner { font-size: 2.6cqw; }
+    .qr { position: static; transform: none; width: 34cqw; margin: 0 8cqw 8cqw; }
+    .qr span { font-size: 2.6cqw; }
   }
 </style>
 
@@ -86,8 +86,10 @@
         <li>50% de desconto por 3 meses</li>
         <li>Acompanhamento direto</li>
       </ul>
-      <p class="contato"><b>[E-MAIL]</b> &nbsp;·&nbsp; <b>[WHATSAPP]</b></p>
-      <span class="rodape-banner">Vagas para o primeiro grupo · [CIDADE/UF]</span>
+    </div>
+    <div class="qr">
+      <img src="qr-banner-piloto.svg" alt="QR code para o cadastro de interesse">
+      <span>Escaneie e cadastre seu interesse</span>
     </div>
   </section>
 </main>

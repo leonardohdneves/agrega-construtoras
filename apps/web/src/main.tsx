@@ -17,6 +17,7 @@ import { Conta } from './paginas/Conta';
 import { AdminEmpresas } from './paginas/AdminEmpresas';
 import { MaterialPublicitario } from './paginas/MaterialPublicitario';
 import { ContratosSistema, PropostasSistema } from './paginas/ComercialSistema';
+import { ComercialInteressados } from './paginas/ComercialInteressados';
 import { Veiculos } from './paginas/Veiculos';
 import { VeiculoDetalhe } from './paginas/VeiculoDetalhe';
 import { Motoristas } from './paginas/Motoristas';
@@ -234,6 +235,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="comercial-sistema/propostas" element={<Protegido perfis={['admin_sistema']}><PropostasSistema /></Protegido>} />
             <Route path="comercial-sistema/contratos" element={<Protegido perfis={['admin_sistema']}><ContratosSistema /></Protegido>} />
             <Route path="comercial-sistema/material" element={<Protegido perfis={['admin_sistema']}><MaterialPublicitario /></Protegido>} />
+            <Route path="comercial-sistema/interessados" element={<Protegido perfis={['admin_sistema']}><ComercialInteressados /></Protegido>} />
             <Route path="*" element={<NaoEncontrado />} />
           </Route>
         </Routes>

@@ -18,12 +18,17 @@ export function rotasAdmin(banco: Banco) {
   return async function (app: FastifyInstance) {
     // Material publicitário: só o administrador do sistema lê estes modelos (os arquivos ficam fora da área pública).
     const PASTA_MATERIAL = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'material');
-    const MATERIAIS = new Set(['proposta-comercial.html', 'banner-piloto.html']);
+    const MATERIAIS: Record<string, string> = {
+      'proposta-comercial.html': 'text/html; charset=utf-8',
+      'banner-piloto.html': 'text/html; charset=utf-8',
+      'qr-banner-piloto.svg': 'image/svg+xml; charset=utf-8',
+    };
     app.get<{ Params: { arquivo: string } }>('/material/:arquivo', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
-      if (!MATERIAIS.has(req.params.arquivo)) throw naoEncontrado('Material');
+      const tipo = MATERIAIS[req.params.arquivo];
+      if (!tipo) throw naoEncontrado('Material');
       const conteudo = await readFile(path.join(PASTA_MATERIAL, req.params.arquivo));
       return reply
-        .header('Content-Type', 'text/html; charset=utf-8')
+        .header('Content-Type', tipo)
         .header('Cache-Control', 'private, no-store')
         .header('X-Robots-Tag', 'noindex')
         .send(conteudo);

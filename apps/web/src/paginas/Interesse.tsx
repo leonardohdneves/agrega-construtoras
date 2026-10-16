@@ -20,6 +20,15 @@ export function Interesse() {
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState('');
   const [agradecimento, setAgradecimento] = useState<Dados | null>(null);
+  // Material de onde veio o cadastro (QR code com ?origem=). Só aceita um código simples.
+  const origem = (() => {
+    try {
+      const v = new URLSearchParams(window.location.search).get('origem') ?? '';
+      return /^[a-z0-9-]{1,60}$/.test(v) ? v : null;
+    } catch {
+      return null;
+    }
+  })();
 
   const campo = (k: keyof Dados) => (e: { target: { value: string } }) => setDados({ ...dados, [k]: e.target.value });
 
@@ -40,6 +49,7 @@ export function Interesse() {
           usuarios: numero(dados.usuarios),
           pacote: dados.pacote,
           mensagem: dados.mensagem || null,
+          origem,
           site: dados.site,
         },
       });

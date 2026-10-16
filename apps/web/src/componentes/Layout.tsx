@@ -49,6 +49,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Propostas do sistema', para: '/comercial-sistema/propostas' },
       { rotulo: 'Contratos do sistema', para: '/comercial-sistema/contratos' },
       { rotulo: 'Material publicitário', para: '/comercial-sistema/material' },
+      { rotulo: 'Interessados (QR code)', para: '/comercial-sistema/interessados' },
     ],
   },
   {
