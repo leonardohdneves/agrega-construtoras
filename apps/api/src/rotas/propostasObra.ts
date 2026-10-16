@@ -8,6 +8,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { calcularProposta, NOMES_TIPO, TIPOS_PROPOSTA, type ItemProposta, type Parametros, type TipoProposta } from '../lib/propostas-obra.ts';
 
+const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const cent = (r: number) => Math.round(r * 100);
 const reais = (c: unknown) => (c === null || c === undefined ? 0 : Math.round(Number(c)) / 100);
@@ -170,6 +171,40 @@ export function rotasPropostasObra(banco: Banco) {
       const empresaId = empresaDo(req);
       const r = await banco.query(`${SQL_LISTA} WHERE p.empresa_id = $1 ORDER BY p.numero DESC LIMIT 300`, [empresaId]);
       return { propostas: r.rows.map(publica) };
+    });
+
+    // Relatório de contratos com clientes no período (data de criação do contrato).
+    app.get<{ Querystring: { de?: string; ate?: string } }>('/contratos-cliente/relatorio', async (req) => {
+      const empresaId = empresaDo(req);
+      const de = DATA.test(req.query.de ?? '') ? req.query.de! : '0001-01-01';
+      const ate = DATA.test(req.query.ate ?? '') ? req.query.ate! : '9999-12-31';
+      const r = await banco.query(
+        `SELECT ct.tipo, ct.valor_total_centavos, ct.status, to_char(ct.criado_em::date, 'YYYY-MM-DD') AS dia,
+                coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome
+           FROM contratos_cliente ct JOIN clientes cl ON cl.id = ct.cliente_id
+          WHERE ct.empresa_id = $1 AND ct.criado_em::date BETWEEN $2::date AND $3::date`,
+        [empresaId, de, ate],
+      );
+      type Linha = { nome: string; contratos: number; valor: number };
+      const soma = (mapa: Map<string, Linha>, nome: string, valor: number) => {
+        const l = mapa.get(nome) ?? { nome, contratos: 0, valor: 0 };
+        l.contratos++;
+        l.valor += valor;
+        mapa.set(nome, l);
+      };
+      const porTipo = new Map<string, Linha>();
+      const porCliente = new Map<string, Linha>();
+      let total = 0;
+      for (const c of r.rows) {
+        const v = reais(c.valor_total_centavos);
+        if (c.status === 'cancelado') continue;
+        total += v;
+        soma(porTipo, NOMES_TIPO[c.tipo as TipoProposta] ?? c.tipo, v);
+        soma(porCliente, c.cliente_nome ?? 'Sem nome', v);
+      }
+      const ordena = (m: Map<string, Linha>) => [...m.values()].sort((a, b) => b.valor - a.valor);
+      const ativos = r.rows.filter((c) => c.status !== 'cancelado').length;
+      return { de, ate, total: { contratos: ativos, valor: total }, porTipo: ordena(porTipo), porCliente: ordena(porCliente) };
     });
 
     // Contratos com clientes, gerados pela aceitação de propostas de obra.
