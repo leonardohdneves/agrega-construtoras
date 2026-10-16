@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarDataHora, formatarDocumento, formatarMoeda, hojeLocal, lerNumero, moedaCampo, NOMES_FORMA, type FormaPagamento, type PlanoConta } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
+import { ContratoJuridico } from '../componentes/ContratoJuridico';
 import {
   Assinatura,
   campoNumero,
@@ -358,6 +359,7 @@ export function ContratoDetalhe() {
   const [editar, setEditar] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [reprovar, setReprovar] = useState<string | null>(null);
+  const [emitindo, setEmitindo] = useState(false);
 
   const carregar = useCallback(() => {
     api<{ contrato: Contrato }>(`/sup/contratos/${id}`).then((r) => setK(r.contrato)).catch((e) => setErro((e as Error).message));
@@ -542,6 +544,9 @@ export function ContratoDetalhe() {
           {k.observacao && <p className="small"><b>Observação:</b> {k.observacao}</p>}
 
           <div className="acoes nao-imprimir">
+            <button className="btn btn-primario" type="button" aria-expanded={emitindo} onClick={() => setEmitindo(!emitindo)}>
+              {emitindo ? 'Ocultar contrato' : 'Emitir contrato'}
+            </button>
             {(k.status === 'rascunho' || k.status === 'reprovado') && (
               <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => acao('enviar-aprovacao', 'Contrato enviado para aprovação. Ele aparece em Gerencial › Aprovações e no painel do dono.')}>
                 Enviar para aprovação
@@ -571,10 +576,14 @@ export function ContratoDetalhe() {
             )}
           </div>
 
-          <div className="so-imprimir assinaturas">
-            <Assinatura nome={k.fornecedor.razaoSocial} papel="Contratada" />
-            <Assinatura nome={k.aprovadoPor ?? k.criadoPor ?? ''} papel="Contratante" detalhe={k.aprovadoEm && k.status !== 'reprovado' ? `aprovado em ${formatarDataHora(k.aprovadoEm)}` : undefined} />
-          </div>
+          {emitindo ? (
+            <ContratoJuridico k={k} />
+          ) : (
+            <div className="so-imprimir assinaturas">
+              <Assinatura nome={k.fornecedor.razaoSocial} papel="Contratada" />
+              <Assinatura nome={k.aprovadoPor ?? k.criadoPor ?? ''} papel="Contratante" detalhe={k.aprovadoEm && k.status !== 'reprovado' ? `aprovado em ${formatarDataHora(k.aprovadoEm)}` : undefined} />
+            </div>
+          )}
         </>
       )}
     </>
