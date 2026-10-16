@@ -28,15 +28,17 @@ const ABAS = [
   { id: 'divergencias', texto: 'Divergências' },
   { id: 'pendentes', texto: 'Solicitações' },
   { id: 'contratos', texto: 'Contratos' },
+  { id: 'saldos', texto: 'Saldos de contrato' },
   { id: 'medicoes', texto: 'Medições' },
   { id: 'pagamentos', texto: 'Pagamentos' },
 ];
-const ABAS_CONTRATO = ['contratos', 'medicoes', 'pagamentos'];
+const ABAS_CONTRATO = ['contratos', 'saldos', 'medicoes', 'pagamentos'];
 
 type RespContratos = {
   de: string;
   ate: string;
   posicao: { id: string; numero: number; fornecedor: string; objeto: string; status: StatusContrato; inicio: string; fim: string | null; valor: number; medido: number; percentual: number; saldo: number; pago: number; caucaoRetida: number; impostos: number }[];
+  saldos: { id: string; contratoId: string; contrato: number; fornecedor: string; status: StatusContrato; codigo: string | null; descricao: string; unidade: string; precoUnitario: number; quantidadeContratada: number; quantidadeMedida: number; quantidadeSaldo: number; valorContratado: number; valorMedido: number; valorSaldo: number; percentual: number }[];
   medicoes: { id: string; numero: number; sequencia: number; contrato: number; fornecedor: string; periodoInicio: string; periodoFim: string; valor: number; status: StatusMedicao; aprovadoPor: string | null }[];
   pagamentos: { id: string; numero: number; tipo: 'medicao' | 'caucao'; data: string; vencimento: string; contrato: number; fornecedor: string; status: StatusAutorizacao; aprovadoPor: string | null; pago: boolean; bruto: number; caucao: number; iss: number; inss: number; ir: number; pcc: number; liquido: number }[];
 };
@@ -52,6 +54,31 @@ function RelContratos({ aba, periodo }: { aba: string; periodo: Periodo }) {
   if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
   if (!r) return <p className="muted">Carregando…</p>;
   const sufixo = `${periodo.de}_${periodo.ate}`;
+  if (aba === 'saldos')
+    return (
+      <TabelaRelatorio
+        titulo="Saldos de contrato"
+        descricao="Por item contratado: quanto foi contratado, quanto já foi medido e quanto falta medir, em quantidade e em valor. Posição atual, não depende do período."
+        arquivo={`saldos_contratos_${sufixo}`}
+        linhas={r.saldos}
+        vazio="Nenhum contrato com itens no período."
+        colunas={[
+          { titulo: 'Contrato', valor: (l) => numeroDoc(l.contrato), render: (l) => <Link to={`/sup/contratos/${l.contratoId}`}>{numeroDoc(l.contrato)}</Link> },
+          { titulo: 'Prestador', valor: (l) => l.fornecedor },
+          { titulo: 'Situação', valor: (l) => SELO_CONTRATO[l.status].texto },
+          { titulo: 'Serviço', valor: (l) => (l.codigo ? `${l.codigo} ${l.descricao}` : l.descricao) },
+          { titulo: 'Un.', valor: (l) => l.unidade },
+          { titulo: 'Preço', valor: (l) => l.precoUnitario, render: (l) => precoUn(l.precoUnitario) },
+          { titulo: 'Qtd. contratada', valor: (l) => l.quantidadeContratada, formato: 'numero' },
+          { titulo: 'Qtd. medida', valor: (l) => l.quantidadeMedida, formato: 'numero' },
+          { titulo: 'Qtd. saldo', valor: (l) => l.quantidadeSaldo, formato: 'numero', destaque: (l) => (l.quantidadeSaldo <= 0 ? 'aviso' : undefined) },
+          { titulo: '% medido', valor: (l) => l.percentual, formato: 'pct' },
+          { titulo: 'Valor contratado', valor: (l) => l.valorContratado, formato: 'moeda', total: true },
+          { titulo: 'Valor medido', valor: (l) => l.valorMedido, formato: 'moeda', total: true },
+          { titulo: 'Saldo (R$)', valor: (l) => l.valorSaldo, formato: 'moeda', total: true },
+        ]}
+      />
+    );
   if (aba === 'contratos')
     return (
       <TabelaRelatorio
