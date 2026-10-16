@@ -92,7 +92,7 @@ export function clausulasContrato(k: Contrato, contratante: string): Clausula[] 
     {
       titulo: 'Garantia e correção de vícios',
       paragrafos: [
-        'A CONTRATADA corrigirá, sem custo para a CONTRATANTE, os vícios de execução identificados em até [PRAZO] dias após a comunicação, pelo prazo de garantia de [PRAZO DE GARANTIA].',
+        `A CONTRATADA corrigirá, sem custo para a CONTRATANTE, os vícios de execução identificados em até ${k.prazoCorrecaoDias ?? '—'} dias após a comunicação, pelo prazo de garantia de ${k.garantiaMeses ?? '—'} meses.`,
       ],
     },
     {
@@ -123,27 +123,40 @@ export function clausulasContrato(k: Contrato, contratante: string): Clausula[] 
   ].map((c, i) => ({ ...c, titulo: `${i + 1}. ${c.titulo}` }));
 }
 
+/** Dados que o termo jurídico exige e que ainda não foram preenchidos no contrato. */
+export function pendenciasMinuta(k: Contrato): string[] {
+  const p: string[] = [];
+  if (!k.enderecoContratante) p.push('endereço da construtora');
+  if (!k.enderecoContratada) p.push('endereço do prestador');
+  if (!k.prazoCorrecaoDias) p.push('prazo para corrigir vícios');
+  if (!k.garantiaMeses) p.push('garantia dos serviços');
+  return p;
+}
+
 /** Contrato impresso com texto jurídico, com anexo de serviços e assinaturas. */
 export function ContratoJuridico({ k }: { k: Contrato }) {
   const { empresa } = useSessao();
   const contratante = empresa?.razaoSocial || empresa?.nomeFantasia || '[RAZÃO SOCIAL DA CONTRATANTE]';
   const cnpjContratante = empresa?.cnpj ? formatarCnpj(empresa.cnpj) : '[CNPJ]';
   const docContratada = k.fornecedor.documento ? formatarDocumento(k.fornecedor.documento) : '[CNPJ/CPF]';
-  const enderecoContratada = k.fornecedor.cidade ? `${k.fornecedor.cidade}` : '[ENDEREÇO DA CONTRATADA]';
+  const pendencias = pendenciasMinuta(k);
   const clausulas = clausulasContrato(k, contratante);
 
   return (
     <article className="card minuta-juridica">
       <div className="acoes nao-imprimir">
-        <button className="btn btn-primario" type="button" onClick={imprimirMinuta}>Imprimir minuta</button>
+        <button className="btn btn-primario" type="button" onClick={imprimirMinuta} disabled={pendencias.length > 0}>Imprimir minuta</button>
       </div>
+      {pendencias.length > 0 && (
+        <div className="alerta alerta-erro nao-imprimir">Antes de imprimir, preencha no contrato: {pendencias.join(', ')}.</div>
+      )}
       <div className="alerta alerta-info nao-imprimir">
         Aviso interno: esta minuta precisa ser revisada por advogado antes de ser entregue ao cliente. Os campos entre colchetes precisam ser preenchidos. Este aviso não sai na impressão.
       </div>
       <h2>Contrato de prestação de serviços nº {numeroDoc(k.numero)}</h2>
       <p>
-        Este contrato é firmado entre <b>{contratante}</b>, CNPJ {cnpjContratante}, com sede em [ENDEREÇO DA CONTRATANTE] (CONTRATANTE), e{' '}
-        <b>{k.fornecedor.razaoSocial}</b>, CNPJ/CPF {docContratada}, com sede em {enderecoContratada} (CONTRATADA).
+        Este contrato é firmado entre <b>{contratante}</b>, CNPJ {cnpjContratante}, com sede em {k.enderecoContratante ?? '—'} (CONTRATANTE), e{' '}
+        <b>{k.fornecedor.razaoSocial}</b>, CNPJ/CPF {docContratada}, com sede em {k.enderecoContratada ?? '—'} (CONTRATADA).
       </p>
 
       {clausulas.map((c) => (
