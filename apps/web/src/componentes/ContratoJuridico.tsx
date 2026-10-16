@@ -1,6 +1,7 @@
 // Minuta jurídica do contrato de prestação de serviços (Suprimentos). O texto sai dos dados do próprio contrato;
-// o que o sistema não sabe (endereços, foro, garantia, prazo de correção) fica entre colchetes para preencher antes de assinar.
-import { formatarCnpj, formatarData, formatarDocumento, formatarMoeda, hojeLocal, NOMES_FORMA, type FormaPagamento } from '../api';
+// os prazos do termo (vícios e garantia) são preenchidos aqui mesmo e salvos no contrato. Os endereços vêm dos cadastros.
+import { useState, type FormEvent } from 'react';
+import { api, formatarCnpj, formatarData, formatarDocumento, formatarMoeda, hojeLocal, NOMES_FORMA, type FormaPagamento } from '../api';
 import { useSessao } from '../sessao';
 import { imprimirPagina } from './Documento';
 import { Assinatura, numeroDoc, precoUn, qtd, type Contrato, type Retencoes } from './Suprimentos';
@@ -134,7 +135,61 @@ export function pendenciasMinuta(k: Contrato): string[] {
 }
 
 /** Contrato impresso com texto jurídico, com anexo de serviços e assinaturas. */
-export function ContratoJuridico({ k }: { k: Contrato }) {
+/** Prazos do termo (vícios e garantia), salvos no contrato direto daqui. */
+function PrazosMinuta({ k, aoAtualizar }: { k: Contrato; aoAtualizar: (n: Contrato) => void }) {
+  const [dias, setDias] = useState(k.prazoCorrecaoDias ? String(k.prazoCorrecaoDias) : '');
+  const [meses, setMeses] = useState(k.garantiaMeses ? String(k.garantiaMeses) : '');
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+  const [salvo, setSalvo] = useState(false);
+  const podeSalvar = ['rascunho', 'reprovado', 'vigente'].includes(k.status);
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    setSalvo(false);
+    const d = dias ? Number(dias) : null;
+    const m = meses ? Number(meses) : null;
+    if (d !== null && (d < 1 || d > 365)) return setErro('Prazo para corrigir vícios: informe de 1 a 365 dias.');
+    if (m !== null && (m < 1 || m > 120)) return setErro('Garantia: informe de 1 a 120 meses.');
+    setOcupado(true);
+    try {
+      const r = await api<{ contrato: Contrato }>(`/sup/contratos/${k.id}/prazos`, { metodo: 'PATCH', corpo: { prazoCorrecaoDias: d, garantiaMeses: m } });
+      aoAtualizar(r.contrato);
+      setSalvo(true);
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <form className="nao-imprimir prazos-minuta" onSubmit={salvar}>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {salvo && <div className="alerta alerta-ok" role="status">Prazos salvos no contrato.</div>}
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="pm-correcao">Prazo para corrigir vícios (dias)</label>
+          <input id="pm-correcao" inputMode="numeric" value={dias} disabled={!podeSalvar} onChange={(e) => setDias(e.target.value.replace(/\D/g, ''))} />
+        </div>
+        <div className="campo">
+          <label htmlFor="pm-garantia">Garantia dos serviços (meses)</label>
+          <input id="pm-garantia" inputMode="numeric" value={meses} disabled={!podeSalvar} onChange={(e) => setMeses(e.target.value.replace(/\D/g, ''))} />
+        </div>
+      </div>
+      {podeSalvar ? (
+        <div className="acoes">
+          <button className="btn btn-secundario" type="submit" disabled={ocupado}>{ocupado ? 'Salvando…' : 'Salvar prazos'}</button>
+        </div>
+      ) : (
+        <p className="small muted">Contrato neste status não muda os prazos.</p>
+      )}
+    </form>
+  );
+}
+
+export function ContratoJuridico({ k, aoAtualizar }: { k: Contrato; aoAtualizar: (n: Contrato) => void }) {
   const { empresa } = useSessao();
   const contratante = empresa?.razaoSocial || empresa?.nomeFantasia || '[RAZÃO SOCIAL DA CONTRATANTE]';
   const cnpjContratante = empresa?.cnpj ? formatarCnpj(empresa.cnpj) : '[CNPJ]';
@@ -150,8 +205,9 @@ export function ContratoJuridico({ k }: { k: Contrato }) {
       {pendencias.length > 0 && (
         <div className="alerta alerta-erro nao-imprimir">Antes de imprimir, complete: {pendencias.join('; ')}.</div>
       )}
+      <PrazosMinuta k={k} aoAtualizar={aoAtualizar} />
       <div className="alerta alerta-info nao-imprimir">
-        Aviso interno: esta minuta precisa ser revisada por advogado antes de ser entregue ao cliente. Os campos entre colchetes precisam ser preenchidos. Este aviso não sai na impressão.
+        Aviso interno: esta minuta precisa ser revisada por advogado antes de ser entregue ao cliente. Este aviso não sai na impressão.
       </div>
       <header className="minuta-cabecalho">
         {empresa?.temLogo && <img className="minuta-logo" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt="" />}
