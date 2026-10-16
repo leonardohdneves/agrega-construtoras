@@ -1,8 +1,16 @@
 // Minuta jurídica do contrato de prestação de serviços (Suprimentos). O texto sai dos dados do próprio contrato;
 // o que o sistema não sabe (endereços, foro, garantia, prazo de correção) fica entre colchetes para preencher antes de assinar.
-import { formatarCnpj, formatarData, formatarDocumento, formatarMoeda, NOMES_FORMA, type FormaPagamento } from '../api';
+import { formatarCnpj, formatarData, formatarDocumento, formatarMoeda, hojeLocal, NOMES_FORMA, type FormaPagamento } from '../api';
 import { useSessao } from '../sessao';
+import { imprimirPagina } from './Documento';
 import { Assinatura, numeroDoc, precoUn, qtd, type Contrato, type Retencoes } from './Suprimentos';
+
+/** Imprime só a minuta (CSS em estilos.css): marca a página e limpa a marca quando a impressão termina. */
+function imprimirMinuta() {
+  document.documentElement.dataset.impressao = 'minuta';
+  window.addEventListener('afterprint', () => delete document.documentElement.dataset.impressao, { once: true });
+  imprimirPagina({ orientacao: 'retrato', papel: 'A4' });
+}
 
 type Clausula = { titulo: string; paragrafos: string[] };
 
@@ -124,8 +132,11 @@ export function ContratoJuridico({ k }: { k: Contrato }) {
 
   return (
     <article className="card minuta-juridica">
+      <div className="acoes nao-imprimir">
+        <button className="btn btn-primario" type="button" onClick={imprimirMinuta}>Imprimir minuta</button>
+      </div>
       <div className="alerta alerta-info nao-imprimir">
-        Minuta gerada a partir dos dados deste contrato. Revise com advogado antes de assinar. Os campos entre colchetes precisam ser preenchidos.
+        Aviso interno: esta minuta precisa ser revisada por advogado antes de ser entregue ao cliente. Os campos entre colchetes precisam ser preenchidos. Este aviso não sai na impressão.
       </div>
       <h2>Contrato de prestação de serviços nº {numeroDoc(k.numero)}</h2>
       <p>
@@ -169,7 +180,7 @@ export function ContratoJuridico({ k }: { k: Contrato }) {
       )}
 
       <p>E, por estarem de acordo, as partes firmam este contrato em duas vias de igual teor, na data abaixo.</p>
-      <p className="small muted">[CIDADE/UF], [DATA]</p>
+      <p className="small muted">{formatarData(k.dataAssinatura ?? hojeLocal())}</p>
       <div className="assinaturas">
         <Assinatura nome={k.fornecedor.razaoSocial} papel="Contratada" />
         <Assinatura nome={contratante} papel="Contratante" />

@@ -432,6 +432,15 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .so-imprimir { display: none; }
 .tabela tr.folga td { color: var(--ink-muted, #6b7280); }
 
+/* Impressão só da minuta do contrato (botão "Imprimir minuta"): o resto da página fica invisível. */
+@media print {
+  html[data-impressao="minuta"] body * { visibility: hidden; }
+  html[data-impressao="minuta"] .minuta-juridica,
+  html[data-impressao="minuta"] .minuta-juridica * { visibility: visible; }
+  html[data-impressao="minuta"] .minuta-juridica { position: absolute; left: 0; top: 0; width: 100%; padding: 0; border: 0; box-shadow: none; }
+  html[data-impressao="minuta"] .minuta-juridica .nao-imprimir { display: none !important; }
+}
+
 @media print {
   .so-imprimir { display: inline; }
   .link-acao { color: inherit; text-decoration: none; }
