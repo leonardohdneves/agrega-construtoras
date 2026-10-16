@@ -13,6 +13,12 @@ const MATERIAIS = [
     dica: 'Substitua os campos entre colchetes para cada cliente. Os valores precisam bater com o contrato padrão.',
   },
   {
+    arquivo: '/api/admin/material/post-saiba-mais.html',
+    titulo: 'Post Instagram / WhatsApp · Saiba mais',
+    descricao: 'Post 1080 × 1350 com módulos, vantagens e botão Saiba mais. O botão leva ao cadastro de interessados com a origem "post-saiba-mais".',
+    dica: 'Para o Instagram, capture a tela do card com 1080 px de largura. No WhatsApp, o botão é o link de cadastro.',
+  },
+  {
     arquivo: '/api/admin/material/banner-piloto.html',
     titulo: 'Banner de captação de pilotos',
     descricao: 'Banner 1200 × 628 para post e capa de divulgação, convidando construtoras para o programa piloto. Traz o QR code de cadastro.',
