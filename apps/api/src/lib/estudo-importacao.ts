@@ -118,3 +118,26 @@ export async function buscarEstudoAprovado(base: string, token: string, id: stri
   if (!parsed.success) throw new ErroHttp(502, 'O estudo recebido veio em formato que o Agrega não reconhece.', { erros: parsed.error.issues.map((i) => i.message) });
   return parsed.data;
 }
+
+const esquemaLista = z.array(
+  z.object({
+    id: z.string().min(1),
+    nome: z.string().min(1).max(200),
+    cidade: z.string().max(120).nullable(),
+    uf: z.string().length(2).nullable(),
+    versaoEstudo: z.string().min(1).max(80),
+    aprovadoEm: z.string().min(4),
+  }),
+);
+export type EstudoDisponivel = z.infer<typeof esquemaLista>[number];
+
+/** Estudos aprovados que este usuário do Viabiliza pode importar. */
+export async function listarEstudosAprovados(base: string, token: string, buscar: typeof fetch = fetch): Promise<EstudoDisponivel[]> {
+  const r = await buscar(`${base}/api/exportacao/empreendimentos`, { headers: { authorization: `Bearer ${token}` } });
+  if (r.status === 401 || r.status === 403) throw new ErroHttp(403, 'Este usuário do Viabiliza não pode exportar estudos (perfil incorporador).');
+  if (!r.ok) throw new ErroHttp(502, 'Não foi possível listar os estudos no Viabiliza.');
+  const dados = (await r.json()) as { estudos?: unknown };
+  const parsed = esquemaLista.safeParse(dados.estudos);
+  if (!parsed.success) throw new ErroHttp(502, 'A lista de estudos veio em formato que o Agrega não reconhece.');
+  return parsed.data;
+}

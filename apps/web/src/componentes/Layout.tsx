@@ -60,6 +60,7 @@ export const MODULOS: Modulo[] = [
     itens: [
       { rotulo: 'Propostas', para: '/com/propostas' },
       { rotulo: 'Contratos', para: '/com/contratos' },
+      { rotulo: 'Incorporação', para: '/com/incorporacao' },
       { rotulo: 'Relatórios', para: '/com/relatorios' },
     ],
   },

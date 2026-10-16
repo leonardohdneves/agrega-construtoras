@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buscarEstudoAprovado, entrarViabiliza, esquemaEstudo, planejarImportacao, type UnidadeExistente, type UnidadeExportada } from '../src/lib/estudo-importacao.ts';
+import { buscarEstudoAprovado, entrarViabiliza, esquemaEstudo, listarEstudosAprovados, planejarImportacao, type UnidadeExistente, type UnidadeExportada } from '../src/lib/estudo-importacao.ts';
 
 const un = (codigo: string, preco: number, extra: Partial<UnidadeExportada> = {}): UnidadeExportada => ({
   codigoExterno: codigo, nome: `Apto ${codigo}`, numero: 101, andar: 1, tipologia: 'Tipo A', areaPrivativa: 80, preco, permuta: false, ...extra,
@@ -105,4 +105,12 @@ test('estudo aprovado válido é lido e validado', async () => {
 
 test('resposta com formato inesperado vira erro 502', async () => {
   await assert.rejects(buscarEstudoAprovado('https://viabiliza.test', 't', 'e1', async () => respostaJson({ x: 1 })), (e: any) => e.status === 502);
+});
+
+test('lista de estudos aprovados é lida do Viabiliza', async () => {
+  const lista = await listarEstudosAprovados('https://viabiliza.test', 't', async (u) => {
+    assert.equal(String(u), 'https://viabiliza.test/api/exportacao/empreendimentos');
+    return respostaJson({ estudos: [{ id: 'e1', nome: 'Residencial Sul', cidade: 'Palmas', uf: 'TO', versaoEstudo: 'v3', aprovadoEm: '2026-10-10' }] });
+  });
+  assert.equal(lista[0].id, 'e1');
 });
