@@ -1,5 +1,5 @@
 // Engenharia · Tabelas de referência: SINAPI (importada, imutável) e tabela própria da empresa (editável).
-import { useEffect, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda, lerNumero, type ErroApi } from '../api';
 import { abrirXlsx, linhasParaTexto, type Planilha } from '../lib/xlsx';
@@ -7,7 +7,8 @@ import { abrirXlsx, linhasParaTexto, type Planilha } from '../lib/xlsx';
 export type Tabela = {
   id: string; fonte: 'sinapi' | 'proprio'; nome: string; uf: string | null; mesReferencia: string | null; desonerado: boolean; insumos: number; composicoes: number; editavel: boolean;
 };
-type Item = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo: string | null; preco: number | null; componentes: number };
+type Item = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo: string | null; preco: number | null; componentes: number; unidadesCompra?: { unidade: string; fator: number }[] };
+type EdicaoInsumo = { item: Item; descricao: string; unidade: string; comPreco: boolean; preco: string; linhas: { unidade: string; fator: string }[] };
 type Componente = { codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null };
 type ItemEstrutura = Componente & { id: string; tipo: 'insumo' | 'composicao' };
 export type DetalheComposicao = {
@@ -386,6 +387,7 @@ export function EngTabelaDetalhe() {
   const [tipo, setTipo] = useState<'' | 'insumo' | 'composicao'>('');
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<{ item: { id: string } } | null>(null);
+  const [edicao, setEdicao] = useState<EdicaoInsumo | null>(null);
   const [novo, setNovo] = useState(false);
   const [importar, setImportar] = useState(false);
   const [msg, setMsg] = useState('');
@@ -417,6 +419,51 @@ export function EngTabelaDetalhe() {
     try {
       const r = await api<{ preco: number; data: string }>(`/eng/tabelas/${id}/itens/${item.id}/preco-ultima-compra`, { metodo: 'POST' });
       setMsg(`Preço de ${item.codigo} atualizado pela última compra de ${formatarData(r.data)}: ${formatarMoeda(r.preco)} por ${item.unidade}.`);
+      await carregarItens();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
+  function abrirEdicao(item: Item) {
+    setErro('');
+    setEdicao({
+      item,
+      descricao: item.descricao,
+      unidade: item.unidade,
+      comPreco: item.preco !== null,
+      preco: item.preco === null ? '' : String(item.preco).replace('.', ','),
+      linhas: (item.unidadesCompra ?? []).map((u) => ({ unidade: u.unidade, fator: String(u.fator).replace('.', ',') })),
+    });
+  }
+
+  /** Salva descrição, unidade, preço e unidades de compra do insumo da tabela própria. */
+  async function salvarEdicao() {
+    if (!edicao) return;
+    setErro('');
+    const descricao = edicao.descricao.trim();
+    const unidade = edicao.unidade.trim();
+    if (descricao.length < 2) return setErro('Informe a descrição do insumo.');
+    if (!unidade) return setErro('Informe a unidade do orçamento.');
+    let preco: number | null = null;
+    if (edicao.comPreco) {
+      preco = lerNumero(edicao.preco);
+      if (preco === null || preco < 0) return setErro('Informe um preço válido.');
+    }
+    const unidadesCompra: { unidade: string; fator: number }[] = [];
+    for (const u of edicao.linhas) {
+      if (!u.unidade.trim() && !u.fator.trim()) continue;
+      const f = lerNumero(u.fator);
+      if (!u.unidade.trim() || f === null || f <= 0) return setErro('Cada unidade de compra precisa de nome e de quantas unidades do orçamento cabem nela.');
+      unidadesCompra.push({ unidade: u.unidade.trim(), fator: f });
+    }
+    try {
+      await api(`/eng/tabelas/${id}/itens/${edicao.item.id}`, {
+        metodo: 'PUT',
+        corpo: { descricao, unidade, precoOrigem: edicao.comPreco ? 'informado' : 'nao_informado', preco, unidadesCompra },
+      });
+      setMsg(`${edicao.item.codigo} atualizado.`);
+      setEdicao(null);
       await carregarItens();
     } catch (e) {
       setErro((e as Error).message);
@@ -507,7 +554,8 @@ export function EngTabelaDetalhe() {
             </thead>
             <tbody>
               {itens.map((i) => (
-                <tr key={i.id}>
+                <Fragment key={i.id}>
+                <tr>
                   <td className="mono">{i.codigo}</td>
                   <td>{i.tipo === 'insumo' ? 'Insumo' : `Composição (${i.componentes})`}</td>
                   <td>
@@ -517,11 +565,59 @@ export function EngTabelaDetalhe() {
                   <td className="num">{i.preco === null ? '—' : formatarMoeda(i.preco)}</td>
                   <td>
                     {tabela?.editavel && i.tipo === 'insumo' && (
+                      <button className="btn btn-link" type="button" onClick={() => abrirEdicao(i)}>Editar</button>
+                    )}
+                    {tabela?.editavel && i.tipo === 'insumo' && (
                       <button className="btn btn-link" type="button" onClick={() => usarUltimaCompra(i)}>Usar última compra</button>
                     )}
                     {tabela?.editavel && <button className="btn btn-link" type="button" onClick={() => excluir(i)}>Excluir</button>}
                   </td>
                 </tr>
+                {edicao?.item.id === i.id && (
+                  <tr>
+                    <td colSpan={6} style={{ background: 'var(--surface-sunken)' }}>
+                      <div className="form" style={{ padding: 8 }}>
+                        <b>Editar insumo {i.codigo}</b>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                          <div className="campo" style={{ gridColumn: 'span 2' }}>
+                            <label htmlFor="ei-desc">Descrição</label>
+                            <input id="ei-desc" value={edicao.descricao} onChange={(e) => setEdicao({ ...edicao, descricao: e.target.value })} />
+                          </div>
+                          <div className="campo">
+                            <label htmlFor="ei-un">Unidade de orçamento</label>
+                            <input id="ei-un" value={edicao.unidade} onChange={(e) => setEdicao({ ...edicao, unidade: e.target.value })} />
+                          </div>
+                          <div className="campo">
+                            <span className="rotulo">Preço</span>
+                            <div className="segmentado" role="group" aria-label="Preço do insumo">
+                              <button type="button" aria-pressed={!edicao.comPreco} className={!edicao.comPreco ? 'ativo' : ''} onClick={() => setEdicao({ ...edicao, comPreco: false })}>Não registrar agora</button>
+                              <button type="button" aria-pressed={edicao.comPreco} className={edicao.comPreco ? 'ativo' : ''} onClick={() => setEdicao({ ...edicao, comPreco: true })}>Informar valor</button>
+                            </div>
+                            {edicao.comPreco && (
+                              <input id="ei-preco" inputMode="decimal" aria-label={`Preço por ${edicao.unidade || 'unidade'} (R$)`} placeholder={`R$ por ${edicao.unidade || 'unidade'}`} value={edicao.preco} onChange={(e) => setEdicao({ ...edicao, preco: e.target.value })} />
+                            )}
+                          </div>
+                        </div>
+                        <span className="rotulo">Unidades de compra</span>
+                        {edicao.linhas.map((u, n) => (
+                          <div key={n} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <input aria-label={`Unidade de compra ${n + 1}`} placeholder="ex.: barra" value={u.unidade} style={{ maxWidth: 140 }} onChange={(e) => setEdicao({ ...edicao, linhas: edicao.linhas.map((x, k) => (k === n ? { ...x, unidade: e.target.value } : x)) })} />
+                            <span className="small muted">1 {u.unidade.trim() || 'unidade'} =</span>
+                            <input aria-label={`Quantos ${edicao.unidade || 'unidades'} cabem em 1 ${u.unidade.trim() || 'unidade'}`} placeholder="ex.: 46,2" inputMode="decimal" value={u.fator} style={{ maxWidth: 120 }} onChange={(e) => setEdicao({ ...edicao, linhas: edicao.linhas.map((x, k) => (k === n ? { ...x, fator: e.target.value } : x)) })} />
+                            <span className="small muted">{edicao.unidade || 'unidade'}</span>
+                            <button className="btn btn-link" type="button" onClick={() => setEdicao({ ...edicao, linhas: edicao.linhas.filter((_, k) => k !== n) })}>Remover</button>
+                          </div>
+                        ))}
+                        <div><button className="btn btn-link" type="button" onClick={() => setEdicao({ ...edicao, linhas: [...edicao.linhas, { unidade: '', fator: '' }] })}>+ unidade de compra</button></div>
+                        <div className="acoes">
+                          <button className="btn" type="button" onClick={() => setEdicao(null)}>Cancelar</button>
+                          <button className="btn btn-primario" type="button" onClick={salvarEdicao}>Salvar insumo</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                </Fragment>
               ))}
             </tbody>
           </table>
