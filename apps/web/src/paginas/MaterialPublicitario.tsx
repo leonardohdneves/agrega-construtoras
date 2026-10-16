@@ -26,7 +26,7 @@ const MATERIAIS = [
   },
   {
     arquivo: '/api/admin/material/banner-curso-orcamento.html',
-    titulo: 'Banner Curso de Orçamento e Planejamento de Obras',
+    titulo: 'Banner Curso de Orçamento, Planejamento e Gestão de Obras',
     descricao: 'Banner 1200 × 628 do curso, com realização Agrega. O botão e o QR code levam ao cadastro com a origem "curso-orcamento".',
     dica: 'Para o Instagram, capture a tela do banner. Confirme datas, valor e forma de inscrição antes de divulgar.',
   },
