@@ -162,6 +162,10 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
     formaPagamento: k.forma_pagamento as string | null,
     retencoes: { caucao: pctNum(k.caucao_pct), iss: pctNum(k.iss_pct), inss: pctNum(k.inss_pct), ir: pctNum(k.ir_pct), pcc: pctNum(k.pcc_pct) },
     observacao: k.observacao as string | null,
+    enderecoContratante: k.endereco_contratante as string | null,
+    enderecoContratada: k.endereco_contratada as string | null,
+    prazoCorrecaoDias: k.prazo_correcao_dias as number | null,
+    garantiaMeses: k.garantia_meses as number | null,
     encerradoEm: k.encerrado_em as string | null,
     criadoPor: k.criado_por as string | null,
     itens: linhas,
@@ -221,6 +225,10 @@ const esquemaContrato = z.object({
   centroCustoId: uuidOpc,
   prazoPagamentoDias: z.number().int().min(0).max(180).optional().default(15),
   formaPagamento: z.enum(FORMAS).optional().nullable().transform((v) => v ?? null),
+  enderecoContratante: texto(300),
+  enderecoContratada: texto(300),
+  prazoCorrecaoDias: z.union([z.number().int().min(1).max(365), z.null()]).optional().default(null),
+  garantiaMeses: z.union([z.number().int().min(1).max(120), z.null()]).optional().default(null),
   retencoes: z
     .object({
       caucao: naoNegativo('Caução inválida.').refine((n) => n <= 30, 'Caução até 30%.'),
@@ -632,10 +640,12 @@ export function rotasContratos(banco: Banco) {
         const k = (
           await c.query(
             `INSERT INTO contratos (empresa_id, numero, fornecedor_id, objeto, tipo, data_assinatura, inicio, fim, valor_global_centavos, plano_conta_id, centro_custo_id,
-                                    prazo_pagamento_dias, forma_pagamento, caucao_pct, iss_pct, inss_pct, ir_pct, pcc_pct, observacao, criado_por_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20) RETURNING id`,
+                                    prazo_pagamento_dias, forma_pagamento, caucao_pct, iss_pct, inss_pct, ir_pct, pcc_pct, observacao, criado_por_id,
+                                    endereco_contratante, endereco_contratada, prazo_correcao_dias, garantia_meses)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id`,
             [empresaId, numero, d.fornecedorId, d.objeto, d.tipo, d.dataAssinatura, d.inicio, d.fim, d.tipo === 'global' ? cent(d.valorGlobal!) : null, d.planoContaId, d.centroCustoId,
-              d.prazoPagamentoDias, d.formaPagamento, d.retencoes.caucao, d.retencoes.iss, d.retencoes.inss, d.retencoes.ir, d.retencoes.pcc, d.observacao, u.id],
+              d.prazoPagamentoDias, d.formaPagamento, d.retencoes.caucao, d.retencoes.iss, d.retencoes.inss, d.retencoes.ir, d.retencoes.pcc, d.observacao, u.id,
+              d.enderecoContratante, d.enderecoContratada, d.prazoCorrecaoDias, d.garantiaMeses],
           )
         ).rows[0];
         if (d.tipo === 'itens') await gravarItensContrato(c, empresaId, k.id, d.itens);
@@ -663,9 +673,10 @@ export function rotasContratos(banco: Banco) {
         await c.query(
           `UPDATE contratos SET fornecedor_id = $2, objeto = $3, tipo = $4, data_assinatura = $5, inicio = $6, fim = $7, valor_global_centavos = $8, plano_conta_id = $9,
                   centro_custo_id = $10, prazo_pagamento_dias = $11, forma_pagamento = $12, caucao_pct = $13, iss_pct = $14, inss_pct = $15, ir_pct = $16, pcc_pct = $17,
-                  observacao = $18, atualizado_em = now() WHERE id = $1`,
+                  observacao = $18, endereco_contratante = $19, endereco_contratada = $20, prazo_correcao_dias = $21, garantia_meses = $22, atualizado_em = now() WHERE id = $1`,
           [k.id, d.fornecedorId, d.objeto, d.tipo, d.dataAssinatura, d.inicio, d.fim, d.tipo === 'global' ? cent(d.valorGlobal!) : null, d.planoContaId, d.centroCustoId,
-            d.prazoPagamentoDias, d.formaPagamento, d.retencoes.caucao, d.retencoes.iss, d.retencoes.inss, d.retencoes.ir, d.retencoes.pcc, d.observacao],
+            d.prazoPagamentoDias, d.formaPagamento, d.retencoes.caucao, d.retencoes.iss, d.retencoes.inss, d.retencoes.ir, d.retencoes.pcc, d.observacao,
+            d.enderecoContratante, d.enderecoContratada, d.prazoCorrecaoDias, d.garantiaMeses],
         );
         if (d.tipo === 'itens') await gravarItensContrato(c, empresaId, k.id, d.itens);
         else await c.query('DELETE FROM contratos_itens WHERE contrato_id = $1', [k.id]);

@@ -155,6 +155,7 @@ export type Contrato = {
   motivoReprovacao: string | null; podeAprovar: boolean; regrasAprovacao: string; fornecedorId: string; fornecedor: FornecedorDoc; objeto: string; tipo: 'itens' | 'global';
   dataAssinatura: string | null; inicio: string; fim: string | null; vencido: boolean; valorGlobal: number | null; planoContaId: string; planoConta: string;
   centroCustoId: string | null; centroCusto: string | null; prazoPagamentoDias: number; formaPagamento: string | null; retencoes: Retencoes; observacao: string | null;
+  enderecoContratante: string | null; enderecoContratada: string | null; prazoCorrecaoDias: number | null; garantiaMeses: number | null;
   encerradoEm: string | null; criadoPor: string | null;
   itens: { id: string; codigo: string | null; descricao: string; unidade: string; quantidade: number; precoUnitario: number; total: number; medido: number; pendente: number; saldo: number; valorMedido: number }[];
   medicoes: { id: string; numero: number; sequencia: number; periodoInicio: string; periodoFim: string; data: string; valor: number; status: StatusMedicao; autorizacao: { id: string; numero: number; status: StatusAutorizacao } | null }[];
