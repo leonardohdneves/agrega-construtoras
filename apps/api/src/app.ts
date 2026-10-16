@@ -19,6 +19,7 @@ import { rotasContratos } from './rotas/contratos.ts';
 import { rotasComercial } from './rotas/comercial.ts';
 import { rotasPropostas } from './rotas/propostas.ts';
 import { rotasPropostasObra } from './rotas/propostasObra.ts';
+import { rotasIncorporacao } from './rotas/incorporacao.ts';
 import { rotasEngenharia } from './rotas/engenharia.ts';
 import { rotasMural } from './rotas/mural.ts';
 import { rotasInteresse } from './rotas/interesse.ts';
@@ -120,6 +121,7 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(rotasComercial(banco), { prefix: '/api/com' });
   await app.register(rotasPropostas(banco), { prefix: '/api/com' });
   await app.register(rotasPropostasObra(banco), { prefix: '/api/com' });
+  await app.register(rotasIncorporacao(banco), { prefix: '/api/com' });
   await app.register(rotasEngenharia(banco), { prefix: '/api/eng' });
   await app.register(rotasMural(banco), { prefix: '/api/mural' });
   await app.register(rotasInteresse(banco), { prefix: '/api/interesse' });
