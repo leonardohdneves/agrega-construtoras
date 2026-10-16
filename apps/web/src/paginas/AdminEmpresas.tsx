@@ -33,6 +33,7 @@ const MODULOS_CONTRATO: [string, string][] = [
   ['financeiro', 'Financeiro'],
   ['gerencial', 'Gerencial'],
   ['administrativo', 'Administrativo'],
+  ['incorporacao', 'Incorporação (contratada à parte)'],
 ];
 
 type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; limiteObras: string; limiteUsuarios: string };
@@ -93,11 +94,13 @@ function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { ed
       {edicao.pacote === 'personalizado' ? (
         <fieldset className="campo">
           <legend className="rotulo">Módulos liberados</legend>
-          {MODULOS_CONTRATO.map(([v, nome]) => (
-            <label key={v} style={{ display: 'block' }}>
-              <input type="checkbox" checked={edicao.modulos.includes(v)} onChange={() => alternarModulo(v)} /> {nome}
-            </label>
-          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '6px 0' }}>
+            {MODULOS_CONTRATO.map(([v, nome]) => (
+              <label key={v} className="marcar">
+                <input type="checkbox" checked={edicao.modulos.includes(v)} onChange={() => alternarModulo(v)} /> {nome}
+              </label>
+            ))}
+          </div>
           <span className="ajuda">Configurações está sempre liberado.</span>
         </fieldset>
       ) : (
@@ -112,6 +115,52 @@ function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { ed
         </button>
       </div>
     </form>
+  );
+}
+
+type AvisoSistema = { id: string; mensagem: string; criadoEm: string; empresa: string };
+
+/** Avisos não lidos do sistema (ex.: construtora acima do limite de empreendimentos de incorporação). */
+function AvisosSistema() {
+  const [avisos, setAvisos] = useState<AvisoSistema[]>([]);
+  const [erro, setErro] = useState('');
+
+  const carregar = useCallback(async () => {
+    try {
+      setAvisos((await api<{ avisos: AvisoSistema[] }>('/admin/avisos')).avisos);
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }, []);
+  useEffect(() => {
+    carregar();
+  }, [carregar]);
+
+  async function marcarLido(id: string) {
+    setErro('');
+    try {
+      await api(`/admin/avisos/${id}/lido`, { metodo: 'POST' });
+      setAvisos((atuais) => atuais.filter((a) => a.id !== id));
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
+  if (avisos.length === 0 && !erro) return null;
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <h2 style={{ marginTop: 0 }}>Avisos</h2>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {avisos.map((a) => (
+        <div key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <div>{a.mensagem}</div>
+            <span className="muted" style={{ fontSize: 13 }}>{new Date(a.criadoEm).toLocaleString('pt-BR')}</span>
+          </div>
+          <button className="btn btn-secundario" type="button" onClick={() => marcarLido(a.id)}>Marcar como lido</button>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -194,6 +243,7 @@ export function AdminEmpresas() {
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+      <AvisosSistema />
       <BackupsSistema />
 
       {nova && (
