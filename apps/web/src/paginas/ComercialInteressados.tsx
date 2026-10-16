@@ -12,6 +12,7 @@ const NOMES_PACOTE: Record<string, string> = { obra: 'Obra', obra_gestao: 'Obra 
 const NOMES_ORIGEM: Record<string, string> = {
   'banner-piloto': 'Banner de captação de pilotos',
   'banner-saiba-mais': 'Banner Conheça o Agrega ERP',
+  'curso-orcamento': 'Curso de Orçamento e Planejamento de Obras',
 };
 const SEM_ORIGEM = '__sem__';
 

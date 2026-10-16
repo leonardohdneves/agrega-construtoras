@@ -25,6 +25,12 @@ const MATERIAIS = [
     dica: 'Para enviar em PDF, abra o modelo e use Imprimir > Salvar como PDF.',
   },
   {
+    arquivo: '/api/admin/material/banner-curso-orcamento.html',
+    titulo: 'Banner Curso de Orçamento e Planejamento de Obras',
+    descricao: 'Banner 1200 × 628 do curso, com realização Agrega. O botão e o QR code levam ao cadastro com a origem "curso-orcamento".',
+    dica: 'Para o Instagram, capture a tela do banner. Confirme datas, valor e forma de inscrição antes de divulgar.',
+  },
+  {
     arquivo: '/api/admin/material/banner-piloto.html',
     titulo: 'Banner de captação de pilotos',
     descricao: 'Banner 1200 × 628 para post e capa de divulgação, convidando construtoras para o programa piloto. Traz o QR code de cadastro.',
