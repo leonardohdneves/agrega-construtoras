@@ -49,9 +49,16 @@ const precoCentavos = (v: unknown): number | null => {
 const r2 = (n: number) => Math.round(n * 100) / 100;
 const texto = (max = 200) => z.string().trim().max(max).optional().nullable().transform((v) => v || null);
 const uf = z.string().trim().toUpperCase().regex(/^[A-Z]{2}$/, 'UF inválida.').optional().nullable().transform((v) => v || null);
+/** Nome curto da atividade: começa pelo início da descrição completa e, antes de cortar, põe "...". */
+export function resumoDaDescricao(texto: string, max = 60): string {
+  const s = texto.replace(/\s+/g, ' ').trim();
+  if (s.length <= max) return s;
+  const corte = s.lastIndexOf(' ', max);
+  return `${s.slice(0, corte > 20 ? corte : max).trimEnd()}...`;
+}
+
 const esquemaAtividade = z.object({
   descricao: z.string().trim().min(2, 'Descreva a atividade.').max(200),
-  descricaoResumida: z.string().trim().min(2, 'Dê um nome curto à atividade.').max(80).optional().nullable(),
   eapNoId: z.string().regex(UUID).optional().nullable(),
   inicio: z.string().regex(DATA, 'Data de início inválida.'),
   duracaoDias: z.number().int('A duração é em dias inteiros.').min(1, 'Duração mínima de 1 dia.').max(3650),
@@ -1225,7 +1232,7 @@ export function rotasEngenharia(banco: Banco) {
         const r = await c.query(
           `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, descricao_resumida, inicio, duracao_dias, predecessora_id, ordem, numero)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
-          [obra.id, d.eapNoId ?? null, d.descricao, d.descricaoResumida ?? d.descricao.slice(0, 80), d.inicio, d.duracaoDias, d.predecessoraId ?? null, ordem, numero],
+          [obra.id, d.eapNoId ?? null, d.descricao, resumoDaDescricao(d.descricao), d.inicio, d.duracaoDias, d.predecessoraId ?? null, ordem, numero],
         );
         return r.rows[0].id as string;
       });
@@ -1242,7 +1249,6 @@ export function rotasEngenharia(banco: Banco) {
         if (!atual) throw naoEncontrado('Atividade');
         const campos = {
           descricao: d.descricao ?? atual.descricao,
-          descricaoResumida: d.descricaoResumida !== undefined ? d.descricaoResumida ?? d.descricao ?? atual.descricao : atual.descricao_resumida ?? atual.descricao,
           eapNoId: d.eapNoId !== undefined ? d.eapNoId : atual.eap_no_id,
           inicio: d.inicio ?? dataIso(atual.inicio),
           duracaoDias: d.duracaoDias ?? Number(atual.duracao_dias),
@@ -1259,7 +1265,7 @@ export function rotasEngenharia(banco: Banco) {
         await c.query(
           `UPDATE obra_atividades SET descricao = $3, eap_no_id = $4, inicio = $5, duracao_dias = $6, predecessora_id = $7, descricao_resumida = $8, atualizado_em = now()
             WHERE id = $1 AND obra_id = $2`,
-          [atual.id, obra.id, campos.descricao, campos.eapNoId ?? null, campos.inicio, campos.duracaoDias, campos.predecessoraId ?? null, campos.descricaoResumida],
+          [atual.id, obra.id, campos.descricao, campos.eapNoId ?? null, campos.inicio, campos.duracaoDias, campos.predecessoraId ?? null, resumoDaDescricao(campos.descricao)],
         );
       });
       return { ok: true };
@@ -1275,12 +1281,11 @@ export function rotasEngenharia(banco: Banco) {
       return emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
         const linhas = (await c.query('SELECT id, pai_id, codigo, descricao FROM eap_nos WHERE obra_id = $1 ORDER BY string_to_array(codigo, \'.\')::int[]', [obra.id])).rows;
-        const nomeDo = new Map(linhas.map((l) => [l.id as string, l.descricao as string]));
         const comAtividade = new Set((await c.query('SELECT eap_no_id FROM obra_atividades WHERE obra_id = $1 AND eap_no_id IS NOT NULL', [obra.id])).rows.map((r) => r.eap_no_id as string));
         const comFilhos = resumosDaEap(linhas.map((l) => ({ id: l.id as string, paiId: (l.pai_id ?? null) as string | null })));
         const folhas = linhas
           .filter((l) => !comFilhos.has(l.id as string) && !comAtividade.has(l.id as string))
-          .map((l) => ({ id: l.id as string, descricao: l.descricao as string, paiId: (l.pai_id ?? null) as string | null }));
+          .map((l) => ({ id: l.id as string, descricao: l.descricao as string }));
         if (!folhas.length) return { criadas: 0 };
         const inicio = obra.data_inicio ? dataIso(obra.data_inicio) : new Date().toISOString().slice(0, 10);
         let ordem = (await c.query('SELECT coalesce(max(ordem), 0) AS n FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows[0].n as number;
@@ -1290,7 +1295,7 @@ export function rotasEngenharia(banco: Banco) {
           await c.query(
             `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, descricao_resumida, inicio, duracao_dias, predecessora_id, ordem, numero)
              VALUES ($1,$2,$3,$4,$5,1,NULL,$6,$7)`,
-            [obra.id, folha.id, folha.descricao.slice(0, 200), (nomeDo.get(folha.paiId ?? '') ?? folha.descricao).slice(0, 80), inicio, ordem, numeroSeq++],
+            [obra.id, folha.id, folha.descricao.slice(0, 200), resumoDaDescricao(folha.descricao.slice(0, 200)), inicio, ordem, numeroSeq++],
           );
         }
         return { criadas: folhas.length };

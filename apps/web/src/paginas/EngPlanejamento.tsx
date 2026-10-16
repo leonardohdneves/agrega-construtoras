@@ -10,8 +10,8 @@ import { dataBr, diasEntre, mesesEntre, montarLinhas, somarDias, type Atividade 
 
 import { ComprasView, EquipesView, GRANULARIDADES, type ComprasRel, type EquipesRel, type Gran } from './EngRelatorios';
 
-type FormAtividade = { descricaoResumida: string; descricao: string; eapNoId: string; inicio: string; duracaoDias: string; predecessoraId: string };
-const VAZIO: FormAtividade = { descricaoResumida: '', descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
+type FormAtividade = { descricao: string; eapNoId: string; inicio: string; duracaoDias: string; predecessoraId: string };
+const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
 const idDe = (n: number | null | undefined) => (n ? `#${n}` : '—');
 
 const ABAS_PLANEJAMENTO = [
@@ -108,6 +108,7 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
   const [d, setD] = useState<FormAtividade>(VAZIO);
   const [ocupado, setOcupado] = useState(false);
   const [aviso, setAviso] = useState('');
+  const [foco, setFoco] = useState<'pred' | 'dias' | null>(null);
   const linhas = useMemo(() => montarLinhas(nos, lista, fechados), [nos, lista, fechados]);
   const nomeDe = (id: string | null) => idDe(lista.find((a) => a.id === id)?.numero);
   // Só tarefas (nós sem filhos) recebem atividade. Etapas e subetapas são resumos.
@@ -116,7 +117,7 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
 
   function editar(a: Atividade) {
     setEditando(a.id);
-    setD({ descricaoResumida: a.descricaoResumida, descricao: a.descricao, eapNoId: a.eapNoId ?? '', inicio: a.inicioInformado, duracaoDias: String(a.duracaoDias), predecessoraId: a.predecessoraId ?? '' });
+    setD({ descricao: a.descricao, eapNoId: a.eapNoId ?? '', inicio: a.inicioInformado, duracaoDias: String(a.duracaoDias), predecessoraId: a.predecessoraId ?? '' });
   }
 
   function cancelar() {
@@ -129,10 +130,8 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
     setErro('');
     const dias = lerNumero(d.duracaoDias);
     if (dias === null || dias < 1) return setErro('Informe a duração em dias (mínimo 1).');
-    const resumida = d.descricaoResumida.trim();
     const corpo = {
-      descricao: (d.descricao.trim() || resumida),
-      descricaoResumida: resumida,
+      descricao: d.descricao.trim(),
       eapNoId: d.eapNoId || null,
       inicio: d.inicio,
       duracaoDias: Math.round(dias),
@@ -253,12 +252,9 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
         <h2 style={{ margin: 0 }}>{editando ? 'Editar atividade' : 'Nova atividade'}</h2>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
           <div className="campo" style={{ gridColumn: 'span 2' }}>
-            <label htmlFor="at-resumida">Atividade (nome curto)</label>
-            <input id="at-resumida" maxLength={80} value={d.descricaoResumida} onChange={(e) => setD({ ...d, descricaoResumida: e.target.value })} />
-          </div>
-          <div className="campo" style={{ gridColumn: 'span 2' }}>
-            <label htmlFor="at-desc">Descrição completa (opcional)</label>
+            <label htmlFor="at-desc">Atividade (descrição completa)</label>
             <input id="at-desc" value={d.descricao} onChange={(e) => setD({ ...d, descricao: e.target.value })} />
+            <span className="ajuda">Na tabela aparece o início da descrição, cortado com “...” quando for longa.</span>
           </div>
           <div className="campo" style={{ gridColumn: 'span 2' }}>
             <label htmlFor="at-eap">Tarefa da EAP</label>
@@ -273,19 +269,23 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
           </div>
           <div className="campo">
             <label htmlFor="at-dias">Duração (dias corridos)</label>
-            <input id="at-dias" inputMode="numeric" value={d.duracaoDias} onChange={(e) => setD({ ...d, duracaoDias: e.target.value })} />
+            <input id="at-dias" inputMode="numeric" value={d.duracaoDias} onFocus={() => setFoco('dias')} onBlur={() => setFoco(null)} onChange={(e) => setD({ ...d, duracaoDias: e.target.value })} />
+            {foco === 'dias' && <span className="ajuda"><b>Descrição completa:</b> {d.descricao || '—'}</span>}
           </div>
           <div className="campo" style={{ gridColumn: 'span 2' }}>
             <label htmlFor="at-pred">Predecessora</label>
-            <select id="at-pred" value={d.predecessoraId} onChange={(e) => setD({ ...d, predecessoraId: e.target.value })}>
+            <select id="at-pred" value={d.predecessoraId} onFocus={() => setFoco('pred')} onBlur={() => setFoco(null)} onChange={(e) => setD({ ...d, predecessoraId: e.target.value })}>
               <option value="">Nenhuma</option>
-              {lista.filter((a) => a.id !== editando).map((a) => <option key={a.id} value={a.id}>#{a.numero} · {a.descricaoResumida}</option>)}
+              {lista.filter((a) => a.id !== editando).map((a) => <option key={a.id} value={a.id}>#{a.numero} · {a.descricao}</option>)}
             </select>
+            {foco === 'pred' && d.predecessoraId && (
+              <span className="ajuda"><b>Descrição completa da predecessora:</b> {lista.find((a) => a.id === d.predecessoraId)?.descricao}</span>
+            )}
           </div>
         </div>
         <div className="acoes">
           {editando && <button className="btn" type="button" onClick={cancelar}>Cancelar edição</button>}
-          <button className="btn btn-primario" type="submit" disabled={ocupado || d.descricaoResumida.trim().length < 2 || !d.inicio || !d.duracaoDias || !d.eapNoId}>
+          <button className="btn btn-primario" type="submit" disabled={ocupado || d.descricao.trim().length < 2 || !d.inicio || !d.duracaoDias || !d.eapNoId}>
             {ocupado ? 'Salvando…' : editando ? 'Salvar atividade' : 'Adicionar atividade'}
           </button>
         </div>
