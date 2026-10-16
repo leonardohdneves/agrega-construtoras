@@ -62,7 +62,8 @@ import { ComRelatorios, ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from '
 import { ComPropostas, PropostaDetalhe, PropostaEditar, PropostaNova } from './paginas/Propostas';
 import { EngTabelas, EngTabelaDetalhe } from './paginas/EngTabelas';
 import { EngObras, EngObraNova, EngObraDetalhe } from './paginas/EngObras';
-import { EngApropriacao, EngEap, EngInsumos, EngPlanejamento, EngServicos } from './paginas/EngSecoes';
+import { EngApropriacao, EngEap, EngInsumos, EngServicos } from './paginas/EngSecoes';
+import { EngPlanejamento } from './paginas/EngPlanejamento';
 import { EngRelatorios } from './paginas/EngRelatorios';
 import { EngAcompanhamento } from './paginas/EngAcompanhamento';
 import { GerAcompanhamento } from './paginas/GerAcompanhamento';

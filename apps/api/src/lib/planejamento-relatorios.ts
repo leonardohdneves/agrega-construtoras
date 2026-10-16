@@ -141,12 +141,15 @@ const CLASSES_NAO_COMPRADAS = new Set(['Mao_obra', 'Equipamento', 'Terceirizados
 export type InsumoAtividade = { codigo: string; descricao: string; unidade: string; grupo: string | null; quantidade: number };
 export type AtividadeCompra = { id: string; descricao: string; inicio: string; insumos: InsumoAtividade[] };
 
-/** Materiais a entregar: a quantidade total de cada insumo e a data da primeira atividade que o usa. */
-export function montarCompras(atividades: AtividadeCompra[]) {
+/**
+ * Insumos necessários: a quantidade total de cada um e a data da primeira atividade que o usa.
+ * Sem `classe`, lista a compra (materiais e demais itens comprados). Com `classe` (ex.: 'Material', 'Equipamento'), lista só essa classe.
+ */
+export function montarCompras(atividades: AtividadeCompra[], classe?: string) {
   const porInsumo = new Map<string, { codigo: string; descricao: string; unidade: string; grupo: string | null; total: number; primeira: string; usos: { atividade: string; inicio: string; quantidade: number }[] }>();
   for (const a of atividades) {
     for (const i of a.insumos) {
-      if (i.grupo && CLASSES_NAO_COMPRADAS.has(i.grupo)) continue;
+      if (classe ? i.grupo !== classe : i.grupo && CLASSES_NAO_COMPRADAS.has(i.grupo)) continue;
       let e = porInsumo.get(i.codigo);
       if (!e) porInsumo.set(i.codigo, (e = { codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, grupo: i.grupo, total: 0, primeira: a.inicio, usos: [] }));
       e.total += i.quantidade;
@@ -157,4 +160,38 @@ export function montarCompras(atividades: AtividadeCompra[]) {
   return [...porInsumo.values()]
     .map((e) => ({ ...e, usos: e.usos.sort((x, y) => (x.inicio < y.inicio ? -1 : x.inicio > y.inicio ? 1 : 0)) }))
     .sort((x, y) => (x.primeira < y.primeira ? -1 : x.primeira > y.primeira ? 1 : x.descricao.localeCompare(y.descricao, 'pt-BR')));
+}
+
+// ---------------------------------------------------------------- calendário de produção
+
+export type MarcaDia = 'inicio' | 'continua' | 'fim' | 'unico';
+export type AtividadeCalendario = { id: string; descricao: string; eapCodigo: string | null; inicio: string; fim: string };
+
+/**
+ * Calendário de produção: os períodos (dia, semana, quinzena ou mês) com as atividades programadas em cada um.
+ * Em cada dia de uma atividade há uma marca: início, continuação, término, ou início e término no mesmo dia.
+ * Períodos sem atividade não aparecem.
+ */
+export function montarCalendario(atividades: AtividadeCalendario[], gran: Granularidade) {
+  if (!atividades.length) return { inicio: null, fim: null, blocos: [] as { rotulo: string; inicio: string; fim: string; dias: string[]; linhas: { id: string; descricao: string; eapCodigo: string | null; marcas: Record<string, MarcaDia> }[] }[] };
+  const inicio = atividades.reduce((m, a) => (a.inicio < m ? a.inicio : m), atividades[0].inicio);
+  const fim = atividades.reduce((m, a) => (a.fim > m ? a.fim : m), atividades[0].fim);
+  const blocos = periodosDoIntervalo(inicio, fim, gran)
+    .map((p) => {
+      const dias: string[] = [];
+      for (let d = p.inicio; diasEntre(d, p.fim) >= 0; d = somar(d, 1)) dias.push(d);
+      const linhas = atividades
+        .filter((a) => a.inicio <= p.fim && a.fim >= p.inicio)
+        .map((a) => {
+          const marcas: Record<string, MarcaDia> = {};
+          for (const d of dias) {
+            if (d < a.inicio || d > a.fim) continue;
+            marcas[d] = a.inicio === a.fim ? 'unico' : d === a.inicio ? 'inicio' : d === a.fim ? 'fim' : 'continua';
+          }
+          return { id: a.id, descricao: a.descricao, eapCodigo: a.eapCodigo, marcas };
+        });
+      return { rotulo: p.rotulo, inicio: p.inicio, fim: p.fim, dias, linhas };
+    })
+    .filter((b) => b.linhas.length > 0);
+  return { inicio, fim, blocos };
 }
