@@ -17,4 +17,5 @@ export const IconeBetoneira = () => (<svg {...base}><path d="M2 16V9h5l2 3h3" />
 export const IconeCapacete = () => (<svg {...base}><path d="M3 15a9 9 0 0 1 18 0" /><path d="M2 15h20v2.5H2z" /><path d="M12 6v9" /></svg>);
 export const IconeFrasco = () => (<svg {...base}><path d="M9 3h6" /><path d="M10 3v6l-5 9a2 2 0 002 3h10a2 2 0 002-3l-5-9V3" /><path d="M7.5 15h9" /></svg>);
 export const IconeCarrinho = () => (<svg {...base}><path d="M3 4h2l2.4 11h11.2L21 8H6.2" /><circle cx="9" cy="19" r="1.6" /><circle cx="17" cy="19" r="1.6" /></svg>);
+export const IconeEdificio = () => (<svg {...base}><rect x="4" y="2" width="16" height="20" rx="1" /><path d="M9 22v-4h6v4" /><path d="M8 6h2M14 6h2M8 10h2M14 10h2M8 14h2M14 14h2" /></svg>);
 export const IconeVenda = () => (<svg {...base}><path d="M20.6 13.4l-7.2 7.2a2 2 0 01-2.8 0L3 13V3h10l7.6 7.6a2 2 0 010 2.8z" /><circle cx="7.5" cy="7.5" r="1.5" /></svg>);
