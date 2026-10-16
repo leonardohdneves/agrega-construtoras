@@ -41,6 +41,17 @@ export const MODULOS: Modulo[] = [
     itens: [{ rotulo: 'Construtoras clientes', para: '/admin/empresas' }],
   },
   {
+    id: 'comercial-sistema',
+    titulo: 'Comercial',
+    icone: <IconeVenda />,
+    perfis: ['admin_sistema'],
+    itens: [
+      { rotulo: 'Propostas do sistema', para: '/comercial-sistema/propostas' },
+      { rotulo: 'Contratos do sistema', para: '/comercial-sistema/contratos' },
+      { rotulo: 'Material publicitário', para: '/comercial-sistema/material' },
+    ],
+  },
+  {
     id: 'comercial',
     titulo: 'Comercial',
     icone: <IconeVenda />,
@@ -187,7 +198,6 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Empresa', para: '/empresa', perfis: GESTAO },
       { rotulo: 'Usuários e acessos', para: '/usuarios', soAdmin: true },
       { rotulo: 'Mural de avisos', para: '/mural', livre: true },
-      { rotulo: 'Material publicitário', para: '/config/material', perfis: ['admin_sistema'] },
       { rotulo: 'Minha conta', para: '/conta', livre: true },
       { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
       { rotulo: 'Manual de operação', arquivo: '/manual/agrega-construtoras-manual-de-operacao.pdf', livre: true, soConstrutora: true },
@@ -220,9 +230,9 @@ function MenuModulos({ perfil, caminho, aoNavegar }: { perfil: Perfil; caminho: 
   const construtora = lerEscolha() === 'construtora';
   // Engenharia é um módulo como os outros. O engenheiro de obra vê também Suprimentos, só com Contratos e Medições das obras dele.
   const modulos = MODULOS.filter((m) =>
-    m.id === 'admin' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || temModulo(usuario, m.id as ModuloApp) || (m.id === 'suprimentos' && perfil === 'engenheiro_obra'),
+    m.id === 'admin' || m.id === 'comercial-sistema' ? perfil === 'admin_sistema' : m.id === 'configuracoes' || temModulo(usuario, m.id as ModuloApp) || (m.id === 'suprimentos' && perfil === 'engenheiro_obra'),
   )
-    .filter((m) => !construtora || m.id === 'admin' || ORDEM_CONSTRUTORA.includes(m.id))
+    .filter((m) => !construtora || m.id === 'admin' || m.id === 'comercial-sistema' || ORDEM_CONSTRUTORA.includes(m.id))
     .sort((a, b) => (construtora ? ORDEM_CONSTRUTORA.indexOf(a.id) - ORDEM_CONSTRUTORA.indexOf(b.id) : 0))
     .map((m) => ({ ...m, itens: m.itens.filter((i) => itemOk(m, i)) }))
     .filter((m) => m.itens.length);
