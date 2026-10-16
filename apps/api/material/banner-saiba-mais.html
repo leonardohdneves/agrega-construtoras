@@ -21,7 +21,7 @@
     background: var(--ink); color: #fff; border-radius: 12px;
     display: grid; grid-template-columns: 1.6fr 1fr; align-items: center;
   }
-  .banner .texto { position: relative; z-index: 1; padding: 4.6cqw 5cqw 4.4cqw; display: flex; flex-direction: column; height: 100%; justify-content: center; }
+  .banner .texto { position: relative; z-index: 2; max-width: 62%; padding: 4.6cqw 5cqw 4.4cqw; display: flex; flex-direction: column; height: 100%; justify-content: center; }
   .marca { display: flex; align-items: center; gap: 1.2cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2cqw; letter-spacing: -0.02em; }
   .marca span.fino { font-weight: 500; color: var(--cinza-claro); }
   .selo {
@@ -29,11 +29,11 @@
     background: var(--azul); color: #fff; padding: 0.6cqw 1.6cqw; border-radius: 99px; letter-spacing: 0.01em;
   }
   h1 {
-    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.9cqw; line-height: 1.06; letter-spacing: -0.025em;
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.4cqw; line-height: 1.06; letter-spacing: -0.025em;
     margin: 1.8cqw 0 0; text-wrap: balance;
   }
   h1 em { font-style: normal; color: var(--azul-claro); }
-  .sub { font-size: 1.5cqw; line-height: 1.45; color: var(--cinza-claro); margin: 1.6cqw 0 0; max-width: 56cqw; }
+  .sub { font-size: 1.4cqw; line-height: 1.45; color: var(--cinza-claro); margin: 1.6cqw 0 0; max-width: 46cqw; }
   ul.modulos { list-style: none; margin: 2.2cqw 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1cqw; }
   ul.modulos li { font-size: 1.15cqw; font-weight: 600; border: 1px solid #4a5058; border-radius: 99px; padding: 0.5cqw 1.3cqw; color: #fff; }
   .botao {
@@ -41,7 +41,7 @@
     font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 1.6cqw; padding: 0.9cqw 2.6cqw; border-radius: 10px;
   }
   .botao:focus-visible { outline: 3px solid var(--azul-claro); outline-offset: 3px; }
-  .arte { position: absolute; right: 0; top: 0; bottom: 0; width: 36%; pointer-events: none; }
+  .arte { position: absolute; right: 0; top: 0; bottom: 0; width: 36%; z-index: 0; pointer-events: none; }
   .arte svg { width: 100%; height: 100%; display: block; }
   .qr { position: absolute; right: 5cqw; top: 50%; transform: translateY(-50%); width: 19cqw; z-index: 2; background: #fff; color: var(--ink); border-radius: 10px; padding: 1.2cqw; text-align: center; }
   .qr img { display: block; width: 100%; height: auto; }
