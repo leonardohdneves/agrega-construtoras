@@ -1,0 +1,232 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Agrega ERP para construtoras e incorporadoras</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Material detalhado do Agrega ERP. Paleta e tipografia do manual de operação. Sem preços: os valores vão na proposta comercial. */
+  :root {
+    --azul: #1f5fad; --azul-escuro: #174a8a; --azul-claro: #5b92d6; --ink: #1f2328; --ink-muted: #4a4f57; --cinza: #6b7078;
+    --papel: #ffffff; --pagina: #f4f3f0; --borda: #dedbd5; --sutil: #eceae6; --info-bg: #e7eff9;
+    --capa: #1f2328; --capa-texto: #c9ccd1;
+    color-scheme: light;
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--pagina); }
+  body {
+    margin: 0; background: var(--pagina); color: var(--ink); font-size: 16px; line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+  }
+  .folha { max-width: 860px; margin: 0 auto; background: var(--papel); border: 1px solid var(--borda); border-radius: 12px; overflow: hidden; }
+  .bloco { padding: 40px clamp(20px, 5vw, 56px); border-top: 1px solid var(--sutil); }
+  h1, h2, h3 { font-family: 'Archivo', system-ui, sans-serif; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+  h2 { font-size: 26px; font-weight: 800; line-height: 1.2; margin-bottom: 14px; }
+  h2 .num { color: var(--azul); margin-right: 10px; }
+  h3 { font-size: 17px; font-weight: 800; margin: 0 0 8px; line-height: 1.25; }
+  p { margin: 0 0 12px; max-width: 65ch; }
+  .lead { font-size: 18px; color: var(--ink-muted); margin-bottom: 20px; }
+  .muted { color: var(--cinza); font-size: 14px; }
+
+  /* Capa */
+  .capa { background: var(--capa); color: #fff; position: relative; overflow: hidden; padding: 48px clamp(20px, 6vw, 64px) 40px; min-height: 460px; display: flex; flex-direction: column; }
+  .capa .marca { display: flex; align-items: center; gap: 12px; font-family: 'Archivo', sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+  .capa .marca span.sub { font-weight: 500; color: var(--capa-texto); }
+  .capa h1 { font-size: clamp(36px, 6.5vw, 54px); font-weight: 800; line-height: 1.04; margin-top: auto; padding-top: 120px; }
+  .capa h1 em { font-style: normal; color: var(--azul-claro); }
+  .capa .sub { font-size: 17px; color: var(--capa-texto); max-width: 52ch; margin-top: 18px; }
+  .capa .circulo { position: absolute; border-radius: 50%; pointer-events: none; }
+  .selo { display: inline-block; align-self: flex-start; margin-top: 28px; font-size: 13px; font-weight: 600; background: var(--azul); color: #fff; padding: 4px 14px; border-radius: 99px; }
+
+  /* Módulos */
+  .modulos { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 16px; }
+  .modulo { border: 1px solid var(--borda); border-radius: 10px; padding: 16px 18px; min-width: 0; }
+  .modulo h3 { color: var(--azul); }
+  .modulo ul { margin: 0; padding: 0 0 0 18px; font-size: 14px; color: var(--ink-muted); }
+  .modulo li { padding: 2px 0; }
+  .modulo.destaque { border: 2px solid var(--azul); }
+  .modulo .obs { font-size: 13px; color: var(--cinza); margin: 6px 0 0; }
+
+  /* Vantagens */
+  .vantagens { list-style: none; margin: 16px 0 0; padding: 0; display: grid; gap: 12px; }
+  .vantagens li { border-left: 4px solid var(--azul); background: var(--info-bg); border-radius: 8px; padding: 12px 16px; font-size: 15px; }
+  .vantagens b { display: block; font-family: 'Archivo', sans-serif; margin-bottom: 2px; }
+
+  /* Etapas */
+  .etapas { display: grid; margin-top: 14px; }
+  .etapa { display: grid; grid-template-columns: 38px 1fr; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--sutil); }
+  .etapa:last-child { border-bottom: 0; }
+  .etapa .circ { width: 32px; height: 32px; border-radius: 50%; background: var(--azul); color: #fff; font-family: 'Archivo', sans-serif; font-weight: 800; display: grid; place-items: center; font-size: 14px; }
+  .etapa h3 { margin: 2px 0 4px; font-size: 16px; }
+  .etapa p { margin: 0; font-size: 14px; color: var(--ink-muted); }
+  .etapa .prazo { font-size: 13px; color: var(--azul-escuro); font-weight: 600; }
+
+  /* Tabela */
+  .tabela-caixa { overflow-x: auto; margin-top: 14px; border: 1px solid var(--borda); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 480px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+  th { background: var(--pagina); font-weight: 700; }
+  tr:last-child td { border-bottom: 0; }
+
+  /* Condições e próximos passos */
+  .condicoes { margin: 14px 0 0; padding: 0; list-style: none; display: grid; gap: 8px; font-size: 15px; }
+  .condicoes li::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--azul); margin-right: 10px; vertical-align: middle; }
+  .botao { display: inline-block; margin-top: 8px; background: var(--azul); color: #fff; text-decoration: none; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 17px; padding: 14px 26px; border-radius: 12px; }
+  .botao:focus-visible { outline: 3px solid var(--azul-claro); outline-offset: 3px; }
+  .rodape { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--cinza); padding: 16px clamp(20px, 5vw, 56px); border-top: 1px solid var(--sutil); background: var(--pagina); }
+
+  @media (max-width: 640px) {
+    .modulos { grid-template-columns: 1fr; }
+    .capa h1 { padding-top: 72px; }
+  }
+</style>
+
+<main class="folha">
+  <section class="capa">
+    <svg class="circulo" style="right:-40px;bottom:-30px" width="220" height="220" viewBox="0 0 220 220" aria-hidden="true"><circle cx="110" cy="110" r="110" fill="#1f5fad" opacity="0.9"/></svg>
+    <svg class="circulo" style="right:120px;bottom:70px" width="90" height="90" viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="45" fill="#2b3036"/></svg>
+    <div class="marca">
+      <svg width="34" height="34" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg>
+      <span>agrega <span class="sub">ERP</span></span>
+    </div>
+    <span class="selo">Para construtoras e incorporadoras</span>
+    <h1>Conheça o <em>Agrega ERP</em>.</h1>
+    <p class="sub">Obra, orçamento, compras, estoque, contratos, financeiro e gerencial num só sistema, do canteiro à diretoria.</p>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">1</span>Visão geral</h2>
+    <p class="lead">O Agrega ERP é um sistema de gestão para construtoras e incorporadoras de médio porte. Ele liga as etapas que hoje ficam em planilhas separadas: orçamento, pedido de compra, entrada de material, contrato, medição e pagamento.</p>
+    <p>Cada número tem uma origem. Quem decide vê o resultado consolidado, e cada perfil vê apenas os módulos e as obras que lhe cabem.</p>
+    <p class="muted">Perfis disponíveis: dono, gestor, orçamentista, engenheiro de obra, comprador, almoxarife, financeiro e vendedor.</p>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">2</span>Módulos e principais funcionalidades</h2>
+    <p>Cada módulo cobre uma parte da empresa. O pacote contratado define quais módulos ficam disponíveis.</p>
+    <div class="modulos">
+      <article class="modulo destaque">
+        <h3>Engenharia</h3>
+        <ul>
+          <li>Cadastro de obras e EAP</li>
+          <li>Orçamento com composições SINAPI</li>
+          <li>Insumos e serviços</li>
+          <li>Planejamento e cronograma</li>
+          <li>Apropriação e acompanhamento físico</li>
+          <li>Relatórios de engenharia</li>
+        </ul>
+      </article>
+      <article class="modulo destaque">
+        <h3>Suprimentos</h3>
+        <ul>
+          <li>Solicitações de material e de serviço</li>
+          <li>Cotações e pedidos de compra</li>
+          <li>Contratos por itens ou valor global</li>
+          <li>Medições e autorizações de pagamento</li>
+          <li>Estoque por obra com etiqueta QR</li>
+          <li>Transferências entre obras e saldos de contrato</li>
+        </ul>
+      </article>
+      <article class="modulo">
+        <h3>Financeiro</h3>
+        <ul>
+          <li>Plano de contas e lançamentos</li>
+          <li>Contas a pagar e a receber</li>
+          <li>Contas bancárias</li>
+          <li>Conciliação de extratos OFX</li>
+          <li>Regras de classificação</li>
+        </ul>
+      </article>
+      <article class="modulo">
+        <h3>Gerencial</h3>
+        <ul>
+          <li>DRE e fluxo de caixa</li>
+          <li>Curva S e indicadores</li>
+          <li>Aprovação de valores</li>
+        </ul>
+      </article>
+      <article class="modulo">
+        <h3>Administrativo</h3>
+        <ul>
+          <li>Clientes, fornecedores e credores</li>
+          <li>Colaboradores</li>
+          <li>Empresas do grupo e obras</li>
+          <li>Endereços usados nos documentos</li>
+        </ul>
+      </article>
+      <article class="modulo">
+        <h3>Comercial</h3>
+        <ul>
+          <li>Propostas de obra</li>
+          <li>Aceitação do cliente</li>
+          <li>Contratos e contas a receber</li>
+        </ul>
+      </article>
+      <article class="modulo" style="grid-column: 1 / -1">
+        <h3>Incorporação <span class="muted" style="font-weight:500">· módulo adicional</span></h3>
+        <ul>
+          <li>Estudos de viabilidade no Viabiliza</li>
+          <li>Empreendimentos a partir do estudo aprovado</li>
+          <li>Unidades, preços e controle de vendas</li>
+        </ul>
+        <p class="obs">Contratado à parte, sobre qualquer pacote.</p>
+      </article>
+    </div>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">3</span>Vantagens para a construtora</h2>
+    <ul class="vantagens">
+      <li><b>Uma base só</b>Obra, compra, medição e pagamento são registrados uma vez e aparecem em todos os módulos.</li>
+      <li><b>Estoque com rastro</b>Cada lote de material tem etiqueta QR, e a saída é registrada por obra.</li>
+      <li><b>Contratos com saldo atualizado</b>Valor contratado, medido e saldo sempre visíveis por contrato.</li>
+      <li><b>Aprovação antes do pagamento</b>Valores acima da alçada passam pelo responsável antes de virar pedido ou pagamento.</li>
+      <li><b>Menos conferência manual</b>Extratos são conciliados, e a DRE sai dos lançamentos.</li>
+      <li><b>Acesso por perfil</b>Cada usuário enxerga apenas os módulos e as obras que lhe cabem.</li>
+      <li><b>Dados sob controle da construtora</b>Tudo pode ser exportado em planilha a qualquer momento.</li>
+    </ul>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">4</span>Como acontece a implantação</h2>
+    <p class="lead">Em cerca de 8 semanas, a construtora sai das planilhas e passa a operar no sistema, com a equipe treinada.</p>
+    <div class="etapas">
+      <div class="etapa"><div class="circ">1</div><div><h3>Diagnóstico</h3><p>Levantamos os processos atuais, as obras em andamento e quem usa o quê.</p><span class="prazo">Semana 1</span></div></div>
+      <div class="etapa"><div class="circ">2</div><div><h3>Configuração e migração</h3><p>Cadastramos empresa, usuários e perfis. Importamos clientes, fornecedores, obras, orçamentos e saldo de estoque.</p><span class="prazo">Semanas 2 e 3</span></div></div>
+      <div class="etapa"><div class="circ">3</div><div><h3>Treinamento</h3><p>Treinamos cada perfil com o manual de operação e exercícios com as obras reais.</p><span class="prazo">Semana 4</span></div></div>
+      <div class="etapa"><div class="circ">4</div><div><h3>Operação acompanhada</h3><p>Acompanhamos o primeiro mês de uso, com revisão semanal de dúvidas e ajustes.</p><span class="prazo">Semanas 5 a 8</span></div></div>
+    </div>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">5</span>Pacotes e condições</h2>
+    <p>Contrato mensal ou anual. O plano anual tem fidelidade de 12 meses. Os valores são apresentados na proposta comercial de cada construtora.</p>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr><th>Pacote</th><th>Inclui</th></tr></thead>
+        <tbody>
+          <tr><td><b>Obra</b></td><td>Engenharia completa; suprimentos e estoque com QR; até 3 obras ativas; até 3 usuários</td></tr>
+          <tr><td><b>Obra + Gestão</b></td><td>Tudo do pacote Obra; financeiro, conciliação e DRE; administrativo e cadastros; até 3 obras ativas e 5 usuários</td></tr>
+          <tr><td><b>Completo</b></td><td>Todos os módulos, incluindo Comercial; até 10 obras ativas; até 8 usuários; suporte prioritário</td></tr>
+          <tr><td><b>Adicional Incorporação</b></td><td>Sobre qualquer pacote; acesso ao Viabiliza; até 3 empreendimentos a partir do estudo aprovado; controle de unidades e vendas</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="condicoes" style="margin-top:18px">
+      <li><b>Implantação:</b> assistida, com cadastros, orçamentos, saldo de estoque, treinamento e acompanhamento nas primeiras semanas.</li>
+      <li><b>Cancelamento:</b> no plano mensal, sem multa, com aviso de 30 dias. No plano anual, multa sobre as mensalidades restantes, conforme o contrato padrão.</li>
+      <li><b>Disponibilidade e suporte:</b> meta de 99% ao mês. Suporte de segunda a sexta, das 8h às 18h.</li>
+      <li><b>Dados:</b> pertencem à construtora e podem ser exportados em planilha a qualquer momento.</li>
+    </ul>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">6</span>Próximos passos</h2>
+    <p>Para receber a proposta comercial e agendar o diagnóstico, cadastre seu interesse.</p>
+    <a class="botao" href="https://agrega-construtoras-app-production.up.railway.app/interesse?origem=banner-saiba-mais">Cadastrar interesse</a>
+  </section>
+
+  <footer class="rodape">
+    <span>Agrega Construtoras · Material de apresentação</span>
+    <span>agrega-construtoras-app-production.up.railway.app</span>
+  </footer>
+</main>

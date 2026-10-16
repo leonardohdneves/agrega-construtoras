@@ -11,7 +11,7 @@ type Interessado = {
 const NOMES_PACOTE: Record<string, string> = { obra: 'Obra', obra_gestao: 'Obra + Gestão', completo: 'Completo', ainda_nao_sei: 'Ainda não sei' };
 const NOMES_ORIGEM: Record<string, string> = {
   'banner-piloto': 'Banner de captação de pilotos',
-  'post-saiba-mais': 'Post Instagram / WhatsApp · Saiba mais',
+  'banner-saiba-mais': 'Banner Conheça o Agrega ERP',
 };
 const SEM_ORIGEM = '__sem__';
 

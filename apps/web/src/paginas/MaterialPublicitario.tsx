@@ -13,10 +13,16 @@ const MATERIAIS = [
     dica: 'Substitua os campos entre colchetes para cada cliente. Os valores precisam bater com o contrato padrão.',
   },
   {
-    arquivo: '/api/admin/material/post-saiba-mais.html',
-    titulo: 'Post Instagram / WhatsApp · Saiba mais',
-    descricao: 'Post 1080 × 1350 com módulos, vantagens e botão Saiba mais. O botão leva ao cadastro de interessados com a origem "post-saiba-mais".',
-    dica: 'Para o Instagram, capture a tela do card com 1080 px de largura. No WhatsApp, o botão é o link de cadastro.',
+    arquivo: '/api/admin/material/banner-saiba-mais.html',
+    titulo: 'Banner Conheça o Agrega ERP',
+    descricao: 'Banner 1200 × 628 para WhatsApp e Instagram, com módulos e botão Saiba mais. O botão e o QR code levam ao cadastro de interessados com a origem "banner-saiba-mais".',
+    dica: 'Para o Instagram, capture a tela do banner. No WhatsApp, envie a imagem e o link do botão.',
+  },
+  {
+    arquivo: '/api/admin/material/material-detalhado.html',
+    titulo: 'Material detalhado',
+    descricao: 'Apresentação completa para enviar a cada interessado: módulos, funcionalidades, vantagens, implantação, pacotes e condições, sem preços. Traz o botão de cadastro com a origem "banner-saiba-mais".',
+    dica: 'Para enviar em PDF, abra o modelo e use Imprimir > Salvar como PDF.',
   },
   {
     arquivo: '/api/admin/material/banner-piloto.html',
