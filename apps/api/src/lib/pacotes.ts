@@ -16,12 +16,12 @@ type Predefinido = { modulos: Modulo[]; limiteObras: number | null; limiteUsuari
 
 /** Módulos e limites de cada pacote. Personalizado não tem predefinição: o administrador escolhe tudo. */
 export const PACOTES: Record<Exclude<PacoteContrato, 'personalizado'>, Predefinido> = {
-  obra: { modulos: ['engenharia', 'suprimentos'], limiteObras: 3, limiteUsuarios: 5 },
+  obra: { modulos: ['engenharia', 'suprimentos'], limiteObras: 3, limiteUsuarios: 3 },
   obra_gestao: { modulos: ['engenharia', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'], limiteObras: 3, limiteUsuarios: 5 },
   completo: {
     modulos: ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'],
     limiteObras: 10,
-    limiteUsuarios: 10,
+    limiteUsuarios: 8,
   },
 };
 

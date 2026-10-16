@@ -22,9 +22,9 @@ const PACOTES_TELA: { v: PacoteContrato; nome: string; resumo: string }[] = [
   { v: 'personalizado', nome: 'Personalizado', resumo: 'Você escolhe os módulos e os limites' },
 ];
 const PREDEFINIDO: Record<Exclude<PacoteContrato, 'personalizado'>, { modulos: string[]; obras: number; usuarios: number }> = {
-  obra: { modulos: ['engenharia', 'suprimentos'], obras: 3, usuarios: 5 },
+  obra: { modulos: ['engenharia', 'suprimentos'], obras: 3, usuarios: 3 },
   obra_gestao: { modulos: ['engenharia', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'], obras: 3, usuarios: 5 },
-  completo: { modulos: ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'], obras: 10, usuarios: 10 },
+  completo: { modulos: ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'], obras: 10, usuarios: 8 },
 };
 const MODULOS_CONTRATO: [string, string][] = [
   ['engenharia', 'Engenharia'],
