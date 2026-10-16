@@ -470,13 +470,14 @@ export function rotasEngenharia(banco: Banco) {
       const termo = (busca ?? '').trim();
       const r = await banco.query(
         `SELECT i.id, i.tipo, i.codigo, i.descricao, i.unidade, i.grupo, ${precoRef('i')} AS preco,
-                (SELECT count(*)::int FROM ref_composicao_insumos rc WHERE rc.composicao_id = i.id) AS componentes
+                (SELECT count(*)::int FROM ref_composicao_insumos rc WHERE rc.composicao_id = i.id) AS componentes,
+                (SELECT coalesce(json_agg(json_build_object('unidade', u.unidade, 'fator', u.fator) ORDER BY u.unidade), '[]'::json) FROM ref_insumo_unidades u WHERE u.item_id = i.id) AS unidades_compra
            FROM ref_itens i
           WHERE i.tabela_id = $1 AND ($2::text IS NULL OR i.tipo = $2) AND ($3 = '' OR i.codigo ILIKE $3 || '%' OR i.descricao ILIKE '%' || $3 || '%')
           ORDER BY i.tipo, i.codigo LIMIT 500`,
         [req.params.id, tipo === 'insumo' || tipo === 'composicao' ? tipo : null, termo],
       );
-      return { itens: r.rows.map((i) => ({ id: i.id, tipo: i.tipo, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, grupo: i.grupo, preco: reais(i.preco), componentes: i.componentes })) };
+      return { itens: r.rows.map((i) => ({ id: i.id, tipo: i.tipo, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade, grupo: i.grupo, preco: reais(i.preco), componentes: i.componentes, unidadesCompra: ((i.unidades_compra as { unidade: string; fator: number | string }[] | undefined) ?? []).map((u) => ({ unidade: u.unidade, fator: Number(u.fator) })) })) };
     });
 
     app.get<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId', async (req) => {
