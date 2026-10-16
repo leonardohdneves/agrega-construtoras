@@ -1,6 +1,6 @@
 // Engenharia · Obras: cadastro (centro de custo, nível de apropriação, BDI), insumos e serviços copiados de uma tabela,
 // EAP com os mesmos níveis e orçamento lançado por nó da EAP.
-import { useEffect, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
 import { ConferenciaComposicao, type DetalheComposicao, type Tabela } from './EngTabelas';
@@ -18,7 +18,7 @@ export type Obra = {
   responsaveis?: { id: string; nome: string }[];
 };
 type Engenheiro = { id: string; nome: string; email: string; ativo: boolean };
-export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null };
+export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null; unidadesCompra?: { unidade: string; fator: number }[] };
 
 type ClasseComponente = 'insumo' | 'servico' | 'equipamento';
 const ROTULO_CLASSE: Record<ClasseComponente, string> = { insumo: 'Insumo', servico: 'Serviço', equipamento: 'Equipamento' };
@@ -380,6 +380,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   const [msg, setMsg] = useState('');
   const [editando, setEditando] = useState<string | null>(null);
   const [novoPreco, setNovoPreco] = useState('');
+  const [unidEdit, setUnidEdit] = useState<{ id: string; linhas: { unidade: string; fator: string }[] } | null>(null);
   const [conferindo, setConferindo] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ modo: 'copia' | 'edicao'; item: ItemObra } | null>(null);
   const [semTabela, setSemTabela] = useState<{ modo: 'copia' | 'edicao'; item: ItemObra } | null>(null);
@@ -456,6 +457,25 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
     }
   }
 
+  async function salvarUnidades(item: ItemObra) {
+    if (!unidEdit) return;
+    setErro('');
+    const corpo: { unidade: string; fator: number }[] = [];
+    for (const u of unidEdit.linhas) {
+      if (!u.unidade.trim() && !u.fator.trim()) continue;
+      const f = lerNumero(u.fator);
+      if (!u.unidade.trim() || f === null || f <= 0) return setErro('Cada unidade de compra precisa de nome e de quantas unidades do orçamento cabem nela.');
+      corpo.push({ unidade: u.unidade.trim(), fator: f });
+    }
+    try {
+      await api(`/eng/obras/${obraId}/itens/${item.id}`, { metodo: 'PATCH', corpo: { unidadesCompra: corpo } });
+      setUnidEdit(null);
+      aoMudar();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
   async function salvarPreco(item: ItemObra) {
     setErro('');
     const v = lerNumero(novoPreco);
@@ -502,7 +522,8 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
               </thead>
               <tbody>
                 {itens.map((i) => (
-                  <tr key={i.id}>
+                  <Fragment key={i.id}>
+                  <tr>
                     {!tipo && <td>{i.tipo === 'composicao' ? `Serviço (${i.componentes})` : 'Insumo'}</td>}
                     <td>{i.codigo}{i.tipo === 'composicao' && tipo && <div className="small muted">{i.componentes} insumos</div>}</td>
                     <td>
@@ -514,7 +535,12 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                       {i.editado && <span className="selo" style={{ marginLeft: 6 }}>editado</span>}
                       {i.origem && <div className="small muted">{i.origem}</div>}
                     </td>
-                    <td>{i.unidade}</td>
+                    <td>
+                      {i.unidade}
+                      {i.tipo === 'insumo' && (i.unidadesCompra ?? []).map((u) => (
+                        <div key={u.unidade} className="small muted">1 {u.unidade} = {u.fator.toLocaleString('pt-BR', { maximumFractionDigits: 4 })} {i.unidade}</div>
+                      ))}
+                    </td>
                     <td className="num">
                       {editando === i.id ? (
                         <span style={{ display: 'inline-flex', gap: 6 }}>
@@ -531,6 +557,9 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                       {i.tipo === 'insumo' && editando !== i.id && (
                         <button className="btn" type="button" onClick={() => { setEditando(i.id); setNovoPreco(String(i.preco ?? '').replace('.', ',')); }}>Editar preço</button>
                       )}
+                      {i.tipo === 'insumo' && unidEdit?.id !== i.id && (
+                        <button className="btn" type="button" onClick={() => setUnidEdit({ id: i.id, linhas: (i.unidadesCompra ?? []).map((u) => ({ unidade: u.unidade, fator: String(u.fator).replace('.', ',') })) })}>Editar</button>
+                      )}
                       {i.tipo === 'composicao' && (
                         <>
                           <button className="btn" type="button" onClick={() => abrirEdicao('edicao', i)}>Editar</button>
@@ -540,6 +569,31 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                       <button className="btn" type="button" onClick={() => excluir(i)}>Excluir</button>
                     </td>
                   </tr>
+                  {unidEdit?.id === i.id && (
+                    <tr>
+                      <td colSpan={20} style={{ background: 'var(--surface-sunken)' }}>
+                        <div className="form" style={{ padding: 8 }}>
+                          <b>Unidades de compra de {i.codigo} · {i.descricao}</b>
+                          <span className="ajuda">Se o insumo é orçado em {i.unidade} e comprado em outra unidade, informe quantos {i.unidade} cabem em cada unidade de compra. Ex.: 1 barra = 46,2 {i.unidade}.</span>
+                          {unidEdit.linhas.map((u, n) => (
+                            <div key={n} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <input aria-label={`Unidade de compra ${n + 1}`} placeholder="ex.: barra" value={u.unidade} style={{ maxWidth: 140 }} onChange={(e) => setUnidEdit({ ...unidEdit, linhas: unidEdit.linhas.map((x, k) => (k === n ? { ...x, unidade: e.target.value } : x)) })} />
+                              <span className="small muted">1 {u.unidade.trim() || 'unidade'} =</span>
+                              <input aria-label={`Quantos ${i.unidade} cabem em 1 ${u.unidade.trim() || 'unidade'}`} placeholder="ex.: 46,2" inputMode="decimal" value={u.fator} style={{ maxWidth: 120 }} onChange={(e) => setUnidEdit({ ...unidEdit, linhas: unidEdit.linhas.map((x, k) => (k === n ? { ...x, fator: e.target.value } : x)) })} />
+                              <span className="small muted">{i.unidade}</span>
+                              <button className="btn btn-link" type="button" onClick={() => setUnidEdit({ ...unidEdit, linhas: unidEdit.linhas.filter((_, k) => k !== n) })}>Remover</button>
+                            </div>
+                          ))}
+                          <div><button className="btn btn-link" type="button" onClick={() => setUnidEdit({ ...unidEdit, linhas: [...unidEdit.linhas, { unidade: '', fator: '' }] })}>+ unidade de compra</button></div>
+                          <div className="acoes">
+                            <button className="btn" type="button" onClick={() => setUnidEdit(null)}>Cancelar</button>
+                            <button className="btn btn-primario" type="button" onClick={() => salvarUnidades(i)}>Salvar unidades</button>
+                          </div>
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
