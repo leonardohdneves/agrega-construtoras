@@ -3,6 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { Dre } from './Dre';
 import { Fluxo } from './Fluxo';
 import { GerAcompanhamento } from './GerAcompanhamento';
+import { GerGanttControle } from './GerGanttControle';
 import { GerProducaoEquipe } from './GerProducaoEquipe';
 import { Indicadores } from './Indicadores';
 
@@ -54,6 +55,7 @@ export function GerObras() {
     <Abas
       abas={[
         { id: 'acompanhamento', rotulo: 'Acompanhamento de obra', conteudo: <GerAcompanhamento /> },
+        { id: 'gantt', rotulo: 'Gantt de controle', conteudo: <GerGanttControle /> },
         { id: 'producao', rotulo: 'Produção por equipe', conteudo: <GerProducaoEquipe /> },
       ]}
     />

@@ -58,19 +58,18 @@ export type ComprasRel = {
   itens: { codigo: string; descricao: string; unidade: string; grupo: string | null; total: number; primeira: string; usos: { atividade: string; inicio: string; quantidade: number }[] }[];
   semClasse: number; atividadesSemOrcamento: number;
 };
-type Tipo = 'sintetico' | 'analitico' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'gantt' | 'equipes' | 'compras' | 'calendario';
+type Tipo = 'sintetico' | 'analitico' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'equipes' | 'compras' | 'calendario';
 const TIPOS: { id: Tipo; texto: string; titulo: string }[] = [
   { id: 'sintetico', texto: 'Orçamento sintético', titulo: 'Orçamento sintético' },
   { id: 'analitico', texto: 'Orçamento analítico', titulo: 'Orçamento analítico' },
   { id: 'abc-servicos', texto: 'Curva ABC de serviços', titulo: 'Curva ABC de serviços' },
   { id: 'abc-insumos', texto: 'Curva ABC de insumos', titulo: 'Curva ABC de insumos' },
   { id: 'comparacao', texto: 'Comparar versões', titulo: 'Comparação de versões' },
-  { id: 'gantt', texto: 'Gantt', titulo: 'Cronograma (Gantt)' },
-  { id: 'equipes', texto: 'Equipes', titulo: 'Equipes necessárias' },
-  { id: 'compras', texto: 'Compras', titulo: 'Necessidade de compras' },
+  { id: 'equipes', texto: 'Equipes necessárias', titulo: 'Equipes necessárias' },
+  { id: 'compras', texto: 'Materiais necessários', titulo: 'Materiais necessários' },
   { id: 'calendario', texto: 'Calendário de produção', titulo: 'Calendário de produção' },
 ];
-const ehPlanejamento = (t: Tipo) => t === 'gantt' || t === 'equipes' || t === 'compras' || t === 'calendario';
+const ehPlanejamento = (t: Tipo) => t === 'equipes' || t === 'compras' || t === 'calendario';
 const dataCurta = (iso: string) => iso.split('-').reverse().join('/');
 
 const num = (n: number, casas = 4) => n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: casas });
@@ -134,7 +133,7 @@ export function EngRelatorios() {
         </div>
         <div className="campo" style={{ flex: '1 1 100%', width: '100%' }}>
           <span className="rotulo">Relatório</span>
-          <div className="segmentado tres-opcoes" role="group" aria-label="Relatório">
+          <div className="segmentado quatro-opcoes" role="group" aria-label="Relatório">
             {TIPOS.map((t) => (
               <button key={t.id} type="button" aria-pressed={tipo === t.id} className={tipo === t.id ? 'ativo' : ''} onClick={() => mudar({ tipo: t.id })}>{t.texto}</button>
             ))}
@@ -145,7 +144,7 @@ export function EngRelatorios() {
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {obras?.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>Nenhuma obra cadastrada.</p></div>}
       {tipo === 'comparacao' && obraId && <ComparacaoVersoes key={obraId} obraId={obraId} />}
-      {tipo === 'gantt' || tipo === 'equipes' || tipo === 'calendario' ? (
+      {tipo === 'equipes' || tipo === 'calendario' ? (
         <div className="card nao-imprimir" style={{ display: 'flex', gap: 12, alignItems: 'end', flexWrap: 'wrap' }}>
           <div className="campo">
             <span className="rotulo">Período</span>
@@ -158,7 +157,6 @@ export function EngRelatorios() {
         </div>
       ) : null}
       {obraId && tipo !== 'comparacao' && !rel && !abc && !plan && !erro && <p className="muted">Carregando…</p>}
-      {plan && tipo === 'gantt' && <GanttView g={plan as GanttRel} />}
       {plan && tipo === 'equipes' && <EquipesView e={plan as EquipesRel} />}
       {plan && tipo === 'compras' && <ComprasView c={plan as ComprasRel} />}
       {plan && tipo === 'calendario' && <CalendarioView c={plan as CalendarioRel} />}
@@ -662,48 +660,6 @@ function ResultadoComparacao({ comp, soMudancas }: { comp: Comparacao; soMudanca
         </div>
       )}
     </>
-  );
-}
-
-/** Gantt: uma linha por atividade. A largura de cada período é proporcional aos dias que ele tem no projeto. */
-function GanttView({ g }: { g: GanttRel }) {
-  if (!g.atividades.length) return <div className="card"><p className="muted" style={{ margin: 0 }}>Não há atividades no planejamento desta obra. Monte-o em Planejamento.</p></div>;
-  const largura = Math.max(900, g.periodos.length * 56);
-  return (
-    <div className="card" style={{ overflowX: 'auto' }}>
-      <p className="small muted" style={{ marginTop: 0 }}>
-        Projeto de {dataCurta(g.inicio)} a {dataCurta(g.fim)} · {g.totalDias} dias corridos{g.atividadesSemEap ? ` · ${g.atividadesSemEap} sem linha da EAP` : ''}
-      </p>
-      <div style={{ minWidth: largura }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--borda, #d4d4d8)' }}>
-          <div className="small muted" style={{ flex: '0 0 300px', padding: '4px 8px 4px 0' }}>Atividade</div>
-          <div style={{ flex: 1, display: 'flex' }}>
-            {g.periodos.map((p) => (
-              <div key={p.inicio} style={{ flex: `${p.dias} 1 0`, fontSize: 11, padding: '4px 2px', borderLeft: '1px solid var(--borda, #d4d4d8)', overflow: 'hidden', whiteSpace: 'nowrap' }} title={`${dataCurta(p.inicio)} a ${dataCurta(p.fim)}`}>
-                {p.rotulo}
-              </div>
-            ))}
-          </div>
-        </div>
-        {g.atividades.map((a) => (
-          <div key={a.id} style={{ display: 'flex', alignItems: 'center', borderBottom: '1px solid var(--borda, #e4e4e7)', minHeight: 34 }}>
-            <div style={{ flex: '0 0 300px', padding: '4px 8px 4px 0', fontSize: 12 }}>
-              <div>{a.descricao}</div>
-              <div className="small muted">{a.eapCodigo ?? 'sem linha da EAP'} · {dataCurta(a.inicio)} a {dataCurta(a.fim)} · {a.duracaoDias} d</div>
-            </div>
-            <div style={{ flex: 1, position: 'relative', height: 16 }}>
-              <div
-                title={`${a.descricao}: ${dataCurta(a.inicio)} a ${dataCurta(a.fim)}`}
-                style={{
-                  position: 'absolute', top: 0, bottom: 0, borderRadius: 3, background: 'var(--cor-primaria, #1d4ed8)',
-                  left: `${(a.deslocamentoDias / g.totalDias) * 100}%`, width: `${Math.max(0.5, (a.duracaoDias / g.totalDias) * 100)}%`,
-                }}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 

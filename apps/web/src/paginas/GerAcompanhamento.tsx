@@ -1,8 +1,9 @@
 // Gerencial · Acompanhamento de obra: Curva S (previsto, executado e realizado) e previsto x realizado por etapa.
 // Acesso só para dono e gestor (o módulo gerencial e as rotas de engenharia já exigem esses perfis).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api, formatarMoeda } from '../api';
 import { SecaoObra } from './EngSecoes';
+import { BarrasComparativasBI, GraficoLinhasBI } from '../componentes/GraficoBI';
 
 type PontoCurva = { data: string; previsto: number; executado: number | null; realizado: number | null };
 type Curva = { pontos: PontoCurva[]; hoje: string; custoTotal: number; dataUltimaMedicao: string | null; vazio?: string; indices: { cpi: number | null; spi: number | null } };
@@ -52,13 +53,22 @@ function CurvaS({ obraId, setErro }: { obraId: string; setErro: (m: string) => v
   return (
     <>
       <div className="card">
-        <div style={{ display: 'flex', gap: 24, flexWrap: 'wrap', marginBottom: 8 }}>
-          <div><div className="small muted">Custo direto orçado</div><b>{reais(dados.custoTotal)}</b></div>
-          <div><div className="small muted">Última medição</div><b>{dados.dataUltimaMedicao ? dataBr(dados.dataUltimaMedicao) : '—'}</b></div>
-          <div><div className="small muted">SPI (executado ÷ previsto)</div><b>{indice(dados.indices.spi)}</b></div>
-          <div><div className="small muted">CPI (executado ÷ realizado)</div><b>{indice(dados.indices.cpi)}</b></div>
+        <div className="kpis" style={{ marginBottom: 16 }}>
+          <div className="kpi"><div className="kpi-rotulo">Custo direto orçado</div><div className="kpi-valor">{reais(dados.custoTotal)}</div></div>
+          <div className="kpi"><div className="kpi-rotulo">Última medição</div><div className="kpi-valor">{dados.dataUltimaMedicao ? dataBr(dados.dataUltimaMedicao) : "—"}</div></div>
+          <div className={"kpi" + (dados.indices.spi !== null && dados.indices.spi < 1 ? " kpi-perigo" : "")}><div className="kpi-rotulo">SPI</div><div className="kpi-valor">{indice(dados.indices.spi)}</div><div className="kpi-detalhe">executado ÷ previsto</div></div>
+          <div className={"kpi" + (dados.indices.cpi !== null && dados.indices.cpi < 1 ? " kpi-perigo" : "")}><div className="kpi-rotulo">CPI</div><div className="kpi-valor">{indice(dados.indices.cpi)}</div><div className="kpi-detalhe">executado ÷ realizado</div></div>
         </div>
-        <GraficoCurva pontos={dados.pontos} />
+        <GraficoLinhasBI
+          titulo="Curva S: previsto, executado e realizado por mês"
+          pontos={dados.pontos.map((p) => ({ rotulo: dataBr(p.data).slice(3), valores: { previsto: p.previsto, executado: p.executado, realizado: p.realizado } }))}
+          series={[
+            { id: "previsto", nome: "Previsto", cor: "#2a78d6" },
+            { id: "executado", nome: "Executado", cor: "#eb6834" },
+            { id: "realizado", nome: "Realizado", cor: "#8b8a85", tracejada: true },
+          ]}
+          formatar={(v) => formatarMoeda(v / 100)}
+        />
         <p className="small muted">
           Previsto: custo das atividades do planejamento no tempo. Executado: valor das medições. Realizado: despesas confirmadas apropriadas ao centro de custo da obra.
           SPI abaixo de 1 indica atraso; CPI abaixo de 1 indica custo acima do executado.
@@ -87,55 +97,6 @@ function CurvaS({ obraId, setErro }: { obraId: string; setErro: (m: string) => v
   );
 }
 
-/** Gráfico em SVG: previsto (cinza), executado (azul) e realizado (laranja), acumulados por mês. */
-function GraficoCurva({ pontos }: { pontos: PontoCurva[] }) {
-  const L = 760, A = 300, M = 40;
-  const maximo = useMemo(() => Math.max(1, ...pontos.flatMap((p) => [p.previsto, p.executado ?? 0, p.realizado ?? 0])), [pontos]);
-  const x = (i: number) => M + (pontos.length <= 1 ? 0 : (i / (pontos.length - 1)) * (L - 2 * M));
-  const y = (v: number) => A - M - (v / maximo) * (A - 2 * M);
-  const linha = (valor: (p: PontoCurva) => number | null) => {
-    const partes: string[] = [];
-    pontos.forEach((p, i) => {
-      const v = valor(p);
-      if (v !== null) partes.push(`${partes.length ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`);
-    });
-    return partes.join(' ');
-  };
-  const series = [
-    { nome: 'Previsto', cor: '#8a8f98', d: linha((p) => p.previsto) },
-    { nome: 'Executado', cor: '#1d4ed8', d: linha((p) => p.executado) },
-    { nome: 'Realizado', cor: '#d97706', d: linha((p) => p.realizado) },
-  ];
-  return (
-    <div style={{ overflowX: 'auto' }}>
-      <svg viewBox={`0 0 ${L} ${A}`} width="100%" role="img" aria-label="Curva S: previsto, executado e realizado" style={{ minWidth: 560 }}>
-        <line x1={M} y1={A - M} x2={L - M} y2={A - M} stroke="#c9ccd1" />
-        <line x1={M} y1={M} x2={M} y2={A - M} stroke="#c9ccd1" />
-        <text x={M - 6} y={M + 4} fontSize="11" textAnchor="end">{formatarMoeda(maximo / 100)}</text>
-        <text x={M - 6} y={A - M + 4} fontSize="11" textAnchor="end">0</text>
-        {pontos.map((p, i) => (i % Math.ceil(pontos.length / 8) === 0 || i === pontos.length - 1) && (
-          <text key={p.data} x={x(i)} y={A - M + 16} fontSize="10" textAnchor="middle">{dataBr(p.data).slice(3)}</text>
-        ))}
-        {series.map((s) => s.d && <path key={s.nome} d={s.d} fill="none" stroke={s.cor} strokeWidth={2.5} />)}
-        {/* Marcadores em cada mês: com um só mês, a linha não aparece e o ponto precisa ficar visível. */}
-        {series.map((s) =>
-          pontos.map((p, i) => {
-            const v = s.nome === 'Previsto' ? p.previsto : s.nome === 'Executado' ? p.executado : p.realizado;
-            return v === null ? null : <circle key={`${s.nome}-${i}`} cx={x(i)} cy={y(v)} r={4} fill={s.cor} />;
-          }),
-        )}
-      </svg>
-      <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }} className="small">
-        {series.map((s) => (
-          <span key={s.nome} style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <span style={{ width: 14, height: 3, background: s.cor, display: 'inline-block' }} />{s.nome}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
 function PrevistoRealizadoView({ obraId, setErro }: { obraId: string; setErro: (m: string) => void }) {
   const [dados, setDados] = useState<PrevistoRealizado | null>(null);
   const [data, setData] = useState('');
@@ -152,6 +113,19 @@ function PrevistoRealizadoView({ obraId, setErro }: { obraId: string; setErro: (
   const t = dados.totais;
   return (
     <>
+      {dados.linhas.some((l) => l.nivel === "etapa") && (
+        <div className="card" style={{ marginBottom: 12 }}>
+          <h3 style={{ marginTop: 0 }}>Previsto x executado por etapa</h3>
+          <BarrasComparativasBI
+            itens={dados.linhas.filter((l) => l.nivel === "etapa").map((l) => ({ id: l.id, rotulo: `${l.codigo} ${l.descricao}`, primeira: l.previstoAte, segunda: l.executado }))}
+            formatar={(v) => formatarMoeda(v / 100)}
+            rotuloPrimeira="Previsto até a data"
+            rotuloSegunda="Executado"
+            corPrimeira="#2a78d6"
+            corSegunda="#eb6834"
+          />
+        </div>
+      )}
       <div className="card" style={{ display: 'flex', gap: 24, flexWrap: 'wrap', alignItems: 'end' }}>
         <div className="campo">
           <label htmlFor="pr-data">Data de referência</label>
