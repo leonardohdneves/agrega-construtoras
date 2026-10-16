@@ -12,11 +12,11 @@ test('módulo de cada rota', () => {
 });
 
 test('módulos efetivos', () => {
-  assert.equal(modulosEfetivos('dono', ['frota']).length, 7);
+  assert.equal(modulosEfetivos('dono', ['frota']).length, 8);
   assert.deepEqual(modulosEfetivos('operador_usina', null), []);
   // módulos da concreteira gravados num usuário antigo não valem mais
   assert.deepEqual(modulosEfetivos('gestor', ['financeiro', 'frota']), ['financeiro']);
-  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'suprimentos', 'gerencial', 'administrativo']);
+  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'incorporacao', 'suprimentos', 'gerencial', 'administrativo']);
   assert.deepEqual(modulosEfetivos('orcamentista', null), ['engenharia', 'comercial']);
   assert.deepEqual(modulosEfetivos('engenheiro_obra', null), ['engenharia']);
   assert.deepEqual(modulosEfetivos('comprador', null), ['suprimentos']);

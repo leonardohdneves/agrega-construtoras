@@ -2,7 +2,7 @@
 import type { Perfil } from './token.ts';
 import { acessaFinanceiro } from './perfis.ts';
 
-export const MODULOS = ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'] as const;
+export const MODULOS = ['engenharia', 'comercial', 'incorporacao', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'] as const;
 export type Modulo = (typeof MODULOS)[number];
 
 /**
@@ -15,6 +15,7 @@ type ModuloRota = Modulo | (typeof MODULOS_RETIRADOS)[number];
 export const NOMES_MODULO: Record<Modulo, string> = {
   engenharia: 'Engenharia',
   comercial: 'Comercial',
+  incorporacao: 'Incorporação',
   suprimentos: 'Suprimentos',
   financeiro: 'Financeiro',
   gerencial: 'Gerencial',
@@ -29,7 +30,7 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   // Almoxarife: só o estoque da construtora (Suprimentos › Estoque).
   almoxarife: ['suprimentos'],
   // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
-  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'administrativo'],
+  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'incorporacao', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
   // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
   engenheiro_obra: ['engenharia'],
@@ -59,6 +60,7 @@ export function modulosEfetivos(perfil: Perfil, modulos: string[] | null | undef
 export function moduloDaRota(url: string): ModuloRota | null {
   const p = url.split('?')[0];
   if (p.startsWith('/api/eng')) return 'engenharia';
+  if (p.startsWith('/api/com/incorporacao')) return 'incorporacao';
   if (p.startsWith('/api/com')) return 'comercial';
   if (p.startsWith('/api/frota')) return 'frota';
   if (p.startsWith('/api/prod')) return 'producao';
