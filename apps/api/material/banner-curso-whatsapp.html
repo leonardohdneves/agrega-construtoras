@@ -19,7 +19,7 @@
     position: relative; overflow: hidden; container-type: inline-size;
     width: 100%; max-width: 1080px; aspect-ratio: 1 / 1; margin: 0 auto;
     background: var(--ink); color: #fff; border-radius: 14px;
-    display: flex; flex-direction: column; padding: 5.6cqw 6cqw 5cqw;
+    display: flex; flex-direction: column; padding: 4.6cqw 5.4cqw 4.4cqw;
   }
   .arte { position: absolute; right: -16cqw; top: -14cqw; width: 52cqw; height: 52cqw; z-index: 0; pointer-events: none; }
   .arte svg { width: 100%; height: 100%; display: block; }
@@ -29,18 +29,20 @@
   .marca .fino { font-weight: 500; color: var(--cinza-claro); }
   .selo { font-size: 2.2cqw; font-weight: 600; background: var(--azul); color: #fff; padding: 0.8cqw 2cqw; border-radius: 99px; white-space: nowrap; }
   h1 {
-    position: relative; z-index: 1; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 5.8cqw; line-height: 1.04;
-    letter-spacing: -0.03em; margin: 4cqw 0 0; text-wrap: balance; max-width: 88%;
+    position: relative; z-index: 1; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 5.2cqw; line-height: 1.04;
+    letter-spacing: -0.03em; margin: 3cqw 0 0; text-wrap: balance; max-width: 92%;
   }
   h1 em { font-style: normal; color: var(--azul-claro); }
   .slogan { position: relative; z-index: 1; margin: 2.2cqw 0 0; font-family: 'Archivo', sans-serif; font-weight: 500; font-size: 3cqw; color: var(--cinza-claro); }
-  .lista { position: relative; z-index: 1; list-style: none; margin: 3.6cqw 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 2cqw; }
-  .lista li { border: 1px solid var(--cinza-borda); border-radius: 12px; padding: 2cqw 2.4cqw; background: rgba(31, 95, 173, 0.12); min-width: 0; }
-  .lista .n { display: block; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2.2cqw; color: var(--azul-claro); }
-  .lista h2 { margin: 0.4cqw 0 0.6cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.2cqw; letter-spacing: -0.01em; }
-  .lista p { margin: 0; font-size: 2.1cqw; line-height: 1.38; color: var(--cinza-claro); }
+  .grupos { position: relative; z-index: 1; margin-top: 3cqw; display: grid; grid-template-columns: 1fr 1fr; gap: 2.4cqw; }
+  .gtitulo { margin: 0 0 1.2cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2.2cqw; color: var(--azul-claro); text-transform: uppercase; letter-spacing: 0.04em; }
+  .lista { list-style: none; margin: 0; padding: 0; display: grid; gap: 1.1cqw; }
+  .lista li { display: grid; grid-template-columns: 4.2cqw 1fr; gap: 1.4cqw; align-items: start; border: 1px solid var(--cinza-borda); border-radius: 10px; padding: 1.2cqw 1.4cqw; background: rgba(31, 95, 173, 0.12); min-width: 0; }
+  .lista .n { font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2.2cqw; color: var(--azul-claro); line-height: 1.1; }
+  .lista h3 { margin: 0 0 0.3cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2.5cqw; letter-spacing: -0.01em; }
+  .lista p { margin: 0; font-size: 1.85cqw; line-height: 1.35; color: var(--cinza-claro); }
   .lista p b { color: #fff; font-weight: 600; }
-  .rodape { position: relative; z-index: 1; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 3cqw; }
+  .rodape { position: relative; z-index: 1; margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 3cqw; padding-top: 2cqw; }
   .botao { display: inline-block; background: var(--azul); color: #fff; text-decoration: none; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.2cqw; padding: 1.8cqw 3.6cqw; border-radius: 12px; }
   .botao:focus-visible { outline: 3px solid var(--azul-claro); outline-offset: 3px; }
   .qrbox { display: flex; align-items: center; gap: 2cqw; background: #fff; color: var(--ink); border-radius: 12px; padding: 1.4cqw; }
@@ -71,28 +73,26 @@
     <h1>Curso de <em>Orçamento, Planejamento e Gestão de Obras</em></h1>
     <p class="slogan">Do projeto à entrega das chaves</p>
 
-    <ul class="lista">
-      <li>
-        <span class="n">01</span>
-        <h2>Composições</h2>
-        <p><b>Na prática:</b> monte o custo de cada serviço a partir de insumos reais, sem chutar o preço.</p>
-      </li>
-      <li>
-        <span class="n">02</span>
-        <h2>Quantitativos</h2>
-        <p><b>Na prática:</b> meça do projeto e confira cada item antes de fechar o orçamento.</p>
-      </li>
-      <li>
-        <span class="n">03</span>
-        <h2>Cronograma</h2>
-        <p><b>Na prática:</b> transforme o orçamento em prazos que a equipe consegue cumprir.</p>
-      </li>
-      <li>
-        <span class="n">04</span>
-        <h2>Curva S</h2>
-        <p><b>Na prática:</b> acompanhe o avanço físico e financeiro, e veja o desvio antes que vire problema.</p>
-      </li>
-    </ul>
+    <div class="grupos">
+      <section class="grupo">
+        <h2 class="gtitulo">Orçamento e planejamento</h2>
+        <ul class="lista">
+          <li><span class="n">01</span><div><h3>Composições</h3><p><b>Na prática:</b> monte o custo de cada serviço com insumos reais.</p></div></li>
+          <li><span class="n">02</span><div><h3>Quantitativos</h3><p><b>Na prática:</b> meça do projeto e confira cada item antes de fechar.</p></div></li>
+          <li><span class="n">03</span><div><h3>Cronograma</h3><p><b>Na prática:</b> transforme o orçamento em prazos que a equipe cumpre.</p></div></li>
+          <li><span class="n">04</span><div><h3>Curva S</h3><p><b>Na prática:</b> veja o desvio do avanço físico e financeiro antes que vire problema.</p></div></li>
+        </ul>
+      </section>
+      <section class="grupo">
+        <h2 class="gtitulo">Gestão da obra</h2>
+        <ul class="lista">
+          <li><span class="n">05</span><div><h3>Compras</h3><p><b>Na prática:</b> compare cotações e compre dentro do orçamento.</p></div></li>
+          <li><span class="n">06</span><div><h3>Contratos</h3><p><b>Na prática:</b> feche serviços com escopo, prazo e preço claros.</p></div></li>
+          <li><span class="n">07</span><div><h3>Medições</h3><p><b>Na prática:</b> meça o executado e pague pelo avanço real.</p></div></li>
+          <li><span class="n">08</span><div><h3>Financeiro</h3><p><b>Na prática:</b> compare o previsto com o realizado, lançamento a lançamento.</p></div></li>
+        </ul>
+      </section>
+    </div>
 
     <div class="rodape">
       <a class="botao" href="https://agrega-construtoras-app-production.up.railway.app/interesse?origem=curso-orcamento">Quero participar</a>
