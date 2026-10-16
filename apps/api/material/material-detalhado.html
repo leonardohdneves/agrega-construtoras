@@ -34,7 +34,9 @@
   .capa h1 { font-size: clamp(36px, 6.5vw, 54px); font-weight: 800; line-height: 1.04; margin-top: auto; padding-top: 120px; }
   .capa h1 em { font-style: normal; color: var(--azul-claro); }
   .capa .sub { font-size: 17px; color: var(--capa-texto); max-width: 52ch; margin-top: 18px; }
-  .capa .circulo { position: absolute; border-radius: 50%; pointer-events: none; }
+  .capa .circulo { position: absolute; border-radius: 50%; pointer-events: none; z-index: 0; }
+  .capa > *:not(.circulo) { position: relative; z-index: 1; }
+  .capa h1, .capa .sub { max-width: 60%; }
   .selo { display: inline-block; align-self: flex-start; margin-top: 28px; font-size: 13px; font-weight: 600; background: var(--azul); color: #fff; padding: 4px 14px; border-radius: 99px; }
 
   /* Módulos */
@@ -77,6 +79,7 @@
   @media (max-width: 640px) {
     .modulos { grid-template-columns: 1fr; }
     .capa h1 { padding-top: 72px; }
+    .capa h1, .capa .sub { max-width: 100%; }
   }
 </style>
 
