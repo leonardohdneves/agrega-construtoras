@@ -1056,9 +1056,18 @@ export function rotasContratos(banco: Banco) {
       const ate = req.query.ate && DATA.test(req.query.ate) ? req.query.ate : req.query.ate && MES.test(req.query.ate) ? somarDias(somarMeses(`${req.query.ate}-01`, 1), -1) : hoje;
       const ids = (await banco.query("SELECT id FROM contratos WHERE empresa_id = $1 AND status <> 'cancelado' AND (status IN ('rascunho', 'vigente') OR coalesce(encerrado_em, fim, inicio) >= $2::date) ORDER BY numero", [empresaId, de])).rows;
       const posicao = [];
+      // Saldos: cada item contratado, com o quanto já foi medido e o que falta (quantidade e valor).
+      const saldos = [];
       for (const x of ids) {
         const k = await detalharContrato(banco, empresaId, x.id);
         posicao.push({ id: k.id, numero: k.numero, fornecedor: k.fornecedor.nome, objeto: k.objeto, status: k.status, inicio: k.inicio, fim: k.fim, valor: k.resumo.valorContrato, medido: k.resumo.medido, percentual: k.resumo.percentualMedido, saldo: k.resumo.saldo, pago: k.resumo.pago, caucaoRetida: k.resumo.caucaoRetida - k.resumo.caucaoLiberada, impostos: k.resumo.impostosRetidos });
+        for (const i of k.itens) {
+          saldos.push({
+            id: i.id, contratoId: k.id, contrato: k.numero, fornecedor: k.fornecedor.nome, status: k.status, codigo: i.codigo, descricao: i.descricao, unidade: i.unidade,
+            precoUnitario: i.precoUnitario, quantidadeContratada: i.quantidade, quantidadeMedida: i.medido, quantidadeSaldo: i.saldo,
+            valorContratado: i.total, valorMedido: i.valorMedido, valorSaldo: Math.round((i.total - i.valorMedido) * 100) / 100, percentual: i.quantidade ? i.medido / i.quantidade : 0,
+          });
+        }
       }
       const medicoes = (
         await banco.query(
@@ -1081,7 +1090,7 @@ export function rotasContratos(banco: Banco) {
         id: a.id, numero: a.numero, tipo: a.tipo, data: a.data, vencimento: a.vencimento, contrato: a.contrato, fornecedor: a.fornecedor, status: a.status, aprovadoPor: a.aprovado_por, pago: a.pago,
         bruto: reais(a.bruto_centavos), caucao: reais(a.caucao_centavos), iss: reais(a.iss_centavos), inss: reais(a.inss_centavos), ir: reais(a.ir_centavos), pcc: reais(a.pcc_centavos), liquido: reais(a.liquido_centavos),
       }));
-      return { de, ate, posicao, medicoes, pagamentos };
+      return { de, ate, posicao, saldos, medicoes, pagamentos };
     });
   };
 }
