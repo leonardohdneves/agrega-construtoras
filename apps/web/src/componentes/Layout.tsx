@@ -187,6 +187,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Empresa', para: '/empresa', perfis: GESTAO },
       { rotulo: 'Usuários e acessos', para: '/usuarios', soAdmin: true },
       { rotulo: 'Mural de avisos', para: '/mural', livre: true },
+      { rotulo: 'Material publicitário', para: '/config/material', perfis: ['admin_sistema'] },
       { rotulo: 'Minha conta', para: '/conta', livre: true },
       { rotulo: 'Relatórios de uso', para: '/config/relatorios', perfis: GESTAO },
       { rotulo: 'Manual de operação', arquivo: '/manual/agrega-construtoras-manual-de-operacao.pdf', livre: true, soConstrutora: true },

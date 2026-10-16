@@ -1,0 +1,213 @@
+<meta name="claude:viewport-fit-sides" content="cover">
+<title>Proposta comercial Agrega</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+  /* Paleta: a mesma do manual de operação. Azul de ação, grafite de texto, papel claro. */
+  :root {
+    --azul: #1f5fad; --azul-escuro: #174a8a; --ink: #1f2328; --ink-muted: #4a4f57; --cinza: #6b7078;
+    --papel: #ffffff; --pagina: #f4f3f0; --borda: #dedbd5; --sutil: #eceae6; --info-bg: #e7eff9;
+    --aviso-bg: #fdf0d5; --aviso-ink: #78350f; --capa: #1f2328; --capa-texto: #c9ccd1;
+    color-scheme: light;
+    font-family: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--pagina); }
+  body {
+    margin: 0; background: var(--pagina); color: var(--ink); font-size: 16px; line-height: 1.55;
+    padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 24px;
+  }
+  .folha { max-width: 860px; margin: 0 auto; background: var(--papel); border: 1px solid var(--borda); border-radius: 12px; overflow: hidden; }
+  .bloco { padding: 40px clamp(20px, 5vw, 56px); border-top: 1px solid var(--sutil); }
+  .bloco:first-of-type { border-top: 0; }
+  h1, h2, h3 { font-family: 'Archivo', system-ui, sans-serif; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+  h2 { font-size: 26px; font-weight: 800; line-height: 1.2; margin-bottom: 14px; }
+  h2 .num { color: var(--azul); margin-right: 10px; }
+  h3 { font-size: 17px; font-weight: 800; margin: 26px 0 10px; padding-left: 12px; border-left: 4px solid var(--azul); line-height: 1.25; }
+  p { margin: 0 0 12px; max-width: 65ch; }
+  .lead { font-size: 18px; color: var(--ink-muted); margin-bottom: 20px; }
+  .muted { color: var(--cinza); font-size: 14px; }
+
+  /* Capa */
+  .capa { background: var(--capa); color: #fff; position: relative; padding: 48px clamp(20px, 6vw, 64px) 40px; min-height: 480px; display: flex; flex-direction: column; }
+  .capa .marca { display: flex; align-items: center; gap: 12px; font-family: 'Archivo', sans-serif; font-size: 20px; font-weight: 800; letter-spacing: -0.02em; }
+  .capa .marca span.sub { font-weight: 500; color: var(--capa-texto); }
+  .capa h1 { font-size: clamp(38px, 7vw, 56px); font-weight: 800; line-height: 1.04; margin-top: auto; padding-top: 120px; }
+  .capa .sub { font-size: 17px; color: var(--capa-texto); max-width: 52ch; margin-top: 18px; }
+  .capa .para { margin-top: 36px; font-size: 14px; color: var(--capa-texto); }
+  .capa .para b { color: #fff; }
+  .capa .circulo { position: absolute; border-radius: 50%; pointer-events: none; }
+
+  /* Resumo */
+  .resumo { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin: 20px 0 8px; }
+  .resumo div { border: 1px solid var(--borda); border-radius: 10px; padding: 14px 16px; background: var(--papel); }
+  .resumo b { display: block; font-family: 'Archivo', sans-serif; font-size: 26px; color: var(--azul); line-height: 1.1; }
+  .resumo span { font-size: 13px; color: var(--ink-muted); }
+
+  /* Cartões de módulos */
+  .cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 14px 0 6px; }
+  .card { border: 1px solid var(--borda); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+  .card h4 { margin: 0 0 4px; font-size: 15px; color: var(--azul); }
+  .card p { margin: 0; font-size: 14px; color: var(--ink-muted); }
+
+  /* Pacotes */
+  .pacotes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; margin-top: 18px; }
+  .pacote { border: 1px solid var(--borda); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .pacote.destaque { border: 2px solid var(--azul); }
+  .pacote h4 { margin: 0; font-family: 'Archivo', sans-serif; font-size: 19px; font-weight: 800; }
+  .pacote .preco { font-family: 'Archivo', sans-serif; font-size: 30px; font-weight: 800; color: var(--ink); line-height: 1; }
+  .pacote .preco small { font-size: 13px; font-weight: 500; color: var(--cinza); }
+  .pacote ul { list-style: none; margin: 0; padding: 0; font-size: 14px; color: var(--ink-muted); }
+  .pacote li { padding: 5px 0 5px 22px; position: relative; border-bottom: 1px solid var(--sutil); }
+  .pacote li::before { content: ""; position: absolute; left: 2px; top: 11px; width: 9px; height: 9px; border-radius: 50%; background: var(--azul); }
+  .selo { align-self: flex-start; font-size: 12px; font-weight: 700; border-radius: 99px; padding: 3px 10px; background: var(--info-bg); color: var(--azul-escuro); }
+
+  /* Tabela */
+  .tabela-caixa { overflow-x: auto; margin-top: 14px; border: 1px solid var(--borda); border-radius: 10px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 520px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--borda); vertical-align: top; }
+  th { background: var(--pagina); font-weight: 700; }
+  td.n, th.n { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr:last-child td { border-bottom: 0; }
+
+  /* Etapas */
+  .etapas { display: grid; gap: 0; margin-top: 14px; }
+  .etapa { display: grid; grid-template-columns: 38px 1fr; gap: 14px; padding: 14px 0; border-bottom: 1px solid var(--sutil); }
+  .etapa:last-child { border-bottom: 0; }
+  .etapa .circ { width: 32px; height: 32px; border-radius: 50%; background: var(--azul); color: #fff; font-family: 'Archivo', sans-serif; font-weight: 800; display: grid; place-items: center; font-size: 14px; }
+  .etapa h4 { margin: 2px 0 4px; font-size: 16px; }
+  .etapa p { margin: 0; font-size: 14px; color: var(--ink-muted); }
+  .etapa .prazo { font-size: 13px; color: var(--azul-escuro); font-weight: 600; }
+
+  /* Avisos e assinatura */
+  .info { background: var(--info-bg); border-left: 4px solid var(--azul); border-radius: 8px; padding: 14px 18px; font-size: 14px; margin: 18px 0; }
+  .info b { display: block; margin-bottom: 4px; }
+  .assinaturas { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; margin-top: 36px; }
+  .assinatura { border-top: 1px solid var(--ink); padding-top: 8px; font-size: 14px; color: var(--ink-muted); min-width: 0; }
+  .assinatura b { display: block; color: var(--ink); }
+
+  .rodape { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--cinza); padding: 16px clamp(20px, 5vw, 56px); border-top: 1px solid var(--sutil); background: var(--pagina); }
+
+  @media (max-width: 640px) {
+    .resumo, .cards, .pacotes, .assinaturas { grid-template-columns: 1fr; }
+    .capa h1 { padding-top: 72px; }
+  }
+  @media (prefers-reduced-motion: no-preference) { .pacote { transition: border-color .2s; } }
+</style>
+
+<main class="folha">
+  <section class="capa">
+    <svg class="circulo" style="right:-40px;bottom:-30px" width="220" height="220" viewBox="0 0 220 220" aria-hidden="true"><circle cx="110" cy="110" r="110" fill="#1f5fad" opacity="0.9"/></svg>
+    <svg class="circulo" style="right:120px;bottom:70px" width="90" height="90" viewBox="0 0 90 90" aria-hidden="true"><circle cx="45" cy="45" r="45" fill="#2b3036"/></svg>
+    <div class="marca">
+      <svg width="34" height="34" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg>
+      <span>agrega <span class="sub">construtoras</span></span>
+    </div>
+    <h1>Proposta comercial</h1>
+    <p class="sub">Controle de obras, suprimentos, estoque e financeiro em um único sistema, feito para construtoras de médio porte.</p>
+    <p class="para"><b>[NOME DA CONSTRUTORA]</b><br>A/C: [NOME DO RESPONSÁVEL], [CARGO]<br>Data: [DD/MM/AAAA] · Validade desta proposta: 30 dias</p>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">1</span>O que muda na sua obra</h2>
+    <p class="lead">Hoje, orçamento, pedido de compra, entrada de material e pagamento costumam morar em planilhas separadas. O Agrega liga essas etapas, para que cada número tenha uma origem.</p>
+    <div class="resumo">
+      <div><b>[X]</b><span>horas por mês gastas hoje em conferências de planilha</span></div>
+      <div><b>1 lugar</b><span>para orçamento, compras, estoque e financeiro</span></div>
+      <div><b>QR</b><span>em cada lote de material, para dar saída à obra com rastro</span></div>
+    </div>
+    <p class="muted">Os números em destaque são preenchidos depois do diagnóstico com a sua equipe.</p>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">2</span>Módulos do sistema</h2>
+    <p>Cada módulo cobre uma parte da empresa. Os pacotes da seção 3 reúnem esses módulos.</p>
+    <div class="cards">
+      <div class="card"><h4>Engenharia</h4><p>Obras, EAP, orçamento com composições, planejamento e acompanhamento físico.</p></div>
+      <div class="card"><h4>Suprimentos</h4><p>Solicitações, cotações, pedidos, contratos e estoque com saldo por obra.</p></div>
+      <div class="card"><h4>Financeiro</h4><p>Plano de contas, lançamentos, bancos e conciliação de extratos OFX.</p></div>
+      <div class="card"><h4>Gerencial</h4><p>DRE, fluxo de caixa, Curva S, indicadores e aprovações de valores.</p></div>
+      <div class="card"><h4>Administrativo</h4><p>Clientes, fornecedores, credores e colaboradores em um só cadastro.</p></div>
+      <div class="card"><h4>Comercial</h4><p>Propostas de obra, aceitação do cliente e contas a receber do contrato.</p></div>
+    </div>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">3</span>Pacotes e investimento</h2>
+    <p>O contrato é mensal ou anual. No anual, a mensalidade tem 15% de desconto, com fidelidade de 12 meses.</p>
+    <div class="pacotes">
+      <article class="pacote">
+        <h4>Obra</h4>
+        <div class="preco">R$ 379<small> /mês</small></div>
+        <ul>
+          <li>Engenharia completa</li>
+          <li>Suprimentos e estoque com QR</li>
+          <li>Até 3 obras ativas</li>
+          <li>Até 3 usuários</li>
+        </ul>
+      </article>
+      <article class="pacote">
+        <h4>Obra + Gestão</h4>
+        <div class="preco">R$ 578<small> /mês</small></div>
+        <ul>
+          <li>Tudo do pacote Obra</li>
+          <li>Financeiro, conciliação e DRE</li>
+          <li>Administrativo e cadastros</li>
+          <li>Até 3 obras ativas e 5 usuários</li>
+        </ul>
+      </article>
+      <article class="pacote destaque">
+        <span class="selo">Mais completo</span>
+        <h4>Completo</h4>
+        <div class="preco">R$ 649<small> /mês</small></div>
+        <ul>
+          <li>Todos os módulos, incluindo Comercial</li>
+          <li>Até 10 obras ativas</li>
+          <li>Até 8 usuários</li>
+          <li>Suporte prioritário</li>
+        </ul>
+      </article>
+    </div>
+
+    <h3>Investimento inicial</h3>
+    <div class="tabela-caixa">
+      <table>
+        <thead><tr><th>Item</th><th>Descrição</th><th class="n">Valor (R$)</th></tr></thead>
+        <tbody>
+          <tr><td>Implantação assistida</td><td>Cadastros, orçamentos, saldo de estoque, treinamento e acompanhamento nas primeiras semanas</td><td class="n">2.500 a 6.000</td></tr>
+          <tr><td>Usuário adicional</td><td>Acima do limite do pacote, por mês</td><td class="n">30</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="muted" style="margin-top:10px">A implantação é cobrada uma única vez. O valor final depende da quantidade de cadastros e orçamentos a migrar, e é confirmado antes do início.</p>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">4</span>Como a implantação acontece</h2>
+    <p class="lead">Em cerca de [X] semanas, a construtora sai de planilhas para o sistema, com a equipe treinada.</p>
+    <div class="etapas">
+      <div class="etapa"><div class="circ">1</div><div><h4>Diagnóstico</h4><p>Levantamos os processos atuais, as obras em andamento e quem usa o quê.</p><span class="prazo">Semana 1</span></div></div>
+      <div class="etapa"><div class="circ">2</div><div><h4>Configuração e migração</h4><p>Cadastramos empresa, usuários e perfis. Importamos clientes, fornecedores, obras, orçamentos e saldo de estoque.</p><span class="prazo">Semanas 2 e 3</span></div></div>
+      <div class="etapa"><div class="circ">3</div><div><h4>Treinamento</h4><p>Treinamos cada perfil com o manual de operação e exercícios com as obras reais.</p><span class="prazo">Semana 4</span></div></div>
+      <div class="etapa"><div class="circ">4</div><div><h4>Operação acompanhada</h4><p>Acompanhamos o primeiro mês de uso, com revisão semanal de dúvidas e ajustes.</p><span class="prazo">Semanas 5 a 8</span></div></div>
+    </div>
+  </section>
+
+  <section class="bloco">
+    <h2><span class="num">5</span>Condições principais</h2>
+    <div class="info"><b>Contrato completo</b>As condições detalhadas, como cancelamento, dados e segurança, estão no contrato padrão, que será enviado antes da assinatura.</div>
+    <p><b>Cancelamento.</b> No plano mensal, sem multa, com aviso de 30 dias. No plano anual, multa de 30% sobre as mensalidades restantes.</p>
+    <p><b>Dados.</b> Os dados da construtora pertencem à construtora. Podem ser exportados em planilha a qualquer momento.</p>
+    <p><b>Disponibilidade e suporte.</b> Meta de 99% de disponibilidade por mês. Suporte de segunda a sexta, das 8h às 18h.</p>
+
+    <div class="assinaturas">
+      <div class="assinatura"><b>[NOME DA CONSTRUTORA]</b>[NOME DO RESPONSÁVEL]<br>[CARGO] · CNPJ [CNPJ]</div>
+      <div class="assinatura"><b>Agrega Construtoras</b>[NOME DO REPRESENTANTE]<br>[CARGO] · CNPJ [CNPJ]</div>
+    </div>
+  </section>
+
+  <footer class="rodape">
+    <span>Agrega Construtoras · Proposta comercial</span>
+    <span>[CONTATO COMERCIAL] · [TELEFONE] · [E-MAIL]</span>
+  </footer>
+</main>
