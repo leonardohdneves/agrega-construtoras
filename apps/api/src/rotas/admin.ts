@@ -1,4 +1,7 @@
 // Área do administrador do sistema (você): cadastro das construtoras clientes.
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { FastifyInstance } from 'fastify';
 import type { Banco } from '../db.ts';
 import { emTransacao } from '../db.ts';
@@ -13,6 +16,24 @@ import { exigir } from '../sessao.ts';
 
 export function rotasAdmin(banco: Banco) {
   return async function (app: FastifyInstance) {
+    // Material publicitário: só o administrador do sistema lê estes modelos (os arquivos ficam fora da área pública).
+    const PASTA_MATERIAL = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'material');
+    const MATERIAIS: Record<string, string> = {
+      'proposta-comercial.html': 'text/html; charset=utf-8',
+      'banner-piloto.html': 'text/html; charset=utf-8',
+      'qr-banner-piloto.svg': 'image/svg+xml; charset=utf-8',
+    };
+    app.get<{ Params: { arquivo: string } }>('/material/:arquivo', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
+      const tipo = MATERIAIS[req.params.arquivo];
+      if (!tipo) throw naoEncontrado('Material');
+      const conteudo = await readFile(path.join(PASTA_MATERIAL, req.params.arquivo));
+      return reply
+        .header('Content-Type', tipo)
+        .header('Cache-Control', 'private, no-store')
+        .header('X-Robots-Tag', 'noindex')
+        .send(conteudo);
+    });
+
     app.get('/empresas', { preHandler: exigir(banco, 'admin_sistema') }, async () => {
       const r = await banco.query(
         `SELECT e.*, (SELECT count(*)::int FROM usuarios u WHERE u.empresa_id = e.id AND u.excluido_em IS NULL) AS total_usuarios
