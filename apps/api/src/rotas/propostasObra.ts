@@ -172,6 +172,40 @@ export function rotasPropostasObra(banco: Banco) {
       return { propostas: r.rows.map(publica) };
     });
 
+    // Contratos com clientes, gerados pela aceitação de propostas de obra.
+    app.get('/contratos-cliente', async (req) => {
+      const empresaId = empresaDo(req);
+      const r = await banco.query(
+        `SELECT ct.id, ct.numero, ct.tipo, ct.titulo, ct.valor_total_centavos, ct.status, ct.criado_em,
+                p.id AS proposta_id, p.numero AS proposta_numero, coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome,
+                o.codigo AS obra_codigo, ct.lancamento_id
+           FROM contratos_cliente ct
+           JOIN propostas_obra p ON p.id = ct.proposta_id
+           JOIN clientes cl ON cl.id = ct.cliente_id
+           LEFT JOIN obras o ON o.id = ct.obra_id
+          WHERE ct.empresa_id = $1
+          ORDER BY ct.numero DESC LIMIT 300`,
+        [empresaId],
+      );
+      return {
+        contratos: r.rows.map((c) => ({
+          id: c.id,
+          numero: c.numero,
+          tipo: c.tipo,
+          tipoNome: NOMES_TIPO[c.tipo as TipoProposta] ?? c.tipo,
+          titulo: c.titulo,
+          valorTotal: reais(c.valor_total_centavos),
+          status: c.status,
+          propostaId: c.proposta_id,
+          propostaNumero: c.proposta_numero,
+          clienteNome: c.cliente_nome ?? null,
+          obraCodigo: c.obra_codigo ?? null,
+          lancamentoId: c.lancamento_id ?? null,
+          criadoEm: c.criado_em,
+        })),
+      };
+    });
+
     app.post('/obra-propostas/calcular', async (req) => {
       const d = esquemaCalculo.parse(req.body);
       const empresaId = empresaDo(req);

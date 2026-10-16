@@ -64,6 +64,7 @@ import { Indicadores } from './paginas/Indicadores';
 import { Conciliacao } from './paginas/Conciliacao';
 import { ComRelatorios, ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from './paginas/Comercial';
 import { ComPropostas, PropostaDetalhe, PropostaEditar, PropostaNova } from './paginas/Propostas';
+import { ComContratos } from './paginas/ComContratos';
 import { EngTabelas, EngTabelaDetalhe } from './paginas/EngTabelas';
 import { EngObras, EngObraNova, EngObraDetalhe } from './paginas/EngObras';
 import { EngApropriacao, EngEap, EngInsumos, EngServicos } from './paginas/EngSecoes';
@@ -195,6 +196,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="com/propostas" element={<Protegido perfis={COMERCIAL}><ComPropostas /></Protegido>} />
             <Route path="com/propostas/nova" element={<Protegido perfis={COMERCIAL}><PropostaNova /></Protegido>} />
             <Route path="com/propostas/:id" element={<Protegido perfis={COMERCIAL}><PropostaDetalhe /></Protegido>} />
+            <Route path="com/contratos" element={<Protegido perfis={COMERCIAL}><ComContratos /></Protegido>} />
             <Route path="com/propostas/:id/editar" element={<Protegido perfis={COMERCIAL}><PropostaEditar /></Protegido>} />
             <Route path="eng/tabelas" element={<Protegido perfis={['dono', 'gestor']}><EngTabelas /></Protegido>} />
             <Route path="eng/tabelas/:id" element={<Protegido perfis={['dono', 'gestor']}><EngTabelaDetalhe /></Protegido>} />

@@ -59,8 +59,7 @@ export const MODULOS: Modulo[] = [
     perfis: ['dono', 'gestor', 'vendedor'],
     itens: [
       { rotulo: 'Propostas', para: '/com/propostas' },
-      { rotulo: 'Nova venda', para: '/com/vendas/nova' },
-      { rotulo: 'Vendas', para: '/com/vendas' },
+      { rotulo: 'Contratos', para: '/com/contratos' },
       { rotulo: 'Relatórios', para: '/com/relatorios' },
     ],
   },
