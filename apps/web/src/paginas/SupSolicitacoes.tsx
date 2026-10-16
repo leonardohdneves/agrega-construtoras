@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, hojeLocal, lerNumero, somarDias, type PlanoConta } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
@@ -126,7 +126,7 @@ type NoEapLista = { id: string; nivel: string; codigo: string; descricao: string
 /** Insumo escolhido direto na planilha da obra, ainda não gravado na solicitação. */
 type NovoItem = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number; dataNecessaria: string | null; unidadeCompra: string | null; fatorCompra: number | null };
 
-function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao; aoSalvar: (s: Solicitacao) => void; aoCancelar?: () => void }) {
+function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?: Solicitacao; aoSalvar: (s: Solicitacao) => void; aoCancelar?: () => void; aoSujar?: (sujo: boolean) => void }) {
   const [obras, setObras] = useState<ObraLista[]>([]);
   const [f, setF] = useState({
     obraId: inicial?.obraId ?? '',
@@ -226,6 +226,9 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
     }]);
     setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', unidade: '' });
   }
+
+  // Insumos incluídos e ainda não salvos: a tela avisa antes de sair.
+  useEffect(() => { if (!inicial) aoSujar?.(novos.length > 0 && !ocupado); }, [novos.length, ocupado, inicial, aoSujar]);
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
@@ -399,8 +402,9 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicita
         <textarea id="sol-obs" rows={2} maxLength={500} value={f.observacao} onChange={(e) => setF({ ...f, observacao: e.target.value })} placeholder="Onde será usado, marca preferida, urgência…" />
       </div>
       <p className="small muted" style={{ marginBottom: 0 }}>{totalItens} {totalItens === 1 ? 'insumo na solicitação' : 'insumos na solicitação'}.</p>
+      {!inicial && <p className="small muted" style={{ marginTop: 0 }}>O Salvar guarda a solicitação como aberta: você pode sair, voltar em Solicitações, completar os insumos e registrar quando terminar.</p>}
       <div className="acoes">
-        <button className="btn btn-primario" type="submit" disabled={ocupado || !f.obraId || totalItens === 0}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Registrar solicitação'}</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado || !f.obraId || totalItens === 0}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Salvar'}</button>
         {aoCancelar && <button className="btn btn-secundario" type="button" onClick={aoCancelar}>Cancelar</button>}
       </div>
     </form>
@@ -664,16 +668,27 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
 export function NovaSolicitacao({ tipo = 'insumo' }: { tipo?: TipoSolicitacao }) {
   const navegar = useNavigate();
   const servico = tipo === 'servico';
-  const aoSalvar = (s: Solicitacao) => navegar(`/sup/solicitacoes/${s.id}`, { replace: true });
+  const [sujo, setSujo] = useState(false);
+  const aoSalvar = (s: Solicitacao) => { setSujo(false); navegar(`/sup/solicitacoes/${s.id}`, { replace: true }); };
+  // Sair com insumos não salvos perde a lista: pede confirmação ao fechar a aba ou recarregar.
+  useEffect(() => {
+    if (!sujo) return;
+    const aviso = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', aviso);
+    return () => window.removeEventListener('beforeunload', aviso);
+  }, [sujo]);
+  const confirmaSaida = (e: MouseEvent<HTMLAnchorElement>) => {
+    if (sujo && !window.confirm('Há insumos não salvos nesta solicitação. Sair agora perde a lista. Continuar?')) e.preventDefault();
+  };
   return (
     <>
       <div className="cabecalho">
         <div className="titulo">
-          <Link to={CAMINHO_LISTA[tipo]} className="small">← {servico ? 'Solicitação de serviços' : 'Solicitações'}</Link>
+          <Link to={CAMINHO_LISTA[tipo]} className="small" onClick={confirmaSaida}>← {servico ? 'Solicitação de serviços' : 'Solicitações'}</Link>
           <h1>{servico ? 'Nova solicitação de serviços' : 'Nova solicitação de compra'}</h1>
         </div>
       </div>
-      {servico ? <FormServico aoSalvar={aoSalvar} /> : <FormSolicitacao aoSalvar={aoSalvar} />}
+      {servico ? <FormServico aoSalvar={aoSalvar} /> : <FormSolicitacao aoSalvar={aoSalvar} aoSujar={setSujo} />}
     </>
   );
 }
@@ -789,7 +804,7 @@ export function SolicitacaoDetalhe() {
             <div className="acoes nao-imprimir">
               {s.status === 'aberta' && (
                 <>
-                  <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => acao('finalizar')}>Finalizar solicitação</button>
+                  <button className="btn btn-primario" type="button" disabled={ocupado} onClick={() => acao('finalizar')}>Registrar solicitação</button>
                   <button className="btn btn-link" type="button" onClick={() => setEditar(true)}>Editar</button>
                 </>
               )}
