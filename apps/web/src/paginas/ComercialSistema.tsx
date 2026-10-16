@@ -8,6 +8,7 @@ const PACOTES = [
   { nome: 'Obra', mensal: 'R$ 379', obras: '3 obras ativas', usuarios: '3 usuários' },
   { nome: 'Obra + Gestão', mensal: 'R$ 578', obras: '3 obras ativas', usuarios: '5 usuários' },
   { nome: 'Completo', mensal: 'R$ 649', obras: '10 obras ativas', usuarios: '8 usuários (inclui Comercial)' },
+  { nome: 'Incorporação (adicional)', mensal: 'A definir', obras: 'Estudos aprovados no Viabiliza', usuarios: 'Contratado à parte, sobre qualquer pacote' },
 ];
 
 function Cabecalho({ titulo, descricao }: { titulo: string; descricao: string }) {
@@ -51,7 +52,7 @@ export function PropostasSistema() {
               {PACOTES.map((p) => (
                 <tr key={p.nome}>
                   <td>{p.nome}</td>
-                  <td className="num">{p.mensal}/mês</td>
+                  <td className="num">{p.mensal.startsWith('R$') ? `${p.mensal}/mês` : p.mensal}</td>
                   <td>{p.obras}</td>
                   <td>{p.usuarios}</td>
                 </tr>

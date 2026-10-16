@@ -33,6 +33,7 @@ const MODULOS_CONTRATO: [string, string][] = [
   ['financeiro', 'Financeiro'],
   ['gerencial', 'Gerencial'],
   ['administrativo', 'Administrativo'],
+  ['incorporacao', 'Incorporação (contratada à parte)'],
 ];
 
 type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; limiteObras: string; limiteUsuarios: string };
@@ -93,11 +94,13 @@ function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { ed
       {edicao.pacote === 'personalizado' ? (
         <fieldset className="campo">
           <legend className="rotulo">Módulos liberados</legend>
-          {MODULOS_CONTRATO.map(([v, nome]) => (
-            <label key={v} style={{ display: 'block' }}>
-              <input type="checkbox" checked={edicao.modulos.includes(v)} onChange={() => alternarModulo(v)} /> {nome}
-            </label>
-          ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '6px 0' }}>
+            {MODULOS_CONTRATO.map(([v, nome]) => (
+              <label key={v} className="marcar">
+                <input type="checkbox" checked={edicao.modulos.includes(v)} onChange={() => alternarModulo(v)} /> {nome}
+              </label>
+            ))}
+          </div>
           <span className="ajuda">Configurações está sempre liberado.</span>
         </fieldset>
       ) : (

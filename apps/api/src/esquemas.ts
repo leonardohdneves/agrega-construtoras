@@ -109,7 +109,7 @@ export const esquemaAlterarUsuario = z
 export const esquemaContrato = z
   .object({
     pacote: z.enum(['obra', 'obra_gestao', 'completo', 'personalizado'], { message: 'Escolha o pacote.' }),
-    modulos: z.array(z.enum(['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'])).optional(),
+    modulos: z.array(z.enum(['engenharia', 'comercial', 'incorporacao', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'])).optional(),
     limiteObras: z.number().int('Use número inteiro.').positive('O limite de obras precisa ser maior que zero.').nullable(),
     limiteUsuarios: z.number().int('Use número inteiro.').positive('O limite de usuários precisa ser maior que zero.').nullable(),
   })
