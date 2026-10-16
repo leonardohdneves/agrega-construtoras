@@ -132,7 +132,7 @@ export function EngRelatorios() {
             {(obras ?? []).map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}
           </select>
         </div>
-        <div className="campo" style={{ flex: '1 1 100%' }}>
+        <div className="campo" style={{ flex: '1 1 100%', width: '100%' }}>
           <span className="rotulo">Relatório</span>
           <div className="segmentado tres-opcoes" role="group" aria-label="Relatório">
             {TIPOS.map((t) => (
