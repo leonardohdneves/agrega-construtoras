@@ -19,36 +19,42 @@
     position: relative; overflow: hidden; container-type: inline-size;
     width: 100%; max-width: 1200px; aspect-ratio: 1200 / 628; margin: 0 auto;
     background: var(--ink); color: #fff; border-radius: 12px;
-    display: grid; grid-template-columns: 1.25fr 1fr; align-items: center;
+    display: grid; grid-template-columns: 1.6fr 1fr; align-items: center;
   }
-  .banner .texto { position: relative; z-index: 1; padding: 6.5cqw 5.5cqw 5.5cqw; display: flex; flex-direction: column; height: 100%; justify-content: center; }
-  .marca { display: flex; align-items: center; gap: 1.2cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2.3cqw; letter-spacing: -0.02em; }
+  .banner .texto { position: relative; z-index: 1; padding: 4.6cqw 5cqw 4.4cqw; display: flex; flex-direction: column; height: 100%; justify-content: center; }
+  .marca { display: flex; align-items: center; gap: 1.2cqw; font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 2cqw; letter-spacing: -0.02em; }
   .marca span.fino { font-weight: 500; color: var(--cinza-claro); }
   .selo {
-    display: inline-block; align-self: flex-start; margin-top: 4.2cqw; font-size: 1.35cqw; font-weight: 600;
+    display: inline-block; align-self: flex-start; margin-top: 3.2cqw; font-size: 1.25cqw; font-weight: 600;
     background: var(--azul); color: #fff; padding: 0.6cqw 1.6cqw; border-radius: 99px; letter-spacing: 0.01em;
   }
   h1 {
-    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 4.6cqw; line-height: 1.05; letter-spacing: -0.025em;
-    margin: 2.4cqw 0 0; text-wrap: balance;
+    font-family: 'Archivo', sans-serif; font-weight: 800; font-size: 3.9cqw; line-height: 1.06; letter-spacing: -0.025em;
+    margin: 1.8cqw 0 0; text-wrap: balance;
   }
   h1 em { font-style: normal; color: var(--azul-claro); }
-  .sub { font-size: 1.7cqw; line-height: 1.5; color: var(--cinza-claro); margin: 2.4cqw 0 0; max-width: 46cqw; }
-  ul.beneficios { list-style: none; margin: 3cqw 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1cqw; }
-  ul.beneficios li { font-size: 1.3cqw; font-weight: 600; border: 1px solid #4a5058; border-radius: 99px; padding: 0.6cqw 1.5cqw; color: #fff; }
-  .contato { margin-top: 3.6cqw; font-size: 1.55cqw; color: #fff; }
+  .sub { font-size: 1.5cqw; line-height: 1.45; color: var(--cinza-claro); margin: 1.6cqw 0 0; max-width: 56cqw; }
+  ul.beneficios { list-style: none; margin: 2.2cqw 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 1cqw; }
+  ul.beneficios li { font-size: 1.15cqw; font-weight: 600; border: 1px solid #4a5058; border-radius: 99px; padding: 0.5cqw 1.3cqw; color: #fff; }
+  .contato { margin: 2.2cqw 0 0; font-size: 1.4cqw; color: #fff; }
   .contato b { color: var(--azul-claro); font-weight: 700; }
-  .arte { position: absolute; right: 0; top: 0; bottom: 0; width: 42%; pointer-events: none; }
+  .arte { position: absolute; right: 0; top: 0; bottom: 0; width: 36%; pointer-events: none; }
   .arte svg { width: 100%; height: 100%; display: block; }
-  .rodape-banner { position: absolute; left: 5.5cqw; bottom: 3.2cqw; font-size: 1.1cqw; color: #8a9099; }
+  .rodape-banner { margin-top: 1.4cqw; font-size: 1cqw; color: #8a9099; }
 
-  /* Versão de telas estreitas: o banner continua proporcional, só o texto de apoio encolhe. */
-  @container (max-width: 700px) {
-    .sub { font-size: 2.6cqw; }
-    .beneficios li { font-size: 2cqw; }
-    .contato { font-size: 2.4cqw; }
-    .selo { font-size: 2cqw; }
-    .rodape-banner { display: none; }
+  /* Telas estreitas (celular): a altura acompanha o texto, e a arte some para caber a mensagem. */
+  @media (max-width: 700px) {
+    .banner { aspect-ratio: auto; grid-template-columns: 1fr; }
+    .arte { display: none; }
+    .texto { padding: 9cqw 8cqw 8cqw; }
+    h1 { font-size: 7.4cqw; }
+    .sub { font-size: 3.5cqw; max-width: none; }
+    .marca { font-size: 4.2cqw; }
+    .marca svg { width: 9cqw; height: 9cqw; }
+    .selo { font-size: 3.2cqw; margin-top: 6cqw; }
+    ul.beneficios li { font-size: 3cqw; }
+    .contato { font-size: 3.6cqw; }
+    .rodape-banner { font-size: 2.6cqw; }
   }
 </style>
 
@@ -69,7 +75,7 @@
 
     <div class="texto">
       <div class="marca">
-        <svg width="2.9cqw" height="2.9cqw" viewBox="0 0 512 512" aria-hidden="true" style="width:44px;height:44px;flex:none"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg>
+        <svg viewBox="0 0 512 512" aria-hidden="true" style="width:36px;height:36px;flex:none"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg>
         <span>agrega <span class="fino">construtoras</span></span>
       </div>
       <span class="selo">Programa piloto · vagas limitadas</span>
