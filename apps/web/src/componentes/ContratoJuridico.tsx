@@ -103,7 +103,7 @@ export function clausulasContrato(k: Contrato, contratante: string): Clausula[] 
       titulo: 'Rescisão',
       paragrafos: [
         'Qualquer parte pode rescindir o contrato por descumprimento da outra que não seja sanado em 10 dias após notificação escrita.',
-        'A CONTRATANTE pode rescindir a qualquer tempo, mediante aviso de [PRAZO DE AVISO] dias. Nesse caso, pagará os serviços executados e aprovados até a data da rescisão.',
+        'A CONTRATANTE pode rescindir a qualquer tempo, mediante aviso de 30 dias. Nesse caso, pagará os serviços executados e aprovados até a data da rescisão.',
       ],
     },
     {
@@ -115,8 +115,10 @@ export function clausulasContrato(k: Contrato, contratante: string): Clausula[] 
       paragrafos: ['Qualquer alteração deste contrato será feita por escrito, por meio de aditivo assinado pelas partes.'],
     },
     {
-      titulo: 'Foro',
-      paragrafos: ['Fica eleito o foro da comarca de [CIDADE/UF], com exclusão de qualquer outro, para dirimir as controvérsias deste contrato.'],
+      titulo: 'Solução de conflitos',
+      paragrafos: [
+        'Eventuais conflitos decorrentes deste contrato serão resolvidos por arbitragem, administrada pela 1ª Câmara de Conciliação e Arbitragem de Palmas, segundo o regulamento dela, com sede em Palmas/TO. A sentença arbitral é definitiva. As partes podem buscar medidas urgentes no Poder Judiciário.',
+      ],
     },
   ].map((c, i) => ({ ...c, titulo: `${i + 1}. ${c.titulo}` }));
 }
