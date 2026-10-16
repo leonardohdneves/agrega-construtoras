@@ -936,7 +936,14 @@ export function rotasEngenharia(banco: Banco) {
 
     /** Editar na obra não altera a tabela de referência. Guarda o preço original e marca o item como editado. */
     app.patch<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', async (req) => {
-      const d = z.object({ descricao: z.string().trim().min(2).max(300).optional(), unidade: z.string().trim().min(1).max(20).optional(), preco: z.union([z.number(), z.string()]).optional() }).parse(req.body);
+      const d = z
+        .object({
+          descricao: z.string().trim().min(2).max(300).optional(),
+          unidade: z.string().trim().min(1).max(20).optional(),
+          preco: z.union([z.number(), z.string()]).optional(),
+          unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
+        })
+        .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
@@ -945,9 +952,21 @@ export function rotasEngenharia(banco: Banco) {
         const preco = d.preco !== undefined && i.tipo === 'insumo' ? precoCentavos(d.preco) : i.preco_centavos;
         if (i.tipo === 'insumo' && d.preco !== undefined && preco === null) throw new ErroHttp(400, 'Informe um preço válido para o insumo.');
         const precoMudou = i.tipo === 'insumo' && d.preco !== undefined && preco !== Number(i.preco_centavos);
-        const mudou = (d.descricao !== undefined && d.descricao !== i.descricao) || (d.unidade !== undefined && d.unidade !== i.unidade) || precoMudou;
-        if (!mudou) return;
-        await c.query('UPDATE obra_itens SET descricao = $2, unidade = $3, preco_centavos = $4, editado = true WHERE id = $1', [i.id, d.descricao ?? i.descricao, d.unidade ?? i.unidade, preco]);
+        const camposMudaram = (d.descricao !== undefined && d.descricao !== i.descricao) || (d.unidade !== undefined && d.unidade !== i.unidade) || precoMudou;
+        if (camposMudaram) await c.query('UPDATE obra_itens SET descricao = $2, unidade = $3, preco_centavos = $4, editado = true WHERE id = $1', [i.id, d.descricao ?? i.descricao, d.unidade ?? i.unidade, preco]);
+        // Unidades de compra do insumo da obra: substituem as anteriores quando informadas (não mexem na tabela de referência).
+        let unidadesMudaram = false;
+        if (i.tipo === 'insumo' && d.unidadesCompra !== undefined) {
+          const novas = unidadesValidas(d.unidadesCompra, d.unidade ?? i.unidade);
+          const atuais = (await c.query('SELECT unidade, fator FROM obra_insumo_unidades WHERE obra_item_id = $1', [i.id])).rows;
+          const chave = (lista: { unidade: string; fator: number | string }[]) => lista.map((u) => `${String(u.unidade).toLowerCase()}|${Number(u.fator)}`).sort().join(';');
+          unidadesMudaram = chave(novas) !== chave(atuais);
+          if (unidadesMudaram) {
+            await c.query('DELETE FROM obra_insumo_unidades WHERE obra_item_id = $1', [i.id]);
+            for (const u of novas) await c.query('INSERT INTO obra_insumo_unidades (obra_item_id, unidade, fator) VALUES ($1,$2,$3)', [i.id, u.unidade, u.fator]);
+          }
+        }
+        if (!camposMudaram && !unidadesMudaram) return;
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'obra_itens', entidadeId: i.id, depois: d });
       });
       return { ok: true };
