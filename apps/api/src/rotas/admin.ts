@@ -21,7 +21,13 @@ export function rotasAdmin(banco: Banco) {
     const MATERIAIS: Record<string, string> = {
       'proposta-comercial.html': 'text/html; charset=utf-8',
       'banner-piloto.html': 'text/html; charset=utf-8',
+      'banner-saiba-mais.html': 'text/html; charset=utf-8',
+      'material-detalhado.html': 'text/html; charset=utf-8',
+      'banner-curso-orcamento.html': 'text/html; charset=utf-8',
+      'banner-curso-whatsapp.html': 'text/html; charset=utf-8',
       'qr-banner-piloto.svg': 'image/svg+xml; charset=utf-8',
+      'qr-banner-saiba-mais.svg': 'image/svg+xml; charset=utf-8',
+      'qr-curso-orcamento.svg': 'image/svg+xml; charset=utf-8',
     };
     app.get<{ Params: { arquivo: string } }>('/material/:arquivo', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
       const tipo = MATERIAIS[req.params.arquivo];
