@@ -99,13 +99,10 @@ test('equipes: etapas e subetapas totalizam as atividades subordinadas, na ordem
   assert.equal(fund.resumo, true);
   assert.equal(fund.duracaoDias, 3);
   assert.equal(fund.fim, '2026-05-20');
-  // Carpinteiro: 2/dia na fôrma (18 e 19) + 1/dia na armação (19 e 20) → pico 3 no dia 19; horas somadas 48.
-  const carp = fund.recursos.find((r) => r.codigo === 'CARP')!;
-  assert.equal(carp.trabalhadores, 3);
-  assert.equal(carp.horas, 48);
-  assert.equal(fund.recursos.find((r) => r.codigo === 'ARM')!.trabalhadores, 1);
-  assert.equal(e.porAtividade.find((a) => a.id === 'e1')!.recursos.find((r) => r.codigo === 'CARP')!.horas, 48);
-  assert.equal(e.porAtividade.find((a) => a.id === 's2')!.recursos.length, 0);
+  // Etapas não trazem mão de obra; ela continua nas atividades abaixo.
+  assert.equal(fund.recursos.length, 0);
+  assert.equal(e.porAtividade.find((a) => a.id === 'e1')!.recursos.length, 0);
+  assert.equal(e.porAtividade.find((a) => a.id === 't1')!.recursos[0].trabalhadores, 2);
   // Os totais por tipo não mudam: etapas não somam carga em dobro.
   assert.equal(e.porTipo.find((t) => t.codigo === 'CARP')!.pico, 3);
 });

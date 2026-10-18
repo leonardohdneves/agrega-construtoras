@@ -157,10 +157,6 @@ export function montarEquipes(atividades: AtividadeEquipe[], horasDia: number, g
       return x.i - y.i;
     })
     .map((x) => x.a);
-  const subordinadas = (a: AtividadeEquipe) => {
-    const prefixo = `${a.eapCodigo}.`;
-    return atividades.filter((b) => b !== a && b.eapCodigo && b.eapCodigo.startsWith(prefixo));
-  };
 
   const porAtividade = ordenadas.map((a) => {
     const dur = duracaoDe(a);
@@ -169,25 +165,8 @@ export function montarEquipes(atividades: AtividadeEquipe[], horasDia: number, g
       const trabalhadores = a.recursos.map((r) => ({ codigo: r.codigo, descricao: r.descricao, horas: r.horas, trabalhadores: Math.ceil(cargaDiaria(a, r) - 1e-9) }));
       return { ...base, resumo: false, recursos: trabalhadores };
     }
-    // Totalizadora: soma as horas de tudo que está abaixo dela e mostra o pico diário de trabalhadores simultâneos na etapa.
-    const grupo = [a, ...subordinadas(a)];
-    const total = new Map<string, { descricao: string; horas: number; dias: Map<string, number> }>();
-    for (const b of grupo) {
-      for (const r of b.recursos) {
-        let e = total.get(r.codigo);
-        if (!e) total.set(r.codigo, (e = { descricao: r.descricao, horas: 0, dias: new Map() }));
-        e.horas += r.horas;
-        const porDia = cargaDiaria(b, r);
-        for (let k = 0; k < duracaoDe(b); k++) {
-          const dia = somar(b.inicio, k);
-          e.dias.set(dia, (e.dias.get(dia) ?? 0) + porDia);
-        }
-      }
-    }
-    const recursos = [...total.entries()]
-      .map(([codigo, e]) => ({ codigo, descricao: e.descricao, horas: e.horas, trabalhadores: Math.ceil(Math.max(0, ...e.dias.values()) - 1e-9) }))
-      .sort((x, y) => y.trabalhadores - x.trabalhadores || x.descricao.localeCompare(y.descricao, 'pt-BR'));
-    return { ...base, resumo: true, recursos };
+    // Etapa ou subetapa: só o período e a duração; a mão de obra fica nas atividades abaixo dela.
+    return { ...base, resumo: true, recursos: [] };
   });
 
   return { inicio, fim, periodos: periodos.map((p) => p.rotulo), porTipo, porAtividade, pico: Math.max(0, ...porTipo.map((t) => t.pico)) };
