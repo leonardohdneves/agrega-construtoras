@@ -110,7 +110,7 @@ export function EngRelatorios() {
     const pedido = ehPlanejamento(tipo)
       ? api<GanttRel | EquipesRel | ComprasRel | CalendarioRel>(
           tipo === 'compras'
-            ? `/eng/obras/${obraId}/relatorios-planejamento/compras`
+            ? `/eng/obras/${obraId}/relatorios-planejamento/compras?classe=material`
             : `/eng/obras/${obraId}/relatorios-planejamento/${tipo}?granularidade=${gran}`,
         ).then((dados) => { if (ativo) setPlanEstado({ tipo, gran, dados }); })
       : ehAbc
@@ -172,7 +172,7 @@ export function EngRelatorios() {
       <ProtecaoRelatorio chave={`${obraId}|${tipo}|${gran}`}>
         {obraId && tipo !== 'comparacao' && !relAtual && !abcAtual && !plan && !erro && <p className="muted">Carregando…</p>}
         {plan && tipo === 'equipes' && <EquipesView e={plan as EquipesRel} />}
-        {plan && tipo === 'compras' && <ComprasView c={plan as ComprasRel} />}
+        {plan && tipo === 'compras' && <ComprasView c={plan as ComprasRel} classe="material" />}
         {plan && tipo === 'calendario' && <CalendarioView c={plan as CalendarioRel} />}
         {abcAtual && (abcAtual.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abcAtual.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abcAtual} />)}
         {relAtual && relAtual.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
