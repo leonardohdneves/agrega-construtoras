@@ -726,7 +726,7 @@ export function EquipesView({ e }: { e: EquipesRel }) {
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Atividades</h2>
         <p className="small muted" style={{ marginTop: 0 }}>
-          Etapas e subetapas (em destaque) totalizam as atividades abaixo delas: o número é o pico de trabalhadores trabalhando ao mesmo tempo na etapa.
+          Etapas e subetapas (em destaque) agrupam as atividades abaixo delas, com o período de cada uma.
         </p>
         <div style={{ overflowX: 'auto' }}>
           <table className="tabela">
@@ -750,9 +750,11 @@ export function EquipesView({ e }: { e: EquipesRel }) {
                     <td className="small">{dataCurta(a.inicio)} a {dataCurta(a.fim)}</td>
                     <td className="num">{a.duracaoDias}</td>
                     <td className="small">
-                      {a.recursos.length
-                        ? a.recursos.map((r) => `${r.descricao}: ${r.trabalhadores}`).join(' · ')
-                        : <span className="muted" style={{ fontWeight: 400 }}>{a.resumo ? 'sem mão de obra nas atividades abaixo' : 'sem mão de obra no orçamento'}</span>}
+                      {a.resumo
+                        ? null
+                        : a.recursos.length
+                          ? a.recursos.map((r) => `${r.descricao}: ${r.trabalhadores}`).join(' · ')
+                          : <span className="muted">sem mão de obra no orçamento</span>}
                     </td>
                   </tr>
                 );
