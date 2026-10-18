@@ -85,7 +85,25 @@ export function montarGantt(atividades: AtividadeGantt[], gran: Granularidade) {
 // ---------------------------------------------------------------- equipes
 
 export type RecursoAtividade = { codigo: string; descricao: string; horas: number };
-export type AtividadeEquipe = { id: string; descricao: string; inicio: string; duracaoDias: number; recursos: RecursoAtividade[] };
+/**
+ * `resumo`: atividade ligada a uma etapa ou subetapa da EAP. Ela totaliza as atividades subordinadas (código que começa com
+ * o dela seguido de ponto) e vai de `inicio` a `fim`, que são os das atividades abaixo dela.
+ */
+export type AtividadeEquipe = {
+  id: string; descricao: string; inicio: string; duracaoDias: number; recursos: RecursoAtividade[];
+  eapCodigo?: string | null; fim?: string; resumo?: boolean;
+};
+
+/** Compara códigos da EAP numericamente (1.2 antes de 1.10). */
+function compararEap(a: string, b: string): number {
+  const x = a.split('.').map(Number);
+  const y = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) {
+    const d = (x[i] ?? -1) - (y[i] ?? -1);
+    if (d) return d;
+  }
+  return 0;
+}
 
 /**
  * Equipes por período: para cada mão de obra, quantos trabalhadores são necessários por dia para cumprir o prazo.
@@ -94,16 +112,20 @@ export type AtividadeEquipe = { id: string; descricao: string; inicio: string; d
 export function montarEquipes(atividades: AtividadeEquipe[], horasDia: number, gran: Granularidade) {
   if (!atividades.length || horasDia <= 0) return { inicio: null, fim: null, periodos: [], porTipo: [], porAtividade: [], pico: 0 };
   const inicio = atividades.reduce((m, a) => (a.inicio < m ? a.inicio : m), atividades[0].inicio);
-  const fimDe = (a: AtividadeEquipe) => somar(a.inicio, Math.max(1, a.duracaoDias) - 1);
+  // Etapa ou subetapa (resumo) vai do início da primeira atividade abaixo dela ao fim da última.
+  const fimDe = (a: AtividadeEquipe) => (a.resumo && a.fim && a.fim >= a.inicio ? a.fim : somar(a.inicio, Math.max(1, a.duracaoDias) - 1));
+  const duracaoDe = (a: AtividadeEquipe) => diasEntre(a.inicio, fimDe(a)) + 1;
+  /** Carga diária (trabalhadores, sem arredondar) de cada mão de obra de uma atividade. */
+  const cargaDiaria = (a: AtividadeEquipe, r: RecursoAtividade) => r.horas / duracaoDe(a) / horasDia;
   const fim = atividades.reduce((m, a) => (fimDe(a) > m ? fimDe(a) : m), fimDe(atividades[0]));
   const periodos = periodosDoIntervalo(inicio, fim, gran);
 
   // Carga diária por código de mão de obra.
   const carga = new Map<string, { descricao: string; dias: Map<string, number> }>();
   for (const a of atividades) {
-    const dur = Math.max(1, a.duracaoDias);
+    const dur = duracaoDe(a);
     for (const r of a.recursos) {
-      const porDia = r.horas / dur / horasDia;
+      const porDia = cargaDiaria(a, r);
       let entrada = carga.get(r.codigo);
       if (!entrada) carga.set(r.codigo, (entrada = { descricao: r.descricao, dias: new Map() }));
       for (let k = 0; k < dur; k++) {
@@ -124,10 +146,48 @@ export function montarEquipes(atividades: AtividadeEquipe[], horasDia: number, g
     })
     .sort((x, y) => y.pico - x.pico || x.descricao.localeCompare(y.descricao, 'pt-BR'));
 
-  const porAtividade = atividades.map((a) => {
-    const dur = Math.max(1, a.duracaoDias);
-    const trabalhadores = a.recursos.map((r) => ({ codigo: r.codigo, descricao: r.descricao, horas: r.horas, trabalhadores: Math.ceil(r.horas / dur / horasDia - 1e-9) }));
-    return { id: a.id, descricao: a.descricao, inicio: a.inicio, fim: fimDe(a), duracaoDias: dur, recursos: trabalhadores };
+  // Lista na ordem da EAP: cada etapa ou subetapa logo acima das atividades subordinadas. Sem código da EAP, ficam no fim.
+  const ordenadas = atividades
+    .map((a, i) => ({ a, i }))
+    .sort((x, y) => {
+      const cx = x.a.eapCodigo, cy = y.a.eapCodigo;
+      if (cx && cy) return compararEap(cx, cy) || x.i - y.i;
+      if (cx) return -1;
+      if (cy) return 1;
+      return x.i - y.i;
+    })
+    .map((x) => x.a);
+  const subordinadas = (a: AtividadeEquipe) => {
+    const prefixo = `${a.eapCodigo}.`;
+    return atividades.filter((b) => b !== a && b.eapCodigo && b.eapCodigo.startsWith(prefixo));
+  };
+
+  const porAtividade = ordenadas.map((a) => {
+    const dur = duracaoDe(a);
+    const base = { id: a.id, descricao: a.descricao, eapCodigo: a.eapCodigo ?? null, nivel: a.eapCodigo ? a.eapCodigo.split('.').length : 0, inicio: a.inicio, fim: fimDe(a), duracaoDias: dur };
+    if (!a.resumo || !a.eapCodigo) {
+      const trabalhadores = a.recursos.map((r) => ({ codigo: r.codigo, descricao: r.descricao, horas: r.horas, trabalhadores: Math.ceil(cargaDiaria(a, r) - 1e-9) }));
+      return { ...base, resumo: false, recursos: trabalhadores };
+    }
+    // Totalizadora: soma as horas de tudo que está abaixo dela e mostra o pico diário de trabalhadores simultâneos na etapa.
+    const grupo = [a, ...subordinadas(a)];
+    const total = new Map<string, { descricao: string; horas: number; dias: Map<string, number> }>();
+    for (const b of grupo) {
+      for (const r of b.recursos) {
+        let e = total.get(r.codigo);
+        if (!e) total.set(r.codigo, (e = { descricao: r.descricao, horas: 0, dias: new Map() }));
+        e.horas += r.horas;
+        const porDia = cargaDiaria(b, r);
+        for (let k = 0; k < duracaoDe(b); k++) {
+          const dia = somar(b.inicio, k);
+          e.dias.set(dia, (e.dias.get(dia) ?? 0) + porDia);
+        }
+      }
+    }
+    const recursos = [...total.entries()]
+      .map(([codigo, e]) => ({ codigo, descricao: e.descricao, horas: e.horas, trabalhadores: Math.ceil(Math.max(0, ...e.dias.values()) - 1e-9) }))
+      .sort((x, y) => y.trabalhadores - x.trabalhadores || x.descricao.localeCompare(y.descricao, 'pt-BR'));
+    return { ...base, resumo: true, recursos };
   });
 
   return { inicio, fim, periodos: periodos.map((p) => p.rotulo), porTipo, porAtividade, pico: Math.max(0, ...porTipo.map((t) => t.pico)) };

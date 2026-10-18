@@ -79,3 +79,33 @@ test('compras: não inclui mão de obra, equipamento nem terceirizados, e agrupa
   assert.equal(c[0].total, 150);
   assert.equal(c[0].primeira, '2026-06-10');
 });
+
+test('equipes: etapas e subetapas totalizam as atividades subordinadas, na ordem da EAP', () => {
+  const e = montarEquipes(
+    [
+      // Atividades lançadas antes das etapas (como acontece quando a EAP é gerada depois).
+      { id: 't1', descricao: 'Fôrma', eapCodigo: '1.1.1', inicio: '2026-05-18', duracaoDias: 2, recursos: [{ codigo: 'CARP', descricao: 'CARPINTEIRO', horas: 32 }] },
+      { id: 't2', descricao: 'Armação', eapCodigo: '1.1.2', inicio: '2026-05-19', duracaoDias: 2, recursos: [{ codigo: 'CARP', descricao: 'CARPINTEIRO', horas: 16 }, { codigo: 'ARM', descricao: 'ARMADOR', horas: 16 }] },
+      { id: 't3', descricao: 'Pintura', eapCodigo: '1.2.1', inicio: '2026-05-25', duracaoDias: 1, recursos: [] },
+      { id: 'e1', descricao: 'OBRA', eapCodigo: '1', resumo: true, inicio: '2026-05-18', fim: '2026-05-25', duracaoDias: 1, recursos: [] },
+      { id: 's1', descricao: 'FUNDAÇÕES', eapCodigo: '1.1', resumo: true, inicio: '2026-05-18', fim: '2026-05-20', duracaoDias: 1, recursos: [] },
+      { id: 's2', descricao: 'ACABAMENTO', eapCodigo: '1.2', resumo: true, inicio: '2026-05-25', fim: '2026-05-25', duracaoDias: 1, recursos: [] },
+    ],
+    8,
+    'semana',
+  );
+  assert.deepEqual(e.porAtividade.map((a) => a.id), ['e1', 's1', 't1', 't2', 's2', 't3']);
+  const fund = e.porAtividade.find((a) => a.id === 's1')!;
+  assert.equal(fund.resumo, true);
+  assert.equal(fund.duracaoDias, 3);
+  assert.equal(fund.fim, '2026-05-20');
+  // Carpinteiro: 2/dia na fôrma (18 e 19) + 1/dia na armação (19 e 20) → pico 3 no dia 19; horas somadas 48.
+  const carp = fund.recursos.find((r) => r.codigo === 'CARP')!;
+  assert.equal(carp.trabalhadores, 3);
+  assert.equal(carp.horas, 48);
+  assert.equal(fund.recursos.find((r) => r.codigo === 'ARM')!.trabalhadores, 1);
+  assert.equal(e.porAtividade.find((a) => a.id === 'e1')!.recursos.find((r) => r.codigo === 'CARP')!.horas, 48);
+  assert.equal(e.porAtividade.find((a) => a.id === 's2')!.recursos.length, 0);
+  // Os totais por tipo não mudam: etapas não somam carga em dobro.
+  assert.equal(e.porTipo.find((t) => t.codigo === 'CARP')!.pico, 3);
+});

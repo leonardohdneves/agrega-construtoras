@@ -51,7 +51,12 @@ export type CalendarioRel = {
 export type EquipesRel = {
   granularidade: Gran; horasDia: number; inicio: string; fim: string; periodos: string[];
   porTipo: { codigo: string; descricao: string; pico: number; periodos: { rotulo: string; trabalhadores: number }[] }[];
-  porAtividade: { id: string; descricao: string; inicio: string; fim: string; duracaoDias: number; recursos: { codigo: string; descricao: string; horas: number; trabalhadores: number }[] }[];
+  porAtividade: {
+    id: string; descricao: string; inicio: string; fim: string; duracaoDias: number;
+    /** Etapa ou subetapa: totaliza as atividades subordinadas, listadas logo abaixo dela. */
+    resumo?: boolean; eapCodigo?: string | null; nivel?: number;
+    recursos: { codigo: string; descricao: string; horas: number; trabalhadores: number }[];
+  }[];
   mensalistasNaoCalculados: string[]; atividadesSemOrcamento: number;
 };
 export type ComprasRel = {
@@ -720,6 +725,9 @@ export function EquipesView({ e }: { e: EquipesRel }) {
       </div>
       <div className="card">
         <h2 style={{ marginTop: 0 }}>Atividades</h2>
+        <p className="small muted" style={{ marginTop: 0 }}>
+          Etapas e subetapas (em destaque) totalizam as atividades abaixo delas: o número é o pico de trabalhadores trabalhando ao mesmo tempo na etapa.
+        </p>
         <div style={{ overflowX: 'auto' }}>
           <table className="tabela">
             <thead>
@@ -731,14 +739,24 @@ export function EquipesView({ e }: { e: EquipesRel }) {
               </tr>
             </thead>
             <tbody>
-              {e.porAtividade.map((a) => (
-                <tr key={a.id}>
-                  <td>{a.descricao}</td>
-                  <td className="small">{dataCurta(a.inicio)} a {dataCurta(a.fim)}</td>
-                  <td className="num">{a.duracaoDias}</td>
-                  <td className="small">{a.recursos.length ? a.recursos.map((r) => `${r.descricao}: ${r.trabalhadores}`).join(' · ') : <span className="muted">sem mão de obra no orçamento</span>}</td>
-                </tr>
-              ))}
+              {e.porAtividade.map((a) => {
+                const recuo = Math.max(0, (a.nivel ?? 1) - 1) * 16;
+                return (
+                  <tr key={a.id} style={a.resumo ? { background: 'var(--surface-sunken)', fontWeight: 600 } : undefined}>
+                    <td style={{ paddingLeft: 12 + recuo }}>
+                      {a.eapCodigo && <span className="small muted" style={{ marginRight: 6 }}>{a.eapCodigo}</span>}
+                      {a.descricao}
+                    </td>
+                    <td className="small">{dataCurta(a.inicio)} a {dataCurta(a.fim)}</td>
+                    <td className="num">{a.duracaoDias}</td>
+                    <td className="small">
+                      {a.recursos.length
+                        ? a.recursos.map((r) => `${r.descricao}: ${r.trabalhadores}`).join(' · ')
+                        : <span className="muted" style={{ fontWeight: 400 }}>{a.resumo ? 'sem mão de obra nas atividades abaixo' : 'sem mão de obra no orçamento'}</span>}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

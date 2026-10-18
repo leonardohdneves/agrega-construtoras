@@ -1388,6 +1388,9 @@ export function rotasEngenharia(banco: Banco) {
           descricao: a.descricao,
           inicio: a.inicio,
           duracaoDias: a.duracaoDias,
+          eapCodigo: a.eapCodigo,
+          fim: a.fim,
+          resumo: a.resumo,
           recursos: a.insumos
             .filter((i) => i.grupo === 'Mao_obra' && (i.unidade === 'h' || i.unidade === 'H'))
             .map((i) => ({ codigo: i.codigo, descricao: i.descricao, horas: i.quantidade })),
