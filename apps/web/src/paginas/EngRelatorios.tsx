@@ -1,7 +1,7 @@
 // Engenharia · Relatórios: orçamento sintético e analítico, no formato usual de mercado (SIENGE, planilhas do TCU).
 // Sintético: EAP com o total de cada grupo e os serviços com quantidade, preço unitário (já com BDI),
 // preço total e peso (%). Analítico: o mesmo, com os insumos de cada composição abaixo do serviço.
-import { useEffect, useState } from 'react';
+import { Component, useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
@@ -80,12 +80,14 @@ export function EngRelatorios() {
   const [obras, setObras] = useState<Obra[] | null>(null);
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [abc, setAbc] = useState<RelatorioAbc | null>(null);
-  const [plan, setPlan] = useState<GanttRel | EquipesRel | ComprasRel | CalendarioRel | null>(null);
+  // O relatório de planejamento guarda o tipo a que pertence: ao trocar de aba, os dados antigos não chegam à tela nova.
+  const [planEstado, setPlanEstado] = useState<{ tipo: Tipo; gran: Gran; dados: GanttRel | EquipesRel | ComprasRel | CalendarioRel } | null>(null);
   const [erro, setErro] = useState('');
   const obraId = params.get('obra') ?? obras?.[0]?.id ?? '';
   const tipo: Tipo = TIPOS.find((t) => t.id === params.get('tipo'))?.id ?? 'sintetico';
   const ehAbc = tipo.startsWith('abc-');
   const gran: Gran = GRANULARIDADES.find((g) => g.id === params.get('gran'))?.id ?? 'semana';
+  const plan = planEstado && planEstado.tipo === tipo && (tipo === 'compras' || planEstado.gran === gran) ? planEstado.dados : null;
 
   useEffect(() => {
     api<{ obras: Obra[] }>('/eng/obras')
@@ -94,24 +96,30 @@ export function EngRelatorios() {
   }, []);
   useEffect(() => {
     if (!obraId || tipo === 'comparacao') return;
+    // Resposta que chega depois de o usuário trocar de relatório é descartada.
+    let ativo = true;
     setRel(null);
     setAbc(null);
-    setPlan(null);
+    setPlanEstado(null);
     setErro('');
     const pedido = ehPlanejamento(tipo)
       ? api<GanttRel | EquipesRel | ComprasRel | CalendarioRel>(
           tipo === 'compras'
             ? `/eng/obras/${obraId}/relatorios-planejamento/compras`
             : `/eng/obras/${obraId}/relatorios-planejamento/${tipo}?granularidade=${gran}`,
-        ).then(setPlan)
+        ).then((dados) => { if (ativo) setPlanEstado({ tipo, gran, dados }); })
       : ehAbc
-        ? api<RelatorioAbc>(`/eng/obras/${obraId}/relatorio-abc?tipo=${tipo === 'abc-insumos' ? 'insumos' : 'servicos'}`).then(setAbc)
-        : api<Relatorio>(`/eng/obras/${obraId}/relatorio-orcamento?tipo=${tipo}`).then(setRel);
-    pedido.catch((e) => setErro((e as Error).message));
+        ? api<RelatorioAbc>(`/eng/obras/${obraId}/relatorio-abc?tipo=${tipo === 'abc-insumos' ? 'insumos' : 'servicos'}`).then((r) => { if (ativo) setAbc(r); })
+        : api<Relatorio>(`/eng/obras/${obraId}/relatorio-orcamento?tipo=${tipo}`).then((r) => { if (ativo) setRel(r); });
+    pedido.catch((e) => { if (ativo) setErro((e as Error).message); });
+    return () => { ativo = false; };
   }, [obraId, tipo, gran]);
 
   const mudar = (p: Record<string, string>) => setParams({ obra: obraId, tipo, ...(p.tipo && ehPlanejamento(p.tipo as Tipo) ? { gran } : {}), ...p }, { replace: true });
-  const obraRel = rel?.obra ?? abc?.obra;
+  // Mesma proteção para orçamento e curva ABC: só mostra o que pertence ao relatório escolhido.
+  const relAtual = rel && rel.tipo === tipo ? rel : null;
+  const abcAtual = abc && ehAbc && abc.tipo === (tipo === 'abc-insumos' ? 'insumos' : 'servicos') ? abc : null;
+  const obraRel = relAtual?.obra ?? abcAtual?.obra;
   const obraAtual = obras?.find((o) => o.id === obraId);
   const local =obraRel ? [obraRel.endereco, [obraRel.cidade, obraRel.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') : '';
 
@@ -156,15 +164,31 @@ export function EngRelatorios() {
           </div>
         </div>
       ) : null}
-      {obraId && tipo !== 'comparacao' && !rel && !abc && !plan && !erro && <p className="muted">Carregando…</p>}
-      {plan && tipo === 'equipes' && <EquipesView e={plan as EquipesRel} />}
-      {plan && tipo === 'compras' && <ComprasView c={plan as ComprasRel} />}
-      {plan && tipo === 'calendario' && <CalendarioView c={plan as CalendarioRel} />}
-      {abc && (abc.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abc.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abc} />)}
-      {rel && rel.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
-      {rel && rel.linhas.length > 0 && (rel.tipo === 'sintetico' ? <Sintetico rel={rel} /> : <Analitico rel={rel} />)}
+      <ProtecaoRelatorio chave={`${obraId}|${tipo}|${gran}`}>
+        {obraId && tipo !== 'comparacao' && !relAtual && !abcAtual && !plan && !erro && <p className="muted">Carregando…</p>}
+        {plan && tipo === 'equipes' && <EquipesView e={plan as EquipesRel} />}
+        {plan && tipo === 'compras' && <ComprasView c={plan as ComprasRel} />}
+        {plan && tipo === 'calendario' && <CalendarioView c={plan as CalendarioRel} />}
+        {abcAtual && (abcAtual.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abcAtual.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abcAtual} />)}
+        {relAtual && relAtual.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
+        {relAtual && relAtual.linhas.length > 0 && (relAtual.tipo === 'sintetico' ? <Sintetico rel={relAtual} /> : <Analitico rel={relAtual} />)}
+      </ProtecaoRelatorio>
     </div>
   );
+}
+
+/** Se um relatório quebrar ao montar a tela, mostra um aviso no lugar dele em vez de derrubar o aplicativo. */
+class ProtecaoRelatorio extends Component<{ chave: string; children: ReactNode }, { falha: string | null; chave: string }> {
+  state = { falha: null as string | null, chave: this.props.chave };
+  static getDerivedStateFromError(e: Error) { return { falha: e.message || 'erro desconhecido' }; }
+  static getDerivedStateFromProps(p: { chave: string }, s: { falha: string | null; chave: string }) {
+    return p.chave !== s.chave ? { falha: null, chave: p.chave } : null;
+  }
+  componentDidCatch(e: Error) { console.error('Relatório de engenharia:', e); }
+  render() {
+    if (this.state.falha) return <div className="alerta alerta-erro" role="alert">Não foi possível montar este relatório ({this.state.falha}). Troque de relatório ou recarregue a página.</div>;
+    return this.props.children;
+  }
 }
 
 /** Rodapé: só o preço de venda. O BDI já está embutido nos preços unitários e nos totais, sem linha própria. */
@@ -784,7 +808,7 @@ function CalendarioView({ c }: { c: CalendarioRel }) {
     <>
       <div className="card">
         <p className="small muted" style={{ marginTop: 0 }}>
-          Programação de {dataCurta(c.inicio!)} a {dataCurta(c.fim!)}. Cada linha é uma atividade (tarefa da EAP) e cada coluna é um dia.
+          Programação de {c.inicio ? dataCurta(c.inicio) : '—'} a {c.fim ? dataCurta(c.fim) : '—'}. Cada linha é uma atividade (tarefa da EAP) e cada coluna é um dia.
         </p>
         <div className="cal-legenda small">
           <span><b className="cal-celula cal-inicio">▶</b> início</span>
