@@ -6,6 +6,7 @@ import { api, formatarMoeda, lerNumero } from '../api';
 import { ConferenciaComposicao, type DetalheComposicao, type Tabela } from './EngTabelas';
 import { rotuloEmpresaGrupo, type EmpresaGrupo } from './EmpresasGrupo';
 import { useSessao } from '../sessao';
+import { SeletorBusca } from '../componentes/SeletorBusca';
 
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
@@ -1014,19 +1015,19 @@ function EditorServico({ obraId, modo, item, tabelas, setErro, aoFechar, aoSalvo
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12, alignItems: 'end' }}>
-            <div className="campo" style={{ gridColumn: 'span 2' }}>
-              <label htmlFor="es-novo">Incluir insumo ou serviço da obra</label>
-              <select id="es-novo" value={novo.insumoId} onChange={(e) => setNovo({ ...novo, insumoId: e.target.value })}>
-                <option value="">Escolha…</option>
-                <optgroup label="Insumos">
-                  {disponiveis.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
-                </optgroup>
-                {servicosDisponiveis.length > 0 && (
-                  <optgroup label="Serviços desta tabela própria">
-                    {servicosDisponiveis.map((x) => <option key={x.id} value={x.id}>{x.codigo} · {x.descricao}</option>)}
-                  </optgroup>
-                )}
-              </select>
+            <div style={{ gridColumn: 'span 2' }}>
+              <SeletorBusca
+                id="es-novo"
+                label="Incluir insumo ou serviço da obra"
+                opcoes={[
+                  ...disponiveis.map((i) => ({ id: i.id, rotulo: `${i.codigo} · ${i.descricao} (insumo)` })),
+                  ...servicosDisponiveis.map((x) => ({ id: x.id, rotulo: `${x.codigo} · ${x.descricao} (serviço desta tabela)` })),
+                ]}
+                valor={novo.insumoId}
+                onChange={(v) => setNovo({ ...novo, insumoId: v })}
+                vazio="Escolha…"
+                resultadosVisiveis
+              />
             </div>
             <div className="campo">
               <label htmlFor="es-novo-coef">Coeficiente</label>
