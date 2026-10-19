@@ -63,6 +63,8 @@ function periodo(q: Record<string, string | undefined>, padraoDias = 90) {
 // apropriado a um nó da EAP no nível de apropriação da obra (a necessidade é criada junto com a solicitação).
 const esquemaItemExistente = z.object({
   necessidadeId: z.string().regex(UUID, 'Escolha o insumo da obra.'),
+  // Quantidade nova do item já apropriado, na unidade em que ele é pedido (de compra, quando houver).
+  quantidade: z.number().positive('A quantidade precisa ser maior que zero.').optional(),
   observacao: texto(200),
 });
 const esquemaItemNovo = z.object({
@@ -75,6 +77,26 @@ const esquemaItemNovo = z.object({
 });
 const esquemaNecessidadeItem = z.union([esquemaItemExistente, esquemaItemNovo]);
 
+/** Altera a quantidade de uma necessidade já apropriada (ainda pendente, liberada pela alteração da solicitação). */
+async function ajustarQuantidadeNecessidade(c: Cliente, obraId: string, necessidadeId: string, quantidade: number, n: number) {
+  const r = (
+    await c.query(
+      `SELECT n.status, n.unidade_compra, n.obra_item_id FROM obra_necessidades n WHERE n.id = $1 AND n.obra_id = $2 FOR UPDATE`,
+      [necessidadeId, obraId],
+    )
+  ).rows[0];
+  if (!r) throw new ErroHttp(400, `Item ${n + 1}: insumo não encontrado.`);
+  if (r.status !== 'pendente') throw new ErroHttp(409, `Item ${n + 1}: o insumo já está em outra solicitação ou foi comprado; a quantidade não pode mudar.`);
+  if (r.unidade_compra) {
+    const u = (await c.query('SELECT fator FROM obra_insumo_unidades WHERE obra_item_id = $1 AND lower(unidade) = lower($2)', [r.obra_item_id, r.unidade_compra])).rows[0];
+    if (!u) throw new ErroHttp(400, `Item ${n + 1}: "${r.unidade_compra}" não é mais unidade de compra deste insumo.`);
+    const base = Math.round(quantidade * Number(u.fator) * 10000) / 10000;
+    await c.query('UPDATE obra_necessidades SET quantidade = $2, quantidade_compra = $3, atualizado_em = now() WHERE id = $1', [necessidadeId, base, quantidade]);
+  } else {
+    await c.query('UPDATE obra_necessidades SET quantidade = $2, atualizado_em = now() WHERE id = $1', [necessidadeId, quantidade]);
+  }
+}
+
 /** Cria as necessidades dos insumos escolhidos direto na planilha (status pendente; a solicitação as marca como solicitadas). */
 async function criarNecessidadesDaSolicitacao(c: Cliente, obraId: string, itens: z.infer<typeof esquemaNecessidadeItem>[]): Promise<{ necessidadeId: string; observacao: string | null }[]> {
   const obra = (await c.query('SELECT nivel_apropriacao FROM obras WHERE id = $1', [obraId])).rows[0];
@@ -82,6 +104,7 @@ async function criarNecessidadesDaSolicitacao(c: Cliente, obraId: string, itens:
   const saida: { necessidadeId: string; observacao: string | null }[] = [];
   for (const [n, i] of itens.entries()) {
     if (!('obraItemId' in i)) {
+      if (i.quantidade !== undefined) await ajustarQuantidadeNecessidade(c, obraId, i.necessidadeId, i.quantidade, n);
       saida.push({ necessidadeId: i.necessidadeId, observacao: i.observacao || null });
       continue;
     }
