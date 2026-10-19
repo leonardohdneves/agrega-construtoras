@@ -148,7 +148,9 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
       .then((r) => setEstoqueObra(r.itens))
       .catch(() => setEstoqueObra([]));
   }, [f.obraId]);
-  const [add, setAdd] = useState({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', unidade: '' });
+  const [add, setAdd] = useState({ obraItemId: '', dataNecessaria: '', unidade: '' });
+  // Apropriação do insumo escolhido: uma linha por nó da EAP, cada uma com a sua quantidade.
+  const [linhas, setLinhas] = useState<{ eapNoId: string; quantidade: string }[]>([{ eapNoId: '', quantidade: '' }]);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
@@ -161,7 +163,8 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
   // Ao escolher a obra: nível de apropriação, insumos da planilha, nós da EAP desse nível e necessidades pendentes.
   useEffect(() => {
     setNovos([]);
-    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', unidade: '' });
+    setAdd({ obraItemId: '', dataNecessaria: '', unidade: '' });
+    setLinhas([{ eapNoId: '', quantidade: '' }]);
     if (!f.obraId) {
       setNecessidades(null);
       setInsumos([]);
@@ -192,6 +195,9 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
   }, [necessidades, inicial]);
   const semEap = (necessidades ?? []).filter((n) => n.status === 'pendente' && !n.eapNoId).length;
   const totalItens = marcadas.size + novos.length;
+  const insumoEscolhido = insumos.find((x) => x.id === add.obraItemId);
+  const unidadeDoPedido = insumoEscolhido ? (insumoEscolhido.unidadesCompra.find((u) => u.unidade === add.unidade)?.unidade ?? insumoEscolhido.unidade) : '';
+  const totalApropriado = linhas.reduce((s, l) => s + (lerNumero(l.quantidade) ?? 0), 0);
 
   function alternar(id: string) {
     setMarcadas((atual) => {
@@ -206,25 +212,33 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
     setErro('');
     const insumo = insumos.find((x) => x.id === add.obraItemId);
     if (!insumo) return setErro('Escolha o insumo da planilha.');
-    if (nivel !== 'obra' && !add.eapNoId) return setErro(`Escolha o nó da EAP (${(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel}).`);
-    const q = lerNumero(add.quantidade);
-    if (q === null || q <= 0) return setErro('Informe uma quantidade maior que zero.');
-    const no = nos.find((x) => x.id === add.eapNoId);
     const compra = add.unidade ? insumo.unidadesCompra.find((u) => u.unidade === add.unidade) : undefined;
-    setNovos([...novos, {
-      chave: `n${Date.now()}${novos.length}`,
-      obraItemId: insumo.id,
-      eapNoId: nivel === 'obra' ? null : add.eapNoId,
-      codigo: insumo.codigo,
-      descricao: insumo.descricao,
-      unidade: insumo.unidade,
-      eapCodigo: no?.codigo ?? null,
-      quantidade: q,
-      dataNecessaria: add.dataNecessaria || null,
-      unidadeCompra: compra?.unidade ?? null,
-      fatorCompra: compra?.fator ?? null,
-    }]);
-    setAdd({ obraItemId: '', eapNoId: '', quantidade: '', dataNecessaria: '', unidade: '' });
+    const usados = new Set<string>();
+    const incluidos: NovoItem[] = [];
+    for (const [k, l] of linhas.entries()) {
+      if (nivel !== 'obra' && !l.eapNoId) return setErro(`Linha ${k + 1}: escolha o nó da EAP (${(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel}).`);
+      if (l.eapNoId && usados.has(l.eapNoId)) return setErro(`Linha ${k + 1}: este nó da EAP já está na apropriação. Use uma linha só para ele.`);
+      if (l.eapNoId) usados.add(l.eapNoId);
+      const q = lerNumero(l.quantidade);
+      if (q === null || q <= 0) return setErro(`Linha ${k + 1}: informe uma quantidade maior que zero.`);
+      const no = nos.find((x) => x.id === l.eapNoId);
+      incluidos.push({
+        chave: `n${Date.now()}${novos.length + k}`,
+        obraItemId: insumo.id,
+        eapNoId: nivel === 'obra' ? null : l.eapNoId,
+        codigo: insumo.codigo,
+        descricao: insumo.descricao,
+        unidade: insumo.unidade,
+        eapCodigo: no?.codigo ?? null,
+        quantidade: q,
+        dataNecessaria: add.dataNecessaria || null,
+        unidadeCompra: compra?.unidade ?? null,
+        fatorCompra: compra?.fator ?? null,
+      });
+    }
+    setNovos([...novos, ...incluidos]);
+    setAdd({ obraItemId: '', dataNecessaria: '', unidade: '' });
+    setLinhas([{ eapNoId: '', quantidade: '' }]);
   }
 
   // Insumos incluídos e ainda não salvos: a tela avisa antes de sair.
@@ -309,34 +323,53 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
             })()}
             {add.obraItemId && (() => {
               const e = estoqueObra.find((x) => x.obraItemId === add.obraItemId);
-              const nesta = e?.apropriacoes.find((x) => x.eapNoId === add.eapNoId);
               return (
                 <p className="small muted" style={{ flexBasis: '100%', margin: '0 0 8px' }}>
                   {e ? `Em estoque: ${e.saldo.toLocaleString('pt-BR')} ${e.unidade}` : 'Sem estoque deste insumo nesta obra.'}
                   {e && e.apropriacoes.length > 0 && ` · por etapa: ${e.apropriacoes.map((x) => `${x.eapCodigo} ${x.quantidade.toLocaleString('pt-BR')}`).join(' · ')}`}
-                  {add.eapNoId && nesta ? ` · nesta etapa: ${nesta.quantidade.toLocaleString('pt-BR')} ${e?.unidade ?? ''}` : ''}
                 </p>
               );
             })()}
-            {nivel !== 'obra' && (
-              <div className="campo">
-                <label htmlFor="sol-no">Nó da EAP ({(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel})</label>
-                <select id="sol-no" value={add.eapNoId} onChange={(e) => setAdd({ ...add, eapNoId: e.target.value })}>
-                  <option value="">Escolha…</option>
-                  {nos.map((n) => <option key={n.id} value={n.id}>{' '.repeat(indentoEapSol(n.codigo))}{n.codigo} · {n.descricao}</option>)}
-                </select>
-              </div>
-            )}
-            <div className="campo">
-              <label htmlFor="sol-qtd">Quantidade</label>
-              <input id="sol-qtd" className="mono" inputMode="decimal" value={add.quantidade} onChange={(e) => setAdd({ ...add, quantidade: e.target.value })} />
-            </div>
             <div className="campo">
               <label htmlFor="sol-dn">Precisa até (insumo)</label>
               <input id="sol-dn" type="date" value={add.dataNecessaria} onChange={(e) => setAdd({ ...add, dataNecessaria: e.target.value })} />
             </div>
           </div>
+          {add.obraItemId && linhas.map((l, k) => {
+            const nesta = estoqueObra.find((x) => x.obraItemId === add.obraItemId)?.apropriacoes.find((x) => x.eapNoId === l.eapNoId);
+            const atualizar = (campos: Partial<{ eapNoId: string; quantidade: string }>) => setLinhas(linhas.map((x, i) => (i === k ? { ...x, ...campos } : x)));
+            return (
+              <div key={k} className="campos editor-linha">
+                {nivel !== 'obra' && (
+                  <div className="campo">
+                    <label htmlFor={`sol-no-${k}`}>Nó da EAP ({(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel})</label>
+                    <select id={`sol-no-${k}`} value={l.eapNoId} onChange={(e) => atualizar({ eapNoId: e.target.value })}>
+                      <option value="">Escolha…</option>
+                      {nos.map((n) => <option key={n.id} value={n.id}>{' '.repeat(indentoEapSol(n.codigo))}{n.codigo} · {n.descricao}</option>)}
+                    </select>
+                    {l.eapNoId && nesta && <span className="ajuda">Nesta etapa já há {nesta.quantidade.toLocaleString('pt-BR')} {estoqueObra.find((x) => x.obraItemId === add.obraItemId)?.unidade ?? ''} em estoque.</span>}
+                  </div>
+                )}
+                <div className="campo">
+                  <label htmlFor={`sol-qtd-${k}`}>Quantidade{unidadeDoPedido ? ` (${unidadeDoPedido})` : ''}</label>
+                  <input id={`sol-qtd-${k}`} className="mono" inputMode="decimal" value={l.quantidade} onChange={(e) => atualizar({ quantidade: e.target.value })} />
+                </div>
+                {nivel !== 'obra' && linhas.length > 1 && (
+                  <div className="campo">
+                    <span className="ajuda">&nbsp;</span>
+                    <button className="btn btn-link" type="button" onClick={() => setLinhas(linhas.filter((_, i) => i !== k))}>Remover nó</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          {add.obraItemId && linhas.length > 1 && (
+            <p className="small muted" style={{ marginTop: 0 }}>Total apropriado: {qtd(totalApropriado, unidadeDoPedido)}.</p>
+          )}
           <div className="acoes">
+            {add.obraItemId && nivel !== 'obra' && (
+              <button className="btn btn-link" type="button" onClick={() => setLinhas([...linhas, { eapNoId: '', quantidade: '' }])}>+ Apropriar em outro nó da EAP</button>
+            )}
             <button className="btn btn-secundario" type="button" onClick={incluirNovo}>Incluir insumo</button>
           </div>
         </>
