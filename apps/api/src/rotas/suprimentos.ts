@@ -411,11 +411,12 @@ async function detalharCotacao(c: Cliente, empresaId: string, id: string) {
       prazoEntregaDias: num(f.prazo_entrega_dias),
       condicaoPagamento: f.condicao_pagamento as string | null,
       frete: reais(f.frete_centavos)!,
+      desconto: reais(f.desconto_centavos)!,
       validade: f.validade as string | null,
       observacao: f.observacao as string | null,
       itensCotados: cotados.length,
       subtotal: Math.round(subtotal * 100) / 100,
-      total: Math.round((subtotal + Number(f.frete_centavos) / 100) * 100) / 100,
+      total: Math.round((subtotal - Number(f.desconto_centavos) / 100 + Number(f.frete_centavos) / 100) * 100) / 100,
       completo: cotados.length === linhas.length,
       itensVencidos: vencidos.length,
       totalVencido: Math.round(vencidos.reduce((s, l) => s + (l.totalVencedor ?? 0), 0) * 100) / 100,
@@ -424,6 +425,12 @@ async function detalharCotacao(c: Cliente, empresaId: string, id: string) {
   const comVencedor = linhas.filter((l) => l.vencedorId);
   // Frete entra pelo fornecedor que levou ao menos um item.
   const freteVencedores = forn.filter((f) => f.itensVencidos > 0).reduce((s, f) => s + f.frete, 0);
+  // Desconto do fornecedor incide sobre os itens dele: só a parte dos itens escolhidos conta.
+  const descontoVencedores = forn.reduce((s, f) => {
+    if (!f.subtotal || !f.desconto) return s;
+    const escolhidoDele = linhas.filter((l) => l.vencedorId === f.id).reduce((t, l) => t + (l.totalVencedor ?? 0), 0);
+    return s + f.desconto * (escolhidoDele / f.subtotal);
+  }, 0);
   const melhorCompleto = forn.filter((f) => f.completo).sort((a, b) => a.total - b.total)[0] ?? null;
   return {
     id: ct.id,
@@ -444,7 +451,7 @@ async function detalharCotacao(c: Cliente, empresaId: string, id: string) {
       itens: linhas.length,
       itensComVencedor: comVencedor.length,
       itensForaDoMenor: linhas.filter((l) => l.foraDoMenor).length,
-      totalEscolhido: Math.round((comVencedor.reduce((s, l) => s + (l.totalVencedor ?? 0), 0) + freteVencedores) * 100) / 100,
+      totalEscolhido: Math.round((comVencedor.reduce((s, l) => s + (l.totalVencedor ?? 0), 0) + freteVencedores - descontoVencedores) * 100) / 100,
       freteEscolhido: freteVencedores,
       economiaMaior: Math.round(comVencedor.reduce((s, l) => s + (l.economiaMaior ?? 0), 0) * 100) / 100,
       economiaMedia: Math.round(comVencedor.reduce((s, l) => s + (l.economiaMedia ?? 0), 0) * 100) / 100,
@@ -1282,6 +1289,7 @@ export function rotasSuprimentos(banco: Banco) {
           prazoEntregaDias: z.union([z.number().int().min(0).max(365), z.null()]).optional().default(null),
           condicaoPagamento: texto(120),
           frete: naoNegativo('Frete inválido.').optional().default(0),
+          desconto: naoNegativo('Desconto inválido.').optional().default(0),
           validade: dataOpc,
           observacao: texto(300),
           precos: z.array(z.object({ itemId: z.string().regex(UUID), precoUnitario: z.union([naoNegativo('Preço inválido.'), z.null()]) })).max(100),
@@ -1293,8 +1301,8 @@ export function rotasSuprimentos(banco: Banco) {
         if (!UUID.test(req.params.cf) || !(await c.query('SELECT 1 FROM cotacoes_fornecedores WHERE id = $1 AND cotacao_id = $2', [req.params.cf, req.params.id])).rowCount)
           throw naoEncontrado('Fornecedor da cotação');
         await c.query(
-          'UPDATE cotacoes_fornecedores SET prazo_entrega_dias = $2, condicao_pagamento = $3, frete_centavos = $4, validade = $5, observacao = $6 WHERE id = $1',
-          [req.params.cf, d.prazoEntregaDias, d.condicaoPagamento, cent(d.frete), d.validade, d.observacao],
+          'UPDATE cotacoes_fornecedores SET prazo_entrega_dias = $2, condicao_pagamento = $3, frete_centavos = $4, validade = $5, observacao = $6, desconto_centavos = $7 WHERE id = $1',
+          [req.params.cf, d.prazoEntregaDias, d.condicaoPagamento, cent(d.frete), d.validade, d.observacao, cent(d.desconto)],
         );
         const itensValidos = new Set((await c.query('SELECT id FROM cotacoes_itens WHERE cotacao_id = $1', [req.params.id])).rows.map((x) => x.id as string));
         for (const p of d.precos) {
@@ -1455,7 +1463,7 @@ export function rotasSuprimentos(banco: Banco) {
                 unidade: i.unidade,
                 quantidade: i.quantidade,
                 observacao: null,
-                precoUnitario: i.ofertas.find((o) => o.cotacaoFornecedorId === f.id)!.precoUnitario,
+                precoUnitario: Math.round(i.ofertas.find((o) => o.cotacaoFornecedorId === f.id)!.precoUnitario * (f.subtotal > 0 ? 1 - f.desconto / f.subtotal : 1) * 10000) / 10000,
                 cotacaoItemId: i.id,
               };
             });

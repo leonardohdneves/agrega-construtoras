@@ -212,6 +212,7 @@ function FormResposta({ cotacao, f, aoSalvar, aoFechar }: { cotacao: Cotacao; f:
     prazo: f.prazoEntregaDias === null ? '' : String(f.prazoEntregaDias),
     condicao: f.condicaoPagamento ?? '',
     frete: f.frete ? moedaCampo(f.frete) : '',
+    desconto: f.desconto ? moedaCampo(f.desconto) : '',
     validade: f.validade ?? '',
     observacao: f.observacao ?? '',
   });
@@ -235,6 +236,7 @@ function FormResposta({ cotacao, f, aoSalvar, aoFechar }: { cotacao: Cotacao; f:
           prazoEntregaDias: d.prazo.trim() ? Math.round(Number(d.prazo)) : null,
           condicaoPagamento: d.condicao || null,
           frete: lerNumero(d.frete) ?? 0,
+          desconto: lerNumero(d.desconto) ?? 0,
           validade: d.validade || null,
           observacao: d.observacao || null,
           precos: lista,
@@ -302,6 +304,11 @@ function FormResposta({ cotacao, f, aoSalvar, aoFechar }: { cotacao: Cotacao; f:
         <div className="campo">
           <label htmlFor="r-frete">Frete (R$)</label>
           <input id="r-frete" className="mono" inputMode="decimal" value={d.frete} onChange={(e) => setD({ ...d, frete: e.target.value })} placeholder="0,00 = CIF" />
+        </div>
+        <div className="campo">
+          <label htmlFor="r-desc">Desconto sobre o total dos itens (R$)</label>
+          <input id="r-desc" className="mono" inputMode="decimal" value={d.desconto} onChange={(e) => setD({ ...d, desconto: e.target.value })} placeholder="0,00 = sem desconto" />
+          <span className="ajuda">Use quando a proposta dá desconto sobre o valor dos itens. Os preços unitários continuam brutos.</span>
         </div>
         <div className="campo">
           <label htmlFor="r-val">Validade da proposta</label>
@@ -557,7 +564,10 @@ export function CotacaoDetalhe() {
                   <td className={f.itensCotados === 0 ? 'tom-aviso' : ''}>{f.itensCotados === 0 ? 'sem resposta' : `${f.itensCotados} de ${c.itens.length}`}</td>
                   <td>{f.prazoEntregaDias === null ? '—' : `${f.prazoEntregaDias} ${f.prazoEntregaDias === 1 ? 'dia' : 'dias'}`}</td>
                   <td className="small">{f.condicaoPagamento ?? '—'}</td>
-                  <td className="mono" style={{ textAlign: 'right' }}>{f.frete ? formatarMoeda(f.frete) : 'CIF'}</td>
+                  <td className="mono" style={{ textAlign: 'right' }}>
+                    {f.frete ? formatarMoeda(f.frete) : 'CIF'}
+                    {f.desconto > 0 && <div className="small muted">desconto −{formatarMoeda(f.desconto)}</div>}
+                  </td>
                   <td className="mono" style={{ textAlign: 'right' }}>{f.itensCotados ? formatarMoeda(f.total) : '—'}</td>
                   <td className="nao-imprimir">
                     {aberta && <button className="btn btn-link" type="button" onClick={() => setResposta(f.id)}>Lançar preços</button>}

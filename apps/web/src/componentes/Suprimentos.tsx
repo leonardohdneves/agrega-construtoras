@@ -31,7 +31,7 @@ export type ItemCotacao = ItemEap & {
 };
 export type FornecedorCotacao = {
   id: string; fornecedorId: string; nome: string; razaoSocial: string; documento: string | null; telefone: string | null; email: string | null; cidade: string | null;
-  prazoEntregaDias: number | null; condicaoPagamento: string | null; frete: number; validade: string | null; observacao: string | null; itensCotados: number;
+  prazoEntregaDias: number | null; condicaoPagamento: string | null; frete: number; desconto: number; validade: string | null; observacao: string | null; itensCotados: number;
   subtotal: number; total: number; completo: boolean; itensVencidos: number; totalVencido: number;
 };
 export type Cotacao = {
