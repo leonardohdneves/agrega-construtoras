@@ -140,6 +140,9 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
   const [nivel, setNivel] = useState<string>('');
   const [marcadas, setMarcadas] = useState<Set<string>>(() => new Set(inicial?.itens.map((i) => i.necessidadeId).filter((x): x is string => !!x) ?? []));
   const [novos, setNovos] = useState<NovoItem[]>([]);
+  // Quantidades alteradas nos insumos já salvos nesta solicitação (gravadas ao salvar).
+  const [qtdEditada, setQtdEditada] = useState<Record<string, number>>({});
+  const [editandoQtd, setEditandoQtd] = useState<{ id: string; texto: string } | null>(null);
   // Estoque da obra por insumo e etapa: mostra se o item pedido já está em estoque e onde.
   const [estoqueObra, setEstoqueObra] = useState<{ obraItemId: string; saldo: number; unidade: string; apropriacoes: { eapNoId: string; eapCodigo: string; quantidade: number }[] }[]>([]);
   useEffect(() => {
@@ -199,6 +202,15 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
   const unidadeDoPedido = insumoEscolhido ? (insumoEscolhido.unidadesCompra.find((u) => u.unidade === add.unidade)?.unidade ?? insumoEscolhido.unidade) : '';
   const totalApropriado = linhas.reduce((s, l) => s + (lerNumero(l.quantidade) ?? 0), 0);
 
+  function confirmarQtd(id: string) {
+    if (!editandoQtd) return;
+    const q = lerNumero(editandoQtd.texto);
+    if (q === null || q <= 0) return setErro('Informe uma quantidade maior que zero.');
+    setErro('');
+    setQtdEditada({ ...qtdEditada, [id]: q });
+    setEditandoQtd(null);
+  }
+
   function alternar(id: string) {
     setMarcadas((atual) => {
       const novo = new Set(atual);
@@ -257,7 +269,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
         necessidade: f.necessidade || null,
         observacao: f.observacao || null,
         itens: [
-          ...[...marcadas].map((necessidadeId) => ({ necessidadeId, observacao: null })),
+          ...[...marcadas].map((necessidadeId) => ({ necessidadeId, observacao: null, ...(qtdEditada[necessidadeId] !== undefined ? { quantidade: qtdEditada[necessidadeId] } : {}) })),
           ...novos.map((n) => ({ obraItemId: n.obraItemId, eapNoId: n.eapNoId, quantidade: n.quantidade, unidade: n.unidadeCompra, dataNecessaria: n.dataNecessaria, observacao: null })),
         ],
       };
@@ -381,7 +393,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
           <div style={{ overflowX: 'auto' }}>
             <table className="tabela">
               <thead>
-                <tr><th>EAP</th><th>Insumo</th><th>Un.</th><th className="num">Quantidade</th><th style={{ width: 90 }} /></tr>
+                <tr><th>EAP</th><th>Insumo</th><th>Un.</th><th className="num">Quantidade</th><th style={{ width: 230 }} /></tr>
               </thead>
               <tbody>
                 {inicial.itens.filter((i) => i.necessidadeId && marcadas.has(i.necessidadeId)).map((i) => (
@@ -389,8 +401,24 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
                     <td className="mono small">{i.eapCodigo ?? '—'}</td>
                     <td>{i.descricao}</td>
                     <td>{unidadeTexto(i.unidade)}</td>
-                    <td className="num">{qtd(i.quantidade, i.unidade)}</td>
-                    <td><button className="btn btn-link" type="button" onClick={() => alternar(i.necessidadeId as string)}>Excluir</button></td>
+                    <td className="num">
+                      {qtd(qtdEditada[i.necessidadeId as string] ?? i.quantidade, i.unidade)}
+                      {qtdEditada[i.necessidadeId as string] !== undefined && <div className="small muted">alterada</div>}
+                    </td>
+                    <td style={{ whiteSpace: 'nowrap' }}>
+                      {editandoQtd?.id === i.necessidadeId ? (
+                        <span style={{ display: 'inline-flex', gap: 8, alignItems: 'center' }}>
+                          <input aria-label="Nova quantidade" className="mono" style={{ width: 90 }} inputMode="decimal" value={editandoQtd.texto} onChange={(e) => setEditandoQtd({ id: editandoQtd.id, texto: e.target.value })} />
+                          <button className="btn btn-link" type="button" onClick={() => confirmarQtd(i.necessidadeId as string)}>Confirmar</button>
+                          <button className="btn btn-link" type="button" onClick={() => setEditandoQtd(null)}>Cancelar</button>
+                        </span>
+                      ) : (
+                        <span style={{ display: 'inline-flex', gap: 12 }}>
+                          <button className="btn btn-link" type="button" onClick={() => setEditandoQtd({ id: i.necessidadeId as string, texto: String(qtdEditada[i.necessidadeId as string] ?? i.quantidade).replace('.', ',') })}>Editar quantidade</button>
+                          <button className="btn btn-link" type="button" onClick={() => alternar(i.necessidadeId as string)}>Excluir</button>
+                        </span>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
