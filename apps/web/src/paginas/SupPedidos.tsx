@@ -477,12 +477,10 @@ export function PedidoDetalhe() {
                     </tr>
                   );
                 })}
-              </tbody>
-              <tfoot>
                 <tr><td colSpan={4}>Itens</td><td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(p.subtotal)}</td>{mostraRecebido && <td colSpan={2} className="nao-imprimir" />}</tr>
                 <tr><td colSpan={4}>Frete</td><td className="mono" style={{ textAlign: 'right' }}>{p.frete ? formatarMoeda(p.frete) : 'CIF'}</td>{mostraRecebido && <td colSpan={2} className="nao-imprimir" />}</tr>
                 <tr><td colSpan={4} className="forte">Total do pedido</td><td className="mono forte" style={{ textAlign: 'right' }}>{formatarMoeda(p.total)}</td>{mostraRecebido && <td colSpan={2} className="nao-imprimir" />}</tr>
-              </tfoot>
+              </tbody>
             </table>
             <div className="doc-condicoes">
               <span><b>Entrega:</b> {p.previsaoEntrega ? formatarData(p.previsaoEntrega) : 'a combinar'}{p.localEntrega ? ` · ${p.localEntrega}` : ''}</span>
