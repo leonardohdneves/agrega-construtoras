@@ -493,6 +493,7 @@ export function PedidoDetalhe() {
               <div className="doc-condicoes">
                 <span><b>Obra:</b> {p.entregaObra.codigo} · {p.entregaObra.nome}</span>
                 <span><b>Endereço de entrega:</b> {[p.entregaObra.endereco, p.entregaObra.cidade].filter(Boolean).join(' · ') || 'não informado no cadastro da obra'}</span>
+                <span><b>Referência para entrega:</b> {p.entregaObra.referencia || 'não informada no cadastro da obra'}</span>
                 <span><b>Contato na obra:</b> {[p.entregaObra.contatoNome, p.entregaObra.contatoTelefone].filter(Boolean).join(' · ') || 'não informado no cadastro da obra'}</span>
               </div>
             )}
