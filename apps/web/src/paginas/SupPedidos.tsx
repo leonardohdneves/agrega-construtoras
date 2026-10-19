@@ -489,6 +489,13 @@ export function PedidoDetalhe() {
               <span><b>Pagamento:</b> {p.condicaoPagamento ?? 'a combinar'}</span>
               {p.centroCusto && <span className="nao-imprimir"><b>Centro de custo:</b> {p.centroCusto}</span>}
             </div>
+            {p.entregaObra && (
+              <div className="doc-condicoes">
+                <span><b>Obra:</b> {p.entregaObra.codigo} · {p.entregaObra.nome}</span>
+                <span><b>Endereço de entrega:</b> {[p.entregaObra.endereco, p.entregaObra.cidade].filter(Boolean).join(' · ') || 'não informado no cadastro da obra'}</span>
+                <span><b>Contato na obra:</b> {[p.entregaObra.contatoNome, p.entregaObra.contatoTelefone].filter(Boolean).join(' · ') || 'não informado no cadastro da obra'}</span>
+              </div>
+            )}
             {p.observacao && <p className="small"><b>Observação:</b> {p.observacao}</p>}
             <p className="small so-imprimir">Informe o número deste pedido na nota fiscal. Entregas com quantidade ou preço diferentes do pedido serão conferidas antes do pagamento.</p>
           </div>
