@@ -384,6 +384,8 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   const [conferindo, setConferindo] = useState<string | null>(null);
   const [editor, setEditor] = useState<{ modo: 'copia' | 'edicao'; item: ItemObra } | null>(null);
   const [semTabela, setSemTabela] = useState<{ modo: 'copia' | 'edicao'; item: ItemObra } | null>(null);
+  const [copiaInsumo, setCopiaInsumo] = useState<ItemObra | null>(null);
+  const [buscaObra, setBuscaObra] = useState('');
   const proprias = tabelas.filter((t) => t.fonte === 'proprio');
 
   async function recarregarTabelas() {
@@ -404,10 +406,12 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   function abrirEdicao(modo: 'copia' | 'edicao', item: ItemObra) {
     setMsg('');
     setEditor(null);
+    setCopiaInsumo(null);
     if (proprias.length === 0) setSemTabela({ modo, item });
     else {
       setSemTabela(null);
-      setEditor({ modo, item });
+      if (item.tipo === 'insumo') setCopiaInsumo(item);
+      else setEditor({ modo, item });
     }
   }
 
@@ -499,11 +503,23 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
     }
   }
 
+  const termos = normalizarBusca(buscaObra).split(' ').filter(Boolean);
+  const itensVisiveis = itens.filter((i) => {
+    const texto = normalizarBusca(`${i.codigo} ${i.descricao} ${i.grupo ?? ''}`);
+    return termos.every((t) => texto.includes(t));
+  });
+
   return (
     <>
       <div className="card">
         <h2 style={{ marginTop: 0 }}>{rotulo} da obra</h2>
         <span className="ajuda">Os itens são cópias da tabela de referência. Alterar o preço aqui não mexe na tabela.</span>
+        {itens.length > 0 && (
+          <div className="campo" style={{ maxWidth: 420, marginTop: 12 }}>
+            <label htmlFor="busca-obra">Buscar na obra</label>
+            <input id="busca-obra" type="search" placeholder="Código ou descrição" value={buscaObra} onChange={(e) => setBuscaObra(e.target.value)} autoComplete="off" />
+          </div>
+        )}
         {itens.length === 0 ? (
           <p className="muted">Nenhum item ainda. Escolha abaixo o que levar da tabela de referência.</p>
         ) : (
@@ -521,7 +537,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                 </tr>
               </thead>
               <tbody>
-                {itens.map((i) => (
+                {itensVisiveis.map((i) => (
                   <Fragment key={i.id}>
                   <tr>
                     {!tipo && <td>{i.tipo === 'composicao' ? `Serviço (${i.componentes})` : 'Insumo'}</td>}
@@ -556,6 +572,9 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                     <td className="acoes">
                       {i.tipo === 'insumo' && editando !== i.id && (
                         <button className="btn" type="button" onClick={() => { setEditando(i.id); setNovoPreco(String(i.preco ?? '').replace('.', ',')); }}>Editar preço</button>
+                      )}
+                      {i.tipo === 'insumo' && (
+                        <button className="btn" type="button" onClick={() => abrirEdicao('copia', i)}>Criar cópia</button>
                       )}
                       {i.tipo === 'insumo' && unidEdit?.id !== i.id && (
                         <button className="btn" type="button" onClick={() => setUnidEdit({ id: i.id, linhas: (i.unidadesCompra ?? []).map((u) => ({ unidade: u.unidade, fator: String(u.fator).replace('.', ',') })) })}>Editar</button>
@@ -597,6 +616,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                 ))}
               </tbody>
             </table>
+            {itensVisiveis.length === 0 && <p className="muted">Nenhum item encontrado para “{buscaObra}”.</p>}
           </div>
         )}
       </div>
@@ -610,9 +630,26 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
             const modo = semTabela.modo;
             const lista = await recarregarTabelas();
             setSemTabela(null);
-            if (lista.some((t) => t.fonte === 'proprio')) setEditor({ modo, item });
+            if (lista.some((t) => t.fonte === 'proprio')) {
+              if (item.tipo === 'insumo') setCopiaInsumo(item);
+              else setEditor({ modo, item });
+            }
           }}
           aoCancelar={() => setSemTabela(null)}
+        />
+      )}
+      {copiaInsumo && (
+        <CopiaInsumo
+          obraId={obraId}
+          item={copiaInsumo}
+          tabelas={proprias}
+          setErro={setErro}
+          aoFechar={() => setCopiaInsumo(null)}
+          aoSalvo={(m) => {
+            setCopiaInsumo(null);
+            setMsg(m);
+            aoMudar();
+          }}
         />
       )}
       {editor && (
@@ -682,6 +719,91 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
 }
 
 /** Aviso antes de copiar ou editar um serviço: é preciso uma tabela própria. As tabelas SINAPI não mudam. */
+/** Busca sem acento e sem diferença de maiúsculas. */
+function normalizarBusca(s: string): string {
+  return s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+}
+
+/** Cópia de insumo: grava uma cópia editável na tabela própria e inclui a cópia na obra. O insumo original não muda. */
+function CopiaInsumo({ obraId, item, tabelas, setErro, aoFechar, aoSalvo }: { obraId: string; item: ItemObra; tabelas: Tabela[]; setErro: (m: string) => void; aoFechar: () => void; aoSalvo: (m: string) => void }) {
+  const [tabelaId, setTabelaId] = useState(tabelas[0]?.id ?? '');
+  const [descricao, setDescricao] = useState(item.descricao);
+  const [unidade, setUnidade] = useState(item.unidade);
+  const [grupo, setGrupo] = useState(item.grupo ?? '');
+  const [preco, setPreco] = useState(item.preco === null || item.preco === undefined ? '' : String(item.preco).replace('.', ','));
+  const [ocupado, setOcupado] = useState(false);
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    if (descricao.trim().length < 2) return setErro('Dê uma descrição ao insumo.');
+    if (!unidade.trim()) return setErro('Informe a unidade.');
+    if (!tabelaId) return setErro('Escolha a tabela própria.');
+    let precoNum: number | null = null;
+    if (preco.trim()) {
+      const p = lerNumero(preco);
+      if (p === null || p < 0) return setErro('Informe um preço válido ou deixe em branco.');
+      precoNum = p;
+    }
+    setOcupado(true);
+    try {
+      const criado = await api<{ id: string; codigo: string }>(`/eng/tabelas/${tabelaId}/itens`, {
+        corpo: {
+          tipo: 'insumo',
+          descricao: descricao.trim(),
+          unidade: unidade.trim(),
+          grupo: grupo.trim() || null,
+          preco: precoNum,
+          precoOrigem: precoNum === null ? 'nao_informado' : 'informado',
+          unidadesCompra: (item.unidadesCompra ?? []).map((u) => ({ unidade: u.unidade, fator: u.fator })),
+        },
+      });
+      await api(`/eng/obras/${obraId}/importar`, { corpo: { tabelaId, insumoIds: [criado.id], composicaoIds: [] } });
+      const nomeTabela = tabelas.find((t) => t.id === tabelaId)?.nome ?? 'tabela própria';
+      aoSalvo(`Cópia criada com o código ${criado.codigo} e salva em ${nomeTabela}. O insumo original não mudou.`);
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <form className="card form" onSubmit={salvar}>
+      <h2 style={{ margin: 0 }}>Cópia editável do insumo</h2>
+      <p className="muted" style={{ margin: 0 }}>Copiando {item.codigo}. Ajuste o que precisar: a cópia vai para a tabela própria escolhida e entra nesta obra.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+        <div className="campo" style={{ gridColumn: 'span 2' }}>
+          <label htmlFor="ci-descricao">Descrição</label>
+          <input id="ci-descricao" value={descricao} onChange={(e) => setDescricao(e.target.value)} />
+        </div>
+        <div className="campo">
+          <label htmlFor="ci-unidade">Unidade</label>
+          <input id="ci-unidade" value={unidade} onChange={(e) => setUnidade(e.target.value)} />
+        </div>
+        <div className="campo">
+          <label htmlFor="ci-preco">Preço</label>
+          <input id="ci-preco" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} placeholder="Deixe em branco para depois" />
+        </div>
+        <div className="campo">
+          <label htmlFor="ci-grupo">Grupo</label>
+          <input id="ci-grupo" value={grupo} onChange={(e) => setGrupo(e.target.value)} />
+        </div>
+        <div className="campo">
+          <label htmlFor="ci-tabela">Tabela própria</label>
+          <select id="ci-tabela" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
+            {tabelas.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+          </select>
+        </div>
+      </div>
+      <div className="acoes">
+        <button className="btn btn-primario" type="submit" disabled={ocupado}>{ocupado ? 'Salvando…' : 'Criar cópia'}</button>
+        <button className="btn" type="button" onClick={aoFechar} disabled={ocupado}>Cancelar</button>
+      </div>
+    </form>
+  );
+}
+
 function AvisoTabelaPropria({ modo, setErro, aoCriada, aoCancelar }: { modo: 'copia' | 'edicao'; setErro: (m: string) => void; aoCriada: () => Promise<void>; aoCancelar: () => void }) {
   const [nome, setNome] = useState('Serviços da construtora');
   const [ocupado, setOcupado] = useState(false);
