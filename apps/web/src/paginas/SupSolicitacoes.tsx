@@ -291,6 +291,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
               valor={add.obraItemId}
               onChange={(v) => setAdd({ ...add, obraItemId: v, unidade: '' })}
               vazio="Escolha o insumo"
+              resultadosVisiveis
             />
             {(() => {
               const ins = insumos.find((x) => x.id === add.obraItemId);
@@ -338,6 +339,31 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
           <div className="acoes">
             <button className="btn btn-secundario" type="button" onClick={incluirNovo}>Incluir insumo</button>
           </div>
+        </>
+      )}
+
+      {inicial && inicial.itens.some((i) => i.necessidadeId && marcadas.has(i.necessidadeId)) && (
+        <>
+          <h2>Insumos desta solicitação</h2>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tabela">
+              <thead>
+                <tr><th>EAP</th><th>Insumo</th><th>Un.</th><th className="num">Quantidade</th><th style={{ width: 90 }} /></tr>
+              </thead>
+              <tbody>
+                {inicial.itens.filter((i) => i.necessidadeId && marcadas.has(i.necessidadeId)).map((i) => (
+                  <tr key={i.id}>
+                    <td className="mono small">{i.eapCodigo ?? '—'}</td>
+                    <td>{i.descricao}</td>
+                    <td>{unidadeTexto(i.unidade)}</td>
+                    <td className="num">{qtd(i.quantidade, i.unidade)}</td>
+                    <td><button className="btn btn-link" type="button" onClick={() => alternar(i.necessidadeId as string)}>Excluir</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="small muted" style={{ marginTop: 0 }}>Excluir tira o insumo desta solicitação ao salvar. Ele volta para a lista de pendentes da obra.</p>
         </>
       )}
 
