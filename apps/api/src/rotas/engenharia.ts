@@ -143,6 +143,8 @@ const esquemaObra = z.object({
   cidade: texto(80),
   uf,
   responsavel: texto(120),
+  contatoObraNome: texto(120),
+  contatoObraTelefone: texto(30),
   status: z.enum(['orcamento', 'planejamento', 'em_andamento', 'suspensa', 'concluida']).optional(),
   dataInicio: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
   dataPrevisao: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
@@ -784,9 +786,9 @@ export function rotasEngenharia(banco: Banco) {
         const grupoId = await grupoDaEmpresa(c, empresaId, d.empresaGrupoId);
         const o = (
           await c.query(
-            `INSERT INTO obras (empresa_id, codigo, nome, endereco, cidade, uf, responsavel, status, data_inicio, data_previsao, nivel_apropriacao, bdi_percentual, bdi_modo, bdi_parametros, centro_custo_id, empresa_grupo_id, horas_dia)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17) RETURNING id`,
-            [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id, grupoId, d.horasDia ?? 8],
+            `INSERT INTO obras (empresa_id, codigo, nome, endereco, cidade, uf, responsavel, status, data_inicio, data_previsao, nivel_apropriacao, bdi_percentual, bdi_modo, bdi_parametros, centro_custo_id, empresa_grupo_id, horas_dia, contato_obra_nome, contato_obra_telefone)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14::jsonb,$15,$16,$17,$18,$19) RETURNING id`,
+            [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id, grupoId, d.horasDia ?? 8, d.contatoObraNome ?? null, d.contatoObraTelefone ?? null],
           )
         ).rows[0];
         if (d.responsaveis?.length) await gravarResponsaveis(c, empresaId, o.id, d.responsaveis);
@@ -833,12 +835,14 @@ export function rotasEngenharia(banco: Banco) {
           bdi: resolverBdi(d, atual),
           grupoId: d.empresaGrupoId !== undefined ? await grupoDaEmpresa(c, empresaId, d.empresaGrupoId) : (atual.empresa_grupo_id ?? null),
           horasDia: d.horasDia !== undefined ? d.horasDia : Number(atual.horas_dia ?? 8),
+          contatoNome: d.contatoObraNome !== undefined ? d.contatoObraNome : atual.contato_obra_nome,
+          contatoTelefone: d.contatoObraTelefone !== undefined ? d.contatoObraTelefone : atual.contato_obra_telefone,
         };
         await c.query(
           `UPDATE obras SET nome = $3, endereco = $4, cidade = $5, uf = $6, responsavel = $7, status = $8, data_inicio = $9, data_previsao = $10,
-                  nivel_apropriacao = $11, bdi_percentual = $12, bdi_modo = $13, bdi_parametros = $14::jsonb, empresa_grupo_id = $15, horas_dia = $16, atualizado_em = now()
+                  nivel_apropriacao = $11, bdi_percentual = $12, bdi_modo = $13, bdi_parametros = $14::jsonb, empresa_grupo_id = $15, horas_dia = $16, contato_obra_nome = $17, contato_obra_telefone = $18, atualizado_em = now()
             WHERE id = $1 AND empresa_id = $2`,
-          [atual.id, empresaId, campos.nome, campos.endereco, campos.cidade, campos.uf, campos.responsavel, campos.status, campos.dataInicio, campos.dataPrevisao, campos.nivel, campos.bdi.percentual, campos.bdi.modo, JSON.stringify(campos.bdi.parametros), campos.grupoId, campos.horasDia],
+          [atual.id, empresaId, campos.nome, campos.endereco, campos.cidade, campos.uf, campos.responsavel, campos.status, campos.dataInicio, campos.dataPrevisao, campos.nivel, campos.bdi.percentual, campos.bdi.modo, JSON.stringify(campos.bdi.parametros), campos.grupoId, campos.horasDia, campos.contatoNome, campos.contatoTelefone],
         );
         await c.query('UPDATE centros_custo SET nome = $2 WHERE id = $1', [atual.centro_custo_id, `Obra ${atual.codigo} - ${nome}`.slice(0, 120)]);
         if (d.responsaveis !== undefined) await gravarResponsaveis(c, empresaId, atual.id, d.responsaveis);
@@ -2371,6 +2375,8 @@ function obraPublica(o: Record<string, any>) {
     cidade: (o.cidade as string | null) ?? null,
     uf: (o.uf as string | null) ?? null,
     responsavel: (o.responsavel as string | null) ?? null,
+    contatoObraNome: (o.contato_obra_nome as string | null) ?? null,
+    contatoObraTelefone: (o.contato_obra_telefone as string | null) ?? null,
     status: o.status as string,
     dataInicio: (o.data_inicio as string | null) ?? null,
     dataPrevisao: (o.data_previsao as string | null) ?? null,

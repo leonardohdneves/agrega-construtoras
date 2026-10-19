@@ -9,7 +9,7 @@ import { useSessao } from '../sessao';
 
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
-  id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null;
+  id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null;
   status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number; horasDia?: number;
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
@@ -134,7 +134,7 @@ export function bdiCalculadoPrevia(p: Partial<Record<CampoBdi, number>>): number
 
 const paraTexto = (n: number | undefined) => String(n ?? 0).replace('.', ',');
 
-type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
+type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
 
 function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar: (o: Obra) => void; aoCancelar?: () => void }) {
   const editando = !!inicial;
@@ -145,6 +145,8 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
     cidade: inicial?.cidade ?? '',
     uf: inicial?.uf ?? '',
     responsavel: inicial?.responsavel ?? '',
+    contatoObraNome: inicial?.contatoObraNome ?? '',
+    contatoObraTelefone: inicial?.contatoObraTelefone ?? '',
     empresaGrupoId: inicial?.empresaGrupoId ?? '',
     status: inicial?.status ?? 'planejamento',
     dataInicio: inicial?.dataInicio ?? '',
@@ -179,6 +181,8 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
       cidade: d.cidade.trim() || null,
       uf: d.uf.trim().toUpperCase() || null,
       responsavel: d.responsavel.trim() || null,
+      contatoObraNome: d.contatoObraNome.trim() || null,
+      contatoObraTelefone: d.contatoObraTelefone.trim() || null,
       empresaGrupoId: d.empresaGrupoId || null,
       status: d.status,
       dataInicio: d.dataInicio || null,
@@ -235,6 +239,14 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
         <div className="campo">
           <label htmlFor="ob-resp">Responsável</label>
           <input id="ob-resp" value={d.responsavel} onChange={(e) => setD({ ...d, responsavel: e.target.value })} />
+        </div>
+        <div className="campo">
+          <label htmlFor="ob-contato">Contato na obra</label>
+          <input id="ob-contato" maxLength={120} value={d.contatoObraNome} onChange={(e) => setD({ ...d, contatoObraNome: e.target.value })} placeholder="Nome de quem recebe" />
+        </div>
+        <div className="campo">
+          <label htmlFor="ob-contato-tel">Telefone do contato na obra</label>
+          <input id="ob-contato-tel" maxLength={30} inputMode="tel" value={d.contatoObraTelefone} onChange={(e) => setD({ ...d, contatoObraTelefone: e.target.value })} />
         </div>
         <div className="campo">
           <label htmlFor="ob-empresa">Empresa que executa a obra</label>

@@ -451,8 +451,11 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
   const p = (
     await c.query(
       `SELECT p.*, f.razao_social, f.nome_fantasia, f.cnpj_cpf, f.telefone, f.email, f.cidade, f.uf, f.chave_pix,
-              cc.nome AS centro_custo, ua.nome AS aprovado_por, uc.nome AS criado_por, ct.numero AS cotacao_numero, s.numero AS solicitacao_numero
+              cc.nome AS centro_custo, ua.nome AS aprovado_por, uc.nome AS criado_por, ct.numero AS cotacao_numero, s.numero AS solicitacao_numero,
+              ob.codigo AS obra_codigo, ob.nome AS obra_nome, ob.endereco AS obra_endereco, ob.cidade AS obra_cidade, ob.uf AS obra_uf,
+              ob.contato_obra_nome, ob.contato_obra_telefone
          FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id
+         LEFT JOIN obras ob ON ob.id = (SELECT s2.obra_id FROM solicitacoes_compra s2 WHERE s2.id = p.solicitacao_id)
          LEFT JOIN centros_custo cc ON cc.id = p.centro_custo_id
          LEFT JOIN usuarios ua ON ua.id = p.aprovado_por_id LEFT JOIN usuarios uc ON uc.id = p.criado_por_id
          LEFT JOIN cotacoes ct ON ct.id = p.cotacao_id LEFT JOIN solicitacoes_compra s ON s.id = p.solicitacao_id
@@ -531,6 +534,16 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
     diasAtraso: atrasado ? diasEntre(p.previsao_entrega, hoje) : 0,
     condicaoPagamento: p.condicao_pagamento as string | null,
     localEntrega: p.local_entrega as string | null,
+    entregaObra: p.obra_codigo
+      ? {
+          codigo: p.obra_codigo as string,
+          nome: p.obra_nome as string,
+          endereco: (p.obra_endereco as string | null) ?? null,
+          cidade: p.obra_cidade ? `${p.obra_cidade}${p.obra_uf ? `/${String(p.obra_uf).trim()}` : ''}` : null,
+          contatoNome: (p.contato_obra_nome as string | null) ?? null,
+          contatoTelefone: (p.contato_obra_telefone as string | null) ?? null,
+        }
+      : null,
     frete: reais(p.frete_centavos)!,
     subtotal: Math.round(linhas.reduce((s, l) => s + l.total, 0) * 100) / 100,
     total: reais(p.total_centavos)!,
