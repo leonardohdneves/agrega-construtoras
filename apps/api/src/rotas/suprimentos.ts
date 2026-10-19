@@ -483,7 +483,7 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
       `SELECT p.*, f.razao_social, f.nome_fantasia, f.cnpj_cpf, f.telefone, f.email, f.cidade, f.uf, f.chave_pix,
               cc.nome AS centro_custo, ua.nome AS aprovado_por, uc.nome AS criado_por, ct.numero AS cotacao_numero, s.numero AS solicitacao_numero,
               ob.codigo AS obra_codigo, ob.nome AS obra_nome, ob.endereco AS obra_endereco, ob.cidade AS obra_cidade, ob.uf AS obra_uf,
-              ob.contato_obra_nome, ob.contato_obra_telefone
+              ob.contato_obra_nome, ob.contato_obra_telefone, ob.referencia_entrega
          FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id
          LEFT JOIN obras ob ON ob.id = (SELECT s2.obra_id FROM solicitacoes_compra s2 WHERE s2.id = p.solicitacao_id)
          LEFT JOIN centros_custo cc ON cc.id = p.centro_custo_id
@@ -572,6 +572,7 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
           cidade: p.obra_cidade ? `${p.obra_cidade}${p.obra_uf ? `/${String(p.obra_uf).trim()}` : ''}` : null,
           contatoNome: (p.contato_obra_nome as string | null) ?? null,
           contatoTelefone: (p.contato_obra_telefone as string | null) ?? null,
+          referencia: (p.referencia_entrega as string | null) ?? null,
         }
       : null,
     frete: reais(p.frete_centavos)!,

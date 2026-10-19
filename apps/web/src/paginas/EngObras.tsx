@@ -9,7 +9,7 @@ import { useSessao } from '../sessao';
 
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
-  id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null;
+  id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null; referenciaEntrega?: string | null;
   status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number; horasDia?: number;
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
@@ -134,7 +134,7 @@ export function bdiCalculadoPrevia(p: Partial<Record<CampoBdi, number>>): number
 
 const paraTexto = (n: number | undefined) => String(n ?? 0).replace('.', ',');
 
-type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
+type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; referenciaEntrega: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
 
 function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar: (o: Obra) => void; aoCancelar?: () => void }) {
   const editando = !!inicial;
@@ -147,6 +147,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
     responsavel: inicial?.responsavel ?? '',
     contatoObraNome: inicial?.contatoObraNome ?? '',
     contatoObraTelefone: inicial?.contatoObraTelefone ?? '',
+    referenciaEntrega: inicial?.referenciaEntrega ?? '',
     empresaGrupoId: inicial?.empresaGrupoId ?? '',
     status: inicial?.status ?? 'planejamento',
     dataInicio: inicial?.dataInicio ?? '',
@@ -183,6 +184,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
       responsavel: d.responsavel.trim() || null,
       contatoObraNome: d.contatoObraNome.trim() || null,
       contatoObraTelefone: d.contatoObraTelefone.trim() || null,
+      referenciaEntrega: d.referenciaEntrega.trim() || null,
       empresaGrupoId: d.empresaGrupoId || null,
       status: d.status,
       dataInicio: d.dataInicio || null,
@@ -243,6 +245,10 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
         <div className="campo">
           <label htmlFor="ob-contato">Contato na obra</label>
           <input id="ob-contato" maxLength={120} value={d.contatoObraNome} onChange={(e) => setD({ ...d, contatoObraNome: e.target.value })} placeholder="Nome de quem recebe" />
+        </div>
+        <div className="campo">
+          <label htmlFor="ob-ref-entrega">Referência para entrega</label>
+          <input id="ob-ref-entrega" maxLength={200} value={d.referenciaEntrega} onChange={(e) => setD({ ...d, referenciaEntrega: e.target.value })} placeholder="Ex.: portaria principal, bloco B" />
         </div>
         <div className="campo">
           <label htmlFor="ob-contato-tel">Telefone do contato na obra</label>
