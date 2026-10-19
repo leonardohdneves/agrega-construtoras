@@ -291,6 +291,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
               valor={add.obraItemId}
               onChange={(v) => setAdd({ ...add, obraItemId: v, unidade: '' })}
               vazio="Escolha o insumo"
+              resultadosVisiveis
             />
             {(() => {
               const ins = insumos.find((x) => x.id === add.obraItemId);

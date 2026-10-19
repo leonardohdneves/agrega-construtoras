@@ -14,6 +14,7 @@ export function SeletorBusca({
   disabled,
   semRotulo,
   style,
+  resultadosVisiveis,
   children,
 }: {
   id: string;
@@ -26,6 +27,8 @@ export function SeletorBusca({
   /** Sem rótulo visível (uso em célula de tabela); o nome vai em aria-label. */
   semRotulo?: boolean;
   style?: CSSProperties;
+  /** Mostra as opções encontradas logo abaixo do campo, a cada tecla (sem precisar abrir a lista). */
+  resultadosVisiveis?: boolean;
   children?: ReactNode;
 }) {
   const [busca, setBusca] = useState('');
@@ -49,6 +52,26 @@ export function SeletorBusca({
         ))}
       </select>
       {termos.length > 0 && <small className="muted">{visiveis.length} de {opcoes.length} encontrado(s)</small>}
+      {resultadosVisiveis && termos.length > 0 && visiveis.length > 0 && (
+        <ul aria-label={`Resultados para ${label.toLowerCase()}`} style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-card)' }}>
+          {visiveis.slice(0, 15).map((o) => (
+            <li key={o.id}>
+              <button
+                type="button"
+                className="btn btn-link"
+                disabled={disabled}
+                onClick={() => {
+                  onChange(o.id);
+                  setBusca('');
+                }}
+                style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', minHeight: 0, whiteSpace: 'normal', fontWeight: o.id === valor ? 700 : 400 }}
+              >
+                {o.rotulo}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
       {children}
     </div>
   );
