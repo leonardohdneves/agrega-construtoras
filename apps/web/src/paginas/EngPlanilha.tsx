@@ -269,6 +269,7 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
               valor={itemId}
               onChange={escolherServico}
               vazio={servicos.length === 0 ? 'Nenhum serviço na obra' : 'Sem serviço (só a descrição)'}
+              resultadosVisiveis
             >
               <span className="ajuda">
                 Só os serviços incluídos na obra. <Link to={`/eng/servicos?obra=${obraId}`}>Incluir serviços</Link>
