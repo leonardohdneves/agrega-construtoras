@@ -814,3 +814,13 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .rdo-form input, .rdo-form select, .rdo-form textarea { border: 0 !important; background: transparent !important; padding: 0 !important; }
   .rdo-form .tabela input, .rdo-form .tabela select { height: auto; }
 }
+
+/* Laudos (impressão do laudo de GLP) */
+.laudo-impresso { font-size: 11pt; line-height: 1.5; }
+.laudo-impresso .laudo-secao { font-size: 11pt; font-weight: 700; margin: 4mm 0 1.5mm; }
+.laudo-impresso p { margin: 0 0 2mm; }
+.laudo-impresso .texto-justificado { text-align: justify; }
+.laudo-impresso .direita { text-align: right; margin-top: 6mm; }
+.laudo-impresso ul { margin: 0 0 2mm; padding-left: 6mm; }
+@media print { .laudo-impresso .assinatura-linha { margin-top: 16mm; } }
+.laudo-impresso .laudo-nota { font-size: 9pt; font-style: italic; }
