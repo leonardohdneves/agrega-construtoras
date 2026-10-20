@@ -587,7 +587,18 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                         formatarMoeda(i.preco)
                       )}
                     </td>
-                    <td className="num">{formatarMoeda(i.precoReferencia)}</td>
+                    <td className="num">
+                      {formatarMoeda(i.precoReferencia)}
+                      {i.tipo === 'insumo' && i.preco !== null && i.precoReferencia !== null && Math.abs(i.preco - i.precoReferencia) >= 0.005 && (() => {
+                        const dif = i.preco - i.precoReferencia;
+                        const pct = i.precoReferencia > 0 ? (dif / i.precoReferencia) * 100 : null;
+                        return (
+                          <div className="small muted">
+                            obra {dif > 0 ? '+' : ''}{formatarMoeda(dif)}{pct !== null ? ` (${pct > 0 ? '+' : ''}${pct.toLocaleString('pt-BR', { maximumFractionDigits: 1 })}%)` : ''}
+                          </div>
+                        );
+                      })()}
+                    </td>
                     <td className="acoes">
                       {i.tipo === 'insumo' && editando !== i.id && (
                         <button className="btn" type="button" onClick={() => { setEditando(i.id); setNovoPreco(String(i.preco ?? '').replace('.', ',')); }}>Editar preço</button>
