@@ -72,6 +72,7 @@ import { EngObras, EngObraNova, EngObraDetalhe } from './paginas/EngObras';
 import { EngApropriacao, EngEap, EngInsumos, EngServicos } from './paginas/EngSecoes';
 import { EngPlanejamento } from './paginas/EngPlanejamento';
 import { EngRelatorios } from './paginas/EngRelatorios';
+import { EngRdoObras, EngRdoObra, EngRdoDetalhe } from './paginas/EngRdo';
 import { EngAcompanhamento } from './paginas/EngAcompanhamento';
 import { GerAcompanhamento } from './paginas/GerAcompanhamento';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
@@ -211,6 +212,9 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="eng/eap" element={<Protegido perfis={['dono', 'gestor']}><EngEap /></Protegido>} />
             <Route path="eng/planejamento" element={<Protegido perfis={['dono', 'gestor']}><EngPlanejamento /></Protegido>} />
             <Route path="eng/relatorios" element={<Protegido perfis={['dono', 'gestor']}><EngRelatorios /></Protegido>} />
+            <Route path="eng/rdo" element={<Protegido perfis={['dono', 'gestor']}><EngRdoObras /></Protegido>} />
+            <Route path="eng/rdo/:obraId" element={<Protegido perfis={['dono', 'gestor']}><EngRdoObra /></Protegido>} />
+            <Route path="eng/rdo/:obraId/:rdoId" element={<Protegido perfis={['dono', 'gestor']}><EngRdoDetalhe /></Protegido>} />
             <Route path="eng/acompanhamento" element={<Protegido perfis={['dono', 'gestor']}><EngAcompanhamento /></Protegido>} />
             <Route path="com/vendas" element={<Protegido perfis={COMERCIAL}><ComVendas /></Protegido>} />
             <Route path="com/vendas/nova" element={<Protegido perfis={COMERCIAL}><NovaVenda /></Protegido>} />

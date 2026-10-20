@@ -805,3 +805,12 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .barras-bi-trilhas { display: grid; gap: 4px; }
 .barras-bi-barra { height: 10px; border-radius: 0 5px 5px 0; min-width: 2px; transition: width .3s ease; }
 @media (max-width: 640px) { .barras-bi-linha { grid-template-columns: 1fr; gap: 4px; } }
+
+/* Relatório Diário de Obra (RDO) */
+.rdo-form input, .rdo-form select, .rdo-form textarea { min-width: 0; }
+.rdo-form .tabela input, .rdo-form .tabela select { height: 32px; padding: 4px 8px; font-size: 13px; }
+.rdo-form .tabela input.num { text-align: right; }
+@media print {
+  .rdo-form input, .rdo-form select, .rdo-form textarea { border: 0 !important; background: transparent !important; padding: 0 !important; }
+  .rdo-form .tabela input, .rdo-form .tabela select { height: auto; }
+}
