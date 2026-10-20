@@ -11,7 +11,6 @@ import { ehEngenheiroDeObra, regraEngenheiroEngenharia } from '../lib/obras-aces
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
-import { iaDisponivel } from '../lib/ia-nota.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas } from '../lib/leitura-projeto.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
