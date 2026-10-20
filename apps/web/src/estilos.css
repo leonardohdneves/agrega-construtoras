@@ -526,6 +526,15 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .celula-mapa.menor { background: #e7f3ea !important; }
 }
 
+/* Solicitação de compra: cabe em uma folha (itens mais enxutos, assinaturas mais próximas) */
+@media print {
+  .solicitacao-itens .tabela th, .solicitacao-itens .tabela td { padding: 1mm 2mm !important; }
+  .solicitacao-itens h2 { margin: 0 0 1.5mm; }
+  .assinaturas-compactas { margin-top: 4mm !important; gap: 16px; }
+  .assinaturas-compactas .assinatura-linha { margin-top: 9mm; }
+  .assinaturas-compactas .assinatura { font-size: 10pt; }
+}
+
 /* Suprimentos · contratos, medições e ordem de pagamento */
 .small.tom-aviso, div.tom-aviso, span.tom-aviso { color: var(--status-warn-ink); }
 .small.tom-perigo, div.tom-perigo, span.tom-perigo { color: var(--status-danger-ink); }
