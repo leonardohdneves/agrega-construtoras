@@ -824,3 +824,16 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .laudo-impresso ul { margin: 0 0 2mm; padding-left: 6mm; }
 @media print { .laudo-impresso .assinatura-linha { margin-top: 16mm; } }
 .laudo-impresso .laudo-nota { font-size: 9pt; font-style: italic; }
+
+/* RDO · fotos */
+.rdo-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 10px; }
+.rdo-foto { margin: 0; display: grid; gap: 6px; min-width: 0; }
+.rdo-foto img { width: 100%; height: 160px; object-fit: cover; border-radius: 6px; background: var(--surface-sunken); }
+.rdo-foto figcaption { font-size: 12px; color: var(--ink-muted); }
+@media print {
+  .rdo-grade-impressao { break-inside: auto; margin-top: 4mm; }
+  .rdo-grade-impressao .rdo-grade { grid-template-columns: 1fr 1fr; gap: 4mm; }
+  .rdo-grade-impressao .rdo-foto { break-inside: avoid; }
+  .rdo-grade-impressao .rdo-foto img { height: 62mm; }
+  .rdo-grade-impressao .rdo-foto figcaption { font-size: 9pt; color: #333; }
+}
