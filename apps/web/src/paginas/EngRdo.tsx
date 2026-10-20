@@ -28,7 +28,7 @@ type Ocorrencia = { tipo: string; descricao: string | null };
 type Rdo = {
   id: string; numero: number; data: string; climaManha: Clima; climaTarde: Clima; climaNoite: Clima;
   responsavel: string | null; observacoes: string | null; maoDeObra: MaoObra[]; equipamentos: Equipamento[];
-  atividades: Atividade[]; ocorrencias: Ocorrencia[];
+  atividades: Atividade[]; ocorrencias: Ocorrencia[]; fotos: { id: string; legenda: string | null; ordem: number }[];
 };
 type ResumoRdo = { id: string; numero: number; data: string; climaManha: Clima; climaTarde: Clima; climaNoite: Clima; responsavel: string | null; efetivo: number; ocorrencias: number };
 
@@ -149,6 +149,40 @@ const vazio = (): Rdo => ({
   maoDeObra: [], equipamentos: [], atividades: [], ocorrencias: [],
 });
 
+/** Reduz a foto no navegador (lado maior de 1600 px, JPEG 80%) para caber no envio e no banco. */
+async function comprimirImagem(arquivo: File): Promise<{ imagem: string; tipo: 'image/jpeg' }> {
+  const url = URL.createObjectURL(arquivo);
+  try {
+    const img = await new Promise<HTMLImageElement>((resolve, reject) => {
+      const i = new Image();
+      i.onload = () => resolve(i);
+      i.onerror = () => reject(new Error('Não foi possível abrir uma das fotos. Use JPEG ou PNG.'));
+      i.src = url;
+    });
+    const escala = Math.min(1, 1600 / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * escala);
+    canvas.height = Math.round(img.naturalHeight * escala);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('Este navegador não consegue processar a foto.');
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('Falha ao reduzir a foto.'))), 'image/jpeg', 0.8),
+    );
+    const imagem = await new Promise<string>((resolve, reject) => {
+      const leitor = new FileReader();
+      leitor.onload = () => resolve(String(leitor.result).split(',')[1] ?? '');
+      leitor.onerror = () => reject(new Error('Falha ao ler a foto.'));
+      leitor.readAsDataURL(blob);
+    });
+    return { imagem, tipo: 'image/jpeg' };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
 /** Um RDO: edição dos campos e visão para impressão (a tabela da impressão é a mesma informação, sem campos). */
 export function EngRdoDetalhe() {
   const { obraId = '', rdoId = '' } = useParams();
@@ -158,6 +192,7 @@ export function EngRdoDetalhe() {
   const [erro, setErro] = useState('');
   const [ok, setOk] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [enviandoFotos, setEnviandoFotos] = useState(false);
 
   useEffect(() => {
     api<{ obra: Obra; rdo: Rdo }>(`/eng/obras/${obraId}/rdos/${rdoId}`)
@@ -166,6 +201,47 @@ export function EngRdoDetalhe() {
   }, [obraId, rdoId]);
 
   const alterar = (campo: Partial<Rdo>) => setR((x) => (x ? { ...x, ...campo } : x));
+  const urlFoto = (fotoId: string) => `/api/eng/obras/${obraId}/rdos/${rdoId}/fotos/${fotoId}`;
+
+  async function enviarFotos(lista: FileList | null, entrada: HTMLInputElement) {
+    if (!lista || !lista.length) return;
+    const arquivos = Array.from(lista).slice(0, 30);
+    setErro('');
+    setOk('');
+    setEnviandoFotos(true);
+    let falhas = 0;
+    for (const arquivo of arquivos) {
+      try {
+        const { imagem, tipo } = await comprimirImagem(arquivo);
+        const enviada = await api<{ id: string }>(`/eng/obras/${obraId}/rdos/${rdoId}/fotos`, { metodo: 'POST', corpo: { imagem, tipo } });
+        setR((x) => (x ? { ...x, fotos: [...x.fotos, { id: enviada.id, legenda: null, ordem: x.fotos.length }] } : x));
+      } catch (e) {
+        falhas++;
+        setErro((e as Error).message);
+      }
+    }
+    entrada.value = '';
+    setEnviandoFotos(false);
+    if (!falhas) setOk(arquivos.length === 1 ? 'Foto incluída.' : `${arquivos.length} fotos incluídas.`);
+  }
+
+  async function legendaFoto(fotoId: string, legenda: string) {
+    try {
+      await api(`/eng/obras/${obraId}/rdos/${rdoId}/fotos/${fotoId}`, { metodo: 'PUT', corpo: { legenda: legenda.trim() || null } });
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
+  async function excluirFoto(fotoId: string) {
+    if (!window.confirm('Excluir esta foto?')) return;
+    try {
+      await api(`/eng/obras/${obraId}/rdos/${rdoId}/fotos/${fotoId}`, { metodo: 'DELETE' });
+      setR((x) => (x ? { ...x, fotos: x.fotos.filter((f) => f.id !== fotoId) } : x));
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
   const linha = <T,>(lista: T[], i: number, novo: Partial<T>) => lista.map((x, j) => (j === i ? { ...x, ...novo } : x));
   const tirar = <T,>(lista: T[], i: number) => lista.filter((_, j) => j !== i);
 
@@ -340,6 +416,35 @@ export function EngRdoDetalhe() {
           </div>
         </div>
 
+        <div className="card rdo-fotos-bloco">
+          <h2>Registro fotográfico <span className="small muted" style={{ fontWeight: 400 }}>· {r.fotos.length} {r.fotos.length === 1 ? 'foto' : 'fotos'}</span></h2>
+          <p className="small muted nao-imprimir">Escolha uma ou mais fotos (JPEG ou PNG). Elas são reduzidas no celular ou no computador antes do envio.</p>
+          <div className="acoes nao-imprimir">
+            <label className="btn btn-secundario" style={{ cursor: enviandoFotos ? 'progress' : 'pointer' }}>
+              {enviandoFotos ? 'Enviando fotos…' : 'Adicionar fotos'}
+              <input type="file" accept="image/jpeg,image/png" multiple hidden disabled={enviandoFotos} onChange={(e) => enviarFotos(e.target.files, e.target)} />
+            </label>
+          </div>
+          {r.fotos.length > 0 && (
+            <div className="rdo-grade">
+              {r.fotos.map((f, i) => (
+                <figure key={f.id} className="rdo-foto">
+                  <img src={urlFoto(f.id)} alt={f.legenda || `Foto ${i + 1}`} loading="lazy" />
+                  <input
+                    className="nao-imprimir"
+                    aria-label={`Legenda da foto ${i + 1}`}
+                    defaultValue={f.legenda ?? ''}
+                    placeholder="Legenda (ex.: fundação do bloco B)"
+                    onBlur={(e) => legendaFoto(f.id, e.target.value)}
+                  />
+                  <figcaption className="so-imprimir">Foto {i + 1}{f.legenda ? ` – ${f.legenda}` : ''}</figcaption>
+                  <button type="button" className="btn btn-link nao-imprimir" onClick={() => excluirFoto(f.id)}>Excluir foto</button>
+                </figure>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="card nao-imprimir">
           <h2>Observações</h2>
           <textarea aria-label="Observações" rows={4} value={r.observacoes ?? ''} onChange={(e) => alterar({ observacoes: e.target.value || null })} />
@@ -352,6 +457,19 @@ export function EngRdoDetalhe() {
       </form>
 
       <div className="so-imprimir">
+        {r.fotos.length > 0 && (
+          <div className="rdo-grade-impressao">
+            <h2 className="laudo-secao">Registro fotográfico</h2>
+            <div className="rdo-grade">
+              {r.fotos.map((f, i) => (
+                <figure key={f.id} className="rdo-foto">
+                  <img src={urlFoto(f.id)} alt={f.legenda || `Foto ${i + 1}`} />
+                  <figcaption>Foto {i + 1}{f.legenda ? ` – ${f.legenda}` : ''}</figcaption>
+                </figure>
+              ))}
+            </div>
+          </div>
+        )}
         <p className="small"><b>Clima:</b> manhã {ROTULO_CLIMA[r.climaManha ?? ''] || '—'} · tarde {ROTULO_CLIMA[r.climaTarde ?? ''] || '—'} · noite {ROTULO_CLIMA[r.climaNoite ?? ''] || '—'}</p>
         {r.ocorrencias.length > 0 && (
           <p className="small"><b>Ocorrências:</b> {r.ocorrencias.map((o) => `${ROTULO_OCORRENCIA[o.tipo] ?? o.tipo}${o.descricao ? ` (${o.descricao})` : ''}`).join('; ')}.</p>

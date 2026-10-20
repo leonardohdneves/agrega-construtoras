@@ -46,11 +46,12 @@ async function carregarRdo(c: Cliente | Banco, empresaId: string, obraId: string
   const r = await c.query('SELECT * FROM rdos WHERE id = $1 AND obra_id = $2 AND empresa_id = $3', [rdoId, obraId, empresaId]);
   if (!r.rowCount) throw naoEncontrado('RDO');
   const cab = r.rows[0];
-  const [mo, eq, at, oc] = await Promise.all([
+  const [mo, eq, at, oc, fo] = await Promise.all([
     c.query('SELECT funcao, empresa, quantidade, horas FROM rdo_mao_obra WHERE rdo_id = $1 ORDER BY ordem', [rdoId]),
     c.query('SELECT descricao, quantidade, horas FROM rdo_equipamentos WHERE rdo_id = $1 ORDER BY ordem', [rdoId]),
     c.query('SELECT local, descricao, equipe, percentual FROM rdo_atividades WHERE rdo_id = $1 ORDER BY ordem', [rdoId]),
     c.query('SELECT tipo, descricao FROM rdo_ocorrencias WHERE rdo_id = $1 ORDER BY ordem', [rdoId]),
+    c.query('SELECT id, legenda, ordem FROM rdo_fotos WHERE rdo_id = $1 ORDER BY ordem, criado_em', [rdoId]),
   ]);
   const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
   return {
@@ -67,6 +68,7 @@ async function carregarRdo(c: Cliente | Banco, empresaId: string, obraId: string
     equipamentos: eq.rows.map((x) => ({ descricao: x.descricao, quantidade: Number(x.quantidade), horas: num(x.horas) })),
     atividades: at.rows.map((x) => ({ local: x.local, descricao: x.descricao, equipe: x.equipe, percentual: num(x.percentual) })),
     ocorrencias: oc.rows.map((x) => ({ tipo: x.tipo, descricao: x.descricao })),
+    fotos: fo.rows.map((x) => ({ id: x.id as string, legenda: x.legenda as string | null, ordem: Number(x.ordem) })),
   };
 }
 
@@ -171,6 +173,67 @@ export function rotasRdo(banco: Banco) {
         await gravarFilhos(c, req.params.id, d);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'rdos', entidadeId: req.params.id, antes: { data: antes.data }, depois: { data: d.data } });
       });
+      return { ok: true };
+    });
+
+    // ---- fotos do RDO
+
+    const esquemaFoto = z.object({
+      imagem: z.string().min(10),
+      tipo: z.enum(['image/jpeg', 'image/png']),
+      legenda: texto(200),
+    });
+    const LIMITE_FOTO = 2 * 1024 * 1024;
+    const LIMITE_FOTOS_RDO = 60;
+
+    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/rdos/:id/fotos', { bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+      const empresaId = empresaDo(req);
+      const d = esquemaFoto.parse(req.body);
+      const bytes = Buffer.from(d.imagem, 'base64');
+      if (!bytes.length || bytes.length > LIMITE_FOTO) throw new ErroHttp(400, 'Foto grande demais. Reduza a imagem (máximo 2 MB).');
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.obraId);
+        await carregarRdo(c, empresaId, obra.id, req.params.id);
+        const total = await c.query('SELECT count(*)::int AS n FROM rdo_fotos WHERE rdo_id = $1', [req.params.id]);
+        if (Number(total.rows[0].n) >= LIMITE_FOTOS_RDO) throw new ErroHttp(409, `Limite de ${LIMITE_FOTOS_RDO} fotos por RDO.`);
+        const nova = await c.query(
+          `INSERT INTO rdo_fotos (rdo_id, ordem, legenda, tipo, conteudo)
+           VALUES ($1, (SELECT coalesce(max(ordem), -1) + 1 FROM rdo_fotos WHERE rdo_id = $1), $2, $3, $4) RETURNING id`,
+          [req.params.id, d.legenda, d.tipo, bytes],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'rdo_fotos', entidadeId: nova.rows[0].id, depois: { rdo: req.params.id } });
+        return nova.rows[0].id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.get<{ Params: { obraId: string; id: string; fotoId: string } }>('/obras/:obraId/rdos/:id/fotos/:fotoId', async (req, reply) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.obraId);
+      await carregarRdo(banco, empresaId, obra.id, req.params.id);
+      const r = await banco.query('SELECT tipo, conteudo FROM rdo_fotos WHERE id = $1 AND rdo_id = $2', [req.params.fotoId, req.params.id]);
+      if (!r.rowCount) throw naoEncontrado('Foto');
+      reply.header('Cache-Control', 'private, max-age=3600');
+      return reply.type(r.rows[0].tipo as string).send(r.rows[0].conteudo as Buffer);
+    });
+
+    app.put<{ Params: { obraId: string; id: string; fotoId: string } }>('/obras/:obraId/rdos/:id/fotos/:fotoId', async (req) => {
+      const empresaId = empresaDo(req);
+      const { legenda } = z.object({ legenda: texto(200) }).parse(req.body);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.obraId);
+      await carregarRdo(banco, empresaId, obra.id, req.params.id);
+      const r = await banco.query('UPDATE rdo_fotos SET legenda = $1 WHERE id = $2 AND rdo_id = $3 RETURNING id', [legenda, req.params.fotoId, req.params.id]);
+      if (!r.rowCount) throw naoEncontrado('Foto');
+      return { ok: true };
+    });
+
+    app.delete<{ Params: { obraId: string; id: string; fotoId: string } }>('/obras/:obraId/rdos/:id/fotos/:fotoId', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.obraId);
+      await carregarRdo(banco, empresaId, obra.id, req.params.id);
+      const r = await banco.query('DELETE FROM rdo_fotos WHERE id = $1 AND rdo_id = $2 RETURNING id', [req.params.fotoId, req.params.id]);
+      if (!r.rowCount) throw naoEncontrado('Foto');
       return { ok: true };
     });
 
