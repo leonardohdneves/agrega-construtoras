@@ -73,6 +73,7 @@ import { EngApropriacao, EngEap, EngInsumos, EngServicos } from './paginas/EngSe
 import { EngPlanejamento } from './paginas/EngPlanejamento';
 import { EngRelatorios } from './paginas/EngRelatorios';
 import { EngRdoObras, EngRdoObra, EngRdoDetalhe } from './paginas/EngRdo';
+import { LaudosLista, LaudoGlp } from './paginas/Laudos';
 import { EngAcompanhamento } from './paginas/EngAcompanhamento';
 import { GerAcompanhamento } from './paginas/GerAcompanhamento';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
@@ -212,6 +213,10 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="eng/eap" element={<Protegido perfis={['dono', 'gestor']}><EngEap /></Protegido>} />
             <Route path="eng/planejamento" element={<Protegido perfis={['dono', 'gestor']}><EngPlanejamento /></Protegido>} />
             <Route path="eng/relatorios" element={<Protegido perfis={['dono', 'gestor']}><EngRelatorios /></Protegido>} />
+            <Route path="laudos/glp" element={<Protegido perfis={['dono', 'gestor']}><LaudosLista tipo="glp" titulo="Laudo de GLP" descricao="Laudos de rede e central de gás (instalações em PEX ou galvanizado)." /></Protegido>} />
+            <Route path="laudos/glp/:id" element={<Protegido perfis={['dono', 'gestor']}><LaudoGlp /></Protegido>} />
+            <Route path="laudos/avaliacoes" element={<Protegido perfis={['dono', 'gestor']}><LaudosLista tipo="avaliacao" titulo="Laudo de avaliações" descricao="Laudos de avaliação de imóveis e bens." /></Protegido>} />
+            <Route path="laudos/patologias" element={<Protegido perfis={['dono', 'gestor']}><LaudosLista tipo="patologia" titulo="Laudo de patologias" descricao="Laudos de patologias da construção." /></Protegido>} />
             <Route path="eng/rdo" element={<Protegido perfis={['dono', 'gestor']}><EngRdoObras /></Protegido>} />
             <Route path="eng/rdo/:obraId" element={<Protegido perfis={['dono', 'gestor']}><EngRdoObra /></Protegido>} />
             <Route path="eng/rdo/:obraId/:rdoId" element={<Protegido perfis={['dono', 'gestor']}><EngRdoDetalhe /></Protegido>} />

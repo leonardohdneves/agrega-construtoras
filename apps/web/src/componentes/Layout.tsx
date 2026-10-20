@@ -6,7 +6,7 @@ import { useSessao } from '../sessao';
 import { Logo } from './Logo';
 import { lerEscolha } from './EscolhaTipo';
 
-const ORDEM_CONSTRUTORA = ['engenharia', 'suprimentos', 'financeiro', 'comercial', 'incorporacao', 'gerencial', 'administrativo', 'configuracoes'];
+const ORDEM_CONSTRUTORA = ['engenharia', 'suprimentos', 'financeiro', 'comercial', 'incorporacao', 'laudos', 'gerencial', 'administrativo', 'configuracoes'];
 import {
   IconeBetoneira,
   IconeCapacete,
@@ -70,6 +70,17 @@ export const MODULOS: Modulo[] = [
     icone: <IconeEdificio />,
     perfis: ['dono', 'gestor'],
     itens: [{ rotulo: 'Empreendimentos', para: '/incorporacao' }],
+  },
+  {
+    id: 'laudos',
+    titulo: 'Laudos',
+    icone: <IconePasta />,
+    perfis: ['dono', 'gestor'],
+    itens: [
+      { rotulo: 'Laudo de GLP', para: '/laudos/glp' },
+      { rotulo: 'Laudo de Avaliações', para: '/laudos/avaliacoes' },
+      { rotulo: 'Laudo de Patologias', para: '/laudos/patologias' },
+    ],
   },
   {
     id: 'producao',
