@@ -11,6 +11,7 @@ export type StatusPedido = 'rascunho' | 'aguardando_aprovacao' | 'aprovado' | 'r
 export type ItemEap = { eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null };
 export type ObraRef = { id: string; codigo: string; nome: string };
 export type ItemSolicitacao = ItemEap & {
+  codigo?: string | null;
   id: string; necessidadeId: string | null; obraItemId: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null;
 };
 export type TipoSolicitacao = 'insumo' | 'servico';
