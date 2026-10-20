@@ -10,6 +10,9 @@ import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
 import { ehEngenheiroDeObra, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
+import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
+import { iaDisponivel } from '../lib/ia-nota.ts';
+import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas } from '../lib/leitura-projeto.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
@@ -1938,6 +1941,37 @@ export function rotasEngenharia(banco: Banco) {
           servico: l.servico && { ...l.servico, precoUnitario: precoUnit(l) },
           precoTotal: totais.get(l.id) ?? 0,
         })),
+      };
+    });
+
+    /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */
+    app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { bodyLimit: 24 * 1024 * 1024 }, async (req) => {
+      const { arquivo, nome } = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() }).parse(req.body);
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Lance os quantitativos manualmente.');
+      if (!ehPdfBase64(arquivo)) throw new ErroHttp(400, 'Envie o projeto em PDF.');
+      const bytes = Buffer.from(base64Puro(arquivo), 'base64');
+      if (bytes.length > 20 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo grande demais (máximo 20 MB).');
+      const r = await chamarIaComFerramenta({
+        bloco: blocoDocumento(bytes, 'application/pdf'),
+        instrucao: instrucaoQuantitativos(nome),
+        ferramenta: FERRAMENTA_QUANTITATIVOS,
+        maxTokens: 3000,
+      });
+      const { itens, pendencias } = lerQuantitativos(r);
+      const composicoes = (
+        await banco.query(
+          `SELECT r.id, r.codigo, r.descricao, r.unidade, t.id AS tabela_id, t.nome AS tabela, t.fonte
+             FROM ref_itens r JOIN ref_tabelas t ON t.id = r.tabela_id
+            WHERE t.empresa_id = $1 AND r.tipo = 'composicao'`,
+          [empresaId],
+        )
+      ).rows.map((x) => ({ id: x.id as string, tabelaId: x.tabela_id as string, tabela: x.tabela as string, fonte: x.fonte as string, codigo: x.codigo as string, descricao: x.descricao as string, unidade: x.unidade as string }));
+      return {
+        obraId: obra.id as string,
+        itens: itens.map((q) => ({ ...q, candidatas: pontuarCandidatas(q, composicoes) })),
+        pendencias,
       };
     });
 
