@@ -12,7 +12,7 @@ type Glp = {
   instalacao: Instalacao; projetoAprovadoCbm: boolean; tubulacaoEnvelopada: boolean; locaisAplicacao: string; bitola: string;
   pressaoEnsaioPsi: number; tempoEnsaioHoras: number; tempoNormativoHoras: number; pressaoTrabalhoKgf: number; manometroKgf: number;
   centralGlp: string; pontosConsumo: number; art: string; dataLaudo: string; responsavelNome: string; responsavelRegistro: string;
-  notasGerais: string; especificacoes: string; conclusao: string; observacoes: string;
+  notasGerais: string; especificacoes: string; conclusao: string; notaPontos: string; observacoes: string;
 };
 type ResumoLaudo = { id: string; numero: number; titulo: string; proprietario: string; atualizadoEm: string };
 
@@ -26,19 +26,31 @@ const dataExtenso = (iso: string) => {
   return `${d} de ${meses[m - 1]} de ${a}`;
 };
 
-/** Texto padrão do modelo PEX (seção 2, notas gerais). Os valores do ensaio vêm dos campos. */
+/** Notas gerais do modelo. Pex traz o parágrafo de pintura, vedação e torofita; galvanizado não traz. */
 export function notasPadrao(d: Glp): string {
-  return [
-    'Nas redes de gás liquefeito de petróleo - GLP da obra acima mencionada foram realizados os testes de acordo com o projeto de rede de distribuição de GLP aprovado pelo Corpo de Bombeiros e os critérios da ABNT nas NBRs 13932 e 14024 que regulamentam as instalações internas de GLP, centrais prediais e industrias de sistemas de abastecimentos com a reposição de botijões dentro da central de GLP.',
-    'Todas as tubulações foram pintadas na cor amarela, conforme especificações da NBR 12694 e em atendimento a NT 23 do CBMTO. O sistema de vedação entre a tubulação e conexões é composto por rosca NPT, fita teflon, veda rosca, cola DOX e cola Epóxi bi componente (Araldite).' +
-      (d.tubulacaoEnvelopada ? ' As tubulações embutidas no piso ou parede foram envelopadas por torofitas.' : ''),
-    `Os testes de estanqueidade foram realizados em toda a rede de distribuição de GLP, sendo ela submetida a um sistema de pressurização de ar com uma pressão de ${num(d.pressaoEnsaioPsi)} libras (psi), ou ${kgf(d.pressaoEnsaioPsi)} Kgf/cm², correspondendo a uma pressão maior que a pressão normal de trabalho de uma rede secundária que é de ${num(d.pressaoTrabalhoKgf)} kgf/cm². Esta rede ficou sob esta pressão por um período de ${num(d.tempoEnsaioHoras)} horas atendendo o período especificado nas normas que é de ${num(d.tempoNormativoHoras)} horas.`,
-  ].join('\n\n');
+  const teste = `Os testes de estanqueidade foram realizados em toda a rede de distribuição de GLP, sendo ela submetida a um sistema de pressurização de ar com uma pressão de ${num(d.pressaoEnsaioPsi)} libras (psi), ou ${kgf(d.pressaoEnsaioPsi)} Kgf/cm², correspondendo a uma pressão maior que a pressão normal de trabalho de uma rede secundária que é de ${num(d.pressaoTrabalhoKgf)} kgf/cm². Esta rede ficou sob esta pressão por um período de ${num(d.tempoEnsaioHoras)} horas atendendo o período especificado nas normas que é de ${num(d.tempoNormativoHoras)} horas.`;
+  const abertura = 'Nas redes de gás liquefeito de petróleo - GLP da obra acima mencionada foram realizados os testes de acordo com o projeto de rede de distribuição de GLP aprovado pelo Corpo de Bombeiros e os critérios da ABNT nas NBRs 13932 e 14024 que regulamentam as instalações internas de GLP, centrais prediais e industrias de sistemas de abastecimentos com a reposição de botijões dentro da central de GLP.';
+  if (d.instalacao === 'galvanizado') return [abertura, teste].join('\n\n');
+  const pintura = 'Todas as tubulações foram pintadas na cor amarela, conforme especificações da NBR 12694 e em atendimento a NT 23 do CBMTO. O sistema de vedação entre a tubulação e conexões é composto por rosca NPT, fita teflon, veda rosca, cola DOX e cola Epóxi bi componente (Araldite).' +
+    (d.tubulacaoEnvelopada ? ' As tubulações embutidas no piso ou parede foram envelopadas por torofitas.' : '');
+  return [abertura, pintura, teste].join('\n\n');
 }
+
+/** Locais e bitolas do modelo de cada instalação (seção 3). */
+export const MODELO_REDE: Record<Instalacao, { locais: string; bitola: string }> = {
+  pex: { locais: 'Rede primária e secundária', bitola: 'Rede primária e distribuição exposta: ∅ 16mm' },
+  galvanizado: { locais: 'Rede de distribuição da Central de GLP até o ponto de Consumo', bitola: 'Rede: 3/4” para distribuição' },
+};
 
 /** Especificação do material (seção 4). Só há modelo pronto para PEX; galvanizado ainda será preenchido. */
 export function especificacaoPadrao(instalacao: Instalacao): string {
-  if (instalacao !== 'pex') return '';
+  if (instalacao === 'galvanizado') {
+    return [
+      'O aço galvanizado é um produto que passa pelo processo de galvanização - o ato de revestir o aço com uma camada de zinco bem fina, a fim de potencializar sua resistência anticorrosiva. Atualmente, existem diferentes tamanhos de tubo galvanizado, além de particularidades em relação ao processo de galvanização.',
+      'As estruturas empresariais e de construção civil do século XXI são marcadas pela necessidade de durabilidade e, principalmente, de rigidez para dar origem a projetos de engenharia eficazes. Partindo disso, no cenário industrial, os tubos galvanizados se apresentam como opções ideais para a condução de fluidos e ainda para as empreiteiras de construção e para a instalação de postes públicos ou construtoras em geral.',
+      'Há diversos tipos de aço no mercado e cada um deles possui características diferenciadas e pode ser usado para fins variados. O aço de carbono é uma liga metálica, composta por ferro e carbono e bastante suscetível à corrosão (ferrugem). Esse tipo de aço é formado pela liga de ferro com carbono, na qual o teor de carbono é inferior a 2,11%. Já o aço galvanizado é composto por uma mistura robusta do aço líquido com uma solução pelo menos 10% de cromo, oferecendo alta resistência à corrosão. Ambos são amplamente utilizados na indústria e em outros segmentos, no entanto, o aço galvanizado proporciona maior durabilidade por suas propriedades anticorrosivas. A camada de zinco auxilia a poupar recursos naturais como o minério de ferro e também energia, prolongando a longevidade do produto.',
+    ].join('\n\n');
+  }
   return [
     'O PEX é uma tubulação flexível fabricada em polietileno reticulado podendo ser utilizada para condução de água fria e quente, gás natural ou gás GLP (gás de cozinha) e ar condicionado.',
     'A tubulação pode ser monocamada ou multicamada. A monocamada é feita somente de PEX e é utilizada para instalações de água fria e água quente. Já a multicamada possui parte externa e interna de PEX, além de uma camada intermediária de alumínio, podendo ser utilizada em todos os tipos de instalação.',
@@ -172,7 +184,7 @@ export function LaudoGlp() {
   const notas = dados.notasGerais.trim() || notasPadrao(dados);
   const especificacoes = dados.especificacoes.trim() || especificacaoPadrao(dados.instalacao);
   const conclusao = dados.conclusao.trim() || conclusaoPadrao(dados);
-  const nomeInstalacao = dados.instalacao === 'pex' ? 'PEX' : 'galvanizado';
+  const ehPex = dados.instalacao === 'pex';
 
   return (
     <>
@@ -206,7 +218,7 @@ export function LaudoGlp() {
           <div className="campo"><label htmlFor="g-uf">UF</label><input id="g-uf" maxLength={2} value={dados.uf} onChange={(e) => alterar({ uf: e.target.value.toUpperCase() })} /></div>
           <div className="campo">
             <label htmlFor="g-inst">Instalação</label>
-            <select id="g-inst" value={dados.instalacao} onChange={(e) => alterar({ instalacao: e.target.value as Instalacao })}>
+            <select id="g-inst" value={dados.instalacao} onChange={(e) => { const i = e.target.value as Instalacao; alterar({ instalacao: i, locaisAplicacao: MODELO_REDE[i].locais, bitola: MODELO_REDE[i].bitola }); }}>
               <option value="pex">PEX</option>
               <option value="galvanizado">Galvanizado</option>
             </select>
@@ -238,6 +250,7 @@ export function LaudoGlp() {
         <div className="campos">
           <div className="campo"><label htmlFor="g-cen">Central de GLP</label><input id="g-cen" value={dados.centralGlp} onChange={(e) => alterar({ centralGlp: e.target.value })} placeholder="Ex.: 176 P-13" /></div>
           <div className="campo"><label htmlFor="g-pts">Pontos de utilização</label><input id="g-pts" inputMode="numeric" value={dados.pontosConsumo} onChange={(e) => alterar({ pontosConsumo: Number(e.target.value) || 0 })} /></div>
+          <div className="campo"><label htmlFor="g-nota-pts">Nota sobre os demais pontos (opcional)</label><input id="g-nota-pts" value={dados.notaPontos} onChange={(e) => alterar({ notaPontos: e.target.value })} placeholder="Ex.: Demais pontos de utilização existentes estão lacrados." /></div>
         </div>
 
         <h2>Textos do laudo</h2>
@@ -281,20 +294,22 @@ export function LaudoGlp() {
         {notas.split('\n\n').map((p, i) => <p key={i} className="texto-justificado">{p}</p>)}
 
         <h2 className="laudo-secao">3 Materiais utilizados</h2>
-        <p>3.1 Tubos e conexões {nomeInstalacao}.</p>
+        <p>3.1 {ehPex ? 'Tubos e conexões Pex.' : 'Tubos e conexões Galvanizadas.'}</p>
         <ul>
           <li>Locais de aplicação: {dados.locaisAplicacao}</li>
           {dados.bitola && <li>Bitola(s) utilizada(s): {dados.bitola}</li>}
         </ul>
 
         <h2 className="laudo-secao">4 Especificações</h2>
+        <p>4.1 {ehPex ? 'Pex' : 'Tubos e conexões galvanizadas'}</p>
         {especificacoes.split('\n\n').map((p, i) => <p key={i} className="texto-justificado">{p}</p>)}
 
         <h2 className="laudo-secao">5 A central de gás</h2>
         <p>Central de GLP: {dados.centralGlp || '—'}</p>
 
         <h2 className="laudo-secao">6 Pontos de consumo</h2>
-        <p>{dados.pontosConsumo} Pontos de Utilização</p>
+        <p>{dados.pontosConsumo} Pontos de Utilização{dados.notaPontos ? '*' : ''}</p>
+        {dados.notaPontos && <p className="laudo-nota">* {dados.notaPontos}</p>}
 
         <h2 className="laudo-secao">7 Conclusão</h2>
         <p className="texto-justificado">{conclusao}</p>

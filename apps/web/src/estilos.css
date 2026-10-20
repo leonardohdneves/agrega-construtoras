@@ -823,3 +823,4 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .laudo-impresso .direita { text-align: right; margin-top: 6mm; }
 .laudo-impresso ul { margin: 0 0 2mm; padding-left: 6mm; }
 @media print { .laudo-impresso .assinatura-linha { margin-top: 16mm; } }
+.laudo-impresso .laudo-nota { font-size: 9pt; font-style: italic; }

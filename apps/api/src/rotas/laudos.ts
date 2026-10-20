@@ -40,6 +40,7 @@ const esquemaDadosGlp = z.object({
   notasGerais: z.string().trim().max(8000).default(''),
   especificacoes: z.string().trim().max(8000).default(''),
   conclusao: z.string().trim().max(4000).default(''),
+  notaPontos: z.string().trim().max(300).default(''),
   observacoes: z.string().trim().max(4000).default(''),
 });
 type DadosGlp = z.infer<typeof esquemaDadosGlp>;
