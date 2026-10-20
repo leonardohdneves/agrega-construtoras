@@ -22,7 +22,10 @@ const profundidade = (codigo: string) => codigo.split('.').length - 1;
 export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; itens: ItemObra[]; setErro: (m: string) => void }) {
   const [p, setP] = useState<Planilha | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
-  const servicos = itens.filter((i) => i.tipo === 'composicao');
+  // Cópia local dos itens: a leitura do projeto pode incluir composições novas na obra antes do próximo carregamento da tela.
+  const [itensAtuais, setItensAtuais] = useState<ItemObra[]>(itens);
+  useEffect(() => setItensAtuais(itens), [itens]);
+  const servicos = itensAtuais.filter((i) => i.tipo === 'composicao');
 
   const carregar = () =>
     api<Planilha>(`/eng/obras/${obra.id}/planilha`)
@@ -120,6 +123,7 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
         </table>
       </div>
 
+      <LeituraProjeto obra={obra} linhas={p.linhas} itens={itensAtuais} setErro={setErro} aoLancar={carregar} aoMudarItens={setItensAtuais} />
       <NovaLinha obraId={obra.id} linhas={p.linhas} servicos={servicos} setErro={setErro} aoIncluir={carregar} />
     </>
   );
@@ -187,6 +191,232 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
         </div>
       </td>
     </tr>
+  );
+}
+
+type CandidataProjeto = { id: string; tabelaId: string; tabela: string; fonte: string; codigo: string; descricao: string; unidade: string; pontos: number };
+type LidoProjeto = { servico: string; descricao: string; unidade: string; quantidade: number; origem: string; candidatas: CandidataProjeto[] };
+type EscolhaProjeto = { marcado: boolean; composicaoId: string; quantidade: string; descricao: string };
+
+const ROTULO_SERVICO: Record<string, string> = { forma: 'Forma', armacao: 'Armação', concreto: 'Concreto', outro: 'Outro' };
+
+function lerArquivoBase64(arquivo: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(String(leitor.result).split(',')[1] ?? '');
+    leitor.onerror = () => reject(new Error('Não consegui ler o arquivo.'));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+/**
+ * Leitura do projeto por IA, dentro de EAP e orçamento. A IA lista os quantitativos do PDF e sugere composições
+ * já cadastradas nas tabelas. Nada entra na planilha antes de o usuário marcar e confirmar.
+ */
+function LeituraProjeto({ obra, linhas, itens, setErro, aoLancar, aoMudarItens }: { obra: Obra; linhas: Linha[]; itens: ItemObra[]; setErro: (m: string) => void; aoLancar: () => Promise<void>; aoMudarItens: (novos: ItemObra[]) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [analisando, setAnalisando] = useState(false);
+  const [lancando, setLancando] = useState(false);
+  const [lidos, setLidos] = useState<LidoProjeto[] | null>(null);
+  const [pendencias, setPendencias] = useState<string[]>([]);
+  const [escolhas, setEscolhas] = useState<EscolhaProjeto[]>([]);
+  const [pai, setPai] = useState('auto');
+  const [feito, setFeito] = useState('');
+
+  // As mesmas posições da linha "Adicionar linha": etapa, subetapa ou obra.
+  const pais = linhas.filter((l) => POSICAO[l.nivel] < POSICAO.tarefa);
+
+  function atualizar(i: number, campo: Partial<EscolhaProjeto>) {
+    setEscolhas((es) => es.map((e, k) => (k === i ? { ...e, ...campo } : e)));
+  }
+
+  async function analisar() {
+    if (!arquivo) return setErro('Escolha o PDF do projeto.');
+    setErro('');
+    setFeito('');
+    setAnalisando(true);
+    setLidos(null);
+    try {
+      const base64 = await lerArquivoBase64(arquivo);
+      const r = await api<{ itens: LidoProjeto[]; pendencias: string[] }>(`/eng/obras/${obra.id}/leitura-projeto`, { corpo: { arquivo: base64, nome: arquivo.name } });
+      setLidos(r.itens);
+      setPendencias(r.pendencias);
+      setEscolhas(
+        r.itens.map((x) => ({
+          marcado: x.candidatas.length > 0,
+          composicaoId: x.candidatas[0]?.id ?? '',
+          quantidade: x.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 4 }),
+          descricao: x.descricao,
+        })),
+      );
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setAnalisando(false);
+    }
+  }
+
+  async function lancar() {
+    if (!lidos) return;
+    const escolhidas = lidos.flatMap((x, i) => {
+      const e = escolhas[i];
+      const cand = x.candidatas.find((c) => c.id === e?.composicaoId);
+      const q = lerNumero(e?.quantidade ?? '');
+      return e?.marcado && cand && q !== null && q > 0 ? [{ cand, quantidade: q, descricao: e.descricao.trim() }] : [];
+    });
+    if (escolhidas.length === 0) return setErro('Marque ao menos uma linha com serviço e quantidade.');
+    setErro('');
+    setFeito('');
+    setLancando(true);
+    let atuais = itens;
+    let feitas = 0;
+    let falha = '';
+    try {
+      for (const { cand, quantidade, descricao } of escolhidas) {
+        // Inclui a composição na obra só se ela ainda não estiver lá (a importação ignora o que já existe).
+        let item = atuais.find((i) => i.tipo === 'composicao' && i.codigo === cand.codigo);
+        if (!item) {
+          await api(`/eng/obras/${obra.id}/importar`, { corpo: { tabelaId: cand.tabelaId, composicaoIds: [cand.id] } });
+          atuais = (await api<{ itens: ItemObra[] }>(`/eng/obras/${obra.id}/itens`)).itens;
+          item = atuais.find((i) => i.tipo === 'composicao' && i.codigo === cand.codigo);
+        }
+        if (!item) throw new Error(`Não consegui incluir o serviço ${cand.codigo} na obra.`);
+        const corpo: Record<string, unknown> = { nivel: 'tarefa', descricao: (descricao || item.descricao).slice(0, 200), itemId: item.id, quantidade };
+        if (pai === 'raiz') corpo.paiId = null;
+        else if (pai !== 'auto') corpo.paiId = pai;
+        await api(`/eng/obras/${obra.id}/planilha`, { corpo });
+        feitas++;
+      }
+    } catch (e) {
+      falha = (e as Error).message;
+    } finally {
+      aoMudarItens(atuais);
+      await aoLancar();
+      setLancando(false);
+      if (falha) setErro(`${feitas} de ${escolhidas.length} linhas lançadas. ${falha}`);
+      else {
+        setFeito(`${feitas} ${feitas === 1 ? 'linha lançada' : 'linhas lançadas'} na planilha.`);
+        setLidos(null);
+      }
+    }
+  }
+
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div className="acoes" style={{ marginBottom: 8 }}>
+        <button className="btn" type="button" onClick={() => setAberto(!aberto)} aria-expanded={aberto}>
+          {aberto ? 'Fechar leitura do projeto' : 'Ler projeto com IA'}
+        </button>
+      </div>
+      {aberto && (
+        <div className="card form">
+          <h2 style={{ margin: 0 }}>Leitura do projeto</h2>
+          <p className="ajuda" style={{ margin: 0 }}>
+            A IA lista os quantitativos de forma, armação e concreto do PDF. As composições sugeridas são só as já cadastradas nas suas tabelas. Nada entra na planilha antes da sua confirmação.
+          </p>
+          <div className="campo">
+            <label htmlFor="lp-arquivo">Projeto estrutural (PDF)</label>
+            <input
+              id="lp-arquivo"
+              type="file"
+              accept="application/pdf,.pdf"
+              onChange={(e) => {
+                setArquivo(e.target.files?.[0] ?? null);
+                setLidos(null);
+                setFeito('');
+              }}
+            />
+          </div>
+          <div className="acoes">
+            <button className="btn btn-primario" type="button" onClick={analisar} disabled={!arquivo || analisando}>
+              {analisando ? 'Lendo o projeto…' : 'Ler com IA'}
+            </button>
+          </div>
+          {feito && <p className="ajuda" role="status" style={{ margin: 0 }}>{feito}</p>}
+          {lidos && lidos.length === 0 && <p className="muted" style={{ margin: 0 }}>Não encontrei quantitativos de forma, armação ou concreto neste arquivo.</p>}
+          {lidos && lidos.length > 0 && (
+            <>
+              <div style={{ overflowX: 'auto' }}>
+                <table className="tabela">
+                  <thead>
+                    <tr>
+                      <th aria-label="Lançar" />
+                      <th>Serviço</th>
+                      <th style={{ minWidth: 200 }}>Descrição</th>
+                      <th className="num">Quant.</th>
+                      <th>Unid.</th>
+                      <th style={{ minWidth: 260 }}>Composição sugerida</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lidos.map((x, i) => {
+                      const e = escolhas[i];
+                      return (
+                        <tr key={i}>
+                          <td>
+                            <input type="checkbox" aria-label={`Lançar ${x.descricao}`} checked={!!e?.marcado} onChange={(ev) => atualizar(i, { marcado: ev.target.checked })} />
+                          </td>
+                          <td>{ROTULO_SERVICO[x.servico] ?? 'Outro'}</td>
+                          <td>
+                            <input aria-label="Descrição da linha" value={e?.descricao ?? ''} maxLength={200} onChange={(ev) => atualizar(i, { descricao: ev.target.value })} style={{ width: '100%' }} />
+                            {x.origem && <div className="ajuda small">{x.origem}</div>}
+                          </td>
+                          <td className="num">
+                            <input aria-label="Quantidade" inputMode="decimal" value={e?.quantidade ?? ''} onChange={(ev) => atualizar(i, { quantidade: ev.target.value })} style={{ width: 90 }} />
+                          </td>
+                          <td>{x.unidade}</td>
+                          <td>
+                            {x.candidatas.length === 0 ? (
+                              <span className="small muted">Nenhuma composição cadastrada para este serviço</span>
+                            ) : (
+                              <select aria-label="Composição sugerida" value={e?.composicaoId ?? ''} onChange={(ev) => atualizar(i, { composicaoId: ev.target.value })} style={{ maxWidth: 360 }}>
+                                {x.candidatas.map((c) => (
+                                  <option key={c.id} value={c.id}>
+                                    {c.codigo} · {c.descricao} ({c.unidade}) · {c.tabela}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              {pendencias.length > 0 && (
+                <div className="ajuda">
+                  <b>Não consegui ler pela IA:</b>
+                  <ul style={{ margin: '4px 0 0' }}>
+                    {pendencias.map((p, k) => (
+                      <li key={k}>{p}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <div className="campo">
+                <label htmlFor="lp-pai">Entra dentro de</label>
+                <select id="lp-pai" value={pai} onChange={(ev) => setPai(ev.target.value)}>
+                  <option value="auto">Automático</option>
+                  <option value="raiz">Primeiro nível (sem linha acima)</option>
+                  {pais.map((l) => (
+                    <option key={l.id} value={l.id}>
+                      {l.codigo} · {ROTULO[l.nivel]} · {l.descricao}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="acoes">
+                <button className="btn btn-primario" type="button" onClick={lancar} disabled={lancando}>
+                  {lancando ? 'Lançando…' : 'Lançar marcadas no orçamento'}
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
