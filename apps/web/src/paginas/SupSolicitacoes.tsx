@@ -850,7 +850,7 @@ export function SolicitacaoDetalhe() {
         )
       ) : (
         <>
-          <div className="card tabela-caixa">
+          <div className="card tabela-caixa solicitacao-itens">
             <h2>{servico ? 'Serviços' : 'Insumos'} <span className="small muted" style={{ fontWeight: 400 }}>· {s.itens.length} {s.itens.length === 1 ? 'item' : 'itens'}</span></h2>
             <table className="tabela">
               <thead>
@@ -937,7 +937,7 @@ export function SolicitacaoDetalhe() {
             </form>
           )}
 
-          <div className="so-imprimir assinaturas">
+          <div className="so-imprimir assinaturas assinaturas-compactas">
             <Assinatura nome={s.solicitante ?? ''} papel="Solicitante" />
             <Assinatura nome="" papel="Aprovação / Compras" />
           </div>
