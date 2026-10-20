@@ -45,6 +45,56 @@ const esquemaDadosGlp = z.object({
 });
 type DadosGlp = z.infer<typeof esquemaDadosGlp>;
 
+/** Campos do laudo de patologia (vistoria técnica), a partir do modelo do Condomínio Saint George. */
+const esquemaDadosPatologia = z.object({
+  proprietarioNome: z.string().trim().max(200).default(''),
+  proprietarioDocumento: z.string().trim().max(30).default(''),
+  localObra: z.string().trim().max(200).default(''),
+  endereco: z.string().trim().max(300).default(''),
+  cep: z.string().trim().max(12).default(''),
+  cidade: z.string().trim().max(120).default(''),
+  uf: z.string().trim().max(2).default(''),
+  dataVistoria: z.string().trim().max(10).default(''),
+  problemaTexto: z.string().trim().max(8000).default(''),
+  objetoTexto: z.string().trim().max(8000).default(''),
+  vistoriaTexto: z.string().trim().max(8000).default(''),
+  hipoteseTexto: z.string().trim().max(8000).default(''),
+  consideracoesTexto: z.string().trim().max(12000).default(''),
+  conclusaoTexto: z.string().trim().max(8000).default(''),
+  acompanhamentoData: z.string().trim().max(10).default(''),
+  acompanhamentoTexto: z.string().trim().max(8000).default(''),
+  art: z.string().trim().max(60).default(''),
+  dataLaudo: z.string().trim().max(10).default(''),
+  responsavelNome: z.string().trim().max(200).default(''),
+  responsavelRegistro: z.string().trim().max(120).default(''),
+  observacoes: z.string().trim().max(4000).default(''),
+});
+
+/** Campos do laudo de avaliação (relatório técnico de avaliação), a partir do modelo da chácara em São Sebastião/DF. */
+const esquemaDadosAvaliacao = z.object({
+  solicitante: z.string().trim().max(200).default(''),
+  endereco: z.string().trim().max(300).default(''),
+  matricula: z.string().trim().max(200).default(''),
+  tipoImovel: z.string().trim().max(120).default(''),
+  descricaoImovel: z.string().trim().max(300).default(''),
+  areaTerreno: z.string().trim().max(120).default(''),
+  areaConstruida: z.string().trim().max(120).default(''),
+  estadoConservacao: z.string().trim().max(60).default(''),
+  idadeAparente: z.string().trim().max(60).default(''),
+  zoneamento: z.string().trim().max(200).default(''),
+  valorMercado: z.number().min(0).max(1e13).default(0),
+  valorMercadoExtenso: z.string().trim().max(400).default(''),
+  dataBase: z.string().trim().max(10).default(''),
+  resumoTexto: z.string().trim().max(12000).default(''),
+  art: z.string().trim().max(60).default(''),
+  dataLaudo: z.string().trim().max(10).default(''),
+  responsavelNome: z.string().trim().max(200).default(''),
+  responsavelRegistro: z.string().trim().max(120).default(''),
+  observacoes: z.string().trim().max(4000).default(''),
+});
+
+const ESQUEMA_POR_TIPO = { glp: esquemaDadosGlp, patologia: esquemaDadosPatologia, avaliacao: esquemaDadosAvaliacao } as const;
+
 const esquemaSalvar = z.object({
   titulo: z.string().trim().max(200).default(''),
   dados: z.record(z.string(), z.unknown()).default({}),
@@ -115,6 +165,32 @@ function mapaLeitura(r: Record<string, unknown>): Partial<DadosGlp> {
   };
 }
 
+const FERRAMENTA_IDENTIFICACAO = {
+  name: 'registrar_identificacao',
+  description: 'Registra os dados de identificação do laudo técnico lido (proprietário ou solicitante, endereço da obra ou do imóvel). Use null para o que não estiver no documento.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      proprietario_nome: { type: ['string', 'null'], description: 'Proprietário, contratante ou solicitante, como impresso.' },
+      proprietario_documento: { type: ['string', 'null'], description: 'CPF ou CNPJ, como impresso.' },
+      local_obra: { type: ['string', 'null'], description: 'Nome do condomínio ou da obra, em "LOCAL/OBRA" ou similar.' },
+      endereco: { type: ['string', 'null'] },
+      cep: { type: ['string', 'null'] },
+      cidade: { type: ['string', 'null'] },
+      uf: { type: ['string', 'null'], description: 'Sigla da UF, 2 letras.' },
+      matricula: { type: ['string', 'null'], description: 'Matrícula do imóvel e cartório, como impressos.' },
+      zoneamento: { type: ['string', 'null'] },
+      area_terreno: { type: ['string', 'null'] },
+      area_construida: { type: ['string', 'null'] },
+      data: { type: ['string', 'null'], description: 'Data do laudo ou da vistoria, AAAA-MM-DD.' },
+      responsavel_nome: { type: ['string', 'null'] },
+      responsavel_registro: { type: ['string', 'null'] },
+      art: { type: ['string', 'null'] },
+    },
+    required: [],
+  },
+};
+
 export function rotasLaudos(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
@@ -140,7 +216,7 @@ export function rotasLaudos(banco: Banco) {
     app.post('/laudos', async (req, reply) => {
       const empresaId = empresaDo(req);
       const { tipo } = z.object({ tipo: z.enum(TIPOS) }).parse(req.body);
-      const dados = tipo === 'glp' ? dadosGlpPadrao() : {};
+      const dados = ESQUEMA_POR_TIPO[tipo].parse({});
       const id = await banco.query(
         `INSERT INTO laudos (empresa_id, tipo, numero, titulo, dados, criado_por)
          VALUES ($1, $2, (SELECT coalesce(max(numero), 0) + 1 FROM laudos WHERE empresa_id = $1 AND tipo = $2), '', $3, $4)
@@ -165,11 +241,11 @@ export function rotasLaudos(banco: Banco) {
       const atual = await banco.query('SELECT tipo FROM laudos WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId]);
       if (!atual.rowCount) throw naoEncontrado('Laudo');
       const tipo = atual.rows[0].tipo as Tipo;
-      // O laudo de GLP passa pelo esquema completo: campos ausentes ganham o padrão do modelo.
-      const limpos = tipo === 'glp' ? esquemaDadosGlp.parse(dados) : dados;
+      // Cada tipo passa pelo seu esquema: campos ausentes ganham o padrão do modelo.
+      const limpos = ESQUEMA_POR_TIPO[tipo].parse(dados) as Record<string, unknown>;
       await banco.query(
         `UPDATE laudos SET titulo = $1, dados = $2, atualizado_em = now() WHERE id = $3 AND empresa_id = $4`,
-        [titulo || (tipo === 'glp' ? String((limpos as DadosGlp).proprietarioNome ?? '') : ''), JSON.stringify(limpos), req.params.id, empresaId],
+        [titulo || String(limpos.proprietarioNome ?? limpos.solicitante ?? ''), JSON.stringify(limpos), req.params.id, empresaId],
       );
       return { ok: true };
     });
@@ -180,6 +256,48 @@ export function rotasLaudos(banco: Banco) {
       if (!r.rowCount) throw naoEncontrado('Laudo');
       await auditar(banco, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'laudos', entidadeId: req.params.id, antes: { tipo: r.rows[0].tipo, numero: r.rows[0].numero } });
       return { ok: true };
+    });
+
+    /** Lê um PDF (laudo de patologia ou avaliação) pela IA e devolve a identificação para conferência. Não grava nada. */
+    app.post('/laudos/ler-identificacao', { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
+      const { arquivo, nome } = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() }).parse(req.body);
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
+      const bytes = Buffer.from(arquivo, 'base64');
+      if (bytes.length > 12 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo grande demais (máximo 12 MB).');
+      try {
+        const r = await chamarIaComFerramenta({
+          bloco: blocoDocumento(bytes, 'application/pdf'),
+          instrucao:
+            `Este é um laudo técnico de engenharia${nome ? ` (arquivo ${nome})` : ''}. Leia-o e registre a identificação chamando a ferramenta registrar_identificacao. ` +
+            'Copie os dados exatamente como estão impressos, sem inventar. Se um campo não existir no documento, use null. ' +
+            'Ignore a ART além do número, e considere como proprietário também o contratante ou o solicitante.',
+          ferramenta: FERRAMENTA_IDENTIFICACAO,
+          maxTokens: 1500,
+        });
+        const t = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+        return {
+          identificacao: {
+            proprietarioNome: t(r.proprietario_nome),
+            proprietarioDocumento: t(r.proprietario_documento),
+            localObra: t(r.local_obra),
+            endereco: t(r.endereco),
+            cep: t(r.cep),
+            cidade: t(r.cidade),
+            uf: t(r.uf).toUpperCase().slice(0, 2),
+            matricula: t(r.matricula),
+            zoneamento: t(r.zoneamento),
+            areaTerreno: t(r.area_terreno),
+            areaConstruida: t(r.area_construida),
+            data: /^\d{4}-\d{2}-\d{2}$/.test(t(r.data)) ? t(r.data) : '',
+            responsavelNome: t(r.responsavel_nome),
+            responsavelRegistro: t(r.responsavel_registro),
+            art: t(r.art),
+          },
+        };
+      } catch (e) {
+        if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
+        throw e;
+      }
     });
 
     /** Lê um PDF de laudo de GLP pela IA e devolve os campos para conferência (não grava nada). */

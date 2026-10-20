@@ -73,7 +73,7 @@ import { EngApropriacao, EngEap, EngInsumos, EngServicos } from './paginas/EngSe
 import { EngPlanejamento } from './paginas/EngPlanejamento';
 import { EngRelatorios } from './paginas/EngRelatorios';
 import { EngRdoObras, EngRdoObra, EngRdoDetalhe } from './paginas/EngRdo';
-import { LaudosLista, LaudoGlp } from './paginas/Laudos';
+import { LaudosLista, LaudoGlp, LaudoPatologia, LaudoAvaliacao } from './paginas/Laudos';
 import { EngAcompanhamento } from './paginas/EngAcompanhamento';
 import { GerAcompanhamento } from './paginas/GerAcompanhamento';
 import { ProdProgramacao } from './paginas/ProdProgramacao';
@@ -215,6 +215,8 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="eng/relatorios" element={<Protegido perfis={['dono', 'gestor']}><EngRelatorios /></Protegido>} />
             <Route path="laudos/glp" element={<Protegido perfis={['dono', 'gestor']}><LaudosLista tipo="glp" titulo="Laudo de GLP" descricao="Laudos de rede e central de gás (instalações em PEX ou galvanizado)." /></Protegido>} />
             <Route path="laudos/glp/:id" element={<Protegido perfis={['dono', 'gestor']}><LaudoGlp /></Protegido>} />
+            <Route path="laudos/avaliacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><LaudoAvaliacao /></Protegido>} />
+            <Route path="laudos/patologias/:id" element={<Protegido perfis={['dono', 'gestor']}><LaudoPatologia /></Protegido>} />
             <Route path="laudos/avaliacoes" element={<Protegido perfis={['dono', 'gestor']}><LaudosLista tipo="avaliacao" titulo="Laudo de avaliações" descricao="Laudos de avaliação de imóveis e bens." /></Protegido>} />
             <Route path="laudos/patologias" element={<Protegido perfis={['dono', 'gestor']}><LaudosLista tipo="patologia" titulo="Laudo de patologias" descricao="Laudos de patologias da construção." /></Protegido>} />
             <Route path="eng/rdo" element={<Protegido perfis={['dono', 'gestor']}><EngRdoObras /></Protegido>} />
