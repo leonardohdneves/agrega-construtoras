@@ -40,7 +40,8 @@ export function EngRdoObras() {
   const [obras, setObras] = useState<Obra[] | null>(null);
   const [erro, setErro] = useState('');
   useEffect(() => {
-    api<Obra[]>('/eng/obras').then(setObras).catch((e) => setErro(e.message));
+    // A API devolve { obras: [...] }, não a lista direta.
+    api<{ obras: Obra[] }>('/eng/obras').then((r) => setObras(r.obras)).catch((e) => setErro((e as Error).message));
   }, []);
   return (
     <>
