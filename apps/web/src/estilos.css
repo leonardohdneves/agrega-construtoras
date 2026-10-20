@@ -395,6 +395,7 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .doc-meta { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; font-size: 13px; color: var(--ink-muted); text-align: right; }
 .doc-meta strong { color: var(--ink); font-size: 14px; }
 .doc-logo { width: 4cm; height: 4cm; object-fit: contain; margin-bottom: 4px; }
+.doc-cabecalho-logo-direita .doc-logo { width: 2cm; height: 2cm; }
 .logo-previa { max-height: 72px; max-width: 220px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
 .doc-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
 @media (max-width: 760px) { .doc-corpo { grid-template-columns: 1fr; } .doc-meta { align-items: flex-start; text-align: left; } .doc-titulo h1 { font-size: 22px; } }
@@ -462,6 +463,8 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .doc-corpo { padding: 4mm 0 2mm; }
   .doc-titulo h1 { font-size: 17pt; }
   .doc-logo { width: 40mm; height: 40mm; }
+  .doc-cabecalho-logo-direita .doc-corpo { grid-template-columns: minmax(0, 1fr) auto !important; }
+  .doc-cabecalho-logo-direita .doc-logo { width: 2cm; height: 2cm; }
   .card, .ind-bloco { border: 0 !important; padding: 0 !important; border-radius: 0 !important; background: transparent !important; }
   .relatorio h2, .ind-bloco-topo h2 { font-size: 12pt; margin: 0 0 2mm; }
   .tabela-caixa { overflow: visible !important; }

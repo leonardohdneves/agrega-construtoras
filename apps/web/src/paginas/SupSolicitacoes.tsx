@@ -838,6 +838,7 @@ export function SolicitacaoDetalhe() {
         titulo={`${servico ? 'Solicitação de serviços' : 'Solicitação de compra'} nº ${numeroDoc(s.numero)}`}
         descricao={s.obra ? `Obra ${s.obra.codigo} · ${s.obra.nome}` : undefined}
         filtros={[`Data: ${formatarData(s.data)}`, s.necessidade ? `Precisa até: ${formatarData(s.necessidade)}` : '', `Situação: ${SELO_SOLICITACAO[s.status].texto}`]}
+        logoDireita
       />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
 
@@ -850,15 +851,15 @@ export function SolicitacaoDetalhe() {
       ) : (
         <>
           <div className="card tabela-caixa">
-            <h2>{servico ? 'Serviços' : 'Insumos'}</h2>
+            <h2>{servico ? 'Serviços' : 'Insumos'} <span className="small muted" style={{ fontWeight: 400 }}>· {s.itens.length} {s.itens.length === 1 ? 'item' : 'itens'}</span></h2>
             <table className="tabela">
               <thead>
-                <tr><th>EAP</th><th>{servico ? 'Serviço' : 'Insumo'}</th><th className="num">Quantidade</th></tr>
+                <tr><th style={{ width: '18%' }}>Código</th><th>{servico ? 'Serviço' : 'Insumo'}</th><th className="num" style={{ width: '16%' }}>Quantidade</th></tr>
               </thead>
               <tbody>
                 {s.itens.map((i) => (
                   <tr key={i.id}>
-                    <td className="mono small">{i.eapCodigo} <span className="muted">{i.eapDescricao}</span></td>
+                    <td className="mono small">{i.codigo ?? '—'}</td>
                     <td>{i.descricao}</td>
                     <td className="mono" style={{ textAlign: 'right' }}>{qtd(i.quantidade, i.unidade)}</td>
                   </tr>

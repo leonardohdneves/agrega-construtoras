@@ -74,6 +74,7 @@ export function CabecalhoDocumento({
   filtros = [],
   acoes,
   aoImprimir,
+  logoDireita,
 }: {
   modulo: string;
   titulo: string;
@@ -82,13 +83,15 @@ export function CabecalhoDocumento({
   filtros?: string[];
   acoes?: ReactNode;
   aoImprimir?: () => void;
+  /** Logo pequena (2 cm) à direita do título, mesmo na impressão em retrato. */
+  logoDireita?: boolean;
 }) {
   const { usuario, empresa } = useSessao();
   const [painel, setPainel] = useState(false);
   const [pagina, setPagina] = usePaginaImpressao();
   const agora = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
   return (
-    <header className="doc-cabecalho">
+    <header className={`doc-cabecalho${logoDireita ? ' doc-cabecalho-logo-direita' : ''}`}>
       <div className="doc-faixa">
         <span className="doc-marca">
           <Simbolo tamanho={22} escuro />

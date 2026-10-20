@@ -269,8 +269,8 @@ async function detalharSolicitacao(c: Cliente, empresaId: string, id: string) {
   if (!s) throw naoEncontrado('Solicitação');
   const itens = (
     await c.query(
-      `SELECT si.*, en.codigo AS eap_codigo, en.descricao AS eap_descricao
-         FROM solicitacoes_itens si LEFT JOIN eap_nos en ON en.id = si.eap_no_id
+      `SELECT si.*, en.codigo AS eap_codigo, en.descricao AS eap_descricao, oi.codigo AS item_codigo
+         FROM solicitacoes_itens si LEFT JOIN eap_nos en ON en.id = si.eap_no_id LEFT JOIN obra_itens oi ON oi.id = si.obra_item_id
         WHERE si.solicitacao_id = $1 ORDER BY en.codigo, si.descricao`,
       [id],
     )
@@ -299,6 +299,7 @@ async function detalharSolicitacao(c: Cliente, empresaId: string, id: string) {
       eapNoId: i.eap_no_id as string | null,
       eapCodigo: i.eap_codigo as string | null,
       eapDescricao: i.eap_descricao as string | null,
+      codigo: (i.item_codigo as string | null) ?? null,
       descricao: i.descricao as string,
       unidade: i.unidade as string,
       quantidade: Number(i.quantidade),
