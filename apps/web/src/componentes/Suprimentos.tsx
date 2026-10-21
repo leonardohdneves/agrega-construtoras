@@ -58,7 +58,9 @@ export type Pedido = {
   fornecedor: { nome: string; razaoSocial: string; documento: string | null; telefone: string | null; email: string | null; cidade: string | null };
   cotacaoId: string | null; cotacaoNumero: number | null; solicitacaoId: string | null; solicitacaoNumero: number | null; previsaoEntrega: string | null; atrasado: boolean;
   entregaObra: { codigo: string; nome: string; endereco: string | null; cidade: string | null; contatoNome: string | null; contatoTelefone: string | null; referencia: string | null } | null;
-  diasAtraso: number; condicaoPagamento: string | null; localEntrega: string | null; frete: number; subtotal: number; total: number; centroCustoId: string | null;
+  diasAtraso: number; condicaoPagamento: string | null; localEntrega: string | null; frete: number;
+  freteTipo: 'transportadora' | 'proprio' | null; transportadora: { id: string; nome: string } | null;
+  subtotal: number; total: number; centroCustoId: string | null;
   centroCusto: string | null; observacao: string | null; criadoPor: string | null; enviadoAprovacaoEm: string | null; aprovadoPor: string | null; aprovadoEm: string | null;
   aprovacaoAutomatica: boolean; motivoReprovacao: string | null; enviadoFornecedorEm: string | null; encerradoMotivo: string | null; itens: ItemPedido[];
   notas: { id: string; numero: string | null; serie: string | null; modelo: string; dataEmissao: string; total: number; status: string; lancada: boolean; itensLigados: number }[];

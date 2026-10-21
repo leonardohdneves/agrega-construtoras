@@ -99,7 +99,7 @@ export function SupPedidos() {
 }
 
 // ---------- Edição do cabeçalho (os itens vêm da cotação e não são alterados aqui) ----------
-type DadosForm = { fornecedorId: string; data: string; previsaoEntrega: string; condicaoPagamento: string; localEntrega: string; frete: string; centroCustoId: string; observacao: string };
+type DadosForm = { fornecedorId: string; data: string; previsaoEntrega: string; condicaoPagamento: string; localEntrega: string; frete: string; freteTipo: '' | 'transportadora' | 'proprio'; transportadoraId: string; centroCustoId: string; observacao: string };
 
 function FormPedido({ inicial, aoSalvar, aoCancelar }: { inicial: Pedido; aoSalvar: (p: Pedido) => void; aoCancelar?: () => void }) {
   const { fornecedores, centros } = useCadastrosCompra();
@@ -110,6 +110,8 @@ function FormPedido({ inicial, aoSalvar, aoCancelar }: { inicial: Pedido; aoSalv
     condicaoPagamento: inicial.condicaoPagamento ?? '',
     localEntrega: inicial.localEntrega ?? '',
     frete: inicial.frete ? moedaCampo(inicial.frete) : '',
+    freteTipo: inicial.freteTipo ?? '',
+    transportadoraId: inicial.transportadora?.id ?? '',
     centroCustoId: inicial.centroCustoId ?? '',
     observacao: inicial.observacao ?? '',
   });
@@ -121,6 +123,7 @@ function FormPedido({ inicial, aoSalvar, aoCancelar }: { inicial: Pedido; aoSalv
     setErro('');
     try {
       if (!f.fornecedorId) throw new Error('Escolha o fornecedor.');
+      if (f.freteTipo === 'transportadora' && !f.transportadoraId) throw new Error('Escolha o fornecedor de transporte.');
       setOcupado(true);
       const corpo = {
         ...f,
@@ -128,6 +131,8 @@ function FormPedido({ inicial, aoSalvar, aoCancelar }: { inicial: Pedido; aoSalv
         condicaoPagamento: f.condicaoPagamento || null,
         localEntrega: f.localEntrega || null,
         frete: lerNumero(f.frete) ?? 0,
+        freteTipo: f.freteTipo || null,
+        transportadoraId: f.freteTipo === 'transportadora' ? f.transportadoraId : null,
         centroCustoId: f.centroCustoId || null,
         observacao: f.observacao || null,
         solicitacaoId: inicial.solicitacaoId,
@@ -172,7 +177,24 @@ function FormPedido({ inicial, aoSalvar, aoCancelar }: { inicial: Pedido; aoSalv
       <ItensPedidoTabela itens={inicial.itens} />
       <div className="campos">
         <div className="campo">
-          <label htmlFor="pd-frete">Frete (R$)</label>
+          <label htmlFor="pd-frete-tipo">Frete por</label>
+          <select id="pd-frete-tipo" value={f.freteTipo} onChange={(e) => setF({ ...f, freteTipo: e.target.value as DadosForm['freteTipo'] })}>
+            <option value="">CIF / não informado</option>
+            <option value="transportadora">Fornecedor de transporte</option>
+            <option value="proprio">Transporte próprio</option>
+          </select>
+        </div>
+        {f.freteTipo === 'transportadora' && (
+          <div className="campo">
+            <label htmlFor="pd-transp">Fornecedor de transporte</label>
+            <select id="pd-transp" value={f.transportadoraId} onChange={(e) => setF({ ...f, transportadoraId: e.target.value })} required>
+              <option value="">Escolha a transportadora</option>
+              {fornecedores.map((x) => <option key={x.id} value={x.id}>{nomeFornecedor(x)}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="campo">
+          <label htmlFor="pd-frete">Valor do frete (R$)</label>
           <input id="pd-frete" className="mono" inputMode="decimal" value={f.frete} onChange={(e) => setF({ ...f, frete: e.target.value })} placeholder="0,00 = CIF" />
         </div>
         <div className="campo">
@@ -478,7 +500,7 @@ export function PedidoDetalhe() {
                   );
                 })}
                 <tr><td colSpan={4}>Itens</td><td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(p.subtotal)}</td>{mostraRecebido && <td colSpan={2} className="nao-imprimir" />}</tr>
-                <tr><td colSpan={4}>Frete</td><td className="mono" style={{ textAlign: 'right' }}>{p.frete ? formatarMoeda(p.frete) : 'CIF'}</td>{mostraRecebido && <td colSpan={2} className="nao-imprimir" />}</tr>
+                <tr><td colSpan={4}>Frete{p.freteTipo === 'transportadora' && p.transportadora ? ` · ${p.transportadora.nome}` : p.freteTipo === 'proprio' ? ' · transporte próprio' : ''}</td><td className="mono" style={{ textAlign: 'right' }}>{p.frete ? formatarMoeda(p.frete) : 'CIF'}</td>{mostraRecebido && <td colSpan={2} className="nao-imprimir" />}</tr>
                 <tr><td colSpan={4} className="forte">Total do pedido</td><td className="mono forte" style={{ textAlign: 'right' }}>{formatarMoeda(p.total)}</td>{mostraRecebido && <td colSpan={2} className="nao-imprimir" />}</tr>
               </tbody>
             </table>
