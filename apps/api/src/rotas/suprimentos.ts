@@ -484,8 +484,10 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
       `SELECT p.*, f.razao_social, f.nome_fantasia, f.cnpj_cpf, f.telefone, f.email, f.cidade, f.uf, f.chave_pix,
               cc.nome AS centro_custo, ua.nome AS aprovado_por, uc.nome AS criado_por, ct.numero AS cotacao_numero, s.numero AS solicitacao_numero,
               ob.codigo AS obra_codigo, ob.nome AS obra_nome, ob.endereco AS obra_endereco, ob.cidade AS obra_cidade, ob.uf AS obra_uf,
-              ob.contato_obra_nome, ob.contato_obra_telefone, ob.referencia_entrega
+              ob.contato_obra_nome, ob.contato_obra_telefone, ob.referencia_entrega,
+              tr.razao_social AS transportadora_nome
          FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id
+         LEFT JOIN fornecedores tr ON tr.id = p.transportadora_id
          LEFT JOIN obras ob ON ob.id = (SELECT s2.obra_id FROM solicitacoes_compra s2 WHERE s2.id = p.solicitacao_id)
          LEFT JOIN centros_custo cc ON cc.id = p.centro_custo_id
          LEFT JOIN usuarios ua ON ua.id = p.aprovado_por_id LEFT JOIN usuarios uc ON uc.id = p.criado_por_id
@@ -577,6 +579,8 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
         }
       : null,
     frete: reais(p.frete_centavos)!,
+    freteTipo: (p.frete_tipo as 'transportadora' | 'proprio' | null) ?? null,
+    transportadora: p.transportadora_id ? { id: p.transportadora_id as string, nome: p.transportadora_nome as string } : null,
     subtotal: Math.round(linhas.reduce((s, l) => s + l.total, 0) * 100) / 100,
     total: reais(p.total_centavos)!,
     centroCustoId: p.centro_custo_id as string | null,
@@ -616,6 +620,8 @@ const esquemaPedido = z.object({
   condicaoPagamento: texto(120),
   localEntrega: texto(200),
   frete: naoNegativo('Frete inválido.').optional().default(0),
+  freteTipo: z.enum(['transportadora', 'proprio']).optional().nullable().transform((v) => v ?? null),
+  transportadoraId: uuidOpc,
   centroCustoId: uuidOpc,
   observacao: texto(1000),
   solicitacaoId: uuidOpc,
@@ -636,6 +642,15 @@ async function gravarItensPedido(c: Cliente, empresaId: string, pedidoId: string
   total += freteCentavos;
   await c.query('UPDATE pedidos_compra SET total_centavos = $2, atualizado_em = now() WHERE id = $1', [pedidoId, total]);
   return total;
+}
+
+/** Recalcula o total do pedido como soma dos itens + frete. */
+export async function recalcularTotalPedido(c: Cliente, pedidoId: string) {
+  await c.query(
+    `UPDATE pedidos_compra p SET total_centavos = p.frete_centavos + coalesce((SELECT round(sum(round(pi.quantidade * pi.preco_unitario_centavos))) FROM pedidos_itens pi WHERE pi.pedido_id = p.id), 0), atualizado_em = now()
+     WHERE p.id = $1`,
+    [pedidoId],
+  );
 }
 
 /** Situação do pedido pelo que já foi recebido. */
@@ -1571,11 +1586,20 @@ export function rotasSuprimentos(banco: Banco) {
         if (!['rascunho', 'reprovado'].includes(p.status)) throw new ErroHttp(409, 'Só dá para alterar pedido em rascunho ou reprovado. Depois de aprovado, cancele e faça outro.');
         await validarFornecedor(c, empresaId, d.fornecedorId);
         await validarCentro(c, empresaId, d.centroCustoId);
+        if (d.freteTipo === 'transportadora') {
+          if (!d.transportadoraId) throw new ErroHttp(400, 'Escolha o fornecedor de transporte.');
+          await validarFornecedor(c, empresaId, d.transportadoraId);
+        }
+        // Transporte próprio e "sem frete" não têm transportadora.
+        const transportadoraId = d.freteTipo === 'transportadora' ? d.transportadoraId : null;
         await c.query(
           `UPDATE pedidos_compra SET fornecedor_id = $2, data = coalesce($3, data), previsao_entrega = $4, condicao_pagamento = $5, local_entrega = $6,
-                  frete_centavos = $7, centro_custo_id = $8, observacao = $9, status = 'rascunho', motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1`,
-          [p.id, d.fornecedorId, d.data, d.previsaoEntrega, d.condicaoPagamento, d.localEntrega, cent(d.frete), d.centroCustoId, d.observacao],
+                  frete_centavos = $7, centro_custo_id = $8, observacao = $9, frete_tipo = $10, transportadora_id = $11,
+                  status = 'rascunho', motivo_reprovacao = NULL, atualizado_em = now() WHERE id = $1`,
+          [p.id, d.fornecedorId, d.data, d.previsaoEntrega, d.condicaoPagamento, d.localEntrega, cent(d.frete), d.centroCustoId, d.observacao, d.freteTipo, transportadoraId],
         );
+        // Total = itens + frete. Sem recalcular aqui, o frete editado não entrava no total do pedido.
+        await recalcularTotalPedido(c, p.id);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, antes: { status: p.status, total: reais(p.total_centavos) } });
       });
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
