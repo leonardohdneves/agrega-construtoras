@@ -8,9 +8,14 @@ export function ehEngenheiroDeObra(u: Quem): boolean {
   return u?.perfil === 'engenheiro_obra';
 }
 
+/** Perfis que só enxergam as obras atribuídas a eles pelo dono (obra_responsaveis): engenheiro de obra e almoxarife. */
+export function ehRestritoAObras(u: Quem): boolean {
+  return u?.perfil === 'engenheiro_obra' || u?.perfil === 'almoxarife';
+}
+
 /** Ids das obras atribuídas ao engenheiro de obra; null para quem vê todas. */
 export async function obrasPermitidas(c: Cliente | Banco, empresaId: string, u: Quem): Promise<string[] | null> {
-  if (!ehEngenheiroDeObra(u)) return null;
+  if (!ehRestritoAObras(u)) return null;
   const r = await c.query(
     `SELECT r.obra_id FROM obra_responsaveis r JOIN obras o ON o.id = r.obra_id
       WHERE r.usuario_id = $1 AND o.empresa_id = $2 AND o.ativo`,
@@ -21,7 +26,7 @@ export async function obrasPermitidas(c: Cliente | Banco, empresaId: string, u: 
 
 /** Centros de custo das obras do engenheiro de obra (contratos e medições); null para quem vê todos. */
 export async function centrosPermitidos(c: Cliente | Banco, empresaId: string, u: Quem): Promise<string[] | null> {
-  if (!ehEngenheiroDeObra(u)) return null;
+  if (!ehRestritoAObras(u)) return null;
   const r = await c.query(
     `SELECT o.centro_custo_id FROM obra_responsaveis r JOIN obras o ON o.id = r.obra_id
       WHERE r.usuario_id = $1 AND o.empresa_id = $2 AND o.ativo`,
