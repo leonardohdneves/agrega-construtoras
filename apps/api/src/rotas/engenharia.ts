@@ -7,7 +7,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
-import { ehEngenheiroDeObra, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
+import { ehRestritoAObras, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
@@ -189,7 +189,7 @@ export function rotasEngenharia(banco: Banco) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
     // Engenheiro de obra: só as obras atribuídas a ele; tabelas de referência só para consulta.
     app.addHook('preHandler', async (req) => {
-      if (!ehEngenheiroDeObra(req.usuario)) return;
+      if (!ehRestritoAObras(req.usuario)) return;
       const regra = regraEngenheiroEngenharia(req.method, req.url.split('?')[0].replace(/^\/api\/eng/, ''));
       if (regra.tipo === 'negado') throw semPermissao();
       if (regra.tipo === 'obra') {
@@ -203,29 +203,29 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Engenheiro de obra logado: limita listas às obras atribuídas a ele. Outros perfis: null (todas). */
-    const engenheiroDe = (req: { usuario?: { id: string; perfil: string } }) => (ehEngenheiroDeObra(req.usuario) ? req.usuario!.id : null);
+    const engenheiroDe = (req: { usuario?: { id: string; perfil: string } }) => (ehRestritoAObras(req.usuario) ? req.usuario!.id : null);
 
     /** Grava os engenheiros responsáveis pela obra (substitui a lista). Só usuários engenheiros de obra desta empresa. */
     async function gravarResponsaveis(c: Cliente, empresaId: string, obraId: string, ids: string[]) {
       const unicos = [...new Set(ids)];
       if (unicos.length) {
         const ok = await c.query(
-          `SELECT count(*)::int AS n FROM usuarios WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND perfil = 'engenheiro_obra' AND excluido_em IS NULL`,
+          `SELECT count(*)::int AS n FROM usuarios WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND perfil IN ('engenheiro_obra', 'almoxarife') AND excluido_em IS NULL`,
           [unicos, empresaId],
         );
-        if (Number(ok.rows[0].n) !== unicos.length) throw new ErroHttp(400, 'Escolha só usuários com o perfil Engenheiro de obra desta empresa.');
+        if (Number(ok.rows[0].n) !== unicos.length) throw new ErroHttp(400, 'Escolha só usuários com o perfil Engenheiro de obra ou Almoxarife desta empresa.');
       }
       await c.query('DELETE FROM obra_responsaveis WHERE obra_id = $1', [obraId]);
       for (const u of unicos) await c.query('INSERT INTO obra_responsaveis (obra_id, usuario_id) VALUES ($1, $2)', [obraId, u]);
     }
 
-    /** Engenheiros de obra da empresa, para atribuir às obras. */
+    /** Engenheiros de obra e almoxarifes da empresa, para atribuir às obras. */
     app.get('/engenheiros', async (req) => {
       const r = await banco.query(
-        `SELECT id, nome, email, ativo FROM usuarios WHERE empresa_id = $1 AND perfil = 'engenheiro_obra' AND excluido_em IS NULL ORDER BY ativo DESC, nome`,
+        `SELECT id, nome, email, ativo, perfil FROM usuarios WHERE empresa_id = $1 AND perfil IN ('engenheiro_obra', 'almoxarife') AND excluido_em IS NULL ORDER BY ativo DESC, perfil, nome`,
         [empresaDo(req)],
       );
-      return { engenheiros: r.rows.map((u) => ({ id: u.id as string, nome: u.nome as string, email: u.email as string, ativo: !!u.ativo })) };
+      return { engenheiros: r.rows.map((u) => ({ id: u.id as string, nome: u.nome as string, email: u.email as string, ativo: !!u.ativo, perfil: u.perfil as string })) };
     });
 
     async function tabelaDaEmpresa(c: Cliente, empresaId: string, id: string) {

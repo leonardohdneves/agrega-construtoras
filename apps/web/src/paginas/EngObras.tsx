@@ -18,7 +18,7 @@ export type Obra = {
   /** Engenheiros de obra responsáveis: só eles (além de dono, gestor e orçamentista) enxergam a obra. */
   responsaveis?: { id: string; nome: string }[];
 };
-type Engenheiro = { id: string; nome: string; email: string; ativo: boolean };
+type Engenheiro = { id: string; nome: string; email: string; ativo: boolean; perfil: string };
 export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null; unidadesCompra?: { unidade: string; fator: number }[] };
 
 type ClasseComponente = 'insumo' | 'servico' | 'equipamento';
@@ -312,7 +312,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
       )}
       {engenheiros && (
         <fieldset className="campo" style={{ border: 0, padding: 0, margin: 0 }}>
-          <legend style={{ fontWeight: 600, marginBottom: 6 }}>Engenheiros de obra responsáveis</legend>
+          <legend style={{ fontWeight: 600, marginBottom: 6 }}>Responsáveis pela obra (engenheiros de obra e almoxarifes)</legend>
           {engenheiros.length ? (
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px 18px' }}>
               {engenheiros.map((e) => (
@@ -322,12 +322,12 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
                     checked={responsaveis.includes(e.id)}
                     onChange={(ev) => setResponsaveis(ev.target.checked ? [...responsaveis, e.id] : responsaveis.filter((x) => x !== e.id))}
                   />
-                  {e.nome}{!e.ativo && <span className="small muted"> (inativo)</span>}
+                  {e.nome}{e.perfil === 'almoxarife' && <span className="small muted"> (almoxarife)</span>}{!e.ativo && <span className="small muted"> (inativo)</span>}
                 </label>
               ))}
             </div>
           ) : (
-            <span className="small muted">Nenhum usuário com o perfil Engenheiro de obra. Cadastre em Configurações › Usuários.</span>
+            <span className="small muted">Nenhum engenheiro de obra ou almoxarife cadastrado. Cadastre em Configurações › Usuários.</span>
           )}
           <span className="small muted">O engenheiro de obra só vê as obras marcadas aqui, com os contratos e as medições delas.</span>
         </fieldset>

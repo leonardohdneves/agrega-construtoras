@@ -8,6 +8,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { estoqueDaMovimentacao, proximoCodigoEstoque, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
 import { chaveEtiqueta } from '../lib/etiquetas.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
+import { obrasPermitidas } from '../lib/obras-acesso.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { normalizar } from '../lib/sugestoes.ts';
 import { dispensaAprovacao, lerRegras, lerRegrasDe, podeAprovar, proximoNumero, textoRegras, type RegrasAprovacao } from '../lib/aprovacao.ts';
@@ -466,6 +467,12 @@ async function detalharCotacao(c: Cliente, empresaId: string, id: string) {
 type LinhaPedido = Record<string, any>;
 
 /** Recebido de cada item do pedido (pelas notas ligadas e não canceladas). */
+/** Pedido com item vindo de solicitação de alguma das obras (o almoxarife só vê as obras que o dono atribuiu a ele). */
+const SQL_PEDIDO_DAS_OBRAS = `EXISTS (
+  SELECT 1 FROM pedidos_itens pi JOIN cotacoes_itens ci ON ci.id = pi.cotacao_item_id
+    JOIN solicitacoes_itens si ON si.id = ci.solicitacao_item_id JOIN solicitacoes_compra sc ON sc.id = si.solicitacao_id
+   WHERE pi.pedido_id = p.id AND sc.obra_id = ANY($%N::uuid[]))`;
+
 async function recebidosDoPedido(c: Cliente, pedidoId: string) {
   const r = await c.query(
     `SELECT ni.pedido_item_id, sum(ni.quantidade_pedido) AS quantidade, sum(ni.valor_produto_centavos) AS valor
@@ -1523,7 +1530,9 @@ export function rotasSuprimentos(banco: Banco) {
       const empresaId = empresaDo(req);
       const filtro = req.query.status ?? '';
       const hoje = hojeBrasil();
-      const soConferencia = usuarioDe(req).perfil === 'almoxarife';
+      const u = usuarioDe(req);
+      const soConferencia = u.perfil === 'almoxarife';
+      const obras = soConferencia ? (await obrasPermitidas(banco, empresaId, u)) ?? [] : [];
       const r = await banco.query(
         `SELECT p.id, p.numero, p.data, p.status, p.previsao_entrega, p.total_centavos, p.aprovacao_automatica,
                 coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, ct.numero AS cotacao_numero, ua.nome AS aprovado_por,
@@ -1532,7 +1541,7 @@ export function rotasSuprimentos(banco: Banco) {
            FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id
            LEFT JOIN cotacoes ct ON ct.id = p.cotacao_id LEFT JOIN usuarios ua ON ua.id = p.aprovado_por_id
           WHERE p.empresa_id = $1
-            AND ($4::boolean = false OR p.status IN ('aprovado', 'enviado', 'parcial', 'recebido', 'encerrado'))
+            AND ($4::boolean = false OR (p.status IN ('aprovado', 'enviado', 'parcial', 'recebido', 'encerrado') AND ${SQL_PEDIDO_DAS_OBRAS.replace('%N', '5')}))
             AND CASE $2
                   WHEN 'abertos' THEN p.status IN ('rascunho', 'aguardando_aprovacao', 'aprovado', 'enviado', 'parcial', 'reprovado')
                   WHEN 'aprovacao' THEN p.status = 'aguardando_aprovacao'
@@ -1544,7 +1553,7 @@ export function rotasSuprimentos(banco: Banco) {
                 END
           ORDER BY array_position(ARRAY['aguardando_aprovacao','reprovado','rascunho','aprovado','enviado','parcial','recebido','encerrado','cancelado'], p.status), p.numero DESC
           LIMIT 500`,
-        [empresaId, filtro, hoje, soConferencia],
+        [empresaId, filtro, hoje, soConferencia, obras],
       );
       return {
         pedidos: r.rows.map((p) => {
@@ -1574,7 +1583,13 @@ export function rotasSuprimentos(banco: Banco) {
       const empresaId = empresaDo(req);
       if (u.perfil === 'almoxarife') {
         // Conferência no recebimento: o almoxarife vê o pedido depois de aprovado, com preços, mas não o altera.
-        const st = (await banco.query('SELECT status FROM pedidos_compra WHERE id = $1 AND empresa_id = $2', [UUID.test(req.params.id) ? req.params.id : null, empresaId])).rows[0];
+        const obras = (await obrasPermitidas(banco, empresaId, u)) ?? [];
+        const st = (
+          await banco.query(
+            `SELECT p.status FROM pedidos_compra p WHERE p.id = $1 AND p.empresa_id = $2 AND ${SQL_PEDIDO_DAS_OBRAS.replace('%N', '3')}`,
+            [UUID.test(req.params.id) ? req.params.id : null, empresaId, obras],
+          )
+        ).rows[0];
         if (!st || !['aprovado', 'enviado', 'parcial', 'recebido', 'encerrado'].includes(st.status)) throw naoEncontrado('Pedido');
       }
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
