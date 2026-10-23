@@ -904,7 +904,7 @@ export function rotasSuprimentos(banco: Banco) {
       return { ok: true, id: criado.id, codigo: criado.codigo };
     });
 
-    // ----- Etiquetas (QR) das entradas de nota: cada item recebido tem a sua; a saída lê a etiqueta.
+    // ----- Etiquetas (QR) de cada entrada no estoque (nota fiscal ou despesa com estoque): o QR é o id da entrada, fixo.
     const SQL_ETIQUETAS = `
       SELECT * FROM (
         SELECT m.id, m.data, m.quantidade, m.observacao, m.obra_id, m.eap_no_id, m.obra_estoque_id, m.obra_item_id,
@@ -917,7 +917,7 @@ export function rotasSuprimentos(banco: Banco) {
           JOIN obras o ON o.id = m.obra_id
           JOIN eap_nos e ON e.id = m.eap_no_id
           LEFT JOIN obra_estoques est ON est.id = m.obra_estoque_id
-         WHERE m.tipo = 'entrada' AND m.nota_item_id IS NOT NULL AND m.obra_item_id IS NOT NULL
+         WHERE m.tipo = 'entrada' AND m.obra_item_id IS NOT NULL
       ) x`;
     const etiquetaPublica = (x: Record<string, any>) => ({
       id: x.id as string,
