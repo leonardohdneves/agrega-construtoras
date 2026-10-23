@@ -223,6 +223,44 @@ export async function registrarEntradasObra(c: Cliente, empresaId: string, notaI
   return feitas;
 }
 
+/**
+ * Entradas de um lançamento de despesa: cada item de estoque vira entrada na apropriação (obra, insumo da obra, etapa, estoque).
+ * A quantidade é informada na unidade do item; o estoque fica na unidade base do insumo da obra, como nas notas.
+ */
+export async function registrarEntradasLancamento(c: Cliente, empresaId: string, lancamentoId: string, data: string, usuarioId: string | null): Promise<number> {
+  const itens = (
+    await c.query(
+      `SELECT li.*, ob.unidade AS unidade_base,
+              (SELECT u.fator FROM obra_insumo_unidades u WHERE u.obra_item_id = li.obra_item_id AND lower(u.unidade) = lower(li.unidade)) AS fator_compra
+         FROM lancamento_itens_estoque li JOIN obra_itens ob ON ob.id = li.obra_item_id
+        WHERE li.lancamento_id = $1 AND li.empresa_id = $2`,
+      [lancamentoId, empresaId],
+    )
+  ).rows;
+  const recebimentos = new Map<string, string>();
+  for (const i of itens) {
+    const qtd = Number(i.quantidade);
+    let destino: string = i.obra_estoque_id ?? '';
+    if (!destino) {
+      if (!recebimentos.has(i.obra_id)) recebimentos.set(i.obra_id, await estoqueRecebimento(c, empresaId, i.obra_id));
+      destino = recebimentos.get(i.obra_id)!;
+    }
+    const fator = fatorEntrada(i.unidade ?? '', i.unidade_base ?? '', i.fator_compra === null ? null : Number(i.fator_compra));
+    const qtdBase = qtd * fator;
+    await c.query(
+      `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade, custo_unitario_centavos, lancamento_item_id, observacao, criado_por_id)
+       VALUES ($1,$2,$3,$4,$5,$6,'entrada',$7,$8,$9,$10,$11)`,
+      [empresaId, i.obra_id, destino, i.obra_item_id, i.eap_no_id, data, Math.round(qtdBase * 1000) / 1000, Number(i.valor_centavos) / qtdBase, i.id, 'Lançamento financeiro', usuarioId],
+    );
+  }
+  return itens.length;
+}
+
+/** Ao cancelar o lançamento: tira as entradas dele do estoque. */
+export async function removerEntradasLancamento(c: Cliente, lancamentoId: string): Promise<void> {
+  await c.query('DELETE FROM estoque_movimentos WHERE lancamento_item_id IN (SELECT id FROM lancamento_itens_estoque WHERE lancamento_id = $1)', [lancamentoId]);
+}
+
 /** Saldo de uma apropriação (insumo da obra + etapa) = entradas e ajustes menos saídas. */
 export async function saldoApropriacao(c: Cliente, empresaId: string, obraId: string, obraItemId: string, eapNoId: string, estoqueId: string): Promise<number> {
   const r = await c.query(

@@ -97,6 +97,78 @@ export function OpcoesCategoria({ plano, tipo, atual }: { plano: PlanoConta[]; t
   );
 }
 
+type ItemEstoque = { chave: string; descricao: string; quantidade: string; unidade: string; valor: string; obraId: string; obraItemId: string; eapNoId: string; obraEstoqueId: string };
+let seqEstoque = 0;
+const novoItemEstoque = (): ItemEstoque => ({ chave: `e${++seqEstoque}`, descricao: '', quantidade: '', unidade: '', valor: '', obraId: '', obraItemId: '', eapNoId: '', obraEstoqueId: '' });
+
+/** Um item de estoque do lançamento: a mesma apropriação de um item de nota (obra, insumo da obra, etapa e estoque). */
+function LinhaEstoque({ item, numero, aoMudar, aoRemover }: { item: ItemEstoque; numero: number; aoMudar: (campos: Partial<ItemEstoque>) => void; aoRemover?: () => void }) {
+  const [obras, setObras] = useState<{ id: string; codigo: string; nome: string }[]>([]);
+  const [insumos, setInsumos] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
+  const [etapas, setEtapas] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
+  const [estoques, setEstoques] = useState<{ id: string; codigo: string; nome: string; obraId: string | null }[]>([]);
+  useEffect(() => {
+    api<{ obras: { id: string; codigo: string; nome: string }[] }>('/eng/obras').then((r) => setObras(r.obras ?? [])).catch(() => setObras([]));
+  }, []);
+  useEffect(() => {
+    if (!item.obraId) { setInsumos([]); setEtapas([]); setEstoques([]); return; }
+    api<{ itens: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/itens?tipo=insumo`).then((r) => setInsumos(r.itens ?? [])).catch(() => setInsumos([]));
+    api<{ nos: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/eap`).then((r) => setEtapas(r.nos ?? [])).catch(() => setEtapas([]));
+    api<{ estoques: { id: string; codigo: string; nome: string; obraId: string | null }[] }>(`/sup/estoques?obraId=${item.obraId}`).then((r) => setEstoques(r.estoques ?? [])).catch(() => setEstoques([]));
+  }, [item.obraId]);
+  return (
+    <div className="campos linha-ap">
+      <div className="campo largo">
+        <label htmlFor={`es-desc-${item.chave}`}>Item {numero}</label>
+        <input id={`es-desc-${item.chave}`} maxLength={200} value={item.descricao} placeholder="Ex.: Cimento CP II-32" onChange={(e) => aoMudar({ descricao: e.target.value })} />
+      </div>
+      <div className="campo">
+        <label htmlFor={`es-qtd-${item.chave}`}>Quantidade</label>
+        <input id={`es-qtd-${item.chave}`} className="mono" inputMode="decimal" value={item.quantidade} onChange={(e) => aoMudar({ quantidade: e.target.value })} />
+      </div>
+      <div className="campo">
+        <label htmlFor={`es-un-${item.chave}`}>Unidade</label>
+        <input id={`es-un-${item.chave}`} maxLength={20} value={item.unidade} placeholder="Ex.: saco" onChange={(e) => aoMudar({ unidade: e.target.value })} />
+      </div>
+      <div className="campo">
+        <label htmlFor={`es-val-${item.chave}`}>Valor do item (R$)</label>
+        <input id={`es-val-${item.chave}`} className="mono" inputMode="decimal" value={item.valor} onChange={(e) => aoMudar({ valor: e.target.value })} />
+      </div>
+      <div className="campo">
+        <label htmlFor={`es-obra-${item.chave}`}>Obra</label>
+        <select id={`es-obra-${item.chave}`} value={item.obraId} onChange={(e) => aoMudar({ obraId: e.target.value, obraItemId: '', eapNoId: '', obraEstoqueId: '' })}>
+          <option value="">Escolha a obra</option>
+          {obras.map((o) => <option key={o.id} value={o.id}>{o.codigo} · {o.nome}</option>)}
+        </select>
+      </div>
+      <div className="campo">
+        <label htmlFor={`es-ins-${item.chave}`}>Insumo da obra</label>
+        <select id={`es-ins-${item.chave}`} value={item.obraItemId} disabled={!item.obraId} onChange={(e) => aoMudar({ obraItemId: e.target.value })}>
+          <option value="">Escolha o insumo</option>
+          {insumos.map((i) => <option key={i.id} value={i.id}>{i.codigo} · {i.descricao}</option>)}
+        </select>
+      </div>
+      <div className="campo">
+        <label htmlFor={`es-eap-${item.chave}`}>Etapa da EAP</label>
+        <select id={`es-eap-${item.chave}`} value={item.eapNoId} disabled={!item.obraId} onChange={(e) => aoMudar({ eapNoId: e.target.value })}>
+          <option value="">Escolha a etapa</option>
+          {etapas.map((n) => <option key={n.id} value={n.id}>{n.codigo} {n.descricao}</option>)}
+        </select>
+      </div>
+      <div className="campo">
+        <label htmlFor={`es-est-${item.chave}`}>Estoque</label>
+        <select id={`es-est-${item.chave}`} value={item.obraEstoqueId} disabled={!item.obraId} onChange={(e) => aoMudar({ obraEstoqueId: e.target.value })}>
+          <option value="">Recebimento da obra</option>
+          {estoques.map((x) => <option key={x.id} value={x.id}>{x.codigo} · {x.nome}{x.obraId ? '' : ' (geral)'}</option>)}
+        </select>
+      </div>
+      {aoRemover && (
+        <button type="button" className="btn btn-link" aria-label={`Remover item ${numero} do estoque`} onClick={aoRemover}>Remover</button>
+      )}
+    </div>
+  );
+}
+
 function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc; inicial?: Lanc; cadastros: Cadastros; aoSalvar: (l: Lanc, criados?: number) => void }) {
   const editando = !!inicial;
   const hoje = hojeLocal();
@@ -123,6 +195,9 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
       .map((p) => ({ chave: chave(), vencimento: p.vencimento, valor: moedaCampo(p.valor), paga: p.status === 'paga' ? p : undefined })),
   );
   const [recorrencia, setRecorrencia] = useState({ tipo: 'nenhuma', repeticoes: '12' });
+  // Entrada no estoque da construtora (só em despesa nova, sem recorrência).
+  const [comEstoque, setComEstoque] = useState(false);
+  const [itensEstoque, setItensEstoque] = useState<ItemEstoque[]>([]);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
 
@@ -186,6 +261,26 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
     if (!editando && recorrencia.tipo !== 'nenhuma') {
       corpo.recorrencia = recorrencia.tipo;
       corpo.repeticoes = recorrencia.repeticoes;
+    }
+    if (!editando && tipo === 'despesa' && comEstoque && itensEstoque.length) {
+      if (recorrencia.tipo !== 'nenhuma') return setErro('Lançamento recorrente não pode dar entrada no estoque. Lance cada compra separadamente.');
+      for (const [n, i] of itensEstoque.entries()) {
+        if (!i.descricao.trim()) return setErro(`Item ${n + 1} do estoque: descreva o item.`);
+        if (!((lerNumero(i.quantidade) ?? 0) > 0)) return setErro(`Item ${n + 1} do estoque: informe a quantidade.`);
+        if (!i.obraId || !i.obraItemId || !i.eapNoId) return setErro(`Item ${n + 1} do estoque: escolha obra, insumo da obra e etapa da EAP.`);
+      }
+      const somaEst = soma(itensEstoque.map((i) => i.valor));
+      if (somaEst > total) return setErro(`Os itens de estoque (${formatarMoeda(somaEst)}) passam do total (${formatarMoeda(total)}).`);
+      corpo.estoque = itensEstoque.map((i) => ({
+        descricao: i.descricao,
+        quantidade: i.quantidade,
+        unidade: i.unidade || null,
+        valor: i.valor,
+        obraId: i.obraId,
+        obraItemId: i.obraItemId,
+        eapNoId: i.eapNoId,
+        obraEstoqueId: i.obraEstoqueId || null,
+      }));
     }
     setOcupado(true);
     try {
@@ -420,6 +515,34 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
           verbo={verbo}
           editando={editando}
         />
+      )}
+
+      {!editando && tipo === 'despesa' && (
+        <fieldset className="grupo-marcar">
+          <legend>Entrada no estoque</legend>
+          <label className="marcar">
+            <input type="checkbox" checked={comEstoque} onChange={(e) => {
+              setComEstoque(e.target.checked);
+              if (e.target.checked && !itensEstoque.length) setItensEstoque([novoItemEstoque()]);
+            }} />{' '}
+            Esta compra dá entrada no estoque da construtora
+          </label>
+          {comEstoque && (
+            <>
+              <p className="small muted">Mesma apropriação de um item de nota: obra, insumo da obra, etapa da EAP e estoque. A entrada sai do estoque se o lançamento for cancelado.</p>
+              {itensEstoque.map((it, i) => (
+                <LinhaEstoque
+                  key={it.chave}
+                  item={it}
+                  numero={i + 1}
+                  aoMudar={(campos) => setItensEstoque((xs) => xs.map((x) => (x.chave === it.chave ? { ...x, ...campos } : x)))}
+                  aoRemover={itensEstoque.length > 1 ? () => setItensEstoque((xs) => xs.filter((x) => x.chave !== it.chave)) : undefined}
+                />
+              ))}
+              <button type="button" className="btn btn-secundario" onClick={() => setItensEstoque((xs) => [...xs, novoItemEstoque()])}>Adicionar item de estoque</button>
+            </>
+          )}
+        </fieldset>
       )}
 
       {!editando && (
