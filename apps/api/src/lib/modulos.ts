@@ -105,7 +105,7 @@ const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|pla
  */
 /** Almoxarife: estoques, saídas por etiqueta, funcionários e as leituras de obra e EAP que a tela usa. */
 const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|colaboradores|etiquetas|saidas-material)(\/|$)/];
-const ALMOXARIFADO_CONSULTAS = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/];
+const ALMOXARIFADO_CONSULTAS = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/, /^\/api\/sup\/pedidos(\/[^/]+)?\/?$/];
 
 export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; perfisRota: Perfil[]; url: string; metodo: string; contratados?: readonly string[] }): boolean {
   const porPerfil = !o.perfisRota.length || o.perfisRota.includes(o.perfil);

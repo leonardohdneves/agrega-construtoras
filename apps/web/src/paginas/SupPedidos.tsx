@@ -375,7 +375,9 @@ function Recebimento({ pedido, aoSalvar, aoFechar }: { pedido: Pedido; aoSalvar:
 export function PedidoDetalhe() {
   const { id } = useParams();
   const local = useLocation();
-  const { empresa } = useSessao();
+  const { empresa, usuario } = useSessao();
+  // Almoxarife confere o pedido no recebimento: vê tudo, mas não age sobre ele.
+  const somenteLeitura = usuario?.perfil === 'almoxarife';
   const [p, setP] = useState<Pedido | null>(null);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState((local.state as { aviso?: string } | null)?.aviso ?? '');
@@ -540,7 +542,7 @@ export function PedidoDetalhe() {
                       <td className="mono" style={{ textAlign: 'right' }}>{formatarMoeda(n.total)}</td>
                       <td className="small">{n.status === 'cancelada' ? 'Nota cancelada' : n.lancada ? 'Conta a pagar gerada' : 'Falta conferir a nota'}</td>
                       <td>
-                        {!['encerrado', 'cancelado'].includes(p.status) && (
+                        {!somenteLeitura && !['encerrado', 'cancelado'].includes(p.status) && (
                           <button className="btn btn-link" type="button" disabled={ocupado} onClick={() => executar(`${base}/recebimento/${n.id}`, 'Recebimento desfeito.', undefined, 'DELETE')}>Desfazer</button>
                         )}
                       </td>
@@ -576,7 +578,7 @@ export function PedidoDetalhe() {
             </form>
           )}
 
-          {!modo && (
+          {!modo && !somenteLeitura && (
             <div className="acoes nao-imprimir">
               {editavel && (
                 <>

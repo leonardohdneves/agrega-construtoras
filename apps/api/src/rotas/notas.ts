@@ -163,10 +163,58 @@ async function detalharNota(c: Cliente, empresaId: string, id: string) {
     ).rows[0];
     if (l) lancamento = { id: l.id, status: l.status, parcelas: l.parcelas, pagas: l.pagas };
   }
-  return notaPublica(n, itens, duplicatas, lancamento);
+  const divergencias = n.pedido_id ? await divergenciasPedido(c, n.id) : [];
+  return notaPublica(n, itens, duplicatas, lancamento, divergencias);
 }
 
-function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unknown) {
+/**
+ * Nota ligada a um pedido de compra: confere os itens com o pedido (quantidade, preço e vínculo).
+ * Qualquer divergência bloqueia o lançamento da nota até ser corrigida.
+ */
+async function divergenciasPedido(c: Cliente, notaId: string): Promise<string[]> {
+  const out: string[] = [];
+  const itens = (
+    await c.query(
+      `SELECT ni.id, ni.numero_item, ni.descricao, ni.valor_produto_centavos, ni.pedido_item_id, ni.quantidade_pedido,
+              pi.quantidade AS pedido_quantidade, pi.preco_unitario_centavos AS pedido_preco
+         FROM notas_itens ni LEFT JOIN pedidos_itens pi ON pi.id = ni.pedido_item_id
+        WHERE ni.nota_id = $1 ORDER BY ni.numero_item, ni.criado_em`,
+      [notaId],
+    )
+  ).rows;
+  if (!itens.length) return out;
+  const semVinculo = itens.filter((i) => !i.pedido_item_id).length;
+  if (semVinculo) out.push(semVinculo === 1 ? '1 item da nota não está ligado a um item do pedido.' : `${semVinculo} itens da nota não estão ligados a itens do pedido.`);
+  // Quantidade recebida (na unidade do pedido) de cada item do pedido, somando todas as notas ligadas a ele.
+  const pedidoIds = [...new Set(itens.filter((i) => i.pedido_item_id).map((i) => i.pedido_item_id as string))];
+  const recebido = new Map<string, number>();
+  if (pedidoIds.length) {
+    const r = await c.query(
+      `SELECT ni.pedido_item_id, sum(ni.quantidade_pedido) AS qtd FROM notas_itens ni JOIN notas_fiscais n ON n.id = ni.nota_id
+        WHERE ni.pedido_item_id = ANY($1::uuid[]) AND n.excluido_em IS NULL AND n.status <> 'cancelada' GROUP BY ni.pedido_item_id`,
+      [pedidoIds],
+    );
+    for (const x of r.rows) recebido.set(x.pedido_item_id, Number(x.qtd ?? 0));
+  }
+  const reais = (cent: number) => (cent / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+  for (const i of itens) {
+    if (!i.pedido_item_id) continue;
+    const rotulo = `Item ${i.numero_item}, ${i.descricao}:`;
+    const qtdPedido = Number(i.pedido_quantidade);
+    const qtdRecebida = Number(i.quantidade_pedido ?? 0);
+    if (recebido.get(i.pedido_item_id)! > qtdPedido * 1.005)
+      out.push(`${rotulo} a quantidade recebida (${recebido.get(i.pedido_item_id)!.toLocaleString('pt-BR')}) passa da quantidade do pedido (${qtdPedido.toLocaleString('pt-BR')}).`);
+    const precoPedido = Number(i.pedido_preco);
+    const esperado = Math.round(qtdRecebida * precoPedido);
+    const valor = Number(i.valor_produto_centavos);
+    const tolerancia = Math.max(1, Math.abs(esperado) * 0.005);
+    if (Math.abs(valor - esperado) > tolerancia)
+      out.push(`${rotulo} valor da nota (${reais(valor)}) diferente do pedido (${reais(esperado)} para ${qtdRecebida.toLocaleString('pt-BR')} unid. a ${reais(precoPedido)}).`);
+  }
+  return out;
+}
+
+function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unknown, divergencias: string[] = []) {
   const tipo = n.direcao === 'saida' ? 'receita' : 'despesa';
   const somaItens = itens.reduce((s, i) => s + Number(i.valor_custo_centavos), 0);
   const somaDup = duplicatas.reduce((s, d) => s + Number(d.valor_centavos), 0);
@@ -181,6 +229,7 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
   if (duplicatas.length && somaDup !== Number(n.total_centavos)) pendencias.push('A soma das parcelas é diferente do total da nota.');
   if (Number(n.total_centavos) <= 0) pendencias.push('O total da nota precisa ser maior que zero.');
   const lido = n.leitura?.totalLido;
+  pendencias.push(...divergencias);
   if (typeof lido === 'number' && lido > 0 && lido !== Number(n.total_centavos))
     pendencias.push(`O total calculado é diferente do total impresso no documento (${(lido / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' })}).`);
   return {

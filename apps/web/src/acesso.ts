@@ -51,7 +51,7 @@ export function temModulo(usuario: Usuario | null, modulo: Modulo): boolean {
 /** Pode abrir a tela? Módulo liberado além do padrão do perfil dá acesso a todas as telas dele. */
 export function podeAcessar(usuario: Usuario | null, perfis: Perfil[] | undefined, caminho: string): boolean {
   if (!usuario) return false;
-  if (usuario.perfil === 'almoxarife') return /^\/sup\/estoque(\/|$)/.test(caminho) && temModulo(usuario, 'suprimentos');
+  if (usuario.perfil === 'almoxarife') return /^\/sup\/(estoque|pedidos)(\/|$)/.test(caminho) && temModulo(usuario, 'suprimentos');
   const porPerfil = !perfis || perfis.includes(usuario.perfil);
   const modulo = moduloDaPagina(caminho);
   if (!modulo || usuario.perfil === 'admin_sistema') return porPerfil;
