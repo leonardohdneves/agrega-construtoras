@@ -764,6 +764,41 @@ export function rotasFinanceiro(banco: Banco) {
       };
     });
 
+    // Itens de estoque sugeridos pelo pedido: obra, insumo da obra e etapa vêm da solicitação de compra que originou
+    // o pedido; quantidade, unidade e valor são os comprados (do pedido).
+    app.get<{ Params: { id: string } }>('/lancamentos/pedidos-disponiveis/:id/estoque', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) throw naoEncontrado('Pedido');
+      const p = (await banco.query('SELECT status FROM pedidos_compra WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
+      if (!p || !['aprovado', 'enviado', 'parcial'].includes(p.status)) throw naoEncontrado('Pedido');
+      const r = await banco.query(
+        `SELECT pi.descricao AS pedido_descricao, pi.unidade AS pedido_unidade, pi.quantidade, pi.preco_unitario_centavos,
+                si.descricao AS sol_descricao,
+                coalesce(pi.obra_item_id, si.obra_item_id) AS obra_item_id,
+                coalesce(pi.eap_no_id, si.eap_no_id) AS eap_no_id,
+                coalesce(oi.obra_id, sc.obra_id) AS obra_id
+           FROM pedidos_itens pi
+           LEFT JOIN cotacoes_itens ci ON ci.id = pi.cotacao_item_id
+           LEFT JOIN solicitacoes_itens si ON si.id = ci.solicitacao_item_id
+           LEFT JOIN solicitacoes_compra sc ON sc.id = si.solicitacao_id
+           LEFT JOIN obra_itens oi ON oi.id = coalesce(pi.obra_item_id, si.obra_item_id)
+          WHERE pi.pedido_id = $1
+          ORDER BY pi.descricao, pi.id`,
+        [req.params.id],
+      );
+      return {
+        itens: r.rows.map((i) => ({
+          descricao: (i.sol_descricao as string | null) ?? (i.pedido_descricao as string),
+          quantidade: Number(i.quantidade),
+          unidade: i.pedido_unidade as string,
+          valor: Math.round(Number(i.quantidade) * Number(i.preco_unitario_centavos)) / 100,
+          obraId: (i.obra_id as string | null) ?? '',
+          obraItemId: (i.obra_item_id as string | null) ?? '',
+          eapNoId: (i.eap_no_id as string | null) ?? '',
+        })),
+      };
+    });
+
     app.get<{ Params: { id: string } }>('/lancamentos/:id', async (req) => {
       return { lancamento: lancamentoPublico(await carregarLancamento(banco, empresaDo(req), req.params.id), hojeBrasil()) };
     });
