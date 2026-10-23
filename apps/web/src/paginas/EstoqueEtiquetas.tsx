@@ -21,10 +21,10 @@ type Etiqueta = {
 const POR_FOLHA = 24;
 const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 
-function QrEtiqueta({ texto }: { texto: string }) {
+export function QrEtiqueta({ texto, mm = 22 }: { texto: string; mm?: number }) {
   const q = useMemo(() => qrSvg(texto), [texto]);
   return (
-    <svg className="qr" viewBox={`0 0 ${q.tamanho} ${q.tamanho}`} style={{ width: '22mm', height: '22mm' }} shapeRendering="crispEdges" role="img" aria-label={`QR: ${texto}`}>
+    <svg className="qr" viewBox={`0 0 ${q.tamanho} ${q.tamanho}`} style={{ width: `${mm}mm`, height: `${mm}mm` }} shapeRendering="crispEdges" role="img" aria-label={`QR: ${texto}`}>
       <rect width={q.tamanho} height={q.tamanho} fill="#fff" />
       <path d={q.caminho} fill="#000" />
     </svg>

@@ -1,10 +1,15 @@
 // Patrimônio da construtora: ferramentas e equipamentos próprios, com retirada e devolução por obra e depreciação linear.
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, formatarData, formatarMoeda, lerNumero, moedaCampo } from '../api';
+import { Link } from 'react-router-dom';
+import { api, formatarData, formatarMoeda, lerNumero } from '../api';
+import { LeitorCodigo } from '../componentes/LeitorCodigo';
 import { useSessao } from '../sessao';
+import { QrEtiqueta } from './EstoqueEtiquetas';
+
+const UUID_NO_TEXTO = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
 
 type Bem = {
-  id: string; codigo: string; nome: string; marca: string | null; serie: string | null; dataAquisicao: string;
+  id: string; chave: string; codigo: string; nome: string; marca: string | null; serie: string | null; dataAquisicao: string;
   valorAquisicao: number; valorResidual: number; vidaUtilMeses: number; status: string;
   obraId: string | null; obraCodigo: string | null; obraNome: string | null; responsavel: string | null;
   depreciacao: { mensal: number; acumulada: number; contabil: number; mesesUsados: number };
@@ -28,6 +33,7 @@ export function SupPatrimonio() {
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
   const [ocupado, setOcupado] = useState(false);
+  const [leitor, setLeitor] = useState(false);
 
   const carregarLista = () => api<{ bens: Bem[] }>('/sup/patrimonio').then((r) => setBens(r.bens)).catch((e) => setErro((e as Error).message));
   useEffect(() => {
@@ -63,6 +69,16 @@ export function SupPatrimonio() {
     } finally {
       setOcupado(false);
     }
+  }
+
+  /** Lê a etiqueta do bem (QR) e abre o bem. */
+  async function lerQr(texto: string) {
+    const m = texto.match(UUID_NO_TEXTO);
+    const id = m ? m[0].toLowerCase() : null;
+    const achado = id ? bens?.find((b) => b.id === id) : undefined;
+    if (!achado) { setErro('Esta etiqueta não é de um bem do patrimônio.'); setLeitor(false); return; }
+    setLeitor(false);
+    await abrir(achado.id);
   }
 
   function salvarNovo(e: FormEvent) {
@@ -103,14 +119,16 @@ export function SupPatrimonio() {
           <h1>Ferramentas e equipamentos</h1>
           <span className="muted">Patrimônio próprio: retirada e devolução por obra, com depreciação linear pela vida útil.</span>
         </div>
-        {cadastro && (
-          <div className="acoes">
-            <button className="btn btn-primario" type="button" onClick={() => setNovo((v) => !v)}>{novo ? 'Fechar cadastro' : 'Cadastrar bem'}</button>
-          </div>
-        )}
+        <div className="acoes">
+          <button className="btn btn-secundario" type="button" onClick={() => setLeitor(true)}>Ler QR</button>
+          {bens && bens.length > 0 && <Link className="btn btn-secundario" to="/sup/patrimonio/etiquetas/imprimir">Imprimir etiquetas</Link>}
+          {cadastro && <button className="btn btn-primario" type="button" onClick={() => setNovo((v) => !v)}>{novo ? 'Fechar cadastro' : 'Cadastrar bem'}</button>}
+        </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
+
+      {leitor && <LeitorCodigo aoLer={(texto) => lerQr(texto)} aoFechar={() => setLeitor(false)} />}
 
       {novo && cadastro && (
         <form className="card form" onSubmit={salvarNovo}>
@@ -182,6 +200,10 @@ export function SupPatrimonio() {
               <h2>{bem.codigo} · {bem.nome}</h2>
               <span className="muted">{ROTULO_STATUS[bem.status] ?? bem.status}{bem.obraCodigo ? ` · ${bem.obraCodigo} · ${bem.obraNome}` : ''}{bem.responsavel ? ` · ${bem.responsavel}` : ''}</span>
             </div>
+          </div>
+          <div style={{ display: 'flex', gap: 16, alignItems: 'center', flexWrap: 'wrap' }}>
+            <QrEtiqueta texto={bem.chave} mm={26} />
+            <span className="small muted">Etiqueta do bem: o QR não muda. Leia-o na retirada e na devolução.</span>
           </div>
           <div className="campos">
             <div className="campo"><span className="small muted">Aquisição</span><b>{formatarData(bem.dataAquisicao)} · {formatarMoeda(bem.valorAquisicao)}</b></div>
@@ -264,6 +286,51 @@ export function SupPatrimonio() {
           )}
         </div>
       )}
+    </>
+  );
+}
+
+/** Folha A4 com as etiquetas dos bens (24 por folha, 3 × 8, 70 × 37 mm). O conteúdo da etiqueta não muda com a obra ou o responsável. */
+export function PatrimonioEtiquetasImprimir() {
+  const [bens, setBens] = useState<Bem[] | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    api<{ bens: Bem[] }>('/sup/patrimonio').then((r) => setBens(r.bens.filter((b) => b.status !== 'baixado'))).catch((e) => setErro((e as Error).message));
+  }, []);
+  const folhas: Bem[][] = [];
+  for (let i = 0; bens && i < bens.length; i += 24) folhas.push(bens.slice(i, i + 24));
+  return (
+    <>
+      <div className="cabecalho nao-imprimir">
+        <div className="titulo">
+          <h1>Etiquetas do patrimônio</h1>
+          <span className="muted">{bens ? `${bens.length} bem(ns) · folha A4 com 24 etiquetas (3 × 8, 70 × 37 mm).` : 'Carregando…'}</span>
+        </div>
+        <div className="acoes">
+          <button className="btn btn-primario" type="button" disabled={!bens?.length} onClick={() => window.print()}>Imprimir</button>
+          <Link className="btn btn-secundario" to="/sup/patrimonio">Voltar</Link>
+        </div>
+      </div>
+      {erro && <div className="alerta alerta-erro nao-imprimir" role="alert">{erro}</div>}
+      {bens && !bens.length && <p className="muted nao-imprimir">Nenhum bem ativo para etiquetar.</p>}
+      <div className="folhas-impressao">
+        {folhas.map((folha, f) => (
+          <div className="folha folha-etiquetas-estoque" key={f}>
+            <div className="folha-etiquetas">
+              {folha.map((b) => (
+                <div className="etiqueta-cp" key={b.id}>
+                  <QrEtiqueta texto={b.chave} />
+                  <div className="et-txt">
+                    <span className="et-cod">{b.codigo}</span>
+                    <span className="et-cli">{b.nome}</span>
+                    <span className="et-cli">{[b.marca, b.serie ? `série ${b.serie}` : null].filter(Boolean).join(' · ') || 'Patrimônio próprio'}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
