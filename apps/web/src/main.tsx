@@ -50,6 +50,7 @@ import { ContratoDetalhe, NovoContrato, SupContratos } from './paginas/SupContra
 import { MedicaoDetalhe, NovaMedicao, SupMedicoes } from './paginas/SupMedicoes';
 import { AutorizacaoDetalhe, SupAutorizacoes } from './paginas/SupAutorizacoes';
 import { SupEstoque } from './paginas/SupEstoque';
+import { EstoqueEtiquetasImprimir } from './paginas/EstoqueEtiquetas';
 import { SupRelatorios } from './paginas/SupRelatorios';
 import { Regras } from './paginas/Regras';
 import { Dre } from './paginas/Dre';
@@ -192,6 +193,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/medicoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaMedicao /></Protegido>} />
             <Route path="sup/medicoes/:id" element={<Protegido perfis={['dono', 'gestor']}><MedicaoDetalhe /></Protegido>} />
             <Route path="sup/estoque" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><SupEstoque /></Protegido>} />
+            <Route path="sup/estoque/etiquetas/imprimir" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><EstoqueEtiquetasImprimir /></Protegido>} />
             <Route path="sup/autorizacoes" element={<Protegido perfis={['dono', 'gestor']}><SupAutorizacoes /></Protegido>} />
             <Route path="sup/autorizacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><AutorizacaoDetalhe /></Protegido>} />
             <Route path="ger/aprovacoes" element={<Protegido perfis={['dono', 'gestor']}><SupAprovacoes /></Protegido>} />

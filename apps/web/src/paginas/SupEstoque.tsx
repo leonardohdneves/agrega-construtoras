@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../api';
 import { LeitorCodigo } from '../componentes/LeitorCodigo';
 import { qrSvg } from '../qr';
@@ -323,10 +324,10 @@ export function SupEstoque() {
               <h2>Etiquetas (QR)</h2>
               <div className="acoes">
                 <label className="small"><input type="checkbox" checked={soComSaldo} onChange={(e) => setSoComSaldo(e.target.checked)} /> Somente com saldo</label>
-                <button className="btn btn-link nao-imprimir" type="button" onClick={() => window.print()}>Imprimir</button>
+                {obraId && <Link className="btn btn-link nao-imprimir" to={`/sup/estoque/etiquetas/imprimir?obraId=${obraId}&saldo=${soComSaldo ? '1' : '0'}`}>Imprimir etiquetas</Link>}
               </div>
             </div>
-            <p className="muted small">Uma etiqueta por insumo recebido. Cole-a no material; na saída, a leitura do QR confere obra, etapa e saldo.</p>
+            <p className="muted small">Uma etiqueta para cada entrada de insumo no estoque (nota fiscal ou despesa com estoque). Cole-a no material; na saída, a leitura do QR confere obra, etapa e saldo.</p>
             {etiquetas.length === 0 ? <p className="muted">Nenhuma etiqueta{soComSaldo ? ' com saldo' : ''} nesta obra.</p> : (
               <table className="tabela">
                 <thead><tr><th>QR</th><th>Insumo</th><th>Entrada</th><th className="n">Qtd.</th><th className="n">Saldo</th><th>Etapa</th><th>Estoque</th></tr></thead>
