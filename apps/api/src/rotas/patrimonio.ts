@@ -10,6 +10,7 @@ import { hojeBrasil } from '../lib/frota.ts';
 import { obrasPermitidas } from '../lib/obras-acesso.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { dinheiro } from './financeiro.ts';
+import { chavePatrimonio } from '../lib/etiquetas.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const dataObrig = (msg: string) => z.string({ required_error: msg }).regex(/^\d{4}-\d{2}-\d{2}$/, msg);
@@ -58,6 +59,7 @@ function bemPublico(r: Record<string, any>, hoje: string) {
   );
   return {
     id: r.id as string,
+    chave: chavePatrimonio(r.id as string),
     codigo: r.codigo as string,
     nome: r.nome as string,
     marca: (r.marca ?? null) as string | null,
