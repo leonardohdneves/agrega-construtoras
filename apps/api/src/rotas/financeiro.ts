@@ -19,7 +19,13 @@ import {
   valorPago,
 } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
-import { SQL_SALDOS } from '../lib/estoque.ts';
+import {
+  estoqueDaMovimentacao,
+  registrarEntradasLancamento,
+  removerEntradasLancamento,
+  SQL_SALDOS,
+  validarApropriacaoObra,
+} from '../lib/estoque.ts';
 
 // ---------- Esquemas ----------
 export function numeroBr(v: unknown): unknown {
@@ -117,11 +123,23 @@ const camposLancamento = {
   apropriacoes: z.array(esquemaApropriacao).min(1, 'Informe a categoria.').max(50),
   parcelas: z.array(esquemaParcela).min(1, 'Informe o vencimento.').max(120, 'No máximo 120 parcelas.'),
 };
+// Item que dá entrada no estoque da construtora: mesma apropriação de um item de nota (obra, insumo da obra, etapa e estoque).
+const esquemaItemEstoque = z.object({
+  descricao: z.string({ required_error: 'Descreva o item.' }).trim().min(2, 'Descreva o item.').max(200),
+  quantidade: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000)),
+  unidade: textoOpc(20),
+  valor: dinheiro('o valor do item', { positivo: false }),
+  obraId: z.string({ required_error: 'Escolha a obra.' }).uuid('Escolha a obra.'),
+  obraItemId: z.string({ required_error: 'Escolha o insumo da obra.' }).uuid('Escolha o insumo da obra.'),
+  eapNoId: z.string({ required_error: 'Escolha a etapa da EAP.' }).uuid('Escolha a etapa da EAP.'),
+  obraEstoqueId: uuidOpc,
+});
 const esquemaLancamento = z.object({
   ...camposLancamento,
   baixa: esquemaBaixa.optional().nullable(),
   recorrencia: z.enum(['nenhuma', 'semanal', 'mensal', 'anual']).optional().default('nenhuma'),
   repeticoes: z.coerce.number().int().min(1).max(60, 'No máximo 60 repetições.').optional().default(1),
+  estoque: z.array(esquemaItemEstoque).max(200, 'No máximo 200 itens de estoque.').optional().default([]),
 });
 const esquemaEditarLancamento = z.object({ ...camposLancamento, parcelas: z.array(esquemaParcela).max(120, 'No máximo 120 parcelas.') });
 
@@ -220,6 +238,16 @@ async function carregarLancamento(c: Cliente, empresaId: string, id: string) {
     )
   ).rows[0];
   if (!l) throw naoEncontrado('Lançamento');
+  const es = (
+    await c.query(
+      `SELECT li.*, ob.codigo AS obra_codigo, ob.nome AS obra_nome, oi.codigo AS insumo_codigo, oi.descricao AS insumo_descricao,
+              en.codigo AS eap_codigo, en.descricao AS eap_descricao
+         FROM lancamento_itens_estoque li JOIN obras ob ON ob.id = li.obra_id
+         LEFT JOIN obra_itens oi ON oi.id = li.obra_item_id LEFT JOIN eap_nos en ON en.id = li.eap_no_id
+        WHERE li.lancamento_id = $1 ORDER BY li.criado_em, li.id`,
+      [id],
+    )
+  ).rows;
   const ap = (
     await c.query(
       `SELECT a.*, pc.codigo, pc.nome AS plano_nome, cc.nome AS centro_nome, v.codigo AS veiculo_codigo
@@ -236,13 +264,23 @@ async function carregarLancamento(c: Cliente, empresaId: string, id: string) {
       [id],
     )
   ).rows;
-  return { l, ap, pa };
+  return { l, ap, pa, es };
 }
 
-function lancamentoPublico({ l, ap, pa }: Awaited<ReturnType<typeof carregarLancamento>>, hoje: string) {
+function lancamentoPublico({ l, ap, pa, es }: Awaited<ReturnType<typeof carregarLancamento>>, hoje: string) {
   return {
     id: l.id,
     tipo: l.tipo,
+    estoque: es.map((x) => ({
+      id: x.id,
+      descricao: x.descricao,
+      quantidade: Number(x.quantidade),
+      unidade: x.unidade,
+      valor: reais(x.valor_centavos),
+      obra: x.obra_codigo ? `${x.obra_codigo} · ${x.obra_nome}` : null,
+      insumoObra: x.insumo_codigo ? `${x.insumo_codigo} · ${x.insumo_descricao}` : null,
+      etapa: x.eap_codigo ? `${x.eap_codigo} ${x.eap_descricao}` : null,
+    })),
     competencia: l.competencia,
     descricao: l.descricao,
     documento: l.documento,
@@ -705,6 +743,12 @@ export function rotasFinanceiro(banco: Banco) {
     app.post('/lancamentos', async (req, reply) => {
       const d = esquemaLancamento.parse(req.body);
       conferirSomas(d);
+      if (d.estoque.length) {
+        if (d.tipo !== 'despesa') throw new ErroHttp(400, 'Só despesas dão entrada no estoque.');
+        if (d.recorrencia !== 'nenhuma') throw new ErroHttp(400, 'Lançamento recorrente não pode dar entrada no estoque. Lance cada compra separadamente.');
+        const somaEstoque = d.estoque.reduce((s, i) => s + i.valor, 0);
+        if (somaEstoque > d.valorTotal) throw new ErroHttp(400, `Os itens de estoque (${brl(somaEstoque)}) passam do valor total (${brl(d.valorTotal)}).`);
+      }
       const empresaId = empresaDo(req);
       const usuarioId = req.usuario!.id;
       const { primeiroId, criados } = await emTransacao(banco, async (c) => {
@@ -732,7 +776,19 @@ export function rotasFinanceiro(banco: Banco) {
             c, empresaId, l.id, d.apropriacoes,
             d.parcelas.map((p) => ({ vencimento: desloca(p.vencimento), valor: p.valor })),
           );
-          await auditar(c, { empresaId, usuarioId, acao: 'criar', entidade: 'lancamentos', entidadeId: l.id, depois: { ...l, apropriacoes: d.apropriacoes, parcelas: d.parcelas.length } });
+          if (k === 0 && d.estoque.length) {
+            for (const i of d.estoque) {
+              await validarApropriacaoObra(c, empresaId, i.obraId, i.obraItemId, i.eapNoId);
+              if (i.obraEstoqueId) await estoqueDaMovimentacao(c, empresaId, i.obraId, i.obraEstoqueId);
+              await c.query(
+                `INSERT INTO lancamento_itens_estoque (empresa_id, lancamento_id, descricao, quantidade, unidade, valor_centavos, obra_id, obra_item_id, eap_no_id, obra_estoque_id)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+                [empresaId, l.id, i.descricao, i.quantidade, i.unidade, i.valor, i.obraId, i.obraItemId, i.eapNoId, i.obraEstoqueId],
+              );
+            }
+            await registrarEntradasLancamento(c, empresaId, l.id, hojeBrasil(), usuarioId);
+          }
+          await auditar(c, { empresaId, usuarioId, acao: 'criar', entidade: 'lancamentos', entidadeId: l.id, depois: { ...l, apropriacoes: d.apropriacoes, parcelas: d.parcelas.length, estoque: d.estoque.length } });
           if (k === 0 && d.baixa) await baixarParcela(c, empresaId, usuarioId, ids[0], d.baixa);
         }
         return { primeiroId, criados: repeticoes };
@@ -800,6 +856,8 @@ export function rotasFinanceiro(banco: Banco) {
         if (pagas) throw new ErroHttp(409, 'Há parcelas pagas. Estorne os pagamentos antes de cancelar.');
         await c.query("UPDATE lancamentos SET status = 'cancelado', atualizado_em = now() WHERE id = ANY($1::uuid[])", [ids]);
         await c.query("UPDATE parcelas SET status = 'cancelada', atualizado_em = now() WHERE lancamento_id = ANY($1::uuid[]) AND status = 'aberta'", [ids]);
+        // A entrada no estoque sai junto com o lançamento.
+        for (const id of ids) await removerEntradasLancamento(c, id);
         for (const a of alvos) await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'lancamentos', entidadeId: a.id, antes: a, depois: { status: 'cancelado' } });
         return ids.length;
       });
