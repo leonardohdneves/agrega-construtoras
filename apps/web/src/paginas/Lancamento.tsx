@@ -216,6 +216,28 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
       descricao: `Pedido de compra nº ${p.numero} · ${p.fornecedor}${p.resumo ? ` · ${p.resumo}` : ''}`.slice(0, 200),
       valorTotal: moedaCampo(p.total),
     }));
+    // Itens de estoque: obra, insumo e etapa da solicitação que originou o pedido; quantidade e valor do pedido.
+    if (tipo === 'despesa' && !editando) {
+      api<{ itens: { descricao: string; quantidade: number; unidade: string; valor: number; obraId: string; obraItemId: string; eapNoId: string }[] }>(`/fin/lancamentos/pedidos-disponiveis/${id}/estoque`)
+        .then((r) => {
+          if (!r.itens.length) return;
+          setItensEstoque(
+            r.itens.map((i) => ({
+              chave: `e${++seqEstoque}`,
+              descricao: i.descricao,
+              quantidade: i.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 3 }),
+              unidade: i.unidade,
+              valor: moedaCampo(i.valor),
+              obraId: i.obraId,
+              obraItemId: i.obraItemId,
+              eapNoId: i.eapNoId,
+              obraEstoqueId: '',
+            })),
+          );
+          setComEstoque(true);
+        })
+        .catch(() => undefined);
+    }
   }
   const [itensEstoque, setItensEstoque] = useState<ItemEstoque[]>([]);
   const [erro, setErro] = useState('');
