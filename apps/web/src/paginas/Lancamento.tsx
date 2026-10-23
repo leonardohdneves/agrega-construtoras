@@ -197,6 +197,26 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
   const [recorrencia, setRecorrencia] = useState({ tipo: 'nenhuma', repeticoes: '12' });
   // Entrada no estoque da construtora (só em despesa nova, sem recorrência).
   const [comEstoque, setComEstoque] = useState(false);
+  // Despesa preenchida a partir de um pedido de compra aprovado (fornecedor, descrição e valor vêm do pedido).
+  const [pedidos, setPedidos] = useState<{ id: string; numero: number; fornecedorId: string; fornecedor: string; total: number; resumo: string }[]>([]);
+  const [pedidoId, setPedidoId] = useState('');
+  useEffect(() => {
+    if (editando || tipo !== 'despesa') return;
+    api<{ pedidos: { id: string; numero: number; fornecedorId: string; fornecedor: string; total: number; resumo: string }[] }>('/fin/lancamentos/pedidos-disponiveis')
+      .then((r) => setPedidos(r.pedidos))
+      .catch(() => setPedidos([]));
+  }, [editando, tipo]);
+  function escolherPedido(id: string) {
+    setPedidoId(id);
+    const p = pedidos.find((x) => x.id === id);
+    if (!p) return;
+    setF((atual) => ({
+      ...atual,
+      pessoaId: p.fornecedorId,
+      descricao: `Pedido de compra nº ${p.numero} · ${p.fornecedor}${p.resumo ? ` · ${p.resumo}` : ''}`.slice(0, 200),
+      valorTotal: moedaCampo(p.total),
+    }));
+  }
   const [itensEstoque, setItensEstoque] = useState<ItemEstoque[]>([]);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -258,6 +278,7 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
       corpo.baixa = { data: pago.data, contaId: pago.contaId, forma: pago.forma };
     } else if (condicao === 'vencimento') corpo.parcelas = [{ vencimento, valor: f.valorTotal }];
     else corpo.parcelas = parcelas.map((p) => ({ vencimento: p.vencimento, valor: p.valor }));
+    if (!editando && tipo === 'despesa' && pedidoId) corpo.pedidoId = pedidoId;
     if (!editando && recorrencia.tipo !== 'nenhuma') {
       corpo.recorrencia = recorrencia.tipo;
       corpo.repeticoes = recorrencia.repeticoes;
@@ -306,6 +327,20 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
         </div>
       )}
       <div className="campos">
+        {!editando && tipo === 'despesa' && pedidos.length > 0 && (
+          <div className="campo largo">
+            <label htmlFor="l-pedido">Preencher pelo pedido de compra aprovado (opcional)</label>
+            <select id="l-pedido" value={pedidoId} onChange={(e) => escolherPedido(e.target.value)}>
+              <option value="">Não preencher pelo pedido</option>
+              {pedidos.map((p) => (
+                <option key={p.id} value={p.id}>
+                  Pedido nº {p.numero} · {p.fornecedor} · {formatarMoeda(p.total)}
+                </option>
+              ))}
+            </select>
+            <span className="small muted">Preenche fornecedor, descrição e valor com o pedido. O pedido fica ligado a esta despesa.</span>
+          </div>
+        )}
         <div className="campo largo">
           <label htmlFor="l-desc">Descrição</label>
           <input id="l-desc" value={f.descricao} placeholder={tipo === 'despesa' ? 'Ex.: Cimento CP-II 30 t' : 'Ex.: Concreto fck 25 · 20 m³ · obra X'} onChange={(e) => setF({ ...f, descricao: e.target.value })} required />
