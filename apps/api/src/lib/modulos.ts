@@ -92,7 +92,7 @@ const CONSULTAS = [
 ];
 
 /** Contratos e medições que o engenheiro de obra administra (só das obras atribuídas a ele, conferido na rota). */
-const CONTRATOS_DA_OBRA = [/^\/api\/sup\/(contratos|medicoes)(\/|$)/];
+const CONTRATOS_DA_OBRA = [/^\/api\/sup\/(contratos|medicoes|patrimonio)(\/|$)/];
 /** Listas que o engenheiro de obra usa para preencher contratos e medições. */
 const CONSULTAS_ENGENHEIRO = [/^\/api\/fin\/(plano-contas|centros-custo)\/?$/];
 
@@ -104,7 +104,7 @@ const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|pla
  * Módulo liberado além do padrão do perfil dá acesso completo a ele.
  */
 /** Almoxarife: estoques, saídas por etiqueta, funcionários e as leituras de obra e EAP que a tela usa. */
-const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|colaboradores|etiquetas|saidas-material)(\/|$)/];
+const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|colaboradores|etiquetas|saidas-material|patrimonio)(\/|$)/];
 const ALMOXARIFADO_CONSULTAS = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/, /^\/api\/sup\/pedidos(\/[^/]+)?\/?$/];
 
 export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; perfisRota: Perfil[]; url: string; metodo: string; contratados?: readonly string[] }): boolean {
