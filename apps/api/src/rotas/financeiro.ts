@@ -140,6 +140,7 @@ const esquemaLancamento = z.object({
   recorrencia: z.enum(['nenhuma', 'semanal', 'mensal', 'anual']).optional().default('nenhuma'),
   repeticoes: z.coerce.number().int().min(1).max(60, 'No máximo 60 repetições.').optional().default(1),
   estoque: z.array(esquemaItemEstoque).max(200, 'No máximo 200 itens de estoque.').optional().default([]),
+  pedidoId: uuidOpc,
 });
 const esquemaEditarLancamento = z.object({ ...camposLancamento, parcelas: z.array(esquemaParcela).max(120, 'No máximo 120 parcelas.') });
 
@@ -736,6 +737,33 @@ export function rotasFinanceiro(banco: Banco) {
       };
     });
 
+    // Pedidos de compra aprovados (ou já em andamento) que ainda não viraram despesa: para preencher o lançamento.
+    app.get('/lancamentos/pedidos-disponiveis', async (req) => {
+      const empresaId = empresaDo(req);
+      const r = await banco.query(
+        `SELECT p.id, p.numero, p.data, p.status, p.total_centavos, p.fornecedor_id, coalesce(f.nome_fantasia, f.razao_social) AS fornecedor,
+                (SELECT string_agg(pi.descricao, ', ' ORDER BY pi.descricao) FROM pedidos_itens pi WHERE pi.pedido_id = p.id) AS resumo
+           FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id
+          WHERE p.empresa_id = $1 AND p.status IN ('aprovado', 'enviado', 'parcial')
+            AND NOT EXISTS (SELECT 1 FROM lancamentos l WHERE l.pedido_id = p.id AND l.status <> 'cancelado' AND l.excluido_em IS NULL)
+            AND NOT EXISTS (SELECT 1 FROM notas_fiscais n JOIN lancamentos l ON l.id = n.lancamento_id WHERE n.pedido_id = p.id AND l.status <> 'cancelado' AND n.excluido_em IS NULL)
+          ORDER BY p.numero DESC LIMIT 200`,
+        [empresaId],
+      );
+      return {
+        pedidos: r.rows.map((p) => ({
+          id: p.id as string,
+          numero: p.numero as number,
+          data: p.data,
+          status: p.status as string,
+          fornecedorId: p.fornecedor_id as string,
+          fornecedor: p.fornecedor as string,
+          total: reais(p.total_centavos),
+          resumo: (p.resumo as string | null) ?? '',
+        })),
+      };
+    });
+
     app.get<{ Params: { id: string } }>('/lancamentos/:id', async (req) => {
       return { lancamento: lancamentoPublico(await carregarLancamento(banco, empresaDo(req), req.params.id), hojeBrasil()) };
     });
@@ -751,8 +779,22 @@ export function rotasFinanceiro(banco: Banco) {
       }
       const empresaId = empresaDo(req);
       const usuarioId = req.usuario!.id;
+      if (d.pedidoId && (d.tipo !== 'despesa' || d.recorrencia !== 'nenhuma')) throw new ErroHttp(400, 'Só uma despesa avulsa pode ser lançada a partir de um pedido de compra.');
       const { primeiroId, criados } = await emTransacao(banco, async (c) => {
         await validarReferencias(c, empresaId, d);
+        if (d.pedidoId) {
+          // Pedido aprovado do mesmo fornecedor, ainda sem despesa lançada (nem por nota fiscal).
+          const p = (await c.query('SELECT status, fornecedor_id, total_centavos FROM pedidos_compra WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [d.pedidoId, empresaId])).rows[0];
+          if (!p || !['aprovado', 'enviado', 'parcial'].includes(p.status)) throw new ErroHttp(400, 'O pedido precisa estar aprovado para virar despesa.');
+          if (p.fornecedor_id !== d.fornecedorId) throw new ErroHttp(400, 'O fornecedor da despesa é diferente do fornecedor do pedido.');
+          if (Number(p.total_centavos) !== d.valorTotal) throw new ErroHttp(400, `O valor da despesa (${brl(d.valorTotal)}) é diferente do total do pedido (${brl(Number(p.total_centavos))}).`);
+          const ja = (await c.query(
+            `SELECT 1 FROM lancamentos l WHERE l.pedido_id = $1 AND l.status <> 'cancelado' AND l.excluido_em IS NULL
+             UNION ALL SELECT 1 FROM notas_fiscais n JOIN lancamentos l ON l.id = n.lancamento_id WHERE n.pedido_id = $1 AND l.status <> 'cancelado' AND n.excluido_em IS NULL`,
+            [d.pedidoId],
+          )).rowCount;
+          if (ja) throw new ErroHttp(409, 'Este pedido já tem despesa lançada.');
+        }
         const repeticoes = d.recorrencia === 'nenhuma' ? 1 : d.repeticoes;
         let primeiroId = '';
         for (let k = 0; k < repeticoes; k++) {
@@ -760,11 +802,11 @@ export function rotasFinanceiro(banco: Banco) {
           const l = (
             await c.query(
               `INSERT INTO lancamentos (empresa_id, tipo, competencia, descricao, documento, valor_total_centavos, cliente_id, fornecedor_id, observacoes,
-                                        recorrencia, recorrencia_pai_id, recorrencia_ordem, criado_por_id)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
+                                        recorrencia, recorrencia_pai_id, recorrencia_ordem, criado_por_id, pedido_id)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
               [
                 empresaId, d.tipo, desloca(d.competencia), d.descricao, d.documento, d.valorTotal, d.clienteId, d.fornecedorId, d.observacoes,
-                d.recorrencia, k === 0 ? null : primeiroId, d.recorrencia === 'nenhuma' ? null : k + 1, usuarioId,
+                d.recorrencia, k === 0 ? null : primeiroId, d.recorrencia === 'nenhuma' ? null : k + 1, usuarioId, k === 0 ? d.pedidoId : null,
               ],
             )
           ).rows[0];
