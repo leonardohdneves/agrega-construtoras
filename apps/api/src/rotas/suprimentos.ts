@@ -1523,6 +1523,7 @@ export function rotasSuprimentos(banco: Banco) {
       const empresaId = empresaDo(req);
       const filtro = req.query.status ?? '';
       const hoje = hojeBrasil();
+      const soConferencia = usuarioDe(req).perfil === 'almoxarife';
       const r = await banco.query(
         `SELECT p.id, p.numero, p.data, p.status, p.previsao_entrega, p.total_centavos, p.aprovacao_automatica,
                 coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, ct.numero AS cotacao_numero, ua.nome AS aprovado_por,
@@ -1531,6 +1532,7 @@ export function rotasSuprimentos(banco: Banco) {
            FROM pedidos_compra p JOIN fornecedores f ON f.id = p.fornecedor_id
            LEFT JOIN cotacoes ct ON ct.id = p.cotacao_id LEFT JOIN usuarios ua ON ua.id = p.aprovado_por_id
           WHERE p.empresa_id = $1
+            AND ($4::boolean = false OR p.status IN ('aprovado', 'enviado', 'parcial', 'recebido', 'encerrado'))
             AND CASE $2
                   WHEN 'abertos' THEN p.status IN ('rascunho', 'aguardando_aprovacao', 'aprovado', 'enviado', 'parcial', 'reprovado')
                   WHEN 'aprovacao' THEN p.status = 'aguardando_aprovacao'
@@ -1542,7 +1544,7 @@ export function rotasSuprimentos(banco: Banco) {
                 END
           ORDER BY array_position(ARRAY['aguardando_aprovacao','reprovado','rascunho','aprovado','enviado','parcial','recebido','encerrado','cancelado'], p.status), p.numero DESC
           LIMIT 500`,
-        [empresaId, filtro, hoje],
+        [empresaId, filtro, hoje, soConferencia],
       );
       return {
         pedidos: r.rows.map((p) => {
@@ -1567,7 +1569,16 @@ export function rotasSuprimentos(banco: Banco) {
       };
     });
 
-    app.get<{ Params: { id: string } }>('/pedidos/:id', async (req) => ({ pedido: await detalharPedido(banco, empresaDo(req), req.params.id, usuarioDe(req)) }));
+    app.get<{ Params: { id: string } }>('/pedidos/:id', async (req) => {
+      const u = usuarioDe(req);
+      const empresaId = empresaDo(req);
+      if (u.perfil === 'almoxarife') {
+        // Conferência no recebimento: o almoxarife vê o pedido depois de aprovado, com preços, mas não o altera.
+        const st = (await banco.query('SELECT status FROM pedidos_compra WHERE id = $1 AND empresa_id = $2', [UUID.test(req.params.id) ? req.params.id : null, empresaId])).rows[0];
+        if (!st || !['aprovado', 'enviado', 'parcial', 'recebido', 'encerrado'].includes(st.status)) throw naoEncontrado('Pedido');
+      }
+      return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
+    });
 
     const pedidoPara = async (c: Cliente, empresaId: string, id: string) => {
       if (!UUID.test(id)) throw naoEncontrado('Pedido');

@@ -183,8 +183,8 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/cotacoes" element={<Protegido perfis={['dono', 'gestor']}><SupCotacoes /></Protegido>} />
             <Route path="sup/cotacoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaCotacao /></Protegido>} />
             <Route path="sup/cotacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><CotacaoDetalhe /></Protegido>} />
-            <Route path="sup/pedidos" element={<Protegido perfis={['dono', 'gestor']}><SupPedidos /></Protegido>} />
-            <Route path="sup/pedidos/:id" element={<Protegido perfis={['dono', 'gestor']}><PedidoDetalhe /></Protegido>} />
+            <Route path="sup/pedidos" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><SupPedidos /></Protegido>} />
+            <Route path="sup/pedidos/:id" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><PedidoDetalhe /></Protegido>} />
             <Route path="sup/contratos" element={<Protegido perfis={['dono', 'gestor']}><SupContratos /></Protegido>} />
             <Route path="sup/contratos/novo" element={<Protegido perfis={['dono', 'gestor']}><NovoContrato /></Protegido>} />
             <Route path="sup/contratos/:id" element={<Protegido perfis={['dono', 'gestor']}><ContratoDetalhe /></Protegido>} />
