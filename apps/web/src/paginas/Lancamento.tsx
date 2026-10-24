@@ -1,6 +1,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { FormBaixa } from '../componentes/FormBaixa';
+import { LeituraIa, type DadosLidos } from '../componentes/LeituraIa';
 import {
   api,
   dividirParcelas,
@@ -239,6 +240,21 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
         .catch(() => undefined);
     }
   }
+  // Preenche o formulário com os dados lidos do documento (foto ou PDF). Nada é salvo; o usuário confere antes.
+  function aplicarLeitura(d: DadosLidos) {
+    setF((atual) => ({
+      ...atual,
+      descricao: typeof d.descricao === 'string' ? d.descricao : atual.descricao,
+      documento: typeof d.documento === 'string' ? d.documento : atual.documento,
+      competencia: typeof d.competencia === 'string' ? d.competencia : atual.competencia,
+      pessoaId: typeof d.pessoaId === 'string' ? d.pessoaId : atual.pessoaId,
+      valorTotal: typeof d.valorTotal === 'number' ? moedaCampo(d.valorTotal) : atual.valorTotal,
+    }));
+    if (typeof d.vencimento === 'string') {
+      setVencimento(d.vencimento);
+      setParc((p) => ({ ...p, primeiro: d.vencimento as string }));
+    }
+  }
   const [itensEstoque, setItensEstoque] = useState<ItemEstoque[]>([]);
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
@@ -348,6 +364,7 @@ function FormLancamento({ tipo, inicial, cadastros, aoSalvar }: { tipo: TipoLanc
           O plano de contas ainda não tem categorias de {tipo}. <Link to="/fin/plano-contas">Aplique o plano padrão ou crie categorias</Link>.
         </div>
       )}
+      {!editando && <LeituraIa tipoLancamento={tipo} aoLer={aplicarLeitura} />}
       <div className="campos">
         {!editando && tipo === 'despesa' && pedidos.length > 0 && (
           <div className="campo largo">
