@@ -17,17 +17,20 @@ export function arquivoParaBase64(arquivo: File): Promise<string> {
   });
 }
 
-export function LeituraIa({ entidade, aoLer }: { entidade: EntidadeLeitura; aoLer: (dados: DadosLidos) => void }) {
+/** Leitura de cadastro (entidade) ou de lançamento (tipoLancamento). Os dados só entram no formulário; nada é salvo aqui. */
+export function LeituraIa({ entidade, tipoLancamento, aoLer }: { entidade?: EntidadeLeitura; tipoLancamento?: 'receita' | 'despesa'; aoLer: (dados: DadosLidos) => void }) {
+  const caminho = tipoLancamento ? '/fin/lancamentos/leitura' : '/adm/cadastros/leitura';
+  const extra = tipoLancamento ? { tipoLancamento } : { entidade };
   const [disponivel, setDisponivel] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [erro, setErro] = useState('');
   const [duvidas, setDuvidas] = useState<string[]>([]);
 
   useEffect(() => {
-    api<{ ia: boolean }>('/adm/cadastros/leitura')
+    api<{ ia: boolean }>(caminho)
       .then((r) => setDisponivel(r.ia))
       .catch(() => setDisponivel(false));
-  }, []);
+  }, [caminho]);
 
   if (!disponivel) return null;
 
@@ -41,7 +44,7 @@ export function LeituraIa({ entidade, aoLer }: { entidade: EntidadeLeitura; aoLe
     setOcupado(true);
     try {
       const base = await arquivoParaBase64(arquivo);
-      const r = await api<{ dados: DadosLidos; duvidas: string[] }>('/adm/cadastros/leitura', { corpo: { arquivo: base, tipo: arquivo.type, entidade } });
+      const r = await api<{ dados: DadosLidos; duvidas: string[] }>(caminho, { corpo: { arquivo: base, tipo: arquivo.type, ...extra } });
       aoLer(r.dados);
       setDuvidas(r.duvidas);
     } catch (err) {

@@ -19,6 +19,8 @@ import {
   valorPago,
 } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
+import { lerLancamentoComIa } from '../lib/ia-lancamento.ts';
 import {
   estoqueDaMovimentacao,
   registrarEntradasLancamento,
@@ -738,6 +740,50 @@ export function rotasFinanceiro(banco: Banco) {
     });
 
     // Pedidos de compra aprovados (ou já em andamento) que ainda não viraram despesa: para preencher o lançamento.
+    // ----- Leitura do documento por IA (foto ou PDF) -----
+    // A IA só sugere os campos; o lançamento só é salvo depois de conferido no formulário.
+    app.get('/lancamentos/leitura', async () => ({ ia: iaDisponivel() }));
+
+    app.post('/lancamentos/leitura', { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
+      const d = z
+        .object({
+          arquivo: z.string({ required_error: 'Envie a foto ou o PDF.' }).min(20, 'Arquivo vazio.'),
+          tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
+          tipoLancamento: z.enum(['receita', 'despesa']),
+        })
+        .parse(req.body);
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
+      const bytes = Buffer.from(d.arquivo, 'base64');
+      if (bytes.length > 10 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo grande demais (máximo 10 MB).');
+      let lido;
+      try {
+        lido = await lerLancamentoComIa(bytes, d.tipo, d.tipoLancamento);
+      } catch (e) {
+        if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
+        throw e;
+      }
+      // Procura a outra parte pelo CNPJ/CPF entre os cadastros da empresa.
+      let pessoaId: string | null = null;
+      if (lido.pessoaCnpjCpf) {
+        const tabela = d.tipoLancamento === 'receita' ? 'clientes' : 'fornecedores';
+        const r = await banco.query(`SELECT id FROM ${tabela} WHERE empresa_id = $1 AND cnpj_cpf = $2 AND excluido_em IS NULL LIMIT 1`, [empresaDo(req), lido.pessoaCnpjCpf]);
+        pessoaId = (r.rows[0] as { id: string } | undefined)?.id ?? null;
+      }
+      const duvidas = [...lido.duvidas];
+      if (lido.pessoaNome && !pessoaId) {
+        duvidas.push(`${d.tipoLancamento === 'receita' ? 'Cliente' : 'Fornecedor'} "${lido.pessoaNome}" não está cadastrado. Cadastre-o e escolha-o no campo.`);
+      }
+      if (lido.parcelas && lido.parcelas > 1) duvidas.push(`O documento tem ${lido.parcelas} parcelas. Ajuste o parcelamento abaixo.`);
+      const dados: Record<string, string | number> = {};
+      if (lido.descricao) dados.descricao = lido.descricao;
+      if (lido.documento) dados.documento = lido.documento;
+      if (lido.competencia) dados.competencia = lido.competencia;
+      if (lido.vencimento) dados.vencimento = lido.vencimento;
+      if (lido.valorTotal !== null) dados.valorTotal = lido.valorTotal;
+      if (pessoaId) dados.pessoaId = pessoaId;
+      return { dados, duvidas };
+    });
+
     app.get('/lancamentos/pedidos-disponiveis', async (req) => {
       const empresaId = empresaDo(req);
       const r = await banco.query(
