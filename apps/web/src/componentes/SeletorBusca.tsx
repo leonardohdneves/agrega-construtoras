@@ -21,7 +21,7 @@ export function SeletorBusca({
   id: string;
   label: string;
   /** `busca`: texto extra pelo qual a opção é encontrada (ex.: etapas da EAP), sem aparecer no rótulo. */
-  opcoes: { id: string; rotulo: string; busca?: string }[];
+  opcoes: { id: string; rotulo: string; busca?: string; detalhe?: string }[];
   valor: string;
   onChange: (id: string) => void;
   vazio: string;
@@ -78,6 +78,7 @@ export function SeletorBusca({
                     style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', minHeight: 0, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: o.id === valor ? 700 : 400, background: o.id === valor ? 'var(--surface-sunken)' : undefined }}
                   >
                     {o.rotulo}
+                    {o.detalhe && <span className="small muted" style={{ display: 'block', marginTop: 2 }}>{o.detalhe}</span>}
                   </button>
                 </li>
               ))}
