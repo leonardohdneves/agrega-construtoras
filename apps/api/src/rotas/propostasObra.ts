@@ -6,6 +6,8 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
+import { chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { calcularProposta, NOMES_TIPO, TIPOS_PROPOSTA, type ItemProposta, type Parametros, type TipoProposta } from '../lib/propostas-obra.ts';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -127,6 +129,69 @@ function publica(r: Record<string, any>) {
     criadoEm: r.criado_em,
   };
 }
+
+
+// Revisão por IA: procura erros de digitação, de concordância, de cálculo e de descrição no texto da proposta.
+// A IA só aponta; quem corrige é o usuário.
+const FERRAMENTA_REVISAO = {
+  name: 'revisar_proposta',
+  description: 'Registra os problemas encontrados no texto da proposta comercial.',
+  input_schema: {
+    type: 'object',
+    properties: {
+      resumo: { type: 'string', description: 'Uma frase com a avaliação geral da proposta.' },
+      problemas: {
+        type: 'array',
+        description: 'Um registro por problema. Não invente problemas: se o texto estiver correto, deixe a lista vazia.',
+        items: {
+          type: 'object',
+          properties: {
+            campo: { type: 'string', description: 'Onde está o problema: Título, Objeto, Endereço, Condições, Item (nome do item), Parcela (nome da parcela).' },
+            trecho: { type: 'string', description: 'Trecho exato do texto com o problema.' },
+            tipo: { type: 'string', enum: ['digitacao', 'concordancia', 'descricao', 'valor', 'prazo', 'coerencia'], description: 'Natureza do problema.' },
+            gravidade: { type: 'string', enum: ['erro', 'atencao', 'sugestao'], description: 'erro: deve corrigir; atencao: confira; sugestao: melhoria opcional.' },
+            explicacao: { type: 'string', description: 'O que está errado, em uma ou duas frases.' },
+            sugestao: { type: 'string', description: 'Como corrigir, com o texto sugerido quando couber.' },
+          },
+          required: ['campo', 'trecho', 'tipo', 'gravidade', 'explicacao', 'sugestao'],
+        },
+      },
+    },
+    required: ['resumo', 'problemas'],
+  },
+};
+
+async function textoParaRevisao(c: Cliente, empresaId: string, id: string): Promise<string> {
+  const p = (
+    await c.query(
+      `SELECT p.numero, p.titulo, p.tipo, p.objeto, p.endereco, p.condicoes, p.validade_dias, p.prazo_dias, p.parametros, p.valor_total_centavos
+         FROM propostas_obra p WHERE p.id = $1 AND p.empresa_id = $2`,
+      [id, empresaId],
+    )
+  ).rows[0];
+  if (!p) throw naoEncontrado('Proposta');
+  const [itens, parcelas] = await Promise.all([
+    c.query('SELECT descricao, unidade, quantidade, preco_unitario_centavos FROM propostas_obra_itens WHERE proposta_id = $1 ORDER BY ordem', [id]),
+    c.query('SELECT descricao, vencimento, valor_centavos FROM propostas_obra_parcelas WHERE proposta_id = $1 ORDER BY numero', [id]),
+  ]);
+  const reais = (c: number | string | null) => (c === null ? '—' : (Number(c) / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }));
+  const linhas: string[] = [
+    `Tipo: ${NOMES_TIPO[p.tipo as TipoProposta] ?? p.tipo}`,
+    `Título: ${p.titulo ?? '—'}`,
+    `Objeto: ${p.objeto ?? '—'}`,
+    `Endereço da obra: ${p.endereco ?? '—'}`,
+    `Prazo de execução: ${p.prazo_dias ?? '—'} dias; validade da proposta: ${p.validade_dias} dias`,
+    `Valor total: ${reais(p.valor_total_centavos)}`,
+    'Itens:',
+    ...itens.rows.map((i) => `- ${i.descricao} | ${i.unidade} | quantidade ${Number(i.quantidade)} | preço unitário ${reais(i.preco_unitario_centavos)}`),
+    'Parcelas:',
+    ...parcelas.rows.map((x) => `- ${x.descricao} | vencimento ${String(x.vencimento).slice(0, 10)} | ${reais(x.valor_centavos)}`),
+    `Condições gerais: ${p.condicoes ?? '—'}`,
+  ];
+  return linhas.join('\n');
+}
+
+export type ProblemaRevisao = { campo: string; trecho: string; tipo: string; gravidade: 'erro' | 'atencao' | 'sugestao'; explicacao: string; sugestao: string };
 
 export function rotasPropostasObra(banco: Banco) {
   return async function (app: FastifyInstance) {
@@ -276,6 +341,27 @@ export function rotasPropostasObra(banco: Banco) {
           parcelas: parcelas.rows.map((x) => ({ descricao: x.descricao, vencimento: String(x.vencimento).slice(0, 10), valor: reais(x.valor_centavos) })),
         },
       };
+    });
+
+    app.post<{ Params: { id: string } }>('/obra-propostas/:id/revisar-ia', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Proposta');
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A revisão por IA não está configurada.');
+      const texto = await textoParaRevisao(banco, empresaId, req.params.id);
+      try {
+        const bruto = await chamarIaComFerramenta({
+          bloco: { type: 'text', text: texto },
+          ferramenta: FERRAMENTA_REVISAO,
+          maxTokens: 3000,
+          instrucao:
+            'Revise a proposta comercial abaixo, em português do Brasil. Procure: erros de digitação e de acentuação; concordância; descrições vagas ou contraditórias; valores que não batem entre itens, total e parcelas; prazos incoerentes. Registre os achados chamando a ferramenta revisar_proposta. Cite o trecho exato. Não reescreva a proposta inteira.\n\n' + texto,
+        });
+        const problemas = Array.isArray(bruto.problemas) ? (bruto.problemas as ProblemaRevisao[]) : [];
+        return { resumo: typeof bruto.resumo === 'string' ? bruto.resumo : '', problemas };
+      } catch (e) {
+        if (e instanceof ErroIa) throw new ErroHttp(502, e.message);
+        throw e;
+      }
     });
 
     /** Cria ou atualiza uma proposta em rascunho, gravando o cálculo do servidor. */
