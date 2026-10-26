@@ -876,16 +876,27 @@ export function rotasEngenharia(banco: Banco) {
       // Serviços do orçamento por nó: um serviço em mais de um nó aparece em cada linha, com o código do nó.
       const linhas = (
         await banco.query(
-          `SELECT oq.id, oq.obra_item_id, oq.eap_no_id, oi.codigo, oi.descricao, oi.unidade, en.codigo AS eap_codigo, en.descricao AS eap_descricao
+          `SELECT oq.id, oq.obra_item_id, oq.eap_no_id, oi.codigo, oi.descricao, oi.unidade, en.codigo AS eap_codigo
              FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id AND oi.tipo = 'composicao'
              LEFT JOIN eap_nos en ON en.id = oq.eap_no_id
             WHERE oq.obra_id = $1 ORDER BY en.codigo NULLS FIRST, oi.codigo, oq.ordem`,
           [req.params.id],
         )
       ).rows;
+      // Caminho do nó na EAP (etapa › subetapa › nó), para a busca encontrar pelas etapas.
+      const nosEap = new Map((await banco.query('SELECT id, pai_id, descricao FROM eap_nos WHERE obra_id = $1', [req.params.id])).rows.map((n) => [n.id as string, n]));
+      const caminhoDo = (noId: string | null) => {
+        const partes: string[] = [];
+        let atual = noId ? nosEap.get(noId) : undefined;
+        for (let guarda = 0; atual && guarda < 20; guarda++) {
+          partes.unshift(atual.descricao as string);
+          atual = atual.pai_id ? nosEap.get(atual.pai_id as string) : undefined;
+        }
+        return partes.length ? partes.join(' › ') : null;
+      };
       return {
         itens: r.rows.map(itemObraPublico),
-        linhas: linhas.map((l) => ({ id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: (l.eap_no_id as string | null) ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: (l.eap_codigo as string | null) ?? null, eapDescricao: (l.eap_descricao as string | null) ?? null })),
+        linhas: linhas.map((l) => ({ id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: (l.eap_no_id as string | null) ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: (l.eap_codigo as string | null) ?? null, eapCaminho: caminhoDo((l.eap_no_id as string | null) ?? null) })),
       };
     });
 

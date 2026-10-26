@@ -20,7 +20,8 @@ export function SeletorBusca({
 }: {
   id: string;
   label: string;
-  opcoes: { id: string; rotulo: string }[];
+  /** `busca`: texto extra pelo qual a opção é encontrada (ex.: etapas da EAP), sem aparecer no rótulo. */
+  opcoes: { id: string; rotulo: string; busca?: string }[];
   valor: string;
   onChange: (id: string) => void;
   vazio: string;
@@ -36,7 +37,10 @@ export function SeletorBusca({
 }) {
   const [busca, setBusca] = useState('');
   const termos = normalizaBusca(busca).split(/\s+/).filter(Boolean);
-  const visiveis = opcoes.filter((o) => o.id === valor || termos.every((t) => normalizaBusca(o.rotulo).includes(t)));
+  const casa = (o: { rotulo: string; busca?: string }) => termos.every((t) => normalizaBusca(o.busca ?? o.rotulo).includes(t));
+  const visiveis = opcoes.filter((o) => o.id === valor || casa(o));
+  // Busca ao vivo: com lista completa, só mostra os resultados enquanto digita (sem repetir todas as opções).
+  const resultados = opcoes.filter(casa);
   return (
     <div className="campo" style={style}>
       {!semRotulo && <label htmlFor={id}>{label}</label>}
@@ -50,7 +54,12 @@ export function SeletorBusca({
       />
       {listaCompleta ? (
         <>
-          {visiveis.length === 0 ? (
+          {termos.length === 0 ? (
+            <p className="small muted" style={{ margin: '4px 0' }}>
+              {valor ? <>Selecionado: <b>{opcoes.find((o) => o.id === valor)?.rotulo}</b>. </> : null}
+              Digite para buscar pelo código, pela descrição ou pela etapa da EAP.
+            </p>
+          ) : resultados.length === 0 ? (
             <p className="small muted" style={{ margin: '4px 0' }}>Nenhum resultado para a busca.</p>
           ) : (
             <ul
@@ -58,7 +67,7 @@ export function SeletorBusca({
               aria-label={label}
               style={{ listStyle: 'none', margin: '4px 0', padding: 0, maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}
             >
-              {visiveis.map((o) => (
+              {resultados.slice(0, 100).map((o) => (
                 <li key={o.id}>
                   <button
                     type="button"
