@@ -910,7 +910,7 @@ export function rotasEngenharia(banco: Banco) {
         linhas: linhas
           .map((l) => {
             const no = noDoNivel((l.eap_no_id as string | null) ?? null);
-            return { id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: no?.id ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: no?.codigo ?? null, eapCaminho: caminhoDo((l.eap_no_id as string | null) ?? null) };
+            return { id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: no?.id ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: no?.codigo ?? null, eapCaminho: caminhoDo(no?.id ?? null) };
           })
           .filter((l, i, todas) => todas.findIndex((x) => x.obraItemId === l.obraItemId && x.eapNoId === l.eapNoId) === i),
       };
