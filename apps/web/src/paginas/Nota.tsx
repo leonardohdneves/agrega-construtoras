@@ -859,9 +859,33 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
               </span>
             )}
             {nota.pedido && (
-              <span className="small">
-                Recebimento do <Link to={`/sup/pedidos/${nota.pedido.id}`}>pedido de compra nº {String(nota.pedido.numero).padStart(4, '0')}</Link>
-              </span>
+              <div className="small" style={{ width: '100%' }}>
+                <div>
+                  Recebimento do <Link to={`/sup/pedidos/${nota.pedido.id}`}>pedido de compra nº {String(nota.pedido.numero).padStart(4, '0')}</Link>
+                  {` · emitido em ${formatarData(nota.pedido.data)}`}
+                  {nota.pedido.condicaoPagamento ? ` · ${nota.pedido.condicaoPagamento}` : ''}
+                  {` · ${nota.pedido.freteTipo === 'transportadora' ? 'frete por transportadora' : nota.pedido.freteTipo === 'proprio' ? 'frete próprio' : 'frete CIF'}${nota.pedido.frete ? ` (${formatarMoeda(nota.pedido.frete)})` : ''}`}
+                  {` · total do pedido ${formatarMoeda(nota.pedido.total)}`}
+                </div>
+                {nota.pedido.itens.length > 0 && (
+                  <table style={{ marginTop: 6 }}>
+                    <thead>
+                      <tr><th>Item do pedido</th><th>Qtd.</th><th>Preço unit.</th><th>Total</th><th>Nesta nota</th></tr>
+                    </thead>
+                    <tbody>
+                      {nota.pedido.itens.map((i) => (
+                        <tr key={i.id}>
+                          <td>{i.descricao}</td>
+                          <td>{formatarNumero(i.quantidade, 3)} {i.unidade}</td>
+                          <td>{formatarMoeda(i.preco)}</td>
+                          <td>{formatarMoeda(i.total)}</td>
+                          <td>{i.nestaNota ? 'sim' : 'não'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             )}
           </div>
           <div className="campo">

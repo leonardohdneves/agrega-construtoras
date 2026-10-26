@@ -132,6 +132,41 @@ async function carregarNota(c: Cliente, empresaId: string, id: string, travar = 
   return n as Nota;
 }
 
+/** Pedido de compra ligado à nota: condições, frete, total e os itens do pedido, marcando os que estão nesta nota. */
+async function pedidoDaNota(c: Cliente, pedidoId: string, notaId: string) {
+  const p = (
+    await c.query(
+      'SELECT id, numero, data, status, condicao_pagamento, previsao_entrega, frete_centavos, frete_tipo, total_centavos FROM pedidos_compra WHERE id = $1',
+      [pedidoId],
+    )
+  ).rows[0];
+  if (!p) return null;
+  const itens = (
+    await c.query(
+      `SELECT pi.id, pi.descricao, pi.unidade, pi.quantidade, pi.preco_unitario_centavos,
+              EXISTS (SELECT 1 FROM notas_itens ni WHERE ni.pedido_item_id = pi.id AND ni.nota_id = $2) AS nesta_nota
+         FROM pedidos_itens pi WHERE pi.pedido_id = $1 ORDER BY pi.descricao, pi.id`,
+      [pedidoId, notaId],
+    )
+  ).rows;
+  return {
+    id: p.id as string,
+    numero: p.numero as number,
+    data: p.data,
+    status: p.status as string,
+    condicaoPagamento: (p.condicao_pagamento as string | null) ?? null,
+    previsaoEntrega: p.previsao_entrega ?? null,
+    freteTipo: (p.frete_tipo as string | null) ?? null,
+    frete: reais(p.frete_centavos) ?? 0,
+    total: reais(p.total_centavos) ?? 0,
+    itens: itens.map((i) => {
+      const quantidade = Number(i.quantidade);
+      const preco = Number(i.preco_unitario_centavos) / 100;
+      return { id: i.id as string, descricao: i.descricao as string, unidade: i.unidade as string, quantidade, preco, total: Math.round(quantidade * preco * 100) / 100, nestaNota: !!i.nesta_nota };
+    }),
+  };
+}
+
 async function detalharNota(c: Cliente, empresaId: string, id: string) {
   const n = await carregarNota(c, empresaId, id);
   const itens = (
@@ -164,7 +199,9 @@ async function detalharNota(c: Cliente, empresaId: string, id: string) {
     if (l) lancamento = { id: l.id, status: l.status, parcelas: l.parcelas, pagas: l.pagas };
   }
   const divergencias = n.pedido_id ? await divergenciasPedido(c, n.id) : [];
-  return notaPublica(n, itens, duplicatas, lancamento, divergencias);
+  const publica = notaPublica(n, itens, duplicatas, lancamento, divergencias);
+  if (n.pedido_id) publica.pedido = await pedidoDaNota(c, n.pedido_id, n.id);
+  return publica;
 }
 
 /**
