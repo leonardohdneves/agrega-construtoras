@@ -56,8 +56,8 @@ function CurvaS({ obraId, setErro }: { obraId: string; setErro: (m: string) => v
         <div className="kpis" style={{ marginBottom: 16 }}>
           <div className="kpi"><div className="kpi-rotulo">Custo direto orçado</div><div className="kpi-valor">{reais(dados.custoTotal)}</div></div>
           <div className="kpi"><div className="kpi-rotulo">Última medição</div><div className="kpi-valor">{dados.dataUltimaMedicao ? dataBr(dados.dataUltimaMedicao) : "—"}</div></div>
-          <div className={"kpi" + (dados.indices.spi !== null && dados.indices.spi < 1 ? " kpi-perigo" : "")}><div className="kpi-rotulo">SPI</div><div className="kpi-valor">{indice(dados.indices.spi)}</div><div className="kpi-detalhe">executado ÷ previsto</div></div>
-          <div className={"kpi" + (dados.indices.cpi !== null && dados.indices.cpi < 1 ? " kpi-perigo" : "")}><div className="kpi-rotulo">CPI</div><div className="kpi-valor">{indice(dados.indices.cpi)}</div><div className="kpi-detalhe">executado ÷ realizado</div></div>
+          <div className={"kpi" + (dados.indices.spi !== null && dados.indices.spi < 1 ? " kpi-perigo" : "")}><div className="kpi-rotulo">IDP · prazo</div><div className="kpi-valor">{indice(dados.indices.spi)}</div><div className="kpi-detalhe">executado ÷ previsto</div></div>
+          <div className={"kpi" + (dados.indices.cpi !== null && dados.indices.cpi < 1 ? " kpi-perigo" : "")}><div className="kpi-rotulo">IDC · custo</div><div className="kpi-valor">{indice(dados.indices.cpi)}</div><div className="kpi-detalhe">executado ÷ realizado</div></div>
         </div>
         <GraficoLinhasBI
           titulo="Curva S: previsto, executado e realizado por mês"
@@ -71,8 +71,28 @@ function CurvaS({ obraId, setErro }: { obraId: string; setErro: (m: string) => v
         />
         <p className="small muted">
           Previsto: custo das atividades do planejamento no tempo. Executado: valor das medições. Realizado: despesas confirmadas apropriadas ao centro de custo da obra.
-          SPI abaixo de 1 indica atraso; CPI abaixo de 1 indica custo acima do executado.
+          IDP (índice de desempenho de prazo) abaixo de 1 indica atraso; IDC (índice de desempenho de custo) abaixo de 1 indica custo acima do executado.
         </p>
+      </div>
+      <div className="card">
+        <GraficoLinhasBI
+          titulo="IDP e IDC por mês (acumulado até cada mês)"
+          pontos={dados.pontos
+            .filter((p) => p.executado !== null)
+            .map((p) => ({
+              rotulo: dataBr(p.data).slice(3),
+              valores: {
+                idp: p.previsto > 0 && p.executado !== null ? p.executado / p.previsto : null,
+                idc: p.realizado !== null && p.realizado > 0 && p.executado !== null ? p.executado / p.realizado : null,
+              },
+            }))}
+          series={[
+            { id: 'idp', nome: 'IDP (prazo)', cor: '#2a78d6' },
+            { id: 'idc', nome: 'IDC (custo)', cor: '#eb6834' },
+          ]}
+          formatar={(v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+        />
+        <p className="small muted">Acima de 1 é favorável; abaixo de 1, desfavorável. Meses sem medição ou sem despesa ficam sem o índice correspondente.</p>
       </div>
       <div className="card">
         <div style={{ overflowX: 'auto' }}>
@@ -135,8 +155,8 @@ function PrevistoRealizadoView({ obraId, setErro }: { obraId: string; setErro: (
         <div><div className="small muted">Previsto até a data</div><b>{reais(t.previstoAte)}</b></div>
         <div><div className="small muted">Executado (valor)</div><b>{reais(t.executado)}</b></div>
         <div><div className="small muted">Realizado (despesas)</div><b>{reais(t.realizado)}</b></div>
-        <div><div className="small muted">SPI</div><b>{indice(t.spi)}</b></div>
-        <div><div className="small muted">CPI</div><b>{indice(t.cpi)}</b></div>
+        <div><div className="small muted">IDP · prazo</div><b>{indice(t.spi)}</b></div>
+        <div><div className="small muted">IDC · custo</div><b>{indice(t.cpi)}</b></div>
         <p className="small muted" style={{ flexBasis: '100%', margin: 0 }}>{dados.observacao}</p>
       </div>
       <div className="card">
@@ -151,7 +171,7 @@ function PrevistoRealizadoView({ obraId, setErro }: { obraId: string; setErro: (
                 <th className="num">Executado</th>
                 <th className="num">% executado</th>
                 <th className="num">Saldo a executar</th>
-                <th className="num">SPI</th>
+                <th className="num">IDP</th>
               </tr>
             </thead>
             <tbody>
@@ -170,7 +190,7 @@ function PrevistoRealizadoView({ obraId, setErro }: { obraId: string; setErro: (
             </tbody>
           </table>
         </div>
-        <p className="small muted">SPI abaixo de 1 indica que a etapa está atrasada em relação ao previsto na data de referência.</p>
+        <p className="small muted">IDP abaixo de 1 indica que a etapa está atrasada em relação ao previsto na data de referência. O IDC é apurado só no total da obra, pois as despesas não são apropriadas por etapa.</p>
       </div>
     </>
   );
