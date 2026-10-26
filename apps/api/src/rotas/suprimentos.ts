@@ -221,7 +221,7 @@ const esquemaItemServico = z.object({
   observacao: texto(200),
 });
 /** Escopo do serviço: quem fornece material, mão de obra e equipamento (direciona a minuta do contrato). */
-export const ESCOPOS_SERVICO = ['mo', 'eq', 'mat_mo', 'mat_mo_eq', 'mo_eq', 'mat_eq'] as const;
+export const ESCOPOS_SERVICO = ['mo', 'eq', 'mat', 'mat_mo', 'mat_mo_eq', 'mo_eq', 'mat_eq'] as const;
 const esquemaServico = z.object({
   obraId: z.string().regex(UUID, 'Escolha a obra.'),
   data: dataOpc,

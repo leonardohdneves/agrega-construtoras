@@ -16,10 +16,11 @@ export type ItemSolicitacao = ItemEap & {
 };
 export type TipoSolicitacao = 'insumo' | 'servico';
 /** Escopo do serviço: o que a contratada fornece (direciona a minuta do contrato). */
-export type EscopoServico = 'mo' | 'eq' | 'mat_mo' | 'mat_mo_eq' | 'mo_eq' | 'mat_eq';
+export type EscopoServico = 'mo' | 'eq' | 'mat' | 'mat_mo' | 'mat_mo_eq' | 'mo_eq' | 'mat_eq';
 export const ESCOPOS_SERVICO: { valor: EscopoServico; rotulo: string }[] = [
   { valor: 'mo', rotulo: 'Somente mão de obra' },
   { valor: 'eq', rotulo: 'Somente locação de equipamento' },
+  { valor: 'mat', rotulo: 'Somente material' },
   { valor: 'mat_mo', rotulo: 'Material e mão de obra' },
   { valor: 'mat_mo_eq', rotulo: 'Material, mão de obra e equipamento' },
   { valor: 'mo_eq', rotulo: 'Mão de obra e equipamento' },
