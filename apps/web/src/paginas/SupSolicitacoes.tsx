@@ -14,6 +14,8 @@ import {
   SELO_SOLICITACAO,
   unidadeTexto,
   useCadastrosCompra,
+  ESCOPOS_SERVICO,
+  type EscopoServico,
   type Solicitacao,
   type SolicitacaoResumo,
   type TipoSolicitacao,
@@ -542,6 +544,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
     data: inicial?.data ?? hojeLocal(),
     necessidade: inicial?.necessidade ?? '',
     planoContaId: inicial?.planoContaId ?? '',
+    escopo: (inicial?.escopo ?? '') as EscopoServico | '',
     observacao: inicial?.observacao ?? '',
   });
   const [composicoes, setComposicoes] = useState<ComposicaoPlanilha[] | null>(null);
@@ -643,6 +646,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
     setErro('');
     if (!f.obraId) return setErro('Escolha a obra.');
     if (!f.planoContaId) return setErro('Escolha a categoria (plano de contas) do serviço.');
+    if (!f.escopo) return setErro('Escolha o escopo do serviço (mão de obra, equipamento e/ou material).');
     if (novos.length === 0) return setErro('Inclua pelo menos um serviço.');
     setOcupado(true);
     try {
@@ -653,6 +657,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
         necessidade: f.necessidade || null,
         observacao: f.observacao || null,
         planoContaId: f.planoContaId,
+        escopo: f.escopo,
         itens: novos.map((n) => ({ obraItemId: n.obraItemId, eapNoId: n.eapNoId, quantidade: n.quantidade, observacao: null })),
       };
       const r = inicial
@@ -689,6 +694,13 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
           <select id="serv-cat" value={f.planoContaId} onChange={(e) => setF({ ...f, planoContaId: e.target.value })}>
             <option value="">Escolha…</option>
             {planos.map((p) => <option key={p.id} value={p.id}>{caminhoConta(p, contas)}</option>)}
+          </select>
+        </div>
+        <div className="campo">
+          <label htmlFor="serv-escopo">Escopo do serviço</label>
+          <select id="serv-escopo" value={f.escopo} onChange={(e) => setF({ ...f, escopo: e.target.value as EscopoServico | '' })}>
+            <option value="">Escolha…</option>
+            {ESCOPOS_SERVICO.map((e) => <option key={e.valor} value={e.valor}>{e.rotulo}</option>)}
           </select>
         </div>
       </div>
@@ -769,7 +781,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
       </div>
       <p className="small muted" style={{ marginBottom: 0 }}>{novos.length} {novos.length === 1 ? 'serviço na solicitação' : 'serviços na solicitação'}.</p>
       <div className="acoes">
-        <button className="btn btn-primario" type="submit" disabled={ocupado || !f.obraId || !f.planoContaId || novos.length === 0}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Registrar solicitação'}</button>
+        <button className="btn btn-primario" type="submit" disabled={ocupado || !f.obraId || !f.planoContaId || !f.escopo || novos.length === 0}>{ocupado ? 'Salvando…' : inicial ? 'Salvar alterações' : 'Registrar solicitação'}</button>
         {aoCancelar && <button className="btn btn-secundario" type="button" onClick={aoCancelar}>Cancelar</button>}
       </div>
     </form>
@@ -890,6 +902,7 @@ export function SolicitacaoDetalhe() {
                 ))}
               </tbody>
             </table>
+            {s.escopo && <p className="small" style={{ marginBottom: 0 }}><b>Escopo:</b> {ESCOPOS_SERVICO.find((e) => e.valor === s.escopo)?.rotulo ?? s.escopo}</p>}
             {s.observacao && <p className="small" style={{ marginBottom: 0 }}><b>Observação:</b> {s.observacao}</p>}
             <p className="small muted" style={{ marginBottom: 0 }}>Solicitado por {s.solicitante ?? '—'}{s.finalizadaEm ? ` · finalizada em ${formatarData(s.finalizadaEm.slice(0, 10))}` : ''}.</p>
           </div>
