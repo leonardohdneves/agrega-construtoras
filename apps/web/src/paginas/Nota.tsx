@@ -177,17 +177,6 @@ function NovaNota({ cadastros }: { cadastros: Cadastros }) {
                 ))}
               </select>
             </div>
-            {direcao === 'entrada' && (
-              <div className="campo">
-                <label htmlFor={`i-v-${i.chave}`}>Veículo</label>
-                <select id={`i-v-${i.chave}`} value={i.veiculoId} onChange={(e) => mudarItem(i.chave, { veiculoId: e.target.value })}>
-                  <option value="">—</option>
-                  {cadastros.veiculos.map((v) => (
-                    <option key={v.id} value={v.id}>{v.codigo}</option>
-                  ))}
-                </select>
-              </div>
-            )}
           </div>
           {itens.length > 1 && (
             <button className="btn btn-link" type="button" onClick={() => setItens((xs) => xs.filter((x) => x.chave !== i.chave))}>
@@ -615,22 +604,6 @@ function LinhaItem({
             <ApropriacaoEstoque item={item} editavel={!!editavel} salvar={salvar} />
           </td>
         )}
-        {nota.direcao === 'entrada' && (
-          <td>
-            {item.abastecimentos || (item.os && item.os.ordens?.includes(',')) ? (
-              <span className="small muted">rateado</span>
-            ) : editavel ? (
-              <select aria-label="Veículo" className="campo-tabela mono" value={item.veiculoId ?? ''} onChange={(e) => salvar({ veiculoId: e.target.value || null })}>
-                <option value="">—</option>
-                {cadastros.veiculos.map((v) => (
-                  <option key={v.id} value={v.id}>{v.codigo}</option>
-                ))}
-              </select>
-            ) : (
-              <span className="mono small">{item.veiculoCodigo ?? '—'}</span>
-            )}
-          </td>
-        )}
         <td className="mono" style={{ textAlign: 'right' }}>
           {editavel && manual ? (
             <input
@@ -957,6 +930,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
             </button>
           </div>
         )}
+        {!nota.pedido && editavel && nota.direcao === 'entrada' && <PedidosParaNota nota={nota} aoLigado={carregar} />}
         <table className="tabela tabela-nota">
           <thead>
             <tr>
@@ -964,7 +938,6 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
               <th>Item</th>
               <th>Categoria</th>
               <th>Centro de custo</th>
-              {nota.direcao === 'entrada' && <th>Veículo</th>}
               <th style={{ textAlign: 'right' }}>Valor total</th>
               <th><span style={{ position: 'absolute', left: -9999 }}>Ações</span></th>
             </tr>
@@ -977,7 +950,7 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
           <tfoot>
             {/* Conferência com a nota: itens (valor dos produtos) + acréscimos − desconto = total. */}
             <tr>
-              <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">Soma dos itens (valor dos produtos)</td>
+              <td colSpan={4} className="small muted">Soma dos itens (valor dos produtos)</td>
               <td className="mono" style={{ textAlign: 'right', fontWeight: 600 }}>{formatarMoeda(soma(nota.itens.map((i) => i.valorProduto)))}</td>
               <td />
             </tr>
@@ -994,13 +967,13 @@ function DetalheNota({ id, cadastros }: { id: string; cadastros: Cadastros }) {
               .filter(([, v]) => v)
               .map(([r, v]) => (
                 <tr key={r}>
-                  <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">{r}</td>
+                  <td colSpan={4} className="small muted">{r}</td>
                   <td className="mono small" style={{ textAlign: 'right' }}>{formatarMoeda(Math.abs(v))}</td>
                   <td />
                 </tr>
               ))}
             <tr>
-              <td colSpan={nota.direcao === 'entrada' ? 5 : 4} className="small muted">
+              <td colSpan={4} className="small muted">
                 = Total da nota
                 {nota.leitura?.totalLido != null && Math.round(nota.leitura.totalLido) !== Math.round(nota.totais.total * 100) && (
                   <span style={{ color: 'var(--status-warn-ink)' }}> · na nota impressa: {formatarMoeda(nota.leitura.totalLido / 100)}</span>
@@ -1275,6 +1248,104 @@ function NovoItemManual({ nota, cadastros, aoMudar, aoErro }: { nota: NotaFiscal
         </button>
       </div>
     </form>
+  );
+}
+
+type CandidatoPedido = {
+  id: string;
+  numero: number;
+  data: string;
+  status: string;
+  condicaoPagamento: string | null;
+  freteTipo: string | null;
+  frete: number;
+  total: number;
+  itens: { id: string; descricao: string; unidade: string; quantidade: number; recebido: number; preco: number }[];
+  sugestoes: { notaItemId: string; pedidoItemId: string; quantidade: number }[];
+};
+
+/** Cartão com o pedido de compra do mesmo fornecedor e o cruzamento sugerido dos itens. Ligar faz o recebimento. */
+function PedidosParaNota({ nota, aoLigado }: { nota: NotaFiscal; aoLigado: () => void }) {
+  const [pedidos, setPedidos] = useState<CandidatoPedido[] | null>(null);
+  const [escolhido, setEscolhido] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+
+  useEffect(() => {
+    api<{ pedidos: CandidatoPedido[] }>(`/fin/notas/${nota.id}/pedidos-candidatos`)
+      .then((r) => {
+        setPedidos(r.pedidos);
+        setEscolhido((r.pedidos.find((x) => x.sugestoes.length) ?? r.pedidos[0])?.id ?? '');
+      })
+      .catch(() => setPedidos([]));
+  }, [nota.id]);
+
+  if (!pedidos?.length) return null;
+  const p = pedidos.find((x) => x.id === escolhido) ?? pedidos[0];
+  const nomeItemPedido = (pedidoItemId: string) => p.itens.find((i) => i.id === pedidoItemId)?.descricao ?? '';
+
+  async function ligar() {
+    setOcupado(true);
+    setErro('');
+    try {
+      const itens = nota.itens.map((i) => {
+        const s = p.sugestoes.find((x) => x.notaItemId === i.id);
+        return { notaItemId: i.id, pedidoItemId: s?.pedidoItemId ?? null, quantidade: s?.quantidade ?? null };
+      });
+      await api(`/sup/pedidos/${p.id}/recebimento`, { metodo: 'PUT', corpo: { notaId: nota.id, itens } });
+      aoLigado();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 12 }}>
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <strong>Pedido de compra deste fornecedor</strong>
+        {pedidos.length > 1 && (
+          <select aria-label="Pedido de compra" value={p.id} onChange={(e) => setEscolhido(e.target.value)}>
+            {pedidos.map((x) => (
+              <option key={x.id} value={x.id}>
+                Pedido nº {String(x.numero).padStart(4, '0')} · {formatarData(x.data)} · {formatarMoeda(x.total)}
+              </option>
+            ))}
+          </select>
+        )}
+      </div>
+      <p className="small muted" style={{ margin: '6px 0' }}>
+        Pedido nº {String(p.numero).padStart(4, '0')} · {formatarData(p.data)} · {formatarMoeda(p.total)}
+        {p.condicaoPagamento ? ` · ${p.condicaoPagamento}` : ''}
+        {` · ${p.freteTipo === 'transportadora' ? 'frete por transportadora' : p.freteTipo === 'proprio' ? 'frete próprio' : 'frete CIF'}`}
+        {` · ${p.sugestoes.length} de ${nota.itens.length} itens da nota casam com o pedido`}
+      </p>
+      <table>
+        <thead>
+          <tr><th>Item da nota</th><th>Item do pedido (sugerido)</th><th>Qtd. recebida</th></tr>
+        </thead>
+        <tbody>
+          {nota.itens.map((i) => {
+            const s = p.sugestoes.find((x) => x.notaItemId === i.id);
+            return (
+              <tr key={i.id}>
+                <td>{i.descricao}</td>
+                <td className="small">{s ? nomeItemPedido(s.pedidoItemId) : <span className="muted">sem correspondência</span>}</td>
+                <td className="mono small">{s ? `${formatarNumero(s.quantidade, 3)} ${i.unidade ?? ''}` : '—'}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {erro && <div className="alerta alerta-erro" role="alert" style={{ marginTop: 8 }}>{erro}</div>}
+      <div className="row" style={{ justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
+        <span className="small muted">Ao ligar, cada item herda a obra, o insumo da obra e a etapa do pedido.</span>
+        <button className="btn btn-primario" type="button" disabled={!p.sugestoes.length || ocupado} onClick={ligar}>
+          {ocupado ? 'Ligando…' : `Ligar esta nota ao pedido nº ${String(p.numero).padStart(4, '0')}`}
+        </button>
+      </div>
+    </div>
   );
 }
 
