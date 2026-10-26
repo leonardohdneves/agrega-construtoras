@@ -680,6 +680,20 @@ export function PropostaDetalhe() {
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [contrato, setContrato] = useState<{ numero: number } | null>(null);
+  const [revisao, setRevisao] = useState<{ resumo: string; problemas: { campo: string; trecho: string; tipo: string; gravidade: 'erro' | 'atencao' | 'sugestao'; explicacao: string; sugestao: string }[] } | null>(null);
+  const [revisando, setRevisando] = useState(false);
+  async function revisarIa() {
+    if (!id) return;
+    setRevisando(true);
+    setErro('');
+    try {
+      setRevisao(await api(`/com/obra-propostas/${id}/revisar-ia`, { metodo: 'POST', corpo: {} }));
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setRevisando(false);
+    }
+  }
 
   function carregar() {
     api<{ proposta: Detalhe }>(`/com/obra-propostas/${id}`)
@@ -722,6 +736,7 @@ export function PropostaDetalhe() {
           <span className={`selo ${SELO[p.status]}`}>{ROTULO[p.status]}</span>
           {p.status === 'rascunho' && <Link className="btn btn-secundario" to={`/com/propostas/${p.id}/editar`}>Editar</Link>}
           <Link className="btn btn-secundario" to={`/com/propostas/${p.id}/imprimir`}>Imprimir</Link>
+          {pode && <button type="button" className="btn btn-secundario" disabled={revisando} onClick={revisarIa}>{revisando ? 'Revisando…' : 'Revisar com IA'}</button>}
           {p.status === 'rascunho' && <button type="button" className="btn btn-primario" disabled={ocupado} onClick={() => acao('/enviar')}>Marcar como enviada</button>}
           {aceitavel && (
             <button
@@ -740,6 +755,35 @@ export function PropostaDetalhe() {
         </div>
       </div>
       <ErroCampo erro={erro} />
+      {revisao && (
+        <div className="card" style={{ marginBottom: 12 }} role="status">
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'start' }}>
+            <div>
+              <strong>Revisão por IA</strong>
+              <p className="small" style={{ margin: '4px 0 0' }}>{revisao.resumo}</p>
+            </div>
+            <button type="button" className="btn btn-link" onClick={() => setRevisao(null)}>Fechar</button>
+          </div>
+          {revisao.problemas.length === 0 ? (
+            <p className="small muted" style={{ marginTop: 8 }}>Nenhum problema encontrado no texto.</p>
+          ) : (
+            <ul style={{ marginTop: 8, paddingLeft: 18 }}>
+              {revisao.problemas.map((x, i) => (
+                <li key={i} style={{ marginBottom: 8 }}>
+                  <span className={`selo ${x.gravidade === 'erro' ? 'selo-perigo' : x.gravidade === 'atencao' ? 'selo-aviso' : 'selo-neutro'}`}>
+                    {x.gravidade === 'erro' ? 'Erro' : x.gravidade === 'atencao' ? 'Atenção' : 'Sugestão'}
+                  </span>{' '}
+                  <strong>{x.campo}</strong> · {x.tipo}
+                  <div className="small">Trecho: “{x.trecho}”</div>
+                  <div className="small">{x.explicacao}</div>
+                  <div className="small"><strong>Sugestão:</strong> {x.sugestao}</div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <p className="small muted" style={{ marginTop: 8 }}>A IA só aponta. Corrija na edição da proposta, se for o caso.</p>
+        </div>
+      )}
       {contrato && (
         <div className="alerta" role="status">
           Proposta aceita. Contrato nº {numeroFmt(contrato.numero)} gerado e lançamentos criados em{' '}
