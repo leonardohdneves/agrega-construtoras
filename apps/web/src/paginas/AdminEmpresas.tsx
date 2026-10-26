@@ -34,6 +34,7 @@ const MODULOS_CONTRATO: [string, string][] = [
   ['gerencial', 'Gerencial'],
   ['administrativo', 'Administrativo'],
   ['incorporacao', 'Incorporação (contratada à parte)'],
+  ['laudos', 'Laudos (contratado à parte)'],
 ];
 
 type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; limiteObras: string; limiteUsuarios: string };

@@ -7,7 +7,7 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   // Almoxarife: só Suprimentos › Estoque (entradas, etiquetas, saídas e funcionários).
   almoxarife: ['suprimentos'],
   // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
-  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'administrativo'],
+  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'laudos', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
   // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
   engenheiro_obra: ['engenharia'],
@@ -33,6 +33,7 @@ export const PERFIS_POR_MODULO: Perfil[] = ['financeiro', 'administrativo', 'ven
 export function moduloDaPagina(caminho: string): Modulo | null {
   if (caminho.startsWith('/eng')) return 'engenharia';
   if (caminho.startsWith('/com')) return 'comercial';
+  if (caminho.startsWith('/laudos')) return 'laudos';
   if (caminho.startsWith('/frota') || caminho.startsWith('/abastecer')) return 'frota';
   if (caminho.startsWith('/prod') || caminho.startsWith('/minha-')) return 'producao';
   if (caminho.startsWith('/qual')) return 'qualidade';

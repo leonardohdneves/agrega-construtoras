@@ -71,12 +71,12 @@ export type Usuario = {
   modulosEfetivos: Modulo[];
 };
 
-export const MODULOS = ['engenharia', 'comercial', 'incorporacao', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'] as const;
+export const MODULOS = ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'] as const;
 /** Módulos da concreteira que ficaram no código herdado, mas ninguém recebe na construtora. */
 export type ModuloRetirado = 'frota' | 'producao' | 'qualidade';
 export type Modulo = (typeof MODULOS)[number] | ModuloRetirado;
 export const NOMES_MODULO: Record<Modulo, string> = {
-  engenharia: 'Engenharia', comercial: 'Comercial', incorporacao: 'Incorporação', suprimentos: 'Suprimentos', financeiro: 'Financeiro',
+  engenharia: 'Engenharia', comercial: 'Comercial', incorporacao: 'Incorporação', laudos: 'Laudos', suprimentos: 'Suprimentos', financeiro: 'Financeiro',
   gerencial: 'Gerencial', administrativo: 'Administrativo', configuracoes: 'Configurações',
   frota: 'Frota', producao: 'Produção', qualidade: 'Qualidade',
 };
