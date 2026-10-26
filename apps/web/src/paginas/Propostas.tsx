@@ -835,6 +835,126 @@ export function PropostaDetalhe() {
   );
 }
 
+
+// Valor por extenso (reais e centavos), para o texto do modelo de laudo.
+const UNIDADES_EXT = ['', 'um', 'dois', 'três', 'quatro', 'cinco', 'seis', 'sete', 'oito', 'nove', 'dez', 'onze', 'doze', 'treze', 'quatorze', 'quinze', 'dezesseis', 'dezessete', 'dezoito', 'dezenove'];
+const DEZENAS_EXT = ['', '', 'vinte', 'trinta', 'quarenta', 'cinquenta', 'sessenta', 'setenta', 'oitenta', 'noventa'];
+const CENTENAS_EXT = ['', 'cento', 'duzentos', 'trezentos', 'quatrocentos', 'quinhentos', 'seiscentos', 'setecentos', 'oitocentos', 'novecentos'];
+function ate999(n: number): string {
+  if (n === 100) return 'cem';
+  const c = Math.floor(n / 100);
+  const r = n % 100;
+  const partes: string[] = [];
+  if (c) partes.push(CENTENAS_EXT[c]);
+  if (r) partes.push(r < 20 ? UNIDADES_EXT[r] : DEZENAS_EXT[Math.floor(r / 10)] + (r % 10 ? ` e ${UNIDADES_EXT[r % 10]}` : ''));
+  return partes.join(' e ');
+}
+function porExtenso(n: number): string {
+  if (n === 0) return 'zero';
+  const partes: string[] = [];
+  const mi = Math.floor(n / 1000000);
+  const mil = Math.floor((n % 1000000) / 1000);
+  const resto = n % 1000;
+  if (mi) partes.push(mi === 1 ? 'um milhão' : `${ate999(mi)} milhões`);
+  if (mil) partes.push(mil === 1 ? 'mil' : `${ate999(mil)} mil`);
+  if (resto) partes.push(ate999(resto));
+  return partes.join(' e ');
+}
+function valorExtenso(valor: number): string {
+  const reais = Math.floor(valor);
+  const centavos = Math.round((valor - reais) * 100);
+  let t = `${porExtenso(reais)} ${reais === 1 ? 'real' : 'reais'}`;
+  if (centavos) t += ` e ${porExtenso(centavos)} ${centavos === 1 ? 'centavo' : 'centavos'}`;
+  return t;
+}
+
+/** Texto padrão de proposta técnica para laudos, pronto para impressão com linhas de assinatura. */
+function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string }) {
+  const q = p.parametros ?? {};
+  const entrada = p.parcelas.find((x) => x.descricao.startsWith('Entrada'));
+  const saldo = p.parcelas.find((x) => x.descricao.startsWith('Saldo'));
+  const pctEntrada = Number(q.entradaPct ?? 0);
+  const linha = (n: number) => <span style={{ display: 'inline-block', minWidth: n, borderBottom: '1px solid currentColor' }}>&nbsp;</span>;
+  const secao = (t: string) => <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>{t}</h3>;
+  return (
+    <div className="pagina romaneio">
+      <CabecalhoDocumento
+        modulo="Comercial"
+        titulo={`Proposta técnica nº ${numeroFmt(p.numero)} · ${p.titulo}`}
+        descricao="Laudos técnicos"
+        filtros={[`Cliente: ${p.clienteNome ?? '—'}`, `CPF/CNPJ: ${' '.repeat(20)}`, p.obraCodigo ? `Obra: ${p.obraCodigo}` : 'Sem obra vinculada', `Emissão: ${formatarData(p.criadoEm)}`, `Validade: ${p.validadeDias} dias`]}
+      />
+      <p style={{ margin: '0 0 6px' }}><strong>Obra:</strong> {p.endereco || '—'}</p>
+
+      {secao('1. Objeto')}
+      <p style={{ whiteSpace: 'pre-wrap' }}>{p.objeto || '—'}</p>
+
+      {secao('2. Escopo técnico')}
+      <p>2.1. A execução seguirá as normas técnicas brasileiras aplicáveis (ABNT), as especificações do projeto e as boas práticas de engenharia.</p>
+      <p>2.2. Os laudos incluídos nesta proposta são:</p>
+      <ol>
+        {p.itens.map((i, k) => (
+          <li key={k}>{i.descricao}{Number(i.quantidade) !== 1 ? ` (${Number(i.quantidade).toLocaleString('pt-BR')} ${i.unidade || 'un'})` : ''}</li>
+        ))}
+      </ol>
+      <p>2.3. Não estão incluídos nesta proposta: {linha(320)}</p>
+
+      {secao('3. Prazo')}
+      <p>3.1. Prazo de entrega dos laudos: {q.prazoEntregaDias ?? p.prazoDias ?? '—'} dias corridos, contados da aceitação.</p>
+      <p>3.2. Eventuais atrasos causados pelo cliente, por condições climáticas adversas ou por alterações de escopo serão tratados por aditivo de prazo.</p>
+
+      {secao('4. Preço e forma de pagamento')}
+      <p>4.1. Valor total: <strong>{formatarMoeda(p.valorTotal)} ({valorExtenso(p.valorTotal)})</strong>.</p>
+      <p>
+        4.2. Forma de pagamento: {pctEntrada.toLocaleString('pt-BR')}% na aceitação da proposta
+        {entrada ? ` (${formatarMoeda(entrada.valor)})` : ''} e {(100 - pctEntrada).toLocaleString('pt-BR')}% na entrega dos laudos
+        {saldo ? ` (${formatarMoeda(saldo.valor)})` : ''}.
+      </p>
+      <p>4.3. Os pagamentos serão realizados por {linha(160)}, com vencimentos conforme o quadro abaixo.</p>
+      {p.parcelas.length > 0 && (
+        <table className="tabela">
+          <thead><tr><th>Pagamento</th><th>Vencimento</th><th className="num">Valor</th></tr></thead>
+          <tbody>
+            {p.parcelas.map((x, i) => (
+              <tr key={i}><td>{x.descricao}</td><td>{formatarData(x.vencimento)}</td><td className="num">{formatarMoeda(x.valor)}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      <p>4.4. O atraso no pagamento sujeitará o valor em aberto a multa de 2% e juros de 1% ao mês, além de correção monetária pelo índice {linha(120)}.</p>
+
+      {secao('5. Responsabilidades')}
+      <p>5.1. Cabe à contratada: a execução técnica dos laudos e a emissão dos documentos técnicos acordados.</p>
+      <p>5.2. Cabe ao cliente: franquear o acesso ao local, fornecer as informações e os projetos necessários e efetuar os pagamentos no prazo.</p>
+
+      {secao('6. Reajuste')}
+      <p>{linha(420)}</p>
+
+      {secao('7. Aceite')}
+      <p>7.1. A aceitação desta proposta, por escrito ou pelo pagamento da primeira parcela, implica a concordância com todas as condições acima.</p>
+      <p>7.2. Após a aceitação, será gerado o contrato de prestação de serviços, que prevalecerá sobre esta proposta.</p>
+
+      {secao('8. Foro')}
+      <p>Fica eleito o foro da comarca de {linha(200)} para dirimir eventuais questões decorrentes desta proposta.</p>
+
+      <p style={{ marginTop: 16 }}>{linha(200)}, {linha(40)} de {linha(120)} de {linha(60)}.</p>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 36 }}>
+        <Assinatura nome={nomeEmpresa} papel="Pela contratada" detalhe={<>Responsável técnico: {linha(200)}<br />CREA: {linha(120)}</>} />
+        <Assinatura nome={p.clienteNome ?? 'Cliente'} papel="Pelo cliente" detalhe={<>CPF/CNPJ: {linha(160)}</>} />
+      </div>
+
+      <p style={{ marginTop: 28, fontWeight: 600 }}>Testemunhas</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 24 }}>
+        <p>1. {linha(260)}<br />CPF: {linha(180)}</p>
+        <p>2. {linha(260)}<br />CPF: {linha(180)}</p>
+      </div>
+      <p className="small muted" style={{ marginTop: 16 }}>Proposta válida por {p.validadeDias} dias a partir da emissão.</p>
+      <Link className="btn btn-secundario nao-imprimir" to={`/com/propostas/${p.id}`} style={{ marginTop: 16 }}>Voltar à proposta</Link>
+    </div>
+  );
+}
+
 /** Proposta para impressão: cabeçalho do sistema, cliente, objeto, preço, pagamento e assinaturas. */
 export function PropostaImprimir() {
   const { id } = useParams();
@@ -850,6 +970,7 @@ export function PropostaImprimir() {
   if (!p) return <p className="muted">Carregando…</p>;
   const q = p.parametros ?? {};
   const nomeEmpresa = empresa?.nomeFantasia || empresa?.razaoSocial || 'Empresa';
+  if (p.tipo === 'laudo') return <LaudoImpressao p={p} nomeEmpresa={nomeEmpresa} />;
   return (
     <div className="pagina romaneio">
       <CabecalhoDocumento
