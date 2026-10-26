@@ -89,6 +89,36 @@ export function calcularDatas(atividades: AtividadeCalc[]): Map<string, { inicio
   return saida;
 }
 
+/**
+ * Caminho crítico (método do caminho crítico, dias corridos). Datas mais cedo: as de calcularDatas. Datas mais tarde:
+ * a atividade termina até um dia antes do início da sucessora (e a obra termina na última data). Folga = diferença
+ * entre o início mais tarde e o mais cedo; atividade com folga zero está no caminho crítico.
+ */
+export function analisarCaminhoCritico(atividades: AtividadeCalc[]): Map<string, { critica: boolean; folgaDias: number }> {
+  const cedo = calcularDatas(atividades);
+  const porId = new Map(atividades.map((a) => [a.id, a]));
+  const sucessoras = new Map<string, string[]>();
+  for (const a of atividades) if (a.predecessoraId && porId.has(a.predecessoraId)) sucessoras.set(a.predecessoraId, [...(sucessoras.get(a.predecessoraId) ?? []), a.id]);
+  const fimDaObra = atividades.reduce((m, a) => Math.max(m, paraMs(cedo.get(a.id)!.fim)), -Infinity);
+  const tarde = new Map<string, { ini: number; fim: number }>();
+  const calcular = (id: string): { ini: number; fim: number } => {
+    const pronta = tarde.get(id);
+    if (pronta) return pronta;
+    const a = porId.get(id)!;
+    const filhas = sucessoras.get(id) ?? [];
+    const fim = filhas.length ? Math.min(...filhas.map((f) => calcular(f).ini - DIA_MS)) : fimDaObra;
+    const r = { ini: fim - (a.duracaoDias - 1) * DIA_MS, fim };
+    tarde.set(id, r);
+    return r;
+  };
+  const saida = new Map<string, { critica: boolean; folgaDias: number }>();
+  for (const a of atividades) {
+    const folgaDias = Math.round((calcular(a.id).ini - paraMs(cedo.get(a.id)!.inicio)) / DIA_MS);
+    saida.set(a.id, { critica: folgaDias <= 0, folgaDias: Math.max(0, folgaDias) });
+  }
+  return saida;
+}
+
 export type LinhaInsumo ={ codigo: string; descricao: string; unidade: string; precoCentavos: number; grupo: string | null };
 export type LinhaComposicao = { codigo: string; descricao: string; unidade: string; grupo: string | null };
 export type LinhaComponente = { composicao: string; insumo: string; coeficiente: number };

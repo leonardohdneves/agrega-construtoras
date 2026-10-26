@@ -28,6 +28,7 @@ import {
   erroMudarNivel,
   erroPaiPlanilha,
   erroServicoNaLinha,
+  analisarCaminhoCritico,
   montarRelatorioCustos,
   montarRelatorioOrcamento,
   NIVEIS_PLANILHA,
@@ -1252,6 +1253,7 @@ export function rotasEngenharia(banco: Banco) {
         nosObra,
       );
       const resumos = resumosDaEap(nosObra);
+      const caminho = analisarCaminhoCritico(r.rows.map((a) => ({ id: a.id, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
       // Na ordem da EAP (planilha): a estrutura do planejamento é a da planilha.
       const porEap = [...r.rows].sort((x, y) => {
         if (!x.eap_codigo || !y.eap_codigo) return x.eap_codigo ? -1 : y.eap_codigo ? 1 : 0;
@@ -1265,6 +1267,7 @@ export function rotasEngenharia(banco: Banco) {
             predecessoraNumero: a.predecessora_numero ?? null, eapNoId: a.eap_no_id ?? null, eapCodigo: a.eap_codigo ?? null, eapDescricao: a.eap_descricao ?? null,
             inicioInformado: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null, inicio: d.inicio, fim: d.fim,
             resumo: !!a.eap_no_id && resumos.has(a.eap_no_id),
+            critica: caminho.get(a.id)?.critica ?? false, folgaDias: caminho.get(a.id)?.folgaDias ?? 0,
           };
         }),
       };

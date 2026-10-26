@@ -80,6 +80,7 @@ function GanttComControle({ obraId, nos, setErro }: { obraId: string; nos: No[];
         </p>
         <div className="grafico-legenda" style={{ margin: 0 }}>
           <span className="grafico-legenda-item"><span className="grafico-dica-chave" style={{ background: '#2a78d6' }} />Planejado</span>
+          <span className="grafico-legenda-item"><span className="grafico-dica-chave" style={{ background: '#c0392b' }} />Caminho crítico</span>
           <span className="grafico-legenda-item"><span className="grafico-dica-chave" style={{ background: '#8b8a85' }} />Realizado</span>
           <button className="btn btn-secundario" type="button" onClick={() => setFechados(new Set())}>Expandir tudo</button>
           <button className="btn btn-secundario" type="button" onClick={() => setFechados(new Set(arvoreCompleta.filter((l) => l.temFilhos).map((l) => l.noId!)))}>Recolher tudo</button>
@@ -127,7 +128,7 @@ function GanttComControle({ obraId, nos, setErro }: { obraId: string; nos: No[];
                 <div style={{ flex: 1, position: 'relative', height: 30 }} title={temBarra ? `${l.descricao}: ${Math.round(pct)}% executado` : undefined}>
                   {temBarra && (
                     <>
-                      <div style={{ position: 'absolute', top: 2, height: l.resumo ? 8 : 12, borderRadius: 3, background: '#2a78d6', opacity: l.resumo ? 0.55 : 1, left: `${esquerda}%`, width: `${largBarra}%` }} />
+                      <div style={{ position: 'absolute', top: 2, height: l.resumo ? 8 : 12, borderRadius: 3, background: !l.resumo && l.atividade?.critica ? '#c0392b' : '#2a78d6', opacity: l.resumo ? 0.55 : 1, left: `${esquerda}%`, width: `${largBarra}%` }} />
                       <div style={{ position: 'absolute', top: 16, height: 8, borderRadius: 3, background: '#8b8a85', left: `${esquerda}%`, width: `${(largBarra * pct) / 100}%`, minWidth: pct > 0 ? 2 : 0 }} />
                     </>
                   )}
