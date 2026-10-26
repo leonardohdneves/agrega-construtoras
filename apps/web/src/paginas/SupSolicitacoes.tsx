@@ -500,6 +500,15 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
 
 // ---------- Formulário de serviços: composições cadastradas na obra ----------
 type ComposicaoPlanilha = { id: string; codigo: string; descricao: string; unidade: string };
+type LinhaOrcamento = { id: string; obraItemId: string; eapNoId: string | null; codigo: string; descricao: string; unidade: string; eapCodigo: string | null };
+type OpcaoServico = { id: string; rotulo: string; obraItemId: string; eapNoId: string | null };
+/** Uma opção por nó da EAP em que o serviço está no orçamento (com o código do nó); serviço fora do orçamento por nó segue sem nó. */
+function opcoesDeServico(composicoes: ComposicaoPlanilha[], linhas: LinhaOrcamento[]): OpcaoServico[] {
+  const noOrcamento = new Set(linhas.map((l) => l.obraItemId));
+  const doOrcamento = linhas.map((l) => ({ id: `l:${l.id}`, rotulo: `${l.eapCodigo ? `${l.eapCodigo} · ` : ''}${l.codigo} · ${l.descricao}`, obraItemId: l.obraItemId, eapNoId: l.eapNoId }));
+  const semNo = composicoes.filter((i) => !noOrcamento.has(i.id)).map((i) => ({ id: `s:${i.id}`, rotulo: `${i.codigo} · ${i.descricao}`, obraItemId: i.id, eapNoId: null }));
+  return [...doOrcamento, ...semNo];
+}
 type SaldoServico = { orcado: number; contratado: number; medido: number; saldoContratar: number; unidade: string | null };
 type NovoServico = { chave: string; obraItemId: string; eapNoId: string | null; codigo: string | null; descricao: string; unidade: string; eapCodigo: string | null; quantidade: number };
 
@@ -527,6 +536,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
     observacao: inicial?.observacao ?? '',
   });
   const [composicoes, setComposicoes] = useState<ComposicaoPlanilha[] | null>(null);
+  const [linhas, setLinhas] = useState<LinhaOrcamento[]>([]);
   const [saldo, setSaldo] = useState<SaldoServico | null>(null);
   const [nos, setNos] = useState<NoEapLista[]>([]);
   const [nivel, setNivel] = useState<string>('');
@@ -580,12 +590,13 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
     setComposicoes(null);
     Promise.all([
       api<{ obra: { nivelApropriacao: string } }>(`/eng/obras/${f.obraId}`),
-      api<{ itens: ComposicaoPlanilha[] }>(`/eng/obras/${f.obraId}/itens?tipo=composicao`),
+      api<{ itens: ComposicaoPlanilha[]; linhas: LinhaOrcamento[] }>(`/eng/obras/${f.obraId}/itens?tipo=composicao`),
       api<{ nos: NoEapLista[] }>(`/eng/obras/${f.obraId}/eap`),
     ])
       .then(([o, i, e]) => {
         setNivel(o.obra.nivelApropriacao);
         setComposicoes(i.itens);
+        setLinhas(i.linhas ?? []);
         setNos(e.nos.filter((x) => x.nivel === o.obra.nivelApropriacao));
       })
       .catch((e) => setErro((e as Error).message));
@@ -683,12 +694,15 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
             <SeletorBusca
               id="serv-item"
               label="Serviço"
-              opcoes={composicoes.map((i) => ({ id: i.id, rotulo: `${i.codigo} · ${i.descricao}` }))}
-              valor={add.obraItemId}
-              onChange={(v) => setAdd({ ...add, obraItemId: v })}
+              opcoes={opcoesDeServico(composicoes, linhas).map((o) => ({ id: o.id, rotulo: o.rotulo }))}
+              valor={opcoesDeServico(composicoes, linhas).find((o) => o.obraItemId === add.obraItemId && (o.eapNoId ?? '') === add.eapNoId)?.id ?? ''}
+              onChange={(v) => {
+                const o = opcoesDeServico(composicoes, linhas).find((x) => x.id === v);
+                setAdd({ ...add, obraItemId: o?.obraItemId ?? '', eapNoId: o?.eapNoId ?? '' });
+              }}
               vazio="Escolha o serviço"
             />
-            {nivel !== 'obra' && (
+            {nivel !== 'obra' && add.obraItemId && !add.eapNoId && (
               <div className="campo">
                 <label htmlFor="serv-no">Nó da EAP ({(ROTULO_NIVEL as Record<string, string>)[nivel] ?? nivel})</label>
                 <select id="serv-no" value={add.eapNoId} onChange={(e) => setAdd({ ...add, eapNoId: e.target.value })}>
