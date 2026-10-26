@@ -49,6 +49,8 @@ const esquemaProposta = z.object({
     numeroParcelas: numOpc,
     entradaPct: numOpc,
     prazoEntregaDias: numOpc,
+    // Textos preenchidos pelo usuário para o modelo de proposta de laudo (exclusões, pagamento, reajuste, foro, responsável técnico).
+    campos: z.record(z.string().max(1000)).optional(),
   }),
   itens: z.array(esquemaItem).max(300).default([]),
   condicoes: z.string().trim().max(4000).optional().nullable().transform((v) => v || null),

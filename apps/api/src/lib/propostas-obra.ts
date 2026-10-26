@@ -35,6 +35,7 @@ export type Parametros = {
   // laudo: percentual pago na aceitação e prazo de entrega do saldo
   entradaPct?: number;
   prazoEntregaDias?: number;
+  campos?: Record<string, string>;
 };
 export type Contexto = { valorObra: number; custoDireto: number }; // reais: venda do orçamento (com BDI) e custo direto
 
