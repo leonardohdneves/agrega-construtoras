@@ -656,7 +656,18 @@ export type NotaFiscal = {
   fornecedorId: string | null;
   fornecedorNome: string | null;
   fornecedorNovo: boolean;
-  pedido?: { id: string; numero: number } | null;
+  pedido?: {
+    id: string;
+    numero: number;
+    data: string;
+    status: string;
+    condicaoPagamento: string | null;
+    previsaoEntrega: string | null;
+    freteTipo: string | null;
+    frete: number;
+    total: number;
+    itens: { id: string; descricao: string; unidade: string; quantidade: number; preco: number; total: number; nestaNota: boolean }[];
+  } | null;
   clienteId: string | null;
   clienteNome: string | null;
   emitenteNome: string | null;

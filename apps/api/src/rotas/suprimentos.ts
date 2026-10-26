@@ -1801,6 +1801,14 @@ export function rotasSuprimentos(banco: Banco) {
         }
         if (!ligados) throw new ErroHttp(400, 'Ligue pelo menos um item da nota a um item do pedido.');
         await c.query('UPDATE notas_fiscais SET pedido_id = $2, atualizado_em = now() WHERE id = $1', [n.id, p.id]);
+        // A nota herda a obra, o insumo da obra e a etapa do item do pedido (só onde ainda não estão preenchidos).
+        await c.query(
+          `UPDATE notas_itens ni SET obra_item_id = coalesce(ni.obra_item_id, pi.obra_item_id), eap_no_id = coalesce(ni.eap_no_id, pi.eap_no_id),
+                  obra_id = coalesce(ni.obra_id, oi.obra_id)
+             FROM pedidos_itens pi LEFT JOIN obra_itens oi ON oi.id = pi.obra_item_id
+            WHERE pi.id = ni.pedido_item_id AND ni.nota_id = $1`,
+          [n.id],
+        );
         await atualizarStatusRecebimento(c, p.id);
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { recebimento: n.id, itens: ligados } });
       });
