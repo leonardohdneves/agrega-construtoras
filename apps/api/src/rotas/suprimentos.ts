@@ -220,12 +220,15 @@ const esquemaItemServico = z.object({
   quantidade: positivo('A quantidade precisa ser maior que zero.'),
   observacao: texto(200),
 });
+/** Escopo do serviço: quem fornece material, mão de obra e equipamento (direciona a minuta do contrato). */
+export const ESCOPOS_SERVICO = ['mo', 'eq', 'mat', 'mat_mo', 'mat_mo_eq', 'mo_eq', 'mat_eq'] as const;
 const esquemaServico = z.object({
   obraId: z.string().regex(UUID, 'Escolha a obra.'),
   data: dataOpc,
   necessidade: dataOpc,
   observacao: texto(500),
   planoContaId: z.string().regex(UUID, 'Escolha a categoria (plano de contas) do serviço.'),
+  escopo: z.enum(ESCOPOS_SERVICO, { message: 'Escolha o escopo do serviço (mão de obra, equipamento e/ou material).' }),
   itens: z.array(esquemaItemServico).min(1, 'Inclua pelo menos um serviço.').max(200, 'Até 200 itens por solicitação.'),
 });
 const ehServico = (corpo: unknown) => (corpo as { tipo?: unknown } | null)?.tipo === 'servico';
@@ -285,6 +288,7 @@ async function detalharSolicitacao(c: Cliente, empresaId: string, id: string) {
     obra: s.obra_id ? { id: s.obra_id as string, codigo: s.obra_codigo as string, nome: s.obra_nome as string } : null,
     tipo: s.tipo as string,
     planoContaId: (s.plano_conta_id ?? null) as string | null,
+    escopo: (s.escopo_servico ?? null) as string | null,
     centroCustoId: s.centro_custo_id,
     centroCusto: s.centro_custo,
     observacao: s.observacao,
@@ -1098,9 +1102,9 @@ export function rotasSuprimentos(banco: Banco) {
           const numero = await proximoNumero(c, 'solicitacoes_compra', empresaId);
           const s = (
             await c.query(
-              `INSERT INTO solicitacoes_compra (empresa_id, numero, data, necessidade, obra_id, centro_custo_id, observacao, solicitante_id, tipo, plano_conta_id)
-               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'servico', $9) RETURNING id`,
-              [empresaId, numero, ds.data ?? hojeBrasil(), ds.necessidade, ds.obraId, obra.centro_custo_id, ds.observacao, u.id, ds.planoContaId],
+              `INSERT INTO solicitacoes_compra (empresa_id, numero, data, necessidade, obra_id, centro_custo_id, observacao, solicitante_id, tipo, plano_conta_id, escopo_servico)
+               VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'servico', $9, $10) RETURNING id`,
+              [empresaId, numero, ds.data ?? hojeBrasil(), ds.necessidade, ds.obraId, obra.centro_custo_id, ds.observacao, u.id, ds.planoContaId, ds.escopo],
             )
           ).rows[0];
           await gravarItensSolicitacao(c, empresaId, s.id, itens);
@@ -1147,7 +1151,7 @@ export function rotasSuprimentos(banco: Banco) {
         if (servico) {
           const planoId = (d as z.infer<typeof esquemaServico>).planoContaId;
           await validarPlanoConta(c, empresaId, planoId);
-          await c.query('UPDATE solicitacoes_compra SET plano_conta_id = $2 WHERE id = $1', [atual.id, planoId]);
+          await c.query('UPDATE solicitacoes_compra SET plano_conta_id = $2, escopo_servico = $3 WHERE id = $1', [atual.id, planoId, (d as z.infer<typeof esquemaServico>).escopo]);
         }
         await c.query(
           'UPDATE solicitacoes_compra SET obra_id = $2, centro_custo_id = $3, data = coalesce($4, data), necessidade = $5, observacao = $6, atualizado_em = now() WHERE id = $1',

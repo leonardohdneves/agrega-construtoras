@@ -15,8 +15,19 @@ export type ItemSolicitacao = ItemEap & {
   id: string; necessidadeId: string | null; obraItemId: string | null; descricao: string; unidade: string; quantidade: number; observacao: string | null;
 };
 export type TipoSolicitacao = 'insumo' | 'servico';
+/** Escopo do serviço: o que a contratada fornece (direciona a minuta do contrato). */
+export type EscopoServico = 'mo' | 'eq' | 'mat' | 'mat_mo' | 'mat_mo_eq' | 'mo_eq' | 'mat_eq';
+export const ESCOPOS_SERVICO: { valor: EscopoServico; rotulo: string }[] = [
+  { valor: 'mo', rotulo: 'Somente mão de obra' },
+  { valor: 'eq', rotulo: 'Somente locação de equipamento' },
+  { valor: 'mat', rotulo: 'Somente material' },
+  { valor: 'mat_mo', rotulo: 'Material e mão de obra' },
+  { valor: 'mat_mo_eq', rotulo: 'Material, mão de obra e equipamento' },
+  { valor: 'mo_eq', rotulo: 'Mão de obra e equipamento' },
+  { valor: 'mat_eq', rotulo: 'Material e equipamento' },
+];
 export type Solicitacao = {
-  id: string; numero: number; data: string; necessidade: string | null; obraId: string | null; obra: ObraRef | null; centroCustoId: string | null; centroCusto: string | null; tipo: TipoSolicitacao; planoContaId: string | null;
+  id: string; numero: number; data: string; necessidade: string | null; obraId: string | null; obra: ObraRef | null; centroCustoId: string | null; centroCusto: string | null; tipo: TipoSolicitacao; planoContaId: string | null; escopo: EscopoServico | null;
   observacao: string | null; status: StatusSolicitacao; finalizadaEm: string | null; solicitante: string | null; cotacoes: { id: string; numero: number; status: StatusCotacao }[];
   pedidos: { id: string; numero: number; status: StatusPedido }[]; itens: ItemSolicitacao[];
 };
