@@ -876,7 +876,7 @@ export function rotasEngenharia(banco: Banco) {
       // Serviços do orçamento por nó: um serviço em mais de um nó aparece em cada linha, com o código do nó.
       const linhas = (
         await banco.query(
-          `SELECT oq.id, oq.obra_item_id, oq.eap_no_id, oi.codigo, oi.descricao, oi.unidade, en.codigo AS eap_codigo
+          `SELECT oq.id, oq.obra_item_id, oq.eap_no_id, oi.codigo, oi.descricao, oi.unidade, en.codigo AS eap_codigo, en.descricao AS eap_descricao
              FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id AND oi.tipo = 'composicao'
              LEFT JOIN eap_nos en ON en.id = oq.eap_no_id
             WHERE oq.obra_id = $1 ORDER BY en.codigo NULLS FIRST, oi.codigo, oq.ordem`,
@@ -885,7 +885,7 @@ export function rotasEngenharia(banco: Banco) {
       ).rows;
       return {
         itens: r.rows.map(itemObraPublico),
-        linhas: linhas.map((l) => ({ id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: (l.eap_no_id as string | null) ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: (l.eap_codigo as string | null) ?? null })),
+        linhas: linhas.map((l) => ({ id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: (l.eap_no_id as string | null) ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: (l.eap_codigo as string | null) ?? null, eapDescricao: (l.eap_descricao as string | null) ?? null })),
       };
     });
 
