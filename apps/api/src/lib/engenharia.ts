@@ -252,7 +252,7 @@ export type LinhaPlanilhaRel = {
   descricao: string;
   servico: { codigo: string; unidade: string; quantidade: number; custoUnitario: number; itemId: string; descricaoServico?: string } | null;
 };
-export type InsumoComposicaoRel = { codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number };
+export type InsumoComposicaoRel = { codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number; grupo?: string | null };
 export type LinhaRelatorio =
   | { tipo: 'grupo'; nivel: NivelPlanilha; item: string; descricao: string; total: number; peso: number }
   | { tipo: 'servico'; nivel: 'tarefa'; item: string; codigo: string; descricao: string; unidade: string; quantidade: number; custoUnitario: number; precoUnitario: number; total: number; peso: number }
@@ -514,4 +514,76 @@ export function datasComResumos(
     });
   }
   return saida;
+}
+
+export type ClasseCusto = 'material' | 'mao_obra' | 'equipamento' | 'outros';
+export const ROTULO_CLASSE_CUSTO: Record<ClasseCusto, string> = {
+  material: 'Material',
+  mao_obra: 'Mão de obra',
+  equipamento: 'Equipamento',
+  outros: 'Outros (terceirizados e sem classe)',
+};
+
+/** Classe do insumo a partir do grupo da tabela (ex.: Material, Mao_obra, Equipamento, Terceirizados). */
+export function classeDoGrupo(grupo: string | null | undefined): ClasseCusto {
+  const g = (grupo ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  if (g.includes('equip')) return 'equipamento';
+  if (g.includes('mao')) return 'mao_obra';
+  if (g.includes('material')) return 'material';
+  return 'outros';
+}
+
+export type LinhaCustoServico = {
+  item: string; codigo: string; descricao: string; unidade: string; quantidade: number; precoUnitario: number;
+  material: number; mao_obra: number; equipamento: number; outros: number; total: number;
+};
+export type RelatorioCustos = {
+  classes: { classe: ClasseCusto; rotulo: string; valor: number; peso: number }[];
+  servicos: LinhaCustoServico[];
+  precoTotal: number;
+  bdiValor: number;
+};
+
+/**
+ * Custos por classe (material, mão de obra, equipamento) com base no preço de venda: o preço de cada serviço
+ * (custo com BDI) é dividido entre as classes na proporção do custo dos insumos da composição. Os totais batem
+ * com o orçamento sintético.
+ */
+export function montarRelatorioCustos(
+  linhas: LinhaPlanilhaRel[],
+  bdiPercentual: number,
+  composicoes: Map<string, InsumoComposicaoRel[]>,
+): RelatorioCustos {
+  const fator = 1 + bdiPercentual / 100;
+  const servicos: LinhaCustoServico[] = [];
+  const somaClasse: Record<ClasseCusto, number> = { material: 0, mao_obra: 0, equipamento: 0, outros: 0 };
+  const ordenadas = linhas.filter((l) => l.servico).sort((a, b) => compararCodigo(a.codigo, b.codigo));
+  for (const l of ordenadas) {
+    const sv = l.servico!;
+    const precoUnitario = r2(sv.custoUnitario * fator);
+    const total = r2(sv.quantidade * precoUnitario);
+    const custo: Record<ClasseCusto, number> = { material: 0, mao_obra: 0, equipamento: 0, outros: 0 };
+    for (const i of composicoes.get(sv.itemId) ?? []) custo[classeDoGrupo(i.grupo)] += i.coeficiente * i.precoUnitario;
+    const base = custo.material + custo.mao_obra + custo.equipamento + custo.outros;
+    const parte = (k: ClasseCusto) => (base > 0 ? r2((total * custo[k]) / base) : 0);
+    const material = parte('material');
+    const mao_obra = parte('mao_obra');
+    const equipamento = parte('equipamento');
+    // Sem composição, todo o preço vai para "outros"; o arredondamento também cai em "outros" para o total bater.
+    const outros = r2(total - material - mao_obra - equipamento);
+    servicos.push({ item: l.codigo, codigo: sv.codigo, descricao: l.descricao, unidade: sv.unidade, quantidade: sv.quantidade, precoUnitario, material, mao_obra, equipamento, outros, total });
+    somaClasse.material += material;
+    somaClasse.mao_obra += mao_obra;
+    somaClasse.equipamento += equipamento;
+    somaClasse.outros += outros;
+  }
+  const precoTotal = r2(Object.values(somaClasse).reduce((s, v) => s + v, 0));
+  const classes = (Object.keys(somaClasse) as ClasseCusto[]).map((classe) => ({
+    classe,
+    rotulo: ROTULO_CLASSE_CUSTO[classe],
+    valor: r2(somaClasse[classe]),
+    peso: precoTotal > 0 ? Math.round((somaClasse[classe] / precoTotal) * 10000) / 100 : 0,
+  }));
+  const custoDireto = r2(ordenadas.reduce((s, l) => s + r2(l.servico!.quantidade * l.servico!.custoUnitario), 0));
+  return { classes, servicos, precoTotal, bdiValor: r2(precoTotal - custoDireto) };
 }
