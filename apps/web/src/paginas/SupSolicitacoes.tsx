@@ -701,6 +701,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
                 setAdd({ ...add, obraItemId: o?.obraItemId ?? '', eapNoId: o?.eapNoId ?? '' });
               }}
               vazio="Escolha o serviço"
+              listaCompleta
             />
             {nivel !== 'obra' && add.obraItemId && !add.eapNoId && (
               <div className="campo">
