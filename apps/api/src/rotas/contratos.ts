@@ -783,6 +783,8 @@ export function rotasContratos(banco: Banco) {
         throw new ErroHttp(409, 'Há medição em rascunho ou aguardando aprovação. Conclua ou cancele antes de encerrar.');
     });
     mudarStatusContrato('reabrir', ['encerrado'], 'vigente', 'Só contrato encerrado é reaberto.');
+    // Contrato cancelado volta a rascunho: pode ser editado e enviado para aprovação de novo.
+    mudarStatusContrato('restaurar', ['cancelado'], 'rascunho', 'Só contrato cancelado volta a rascunho.');
     mudarStatusContrato('cancelar', ['rascunho', 'reprovado', 'aguardando_aprovacao', 'vigente'], 'cancelado', 'Este contrato já foi encerrado ou cancelado.', async (c, k) => {
       if ((await c.query(`SELECT 1 FROM medicoes WHERE contrato_id = $1 AND status IN ${MEDICAO_CONTA}`, [k.id])).rowCount)
         throw new ErroHttp(409, 'Contrato com medição não é cancelado: encerre-o.');
