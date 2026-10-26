@@ -75,6 +75,26 @@ function CurvaS({ obraId, setErro }: { obraId: string; setErro: (m: string) => v
         </p>
       </div>
       <div className="card">
+        <GraficoLinhasBI
+          titulo="IDP e IDC por mês (acumulado até cada mês)"
+          pontos={dados.pontos
+            .filter((p) => p.executado !== null)
+            .map((p) => ({
+              rotulo: dataBr(p.data).slice(3),
+              valores: {
+                idp: p.previsto > 0 && p.executado !== null ? p.executado / p.previsto : null,
+                idc: p.realizado !== null && p.realizado > 0 && p.executado !== null ? p.executado / p.realizado : null,
+              },
+            }))}
+          series={[
+            { id: 'idp', nome: 'IDP (prazo)', cor: '#2a78d6' },
+            { id: 'idc', nome: 'IDC (custo)', cor: '#eb6834' },
+          ]}
+          formatar={(v) => v.toLocaleString('pt-BR', { maximumFractionDigits: 2 })}
+        />
+        <p className="small muted">Acima de 1 é favorável; abaixo de 1, desfavorável. Meses sem medição ou sem despesa ficam sem o índice correspondente.</p>
+      </div>
+      <div className="card">
         <div style={{ overflowX: 'auto' }}>
           <table className="tabela">
             <thead>
