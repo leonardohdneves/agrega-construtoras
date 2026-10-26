@@ -687,6 +687,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
               valor={add.obraItemId}
               onChange={(v) => setAdd({ ...add, obraItemId: v })}
               vazio="Escolha o serviço"
+              listaCompleta
             />
             {nivel !== 'obra' && (
               <div className="campo">

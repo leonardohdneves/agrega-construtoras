@@ -15,6 +15,7 @@ export function SeletorBusca({
   semRotulo,
   style,
   resultadosVisiveis,
+  listaCompleta,
   children,
 }: {
   id: string;
@@ -29,6 +30,8 @@ export function SeletorBusca({
   style?: CSSProperties;
   /** Mostra as opções encontradas logo abaixo do campo, a cada tecla (sem precisar abrir a lista). */
   resultadosVisiveis?: boolean;
+  /** Mostra todas as opções numa lista rolável, com o texto inteiro quebrado em linhas (no lugar do menu suspenso). */
+  listaCompleta?: boolean;
   children?: ReactNode;
 }) {
   const [busca, setBusca] = useState('');
@@ -45,12 +48,41 @@ export function SeletorBusca({
         onChange={(e) => setBusca(e.target.value)}
         disabled={disabled}
       />
-      <select id={id} aria-label={semRotulo ? label : undefined} value={valor} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-        <option value="">{visiveis.length === 0 ? 'Nenhum resultado para a busca' : vazio}</option>
-        {visiveis.map((o) => (
-          <option key={o.id} value={o.id}>{o.rotulo}</option>
-        ))}
-      </select>
+      {listaCompleta ? (
+        <>
+          {visiveis.length === 0 ? (
+            <p className="small muted" style={{ margin: '4px 0' }}>Nenhum resultado para a busca.</p>
+          ) : (
+            <ul
+              id={id}
+              aria-label={label}
+              style={{ listStyle: 'none', margin: '4px 0', padding: 0, maxHeight: 280, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8 }}
+            >
+              {visiveis.map((o) => (
+                <li key={o.id}>
+                  <button
+                    type="button"
+                    className="btn btn-link"
+                    disabled={disabled}
+                    aria-pressed={o.id === valor}
+                    onClick={() => onChange(o.id)}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '6px 10px', minHeight: 0, whiteSpace: 'normal', overflowWrap: 'anywhere', fontWeight: o.id === valor ? 700 : 400, background: o.id === valor ? 'var(--surface-sunken)' : undefined }}
+                  >
+                    {o.rotulo}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      ) : (
+        <select id={id} aria-label={semRotulo ? label : undefined} value={valor} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
+          <option value="">{visiveis.length === 0 ? 'Nenhum resultado para a busca' : vazio}</option>
+          {visiveis.map((o) => (
+            <option key={o.id} value={o.id}>{o.rotulo}</option>
+          ))}
+        </select>
+      )}
       {termos.length > 0 && <small className="muted">{visiveis.length} de {opcoes.length} encontrado(s)</small>}
       {resultadosVisiveis && termos.length > 0 && visiveis.length > 0 && (
         <ul aria-label={`Resultados para ${label.toLowerCase()}`} style={{ listStyle: 'none', margin: '4px 0 0', padding: 0, maxHeight: 220, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 8, background: 'var(--surface-card)' }}>
