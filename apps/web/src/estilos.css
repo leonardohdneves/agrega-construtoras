@@ -786,6 +786,7 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .gantt-mes { font-size: 11px; padding: 4px 2px; border-left: 1px solid var(--border); overflow: hidden; white-space: nowrap; }
 .gantt-barra { position: absolute; top: 4px; bottom: 4px; border-radius: 3px; background: var(--action); }
 .gantt-barra.resumo { background: color-mix(in srgb, var(--action) 35%, transparent); border: 1px solid var(--action); box-sizing: border-box; }
+.gantt-barra.critica { background: #c0392b; }
 
 /* ---------- Painel gerencial (padrão BI) ---------- */
 .grafico-bi, .barras-bi { position: relative; }

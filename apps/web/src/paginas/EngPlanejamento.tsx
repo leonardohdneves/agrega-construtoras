@@ -354,7 +354,7 @@ function AbaGantt({ nos, lista, fechados, setFechados }: { nos: No[]; lista: Ati
                 <div style={{ flex: 1, position: 'relative', height: 30 }}>
                   {temBarra && (
                     <div
-                      className={`gantt-barra${l.resumo ? ' resumo' : ''}`}
+                      className={`gantt-barra${l.resumo ? ' resumo' : ''}${!l.resumo && l.atividade?.critica ? ' critica' : ''}`}
                       title={`${l.descricao}: ${dataBr(l.inicio!)} a ${dataBr(l.fim!)}`}
                       style={{ left: `${esquerda}%`, width: `${largBarra}%` }}
                     />

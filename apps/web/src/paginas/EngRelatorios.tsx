@@ -75,11 +75,13 @@ export type RelatorioCustos = {
   precoTotal: number;
   bdiValor: number;
 };
-type Tipo = 'sintetico' | 'analitico' | 'custos' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'equipes' | 'compras' | 'calendario';
+export type AtividadeRede = { id: string; numero: number; ordem: number; descricaoResumida: string; eapCodigo: string | null; inicio: string; fim: string; duracaoDias: number; predecessoraId: string | null; critica: boolean; folgaDias: number };
+type Tipo = 'sintetico' | 'analitico' | 'custos' | 'rede' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'equipes' | 'compras' | 'calendario';
 const TIPOS: { id: Tipo; texto: string; titulo: string }[] = [
   { id: 'sintetico', texto: 'Orçamento sintético', titulo: 'Orçamento sintético' },
   { id: 'analitico', texto: 'Orçamento analítico', titulo: 'Orçamento analítico' },
   { id: 'custos', texto: 'Custos por classe', titulo: 'Custos por classe (preço de venda)' },
+  { id: 'rede', texto: 'Diagrama de rede', titulo: 'Diagrama de rede: caminho crítico' },
   { id: 'abc-servicos', texto: 'Curva ABC de serviços', titulo: 'Curva ABC de serviços' },
   { id: 'abc-insumos', texto: 'Curva ABC de insumos', titulo: 'Curva ABC de insumos' },
   { id: 'comparacao', texto: 'Comparar versões', titulo: 'Comparação de versões' },
@@ -99,6 +101,7 @@ export function EngRelatorios() {
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [abc, setAbc] = useState<RelatorioAbc | null>(null);
   const [custos, setCustos] = useState<RelatorioCustos | null>(null);
+  const [rede, setRede] = useState<AtividadeRede[] | null>(null);
   // O relatório de planejamento guarda o tipo a que pertence: ao trocar de aba, os dados antigos não chegam à tela nova.
   const [planEstado, setPlanEstado] = useState<{ tipo: Tipo; gran: Gran; dados: GanttRel | EquipesRel | ComprasRel | CalendarioRel } | null>(null);
   const [erro, setErro] = useState('');
@@ -120,6 +123,7 @@ export function EngRelatorios() {
     setRel(null);
     setAbc(null);
     setCustos(null);
+    setRede(null);
     setPlanEstado(null);
     setErro('');
     const pedido = ehPlanejamento(tipo)
@@ -132,6 +136,8 @@ export function EngRelatorios() {
         ? api<RelatorioAbc>(`/eng/obras/${obraId}/relatorio-abc?tipo=${tipo === 'abc-insumos' ? 'insumos' : 'servicos'}`).then((r) => { if (ativo) setAbc(r); })
         : tipo === 'custos'
           ? api<RelatorioCustos>(`/eng/obras/${obraId}/relatorio-custos`).then((r) => { if (ativo) setCustos(r); })
+        : tipo === 'rede'
+          ? api<{ atividades: AtividadeRede[] }>(`/eng/obras/${obraId}/planejamento`).then((r) => { if (ativo) setRede(r.atividades); })
         : api<Relatorio>(`/eng/obras/${obraId}/relatorio-orcamento?tipo=${tipo}`).then((r) => { if (ativo) setRel(r); });
     pedido.catch((e) => { if (ativo) setErro((e as Error).message); });
     return () => { ativo = false; };
@@ -142,6 +148,7 @@ export function EngRelatorios() {
   const relAtual = rel && rel.tipo === tipo ? rel : null;
   const abcAtual = abc && ehAbc && abc.tipo === (tipo === 'abc-insumos' ? 'insumos' : 'servicos') ? abc : null;
   const custosAtual = custos && tipo === 'custos' ? custos : null;
+  const redeAtual = rede && tipo === 'rede' ? rede : null;
   const obraRel = relAtual?.obra ?? abcAtual?.obra ?? custosAtual?.obra;
   const obraAtual = obras?.find((o) => o.id === obraId);
   const local =obraRel ? [obraRel.endereco, [obraRel.cidade, obraRel.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') : '';
@@ -195,8 +202,91 @@ export function EngRelatorios() {
         {abcAtual && (abcAtual.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abcAtual.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abcAtual} />)}
         {relAtual && relAtual.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
         {relAtual && relAtual.linhas.length > 0 && (relAtual.tipo === 'sintetico' ? <Sintetico rel={relAtual} /> : <Analitico rel={relAtual} />)}
+        {redeAtual && (redeAtual.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há atividades no planejamento desta obra.</p></div> : <DiagramaRede atividades={redeAtual} />)}
         {custosAtual && (custosAtual.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div> : <CustosPorClasse rel={custosAtual} />)}
       </ProtecaoRelatorio>
+    </div>
+  );
+}
+
+/** Diagrama de rede: cada atividade é uma caixa, ligada à sua predecessora. Caminho crítico em vermelho. */
+function DiagramaRede({ atividades }: { atividades: AtividadeRede[] }) {
+  const W = 220, H = 74, colGap = 56, rowGap = 16, pad = 16;
+  const porId = new Map(atividades.map((a) => [a.id, a]));
+  // Coluna = profundidade na cadeia de predecessoras (a predecessora fica sempre à esquerda da sucessora).
+  const nivel = new Map<string, number>();
+  const calcNivel = (id: string, pilha: Set<string>): number => {
+    if (nivel.has(id)) return nivel.get(id)!;
+    const a = porId.get(id)!;
+    if (pilha.has(id) || !a.predecessoraId || !porId.has(a.predecessoraId)) { nivel.set(id, 0); return 0; }
+    pilha.add(id);
+    const n = calcNivel(a.predecessoraId, pilha) + 1;
+    pilha.delete(id);
+    nivel.set(id, n);
+    return n;
+  };
+  atividades.forEach((a) => calcNivel(a.id, new Set()));
+  const colunas = new Map<number, AtividadeRede[]>();
+  for (const a of atividades) colunas.set(nivel.get(a.id)!, [...(colunas.get(nivel.get(a.id)!) ?? []), a]);
+  for (const c of colunas.values()) c.sort((x, y) => x.inicio.localeCompare(y.inicio) || x.ordem - y.ordem);
+  const pos = new Map<string, { x: number; y: number }>();
+  let maiorAltura = 0;
+  for (const [n, lista] of colunas) {
+    lista.forEach((a, i) => pos.set(a.id, { x: pad + n * (W + colGap), y: pad + i * (H + rowGap) }));
+    maiorAltura = Math.max(maiorAltura, lista.length);
+  }
+  const colunasN = Math.max(...colunas.keys()) + 1;
+  const largura = pad * 2 + colunasN * W + (colunasN - 1) * colGap;
+  const altura = pad * 2 + maiorAltura * H + (maiorAltura - 1) * rowGap;
+  const criticas = atividades.filter((a) => a.critica);
+  const fimObra = atividades.reduce((m, a) => (a.fim > m ? a.fim : m), atividades[0].fim);
+  const trunca = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
+  const ligacoes = atividades.filter((a) => a.predecessoraId && porId.has(a.predecessoraId) && pos.has(a.id));
+
+  return (
+    <div className="card">
+      <p className="small muted" style={{ marginTop: 0 }}>
+        Caminho crítico: {criticas.length} de {atividades.length} atividades (folga zero). Término da obra em {dataCurta(fimObra)}.
+        Cada caixa traz o código da EAP, a descrição, as datas e a duração; a folga aparece quando há.
+      </p>
+      <div style={{ overflowX: 'auto' }}>
+        <svg width={largura} height={altura} role="img" aria-label="Diagrama de rede do planejamento" style={{ display: 'block', maxWidth: 'none' }}>
+          <defs>
+            <marker id="seta-rede" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--muted, #888)" />
+            </marker>
+            <marker id="seta-critica" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#c0392b" />
+            </marker>
+          </defs>
+          {ligacoes.map((a) => {
+            const de = pos.get(a.predecessoraId!)!;
+            const para = pos.get(a.id)!;
+            const x1 = de.x + W, y1 = de.y + H / 2, x2 = para.x, y2 = para.y + H / 2;
+            const critica = a.critica && porId.get(a.predecessoraId!)!.critica;
+            const m = (x1 + x2) / 2;
+            return (
+              <path key={`${a.predecessoraId}-${a.id}`} d={`M ${x1} ${y1} C ${m} ${y1}, ${m} ${y2}, ${x2} ${y2}`} fill="none"
+                stroke={critica ? '#c0392b' : 'var(--muted, #888)'} strokeWidth={critica ? 2.5 : 1.2} markerEnd={critica ? 'url(#seta-critica)' : 'url(#seta-rede)'} />
+            );
+          })}
+          {atividades.map((a) => {
+            const p = pos.get(a.id)!;
+            return (
+              <g key={a.id}>
+                <rect x={p.x} y={p.y} width={W} height={H} rx={8} fill="var(--surface-card, #fff)" stroke={a.critica ? '#c0392b' : 'var(--border, #ccc)'} strokeWidth={a.critica ? 2.5 : 1} />
+                <text x={p.x + 10} y={p.y + 18} fontSize={11} fontWeight={700} fill={a.critica ? '#c0392b' : 'currentColor'}>
+                  {a.eapCodigo ? `${a.eapCodigo} · ` : ''}#{a.numero}
+                </text>
+                <text x={p.x + 10} y={p.y + 36} fontSize={12} fill="currentColor">{trunca(a.descricaoResumida, 30)}</text>
+                <text x={p.x + 10} y={p.y + 54} fontSize={11} fill="var(--muted, #666)">
+                  {dataCurta(a.inicio)} a {dataCurta(a.fim)} · {a.duracaoDias} d{!a.critica && a.folgaDias > 0 ? ` · folga ${a.folgaDias} d` : ''}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
     </div>
   );
 }

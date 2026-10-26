@@ -4,6 +4,8 @@ import type { No } from './EngObras';
 
 export type Atividade = {
   id: string; numero: number; ordem: number; descricao: string; descricaoResumida: string; predecessoraNumero: number | null;
+  /** No caminho crítico (folga zero) e quantos dias ela pode atrasar sem atrasar a obra. */
+  critica?: boolean; folgaDias?: number;
   eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null;
   inicioInformado: string; duracaoDias: number; predecessoraId: string | null; inicio: string; fim: string;
   /** Atividade ligada a uma etapa ou subetapa (lançamento antigo): a etapa mostra as datas das tarefas abaixo dela. */
