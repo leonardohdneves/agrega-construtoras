@@ -588,6 +588,7 @@ export function ContratoDetalhe() {
               <button className="btn btn-primario" type="button" disabled={ocupado} onClick={liberarCaucao}>Liberar caução ({formatarMoeda(r.caucaoALiberar)})</button>
             )}
             {k.status === 'encerrado' && <button className="btn btn-link" type="button" disabled={ocupado} onClick={() => acao('reabrir', 'Contrato reaberto.')}>Reabrir</button>}
+            {k.status === 'cancelado' && <button className="btn btn-secundario" type="button" disabled={ocupado} onClick={() => acao('restaurar', 'Contrato devolvido a rascunho.')}>Retornar a rascunho</button>}
             {(['rascunho', 'reprovado', 'aguardando_aprovacao'].includes(k.status) || (k.status === 'vigente' && k.medicoes.every((m) => ['reprovada', 'cancelada'].includes(m.status)))) && (
               <button className="btn btn-link" type="button" disabled={ocupado} onClick={() => acao('cancelar', 'Contrato cancelado.')}>Cancelar contrato</button>
             )}
