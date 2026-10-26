@@ -500,13 +500,21 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
 
 // ---------- Formulário de serviços: composições cadastradas na obra ----------
 type ComposicaoPlanilha = { id: string; codigo: string; descricao: string; unidade: string };
-type LinhaOrcamento = { id: string; obraItemId: string; eapNoId: string | null; codigo: string; descricao: string; unidade: string; eapCodigo: string | null; eapDescricao: string | null };
-type OpcaoServico = { id: string; rotulo: string; obraItemId: string; eapNoId: string | null };
+type LinhaOrcamento = { id: string; obraItemId: string; eapNoId: string | null; codigo: string; descricao: string; unidade: string; eapCodigo: string | null; eapCaminho: string | null };
+type OpcaoServico = { id: string; rotulo: string; busca: string; obraItemId: string; eapNoId: string | null };
 /** Uma opção por nó da EAP em que o serviço está no orçamento (com o código do nó); serviço fora do orçamento por nó segue sem nó. */
 function opcoesDeServico(composicoes: ComposicaoPlanilha[], linhas: LinhaOrcamento[]): OpcaoServico[] {
   const noOrcamento = new Set(linhas.map((l) => l.obraItemId));
-  const doOrcamento = linhas.map((l) => ({ id: `l:${l.id}`, rotulo: `${l.eapCodigo ? `${l.eapCodigo}${l.eapDescricao ? ` ${l.eapDescricao}` : ''} · ` : ''}${l.codigo} · ${l.descricao}`, obraItemId: l.obraItemId, eapNoId: l.eapNoId }));
-  const semNo = composicoes.filter((i) => !noOrcamento.has(i.id)).map((i) => ({ id: `s:${i.id}`, rotulo: `${i.codigo} · ${i.descricao}`, obraItemId: i.id, eapNoId: null }));
+  const doOrcamento = linhas.map((l) => ({
+    id: `l:${l.id}`,
+    rotulo: `${l.eapCodigo ? `${l.eapCodigo} · ` : ''}${l.codigo} · ${l.descricao}`,
+    busca: `${l.eapCodigo ?? ''} ${l.eapCaminho ?? ''} ${l.codigo} ${l.descricao}`,
+    obraItemId: l.obraItemId,
+    eapNoId: l.eapNoId,
+  }));
+  const semNo = composicoes
+    .filter((i) => !noOrcamento.has(i.id))
+    .map((i) => ({ id: `s:${i.id}`, rotulo: `${i.codigo} · ${i.descricao}`, busca: `${i.codigo} ${i.descricao}`, obraItemId: i.id, eapNoId: null }));
   return [...doOrcamento, ...semNo];
 }
 type SaldoServico = { orcado: number; contratado: number; medido: number; saldoContratar: number; unidade: string | null };
@@ -694,7 +702,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
             <SeletorBusca
               id="serv-item"
               label="Serviço"
-              opcoes={opcoesDeServico(composicoes, linhas).map((o) => ({ id: o.id, rotulo: o.rotulo }))}
+              opcoes={opcoesDeServico(composicoes, linhas).map((o) => ({ id: o.id, rotulo: o.rotulo, busca: o.busca }))}
               valor={opcoesDeServico(composicoes, linhas).find((o) => o.obraItemId === add.obraItemId && (o.eapNoId ?? '') === add.eapNoId)?.id ?? ''}
               onChange={(v) => {
                 const o = opcoesDeServico(composicoes, linhas).find((x) => x.id === v);
