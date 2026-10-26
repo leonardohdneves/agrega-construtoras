@@ -195,7 +195,7 @@ export function EngRelatorios() {
         {abcAtual && (abcAtual.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abcAtual.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abcAtual} />)}
         {relAtual && relAtual.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
         {relAtual && relAtual.linhas.length > 0 && (relAtual.tipo === 'sintetico' ? <Sintetico rel={relAtual} /> : <Analitico rel={relAtual} />)}
-        {custosAtual && (custosAtual.servicos.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div> : <CustosPorClasse rel={custosAtual} />)}
+        {custosAtual && (custosAtual.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div> : <CustosPorClasse rel={custosAtual} />)}
       </ProtecaoRelatorio>
     </div>
   );
