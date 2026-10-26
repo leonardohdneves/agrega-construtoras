@@ -859,7 +859,7 @@ export function rotasEngenharia(banco: Banco) {
 
     app.get<{ Params: { id: string }; Querystring: Record<string, string | undefined> }>('/obras/:id/itens', async (req) => {
       const empresaId = empresaDo(req);
-      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const obraAtual = await obraDaEmpresa(banco, empresaId, req.params.id);
       const { tipo, busca } = req.query;
       const termo = (busca ?? '').trim();
       const r = await banco.query(
@@ -884,7 +884,7 @@ export function rotasEngenharia(banco: Banco) {
         )
       ).rows;
       // Caminho do nó na EAP (etapa › subetapa › nó), para a busca encontrar pelas etapas.
-      const nosEap = new Map((await banco.query('SELECT id, pai_id, descricao FROM eap_nos WHERE obra_id = $1', [req.params.id])).rows.map((n) => [n.id as string, n]));
+      const nosEap = new Map((await banco.query('SELECT id, pai_id, nivel, codigo, descricao FROM eap_nos WHERE obra_id = $1', [req.params.id])).rows.map((n) => [n.id as string, n]));
       const caminhoDo = (noId: string | null) => {
         const partes: string[] = [];
         let atual = noId ? nosEap.get(noId) : undefined;
@@ -894,9 +894,25 @@ export function rotasEngenharia(banco: Banco) {
         }
         return partes.length ? partes.join(' › ') : null;
       };
+      // A apropriação da obra usa um nível fixo (etapa, subetapa…): o serviço do orçamento é apropriado no
+      // ancestral desse nível. Nó abaixo dele (ex.: tarefa) sobe até o nível; sem ancestral nesse nível, fica sem nó.
+      const noDoNivel = (noId: string | null) => {
+        let atual = noId ? nosEap.get(noId) : undefined;
+        for (let guarda = 0; atual && guarda < 20; guarda++) {
+          if (atual.nivel === obraAtual.nivel_apropriacao) return { id: atual.id as string, codigo: atual.codigo as string };
+          atual = atual.pai_id ? nosEap.get(atual.pai_id as string) : undefined;
+        }
+        return null;
+      };
       return {
         itens: r.rows.map(itemObraPublico),
-        linhas: linhas.map((l) => ({ id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: (l.eap_no_id as string | null) ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: (l.eap_codigo as string | null) ?? null, eapCaminho: caminhoDo((l.eap_no_id as string | null) ?? null) })),
+        // Tarefas de um mesmo nível resolvem para o mesmo nó: uma opção por (serviço, nó).
+        linhas: linhas
+          .map((l) => {
+            const no = noDoNivel((l.eap_no_id as string | null) ?? null);
+            return { id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: no?.id ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: no?.codigo ?? null, eapCaminho: caminhoDo((l.eap_no_id as string | null) ?? null) };
+          })
+          .filter((l, i, todas) => todas.findIndex((x) => x.obraItemId === l.obraItemId && x.eapNoId === l.eapNoId) === i),
       };
     });
 
