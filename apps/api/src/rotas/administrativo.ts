@@ -6,6 +6,7 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { cnpjValido } from '../lib/cnpj.ts';
 import { cpfValido } from '../lib/frota.ts';
+import { ATUACOES } from '../lib/atuacao.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { lerCadastroComIa, type EntidadeCadastro } from '../lib/ia-cadastro.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
@@ -20,6 +21,7 @@ const camposFornecedor = {
   razaoSocial: z.string({ required_error: 'Informe o nome ou a razão social.' }).trim().min(2, 'Informe o nome ou a razão social.').max(200),
   nomeFantasia: texto,
   ramo: texto,
+  atuacao: z.array(z.enum(ATUACOES)).max(3).optional().default([]).transform((v) => [...new Set(v)]),
   telefone: texto,
   email: z.string().trim().toLowerCase().email('E-mail inválido.').optional().nullable().or(z.literal('').transform(() => null)),
   endereco: texto,
@@ -48,6 +50,7 @@ const COLUNAS: Record<string, string> = {
   razaoSocial: 'razao_social',
   nomeFantasia: 'nome_fantasia',
   ramo: 'ramo',
+  atuacao: 'atuacao',
   telefone: 'telefone',
   email: 'email',
   endereco: 'endereco',
@@ -67,6 +70,7 @@ export function fornecedorPublico(r: Record<string, any>) {
     razaoSocial: r.razao_social,
     nomeFantasia: r.nome_fantasia,
     ramo: r.ramo,
+    atuacao: (r.atuacao ?? []) as string[],
     telefone: r.telefone,
     email: r.email,
     endereco: r.endereco,
@@ -176,9 +180,9 @@ export function rotasAdministrativo(banco: Banco) {
       const f = await emTransacao(banco, async (c) => {
         const novo = (
           await c.query(
-            `INSERT INTO fornecedores (empresa_id, categoria, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, telefone, email, cidade, uf, chave_pix, observacoes, ativo, endereco)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-            [empresaId, d.categoria, d.tipoPessoa, d.cnpjCpf, d.razaoSocial, d.nomeFantasia, d.ramo, d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.chavePix, d.observacoes, d.ativo, d.endereco],
+            `INSERT INTO fornecedores (empresa_id, categoria, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, telefone, email, cidade, uf, chave_pix, observacoes, ativo, endereco, atuacao)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+            [empresaId, d.categoria, d.tipoPessoa, d.cnpjCpf, d.razaoSocial, d.nomeFantasia, d.ramo, d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.chavePix, d.observacoes, d.ativo, d.endereco, d.atuacao],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'fornecedores', entidadeId: novo.id, depois: novo });

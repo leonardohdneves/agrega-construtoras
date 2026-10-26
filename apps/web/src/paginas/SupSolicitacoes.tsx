@@ -15,6 +15,7 @@ import {
   unidadeTexto,
   useCadastrosCompra,
   ESCOPOS_SERVICO,
+  fornecedorAtendeEscopo,
   type EscopoServico,
   type Solicitacao,
   type SolicitacaoResumo,
@@ -949,8 +950,14 @@ export function SolicitacaoDetalhe() {
             <form className="card form nao-imprimir" onSubmit={criarCotacao}>
               <h2>Cotar com fornecedores</h2>
               <span className="small muted">Escolha até 10 fornecedores. Depois você lança o preço de cada um e o sistema monta o mapa.</span>
+              {s.escopo && (
+                <span className="small muted">
+                  Escopo: {ESCOPOS_SERVICO.find((e) => e.valor === s.escopo)?.rotulo}. Mostrando só os fornecedores que atuam nele.
+                  {fornecedores.some((f) => !fornecedorAtendeEscopo(f.atuacao, s.escopo)) ? ' Os demais estão ocultos; a atuação de cada um fica no cadastro de fornecedores.' : ''}
+                </span>
+              )}
               <div className="lista-marcar">
-                {fornecedores.map((f) => (
+                {fornecedores.filter((f) => fornecedorAtendeEscopo(f.atuacao, s.escopo)).map((f) => (
                   <label key={f.id} className="marcar">
                     <input
                       type="checkbox"

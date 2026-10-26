@@ -339,6 +339,13 @@ export function formatarDataHoraCurta(iso: string): string {
 }
 
 // ---------- Administrativo ----------
+/** Atuação do fornecedor: material, mão de obra e/ou equipamento. */
+export type AtuacaoFornecedor = 'mat' | 'mo' | 'eq';
+export const ATUACOES_FORNECEDOR: { valor: AtuacaoFornecedor; rotulo: string }[] = [
+  { valor: 'mat', rotulo: 'Material' },
+  { valor: 'mo', rotulo: 'Mão de obra' },
+  { valor: 'eq', rotulo: 'Equipamento' },
+];
 export type Fornecedor = {
   id: string;
   categoria: 'fornecedor' | 'credor';
@@ -347,6 +354,7 @@ export type Fornecedor = {
   razaoSocial: string;
   nomeFantasia: string | null;
   ramo: string | null;
+  atuacao: AtuacaoFornecedor[];
   telefone: string | null;
   email: string | null;
   cidade: string | null;
