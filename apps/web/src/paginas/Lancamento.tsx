@@ -907,6 +907,12 @@ export function Lancamento() {
                           {p.status === 'paga'
                             ? `${formatarData(p.dataPagamento)} · ${p.contaNome ?? ''} · ${formatarMoeda(p.valorPago)}${p.forma ? ` · ${NOMES_FORMA[p.forma]}` : ''}`
                             : '—'}
+                          {p.status === 'paga' && lanc.tipo === 'receita' && (
+                            <>
+                              {' · '}
+                              <Link className="btn btn-link" to={`/fin/parcelas/${p.id}/recibo`}>Recibo</Link>
+                            </>
+                          )}
                         </td>
                         <td>
                           {p.status === 'aberta' ? (
