@@ -114,6 +114,11 @@ export function ComContratoDetalhe() {
         <Assinatura nome="Contratada" papel="Representante legal" />
         <Assinatura nome={c.clienteNome} papel="Contratante" />
       </div>
+      <p style={{ marginTop: 28, fontWeight: 600 }}>Testemunhas</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 24 }}>
+        <p>1. ____________________________________<br />CPF: ______________________</p>
+        <p>2. ____________________________________<br />CPF: ______________________</p>
+      </div>
     </div>
   );
 }

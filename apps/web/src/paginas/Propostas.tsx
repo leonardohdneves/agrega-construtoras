@@ -1025,11 +1025,6 @@ function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string })
         <Assinatura nome={p.clienteNome ?? 'Cliente'} papel="Pelo cliente" detalhe={<>CPF/CNPJ: {c.documentoCliente?.trim() || linha(160)}</>} />
       </div>
 
-      <p style={{ marginTop: 28, fontWeight: 600 }}>Testemunhas</p>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 24 }}>
-        <p>1. {linha(260)}<br />CPF: {linha(180)}</p>
-        <p>2. {linha(260)}<br />CPF: {linha(180)}</p>
-      </div>
       <p className="small muted" style={{ marginTop: 16 }}>Proposta válida por {p.validadeDias} dias a partir da emissão.</p>
       <Link className="btn btn-secundario nao-imprimir" to={`/com/propostas/${p.id}`} style={{ marginTop: 16 }}>Voltar à proposta</Link>
     </div>
