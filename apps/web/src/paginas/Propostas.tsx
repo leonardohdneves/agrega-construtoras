@@ -82,7 +82,7 @@ const FORM_VAZIO: Form = {
   tipo: 'acompanhamento', clienteId: '', obraId: '', titulo: '', objeto: '', endereco: '', prazoDias: '', validadeDias: '30',
   origemPreco: 'informado', dataInicio: '', meses: '', modo: 'valor_mensal', honorarioMensal: '', percentualObra: '', taxaPct: '',
   baseAdm: 'custo_direto', valorBaseInformado: '', valorInformado: '', marcos: [{ descricao: '', percentual: '', dias: '' }],
-  numeroParcelas: '', entradaPct: '', prazoEntregaDias: '', itens: [], condicoes: '',
+  numeroParcelas: '', entradaPct: '50', prazoEntregaDias: '', itens: [], condicoes: '',
 };
 
 function deProposta(p: Detalhe): Form {
@@ -511,6 +511,12 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
                   <label htmlFor="p-prazoent">Prazo de entrega dos laudos (dias)</label>
                   <input id="p-prazoent" inputMode="numeric" value={f.prazoEntregaDias} onChange={(e) => set('prazoEntregaDias', e.target.value)} />
                 </div>
+                <p className="small muted" style={{ gridColumn: '1 / -1', margin: 0 }}>
+                  {(() => {
+                    const ent = Math.min(100, Math.max(0, lerNumero(f.entradaPct) ?? 0));
+                    return `Pagamento: ${ent.toLocaleString('pt-BR')}% na aceitação e ${(100 - ent).toLocaleString('pt-BR')}% na entrega dos laudos. Padrão: 50% + 50%.`;
+                  })()}
+                </p>
               </>
             )}
           </div>
