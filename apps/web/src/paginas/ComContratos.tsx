@@ -1,7 +1,9 @@
 // Comercial · Contratos com clientes: gerados pela aceitação de propostas de obra (substituem as vendas de concreto).
 import { useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useParams } from 'react-router-dom';
 import { api, formatarMoeda } from '../api';
+import { CabecalhoDocumento } from '../componentes/Documento';
+import { Assinatura } from '../componentes/Suprimentos';
 
 type Contrato = {
   id: string; numero: number; tipoNome: string; titulo: string; valorTotal: number; status: 'vigente' | 'encerrado' | 'cancelado';
@@ -57,7 +59,7 @@ export function ComContratos() {
             <tbody>
               {lista.map((c) => (
                 <tr key={c.id}>
-                  <td className="mono">Nº {numeroFmt(c.numero)}</td>
+                  <td className="mono"><Link to={`/com/contratos/${c.id}`}>Nº {numeroFmt(c.numero)}</Link></td>
                   <td>{c.tipoNome}<div className="small muted">{c.titulo}</div></td>
                   <td>{c.clienteNome ?? <span className="muted">—</span>}</td>
                   <td>{c.obraCodigo ?? <span className="muted">—</span>}</td>
@@ -71,5 +73,47 @@ export function ComContratos() {
         </div>
       )}
     </>
+  );
+}
+
+type ContratoDetalhe = {
+  id: string; numero: number; tipoNome: string; titulo: string; clienteNome: string; obraCodigo: string | null;
+  valorTotal: number; status: 'vigente' | 'encerrado' | 'cancelado'; propostaId: string; escopo: string | null;
+};
+
+/** Contrato de prestação de serviços técnicos: escopo redigido a partir da proposta aceita. */
+export function ComContratoDetalhe() {
+  const { id } = useParams();
+  const [c, setC] = useState<ContratoDetalhe | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    api<{ contrato: ContratoDetalhe }>(`/com/contratos-cliente/${id}`)
+      .then((r) => setC(r.contrato))
+      .catch((e) => setErro((e as Error).message));
+  }, [id]);
+  if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
+  if (!c) return <p className="muted">Carregando…</p>;
+  return (
+    <div className="pagina romaneio">
+      <CabecalhoDocumento
+        modulo="Comercial"
+        titulo={`Contrato nº ${numeroFmt(c.numero)} · ${c.titulo}`}
+        descricao={c.tipoNome}
+        filtros={[`Cliente: ${c.clienteNome}`, c.obraCodigo ? `Obra: ${c.obraCodigo}` : 'Sem obra vinculada', `Valor: ${formatarMoeda(c.valorTotal)}`, `Situação: ${c.status}`]}
+      />
+      <div className="nao-imprimir" style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+        <Link className="btn btn-secundario" to={`/com/propostas/${c.propostaId}`}>Ver proposta</Link>
+        <Link className="btn btn-secundario" to="/com/contratos">Voltar aos contratos</Link>
+      </div>
+      {c.escopo ? (
+        <pre style={{ whiteSpace: 'pre-wrap', fontFamily: 'inherit', fontSize: 14, lineHeight: 1.55, margin: 0 }}>{c.escopo}</pre>
+      ) : (
+        <div className="alerta alerta-aviso">Este contrato foi gerado antes da redação automática do escopo.</div>
+      )}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 40 }}>
+        <Assinatura nome="Contratada" papel="Representante legal" />
+        <Assinatura nome={c.clienteNome} papel="Contratante" />
+      </div>
+    </div>
   );
 }

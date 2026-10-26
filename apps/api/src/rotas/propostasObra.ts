@@ -8,6 +8,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { chamarIaComFerramenta } from '../lib/ia-documento.ts';
+import { montarEscopoContrato } from '../lib/contrato-escopo.ts';
 import { calcularProposta, NOMES_TIPO, TIPOS_PROPOSTA, type ItemProposta, type Parametros, type TipoProposta } from '../lib/propostas-obra.ts';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
@@ -275,6 +276,34 @@ export function rotasPropostasObra(banco: Banco) {
     });
 
     // Contratos com clientes, gerados pela aceitação de propostas de obra.
+    app.get<{ Params: { id: string } }>('/contratos-cliente/:id', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Contrato');
+      const r = (await banco.query(
+        `SELECT ct.id, ct.numero, ct.tipo, ct.titulo, ct.valor_total_centavos, ct.status, ct.escopo, ct.criado_em, ct.proposta_id,
+                coalesce(cl.nome_fantasia, cl.razao_social) AS cliente_nome, o.codigo AS obra_codigo
+           FROM contratos_cliente ct JOIN clientes cl ON cl.id = ct.cliente_id LEFT JOIN obras o ON o.id = ct.obra_id
+          WHERE ct.id = $1 AND ct.empresa_id = $2`,
+        [req.params.id, empresaId],
+      )).rows[0];
+      if (!r) throw naoEncontrado('Contrato');
+      return {
+        contrato: {
+          id: r.id,
+          numero: Number(r.numero),
+          tipoNome: NOMES_TIPO[r.tipo as TipoProposta] ?? r.tipo,
+          titulo: r.titulo,
+          clienteNome: r.cliente_nome,
+          obraCodigo: r.obra_codigo,
+          valorTotal: reais(r.valor_total_centavos),
+          status: r.status,
+          propostaId: r.proposta_id,
+          escopo: r.escopo ?? null,
+          criadoEm: r.criado_em,
+        },
+      };
+    });
+
     app.get('/contratos-cliente', async (req) => {
       const empresaId = empresaDo(req);
       const r = await banco.query(
@@ -504,10 +533,28 @@ export function rotasPropostasObra(banco: Banco) {
           );
         }
         const numero = (await c.query('SELECT coalesce(max(numero), 0) + 1 AS n FROM contratos_cliente WHERE empresa_id = $1', [empresaId])).rows[0].n;
+        const empresa = (await c.query('SELECT coalesce(nome_fantasia, razao_social) AS nome FROM empresas WHERE id = $1', [empresaId])).rows[0];
+        const itensProposta = (await c.query('SELECT descricao, unidade, quantidade, preco_unitario_centavos FROM propostas_obra_itens WHERE proposta_id = $1 ORDER BY ordem', [p.id])).rows;
+        const escopo = montarEscopoContrato({
+          numero,
+          tipo: p.tipo,
+          titulo: p.titulo,
+          clienteNome: p.cliente_nome,
+          contratada: empresa?.nome ?? 'a empresa emissora',
+          objeto: p.objeto,
+          endereco: p.endereco,
+          prazoDias: p.prazo_dias,
+          validadeDias: p.validade_dias,
+          condicoes: p.condicoes,
+          parametros: p.parametros ?? {},
+          valorTotalCentavos: Number(p.valor_total_centavos),
+          itens: itensProposta.map((i) => ({ descricao: i.descricao, unidade: i.unidade, quantidade: Number(i.quantidade), precoCentavos: Number(i.preco_unitario_centavos) })),
+          parcelas: parcelas.map((x) => ({ descricao: x.descricao, vencimento: String(x.vencimento).slice(0, 10), valorCentavos: Number(x.valor_centavos) })),
+        });
         const ct = (await c.query(
-          `INSERT INTO contratos_cliente (empresa_id, numero, proposta_id, cliente_id, obra_id, tipo, titulo, valor_total_centavos, lancamento_id)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, numero`,
-          [empresaId, numero, p.id, p.cliente_id, p.obra_id, p.tipo, p.titulo, p.valor_total_centavos, lancamento.id],
+          `INSERT INTO contratos_cliente (empresa_id, numero, proposta_id, cliente_id, obra_id, tipo, titulo, valor_total_centavos, lancamento_id, escopo)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING id, numero`,
+          [empresaId, numero, p.id, p.cliente_id, p.obra_id, p.tipo, p.titulo, p.valor_total_centavos, lancamento.id, escopo],
         )).rows[0];
         await c.query(`UPDATE propostas_obra SET status = 'aceita', decidida_em = now(), atualizado_em = now() WHERE id = $1`, [p.id]);
         await auditar(c, { empresaId, usuarioId, acao: 'confirmar', entidade: 'propostas_obra', entidadeId: p.id, depois: { contrato: ct.numero, lancamento: lancamento.id } });
