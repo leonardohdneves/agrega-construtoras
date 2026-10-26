@@ -68,6 +68,7 @@ import { Conciliacao } from './paginas/Conciliacao';
 import { ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from './paginas/Comercial';
 import { ComPropostas, PropostaDetalhe, PropostaEditar, PropostaImprimir, PropostaNova } from './paginas/Propostas';
 import { ComContratoDetalhe } from './paginas/ComContratos';
+import { ReciboRecebimento } from './paginas/ReciboRecebimento';
 import { ComContratos } from './paginas/ComContratos';
 import { ComRelatoriosContratos } from './paginas/ComRelatoriosContratos';
 import { ComIncorporacao } from './paginas/ComIncorporacao';
@@ -144,6 +145,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="frota/os" element={<Protegido perfis={['dono', 'gestor']}><OrdensServico /></Protegido>} />
             <Route path="frota/os/:id" element={<Protegido perfis={['dono', 'gestor']}><OrdemServico /></Protegido>} />
             <Route path="fin/pagar-receber" element={<Protegido perfis={['dono', 'gestor']}><ContasPagarReceber /></Protegido>} />
+            <Route path="fin/parcelas/:id/recibo" element={<Protegido perfis={['dono', 'gestor']}><ReciboRecebimento /></Protegido>} />
             <Route path="fin/lancamentos" element={<Protegido perfis={['dono', 'gestor']}><Lancamentos /></Protegido>} />
             <Route path="fin/lancamentos/:id" element={<Protegido perfis={['dono', 'gestor']}><Lancamento /></Protegido>} />
             <Route path="fin/contas" element={<Protegido perfis={['dono', 'gestor']}><ContasFinanceiras /></Protegido>} />

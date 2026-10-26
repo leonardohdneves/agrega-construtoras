@@ -1039,6 +1039,44 @@ export function rotasFinanceiro(banco: Banco) {
       return { parcela: parcelaPublica(p, hojeBrasil()) };
     });
 
+    /** Dados do recibo de um recebimento já baixado. O recibo não gera numeração própria: a referência é a parcela e o lançamento. */
+    app.get<{ Params: { id: string } }>('/parcelas/:id/recibo', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!/^[0-9a-f-]{36}$/i.test(req.params.id)) throw naoEncontrado('Recebimento');
+      const r = (await banco.query(
+        `SELECT p.numero, p.vencimento, p.valor_pago_centavos, p.data_pagamento, p.status, p.forma_pagamento,
+                l.descricao, l.documento, cf.nome AS conta_nome,
+                coalesce(cl.nome_fantasia, cl.razao_social) AS pagador, cl.cnpj_cpf,
+                (SELECT count(*)::int FROM parcelas x WHERE x.lancamento_id = l.id) AS total_parcelas,
+                ct.numero AS contrato_numero
+           FROM parcelas p JOIN lancamentos l ON l.id = p.lancamento_id
+           LEFT JOIN contas_financeiras cf ON cf.id = p.conta_financeira_id
+           LEFT JOIN clientes cl ON cl.id = l.cliente_id
+           LEFT JOIN contratos_cliente ct ON ct.lancamento_id = l.id
+          WHERE p.id = $1 AND p.empresa_id = $2 AND l.tipo = 'receita' AND l.excluido_em IS NULL`,
+        [req.params.id, empresaId],
+      )).rows[0];
+      if (!r) throw naoEncontrado('Recebimento');
+      if (r.status !== 'paga') throw new ErroHttp(409, 'O recibo só é emitido depois da baixa do recebimento.');
+      const emp = (await banco.query('SELECT coalesce(nome_fantasia, razao_social) AS nome, cnpj FROM empresas WHERE id = $1', [empresaId])).rows[0];
+      return {
+        recibo: {
+          empresa: { nome: emp?.nome ?? '', cnpj: emp?.cnpj ?? null },
+          pagador: { nome: r.pagador ?? '', documento: r.cnpj_cpf ?? null },
+          valor: reais(r.valor_pago_centavos),
+          referente: r.descricao,
+          documento: r.documento,
+          parcela: `${r.numero}/${r.total_parcelas}`,
+          vencimento: String(r.vencimento).slice(0, 10),
+          dataPagamento: String(r.data_pagamento).slice(0, 10),
+          forma: r.forma_pagamento ?? null,
+          conta: r.conta_nome ?? null,
+          contratoNumero: r.contrato_numero ?? null,
+          emitidoEm: hojeBrasil(),
+        },
+      };
+    });
+
     app.post('/parcelas/baixar-lote', async (req) => {
       const d = esquemaBaixa.omit({ juros: true, desconto: true }).extend({ ids: z.array(z.string().uuid()).min(1).max(200) }).parse(req.body);
       const empresaId = empresaDo(req);
