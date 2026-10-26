@@ -63,10 +63,18 @@ export type ComprasRel = {
   itens: { codigo: string; descricao: string; unidade: string; grupo: string | null; total: number; primeira: string; usos: { atividade: string; inicio: string; quantidade: number }[] }[];
   semClasse: number; atividadesSemOrcamento: number;
 };
-type Tipo = 'sintetico' | 'analitico' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'equipes' | 'compras' | 'calendario';
+export type RelatorioCustos = {
+  obra: Relatorio['obra'];
+  classes: { classe: string; rotulo: string; valor: number; peso: number }[];
+  servicos: { item: string; codigo: string; descricao: string; unidade: string; quantidade: number; precoUnitario: number; material: number; mao_obra: number; equipamento: number; outros: number; total: number }[];
+  precoTotal: number;
+  bdiValor: number;
+};
+type Tipo = 'sintetico' | 'analitico' | 'custos' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'equipes' | 'compras' | 'calendario';
 const TIPOS: { id: Tipo; texto: string; titulo: string }[] = [
   { id: 'sintetico', texto: 'Orçamento sintético', titulo: 'Orçamento sintético' },
   { id: 'analitico', texto: 'Orçamento analítico', titulo: 'Orçamento analítico' },
+  { id: 'custos', texto: 'Custos por classe', titulo: 'Custos por classe (preço de venda)' },
   { id: 'abc-servicos', texto: 'Curva ABC de serviços', titulo: 'Curva ABC de serviços' },
   { id: 'abc-insumos', texto: 'Curva ABC de insumos', titulo: 'Curva ABC de insumos' },
   { id: 'comparacao', texto: 'Comparar versões', titulo: 'Comparação de versões' },
@@ -85,6 +93,7 @@ export function EngRelatorios() {
   const [obras, setObras] = useState<Obra[] | null>(null);
   const [rel, setRel] = useState<Relatorio | null>(null);
   const [abc, setAbc] = useState<RelatorioAbc | null>(null);
+  const [custos, setCustos] = useState<RelatorioCustos | null>(null);
   // O relatório de planejamento guarda o tipo a que pertence: ao trocar de aba, os dados antigos não chegam à tela nova.
   const [planEstado, setPlanEstado] = useState<{ tipo: Tipo; gran: Gran; dados: GanttRel | EquipesRel | ComprasRel | CalendarioRel } | null>(null);
   const [erro, setErro] = useState('');
@@ -105,6 +114,7 @@ export function EngRelatorios() {
     let ativo = true;
     setRel(null);
     setAbc(null);
+    setCustos(null);
     setPlanEstado(null);
     setErro('');
     const pedido = ehPlanejamento(tipo)
@@ -115,6 +125,8 @@ export function EngRelatorios() {
         ).then((dados) => { if (ativo) setPlanEstado({ tipo, gran, dados }); })
       : ehAbc
         ? api<RelatorioAbc>(`/eng/obras/${obraId}/relatorio-abc?tipo=${tipo === 'abc-insumos' ? 'insumos' : 'servicos'}`).then((r) => { if (ativo) setAbc(r); })
+        : tipo === 'custos'
+          ? api<RelatorioCustos>(`/eng/obras/${obraId}/relatorio-custos`).then((r) => { if (ativo) setCustos(r); })
         : api<Relatorio>(`/eng/obras/${obraId}/relatorio-orcamento?tipo=${tipo}`).then((r) => { if (ativo) setRel(r); });
     pedido.catch((e) => { if (ativo) setErro((e as Error).message); });
     return () => { ativo = false; };
@@ -124,7 +136,8 @@ export function EngRelatorios() {
   // Mesma proteção para orçamento e curva ABC: só mostra o que pertence ao relatório escolhido.
   const relAtual = rel && rel.tipo === tipo ? rel : null;
   const abcAtual = abc && ehAbc && abc.tipo === (tipo === 'abc-insumos' ? 'insumos' : 'servicos') ? abc : null;
-  const obraRel = relAtual?.obra ?? abcAtual?.obra;
+  const custosAtual = custos && tipo === 'custos' ? custos : null;
+  const obraRel = relAtual?.obra ?? abcAtual?.obra ?? custosAtual?.obra;
   const obraAtual = obras?.find((o) => o.id === obraId);
   const local =obraRel ? [obraRel.endereco, [obraRel.cidade, obraRel.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ') : '';
 
@@ -177,8 +190,53 @@ export function EngRelatorios() {
         {abcAtual && (abcAtual.linhas.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>Não há {abcAtual.tipo === 'insumos' ? 'insumos' : 'serviços'} com valor no orçamento desta obra.</p></div> : <CurvaAbc rel={abcAtual} />)}
         {relAtual && relAtual.linhas.length === 0 && <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div>}
         {relAtual && relAtual.linhas.length > 0 && (relAtual.tipo === 'sintetico' ? <Sintetico rel={relAtual} /> : <Analitico rel={relAtual} />)}
+        {custosAtual && (custosAtual.servicos.length === 0 ? <div className="card"><p className="muted" style={{ margin: 0 }}>A planilha desta obra está vazia. Monte-a em EAP e orçamento.</p></div> : <CustosPorClasse rel={custosAtual} />)}
       </ProtecaoRelatorio>
     </div>
+  );
+}
+
+/** Custos por classe no preço de venda (com BDI): resumo por classe e o detalhe de cada serviço. */
+function CustosPorClasse({ rel }: { rel: RelatorioCustos }) {
+  return (
+    <>
+      <div className="card" style={{ marginBottom: 12 }}>
+        <table className="tabela relatorio-orcamento">
+          <thead>
+            <tr><th>Classe</th><th className="num">Preço de venda</th><th className="num">Peso</th></tr>
+          </thead>
+          <tbody>
+            {rel.classes.map((c) => (
+              <tr key={c.classe}><td>{c.rotulo}</td><td className="num">{formatarMoeda(c.valor)}</td><td className="num">{pct(c.peso)}</td></tr>
+            ))}
+            <tr style={{ fontWeight: 700 }}><td>Total</td><td className="num">{formatarMoeda(rel.precoTotal)}</td><td className="num">100,00%</td></tr>
+          </tbody>
+        </table>
+        <p className="small muted" style={{ marginBottom: 0 }}>BDI de {pct(rel.obra.bdiPercentual)} incluído. Cada serviço é dividido entre as classes na proporção do custo dos seus insumos.</p>
+      </div>
+      <div className="card">
+        <div style={{ overflowX: 'auto' }}>
+          <table className="tabela relatorio-orcamento">
+            <thead>
+              <tr>
+                <th>Item</th><th>Código</th><th>Serviço</th><th>Un.</th><th className="num">Qtd.</th><th className="num">Preço unit.</th>
+                <th className="num">Material</th><th className="num">Mão de obra</th><th className="num">Equipamento</th><th className="num">Outros</th><th className="num">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rel.servicos.map((s) => (
+                <tr key={s.item}>
+                  <td className="mono">{s.item}</td><td className="mono">{s.codigo}</td><td>{s.descricao}</td><td>{s.unidade}</td>
+                  <td className="num">{num(s.quantidade)}</td><td className="num">{formatarMoeda(s.precoUnitario)}</td>
+                  <td className="num">{formatarMoeda(s.material)}</td><td className="num">{formatarMoeda(s.mao_obra)}</td><td className="num">{formatarMoeda(s.equipamento)}</td><td className="num">{formatarMoeda(s.outros)}</td>
+                  <td className="num">{formatarMoeda(s.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </>
   );
 }
 

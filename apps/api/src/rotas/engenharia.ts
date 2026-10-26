@@ -28,6 +28,7 @@ import {
   erroMudarNivel,
   erroPaiPlanilha,
   erroServicoNaLinha,
+  montarRelatorioCustos,
   montarRelatorioOrcamento,
   NIVEIS_PLANILHA,
   paiAutomatico,
@@ -1904,6 +1905,15 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true };
     });
 
+    /** Custos por classe (material, mão de obra, equipamento) no preço de venda (com BDI). */
+    app.get<{ Params: { id: string } }>('/obras/:id/relatorio-custos', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const linhas = await linhasPlanilha(banco, obra.id);
+      const composicoes = await composicoesDaPlanilha(linhas);
+      const bdiPct = await bdiDaObra(banco, obra);
+      return { obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: bdiPct }, ...montarRelatorioCustos(linhas, bdiPct, composicoes) };
+    });
+
     app.get<{ Params: { id: string } }>('/obras/:id/orcamento', async (req) => {
       const empresaId = empresaDo(req);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
@@ -2168,14 +2178,14 @@ export function rotasEngenharia(banco: Banco) {
       const ids = [...new Set(linhas.flatMap((l) => (l.servico ? [l.servico.itemId] : [])))];
       if (!ids.length) return composicoes;
       const r = await banco.query(
-        `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos
+        `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos, ii.grupo
            FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id
           WHERE ci.composicao_id = ANY($1::uuid[]) ORDER BY ii.descricao`,
         [ids],
       );
       for (const k of r.rows) {
         const l = composicoes.get(k.composicao_id) ?? [];
-        l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0 });
+        l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0, grupo: k.grupo ?? null });
         composicoes.set(k.composicao_id, l);
       }
       return composicoes;
@@ -2305,14 +2315,14 @@ export function rotasEngenharia(banco: Banco) {
       const composicoes = new Map<string, InsumoComposicaoRel[]>();
       if (ids.length) {
         const r = await c.query(
-          `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos
+          `SELECT ci.composicao_id, ii.codigo, ii.descricao, ii.unidade, ci.coeficiente, ii.preco_centavos, ii.grupo
              FROM obra_composicao_insumos ci JOIN obra_itens ii ON ii.id = ci.insumo_id
             WHERE ci.composicao_id = ANY($1::uuid[]) ORDER BY ii.descricao`,
           [ids],
         );
         for (const k of r.rows) {
           const l = composicoes.get(k.composicao_id) ?? [];
-          l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0 });
+          l.push({ codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) ?? 0, grupo: k.grupo ?? null });
           composicoes.set(k.composicao_id, l);
         }
       }
