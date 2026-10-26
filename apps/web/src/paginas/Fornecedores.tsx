@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, formatarDocumento, type Fornecedor } from '../api';
+import { ATUACOES_FORNECEDOR, api, formatarDocumento, type AtuacaoFornecedor, type Fornecedor } from '../api';
 import { LeituraIa, type DadosLidos } from '../componentes/LeituraIa';
 
 type Dados = {
@@ -9,6 +9,7 @@ type Dados = {
   razaoSocial: string;
   nomeFantasia: string;
   ramo: string;
+  atuacao: AtuacaoFornecedor[];
   telefone: string;
   email: string;
   endereco: string;
@@ -18,7 +19,7 @@ type Dados = {
   observacoes: string;
 };
 
-const VAZIO: Dados = { tipoPessoa: 'PJ', cnpjCpf: '', razaoSocial: '', nomeFantasia: '', ramo: '', telefone: '', email: '', endereco: '', cidade: '', uf: '', chavePix: '', observacoes: '' };
+const VAZIO: Dados = { tipoPessoa: 'PJ', cnpjCpf: '', razaoSocial: '', nomeFantasia: '', ramo: '', atuacao: [], telefone: '', email: '', endereco: '', cidade: '', uf: '', chavePix: '', observacoes: '' };
 
 function paraDados(f: Fornecedor): Dados {
   return {
@@ -28,6 +29,7 @@ function paraDados(f: Fornecedor): Dados {
     razaoSocial: f.razaoSocial,
     nomeFantasia: f.nomeFantasia ?? '',
     ramo: f.ramo ?? '',
+    atuacao: f.atuacao ?? [],
     telefone: f.telefone ?? '',
     email: f.email ?? '',
     endereco: f.endereco ?? '',
@@ -193,6 +195,23 @@ export function Fornecedores({ categoria }: { categoria: 'fornecedor' | 'credor'
               <label htmlFor="f-ramo">{t.ramo}</label>
               <input id="f-ramo" value={form.ramo} onChange={(e) => setForm({ ...form, ramo: e.target.value })} />
             </div>
+            {categoria === 'fornecedor' && (
+              <fieldset className="campo" style={{ border: 0, padding: 0, margin: 0 }}>
+                <legend>Atua com (define em quais cotações aparece)</legend>
+                <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+                  {ATUACOES_FORNECEDOR.map((a) => (
+                    <label key={a.valor} style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={form.atuacao.includes(a.valor)}
+                        onChange={(e) => setForm({ ...form, atuacao: e.target.checked ? [...form.atuacao, a.valor] : form.atuacao.filter((x) => x !== a.valor) })}
+                      />
+                      {a.rotulo}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+            )}
             <div className="campo">
               <label htmlFor="f-tel">Telefone</label>
               <input id="f-tel" inputMode="tel" value={form.telefone} onChange={(e) => setForm({ ...form, telefone: e.target.value })} />

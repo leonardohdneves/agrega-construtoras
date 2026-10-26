@@ -1,6 +1,6 @@
 // Tipos, selos e peças comuns do módulo Suprimentos.
 import { useEffect, useState, type ReactNode } from 'react';
-import { api, type CentroCusto, type Fornecedor } from '../api';
+import { api, type AtuacaoFornecedor, type CentroCusto, type Fornecedor } from '../api';
 
 // ---------- Tipos da API ----------
 export type StatusSolicitacao = 'aberta' | 'finalizada' | 'em_cotacao' | 'atendida' | 'cancelada';
@@ -17,6 +17,20 @@ export type ItemSolicitacao = ItemEap & {
 export type TipoSolicitacao = 'insumo' | 'servico';
 /** Escopo do serviço: o que a contratada fornece (direciona a minuta do contrato). */
 export type EscopoServico = 'mo' | 'eq' | 'mat' | 'mat_mo' | 'mat_mo_eq' | 'mo_eq' | 'mat_eq';
+/** Atuações do fornecedor que atendem cada escopo (escopo combinado: basta uma delas). */
+const ATUACAO_DO_ESCOPO: Record<EscopoServico, AtuacaoFornecedor[]> = {
+  mo: ['mo'],
+  eq: ['eq'],
+  mat: ['mat'],
+  mat_mo: ['mat', 'mo'],
+  mat_mo_eq: ['mat', 'mo', 'eq'],
+  mo_eq: ['mo', 'eq'],
+  mat_eq: ['mat', 'eq'],
+};
+export function fornecedorAtendeEscopo(atuacao: AtuacaoFornecedor[] | null | undefined, escopo: EscopoServico | null | undefined): boolean {
+  if (!escopo) return true;
+  return (atuacao ?? []).some((a) => ATUACAO_DO_ESCOPO[escopo].includes(a));
+}
 export const ESCOPOS_SERVICO: { valor: EscopoServico; rotulo: string }[] = [
   { valor: 'mo', rotulo: 'Somente mão de obra' },
   { valor: 'eq', rotulo: 'Somente locação de equipamento' },

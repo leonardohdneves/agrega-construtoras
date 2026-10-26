@@ -11,6 +11,7 @@ import { diasEntre, hojeBrasil } from '../lib/frota.ts';
 import { obrasPermitidas } from '../lib/obras-acesso.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { normalizar } from '../lib/sugestoes.ts';
+import { fornecedorAtende } from '../lib/atuacao.ts';
 import { dispensaAprovacao, lerRegras, lerRegrasDe, podeAprovar, proximoNumero, textoRegras, type RegrasAprovacao } from '../lib/aprovacao.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
@@ -197,6 +198,19 @@ async function liberarNecessidades(c: Cliente, solicitacaoId: string) {
 async function validarFornecedor(c: Cliente, empresaId: string, id: string) {
   const r = await c.query("SELECT id FROM fornecedores WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL AND categoria = 'fornecedor'", [id, empresaId]);
   if (!r.rowCount) throw new ErroHttp(400, 'Fornecedor não encontrado.');
+}
+/** Fornecedores escolhidos para cotar precisam atuar no escopo do serviço (solicitação de serviço). */
+async function validarAtuacaoFornecedores(c: Cliente, empresaId: string, solicitacaoId: string, fornecedorIds: string[]) {
+  if (!fornecedorIds.length) return;
+  const s = (await c.query('SELECT escopo_servico FROM solicitacoes_compra WHERE id = $1 AND empresa_id = $2', [solicitacaoId, empresaId])).rows[0];
+  if (!s?.escopo_servico) return;
+  const fs = (await c.query('SELECT razao_social, nome_fantasia, atuacao FROM fornecedores WHERE id = ANY($1::uuid[]) AND empresa_id = $2', [fornecedorIds, empresaId])).rows;
+  const fora = fs.filter((f) => !fornecedorAtende(f.atuacao as string[], s.escopo_servico as string));
+  if (fora.length) throw new ErroHttp(400, `Fornecedor sem atuação no escopo do serviço: ${fora.map((f) => f.nome_fantasia || f.razao_social).join(', ')}. Ajuste a atuação no cadastro.`);
+}
+async function validarAtuacaoCotacao(c: Cliente, empresaId: string, cotacaoId: string, fornecedorIds: string[]) {
+  const r = await c.query('SELECT solicitacao_id FROM cotacoes WHERE id = $1 AND empresa_id = $2', [cotacaoId, empresaId]);
+  if (r.rows[0]) await validarAtuacaoFornecedores(c, empresaId, r.rows[0].solicitacao_id as string, fornecedorIds);
 }
 async function validarCentro(c: Cliente, empresaId: string, id: string | null) {
   if (id && !(await c.query('SELECT 1 FROM centros_custo WHERE id = $1 AND empresa_id = $2', [id, empresaId])).rowCount) throw new ErroHttp(400, 'Centro de custo não encontrado.');
@@ -1253,6 +1267,7 @@ export function rotasSuprimentos(banco: Banco) {
         const s = (await c.query('SELECT status FROM solicitacoes_compra WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [d.solicitacaoId, empresaId])).rows[0];
         if (!s) throw new ErroHttp(400, 'Solicitação não encontrada.');
         if (s.status !== 'finalizada') throw new ErroHttp(409, 'Só dá para cotar solicitação finalizada.');
+        await validarAtuacaoFornecedores(c, empresaId, d.solicitacaoId, d.fornecedorIds);
         const r = await c.query('SELECT * FROM solicitacoes_itens WHERE solicitacao_id = $1 ORDER BY descricao', [d.solicitacaoId]);
         if (!r.rows.length) throw new ErroHttp(400, 'A solicitação não tem itens.');
         const itens = r.rows.map((x) => ({
@@ -1303,6 +1318,7 @@ export function rotasSuprimentos(banco: Banco) {
         await cotacaoAberta(c, empresaId, req.params.id);
         const ids = [...new Set(d.fornecedorIds)];
         for (const f of ids) await validarFornecedor(c, empresaId, f);
+        await validarAtuacaoCotacao(c, empresaId, req.params.id, ids);
         await c.query('DELETE FROM cotacoes_fornecedores WHERE cotacao_id = $1 AND NOT (fornecedor_id = ANY($2::uuid[]))', [req.params.id, ids]);
         for (const f of ids)
           await c.query('INSERT INTO cotacoes_fornecedores (empresa_id, cotacao_id, fornecedor_id) VALUES ($1, $2, $3) ON CONFLICT (cotacao_id, fornecedor_id) DO NOTHING', [empresaId, req.params.id, f]);
