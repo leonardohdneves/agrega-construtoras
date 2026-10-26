@@ -872,7 +872,21 @@ export function rotasEngenharia(banco: Banco) {
           ORDER BY oi.tipo, oi.codigo LIMIT 1000`,
         [req.params.id, tipo === 'insumo' || tipo === 'composicao' ? tipo : null, termo],
       );
-      return { itens: r.rows.map(itemObraPublico) };
+      if (tipo !== 'composicao') return { itens: r.rows.map(itemObraPublico) };
+      // Serviços do orçamento por nó: um serviço em mais de um nó aparece em cada linha, com o código do nó.
+      const linhas = (
+        await banco.query(
+          `SELECT oq.id, oq.obra_item_id, oq.eap_no_id, oi.codigo, oi.descricao, oi.unidade, en.codigo AS eap_codigo
+             FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id AND oi.tipo = 'composicao'
+             LEFT JOIN eap_nos en ON en.id = oq.eap_no_id
+            WHERE oq.obra_id = $1 ORDER BY en.codigo NULLS FIRST, oi.codigo, oq.ordem`,
+          [req.params.id],
+        )
+      ).rows;
+      return {
+        itens: r.rows.map(itemObraPublico),
+        linhas: linhas.map((l) => ({ id: l.id as string, obraItemId: l.obra_item_id as string, eapNoId: (l.eap_no_id as string | null) ?? null, codigo: l.codigo as string, descricao: l.descricao as string, unidade: l.unidade as string, eapCodigo: (l.eap_codigo as string | null) ?? null })),
+      };
     });
 
     app.get<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', async (req) => {
