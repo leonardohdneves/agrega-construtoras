@@ -128,7 +128,7 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
   await app.register(rotasIncorporacao(banco), { prefix: '/api/com' });
   await app.register(rotasEngenharia(banco), { prefix: '/api/eng' });
   await app.register(rotasRdo(banco), { prefix: '/api/eng' });
-  await app.register(rotasLaudos(banco), { prefix: '/api/laudos' });
+  await app.register(rotasLaudos(banco), { prefix: '/api' });
   await app.register(rotasMural(banco), { prefix: '/api/mural' });
   await app.register(rotasInteresse(banco), { prefix: '/api/interesse' });
   if (config.seedDemo) await app.register(rotasDemo(banco), { prefix: '/api/demo' });
