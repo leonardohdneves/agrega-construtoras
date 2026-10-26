@@ -48,6 +48,17 @@ const TIPOS: { id: Tipo; nome: string; ajuda: string; origens: Origem[]; dataLab
     dataLabel: 'Data da aceitação (entrada)',
   },
 ];
+// Campos do modelo de proposta de laudo que o usuário preenche no formulário.
+const CAMPOS_LAUDO: { id: string; rotulo: string; exemplo: string; largo?: boolean }[] = [
+  { id: 'naoIncluidos', rotulo: 'Não incluído nesta proposta (exclusões)', exemplo: 'Ex.: taxas, projetos complementares', largo: true },
+  { id: 'meioPagamento', rotulo: 'Meio de pagamento', exemplo: 'Ex.: PIX ou boleto' },
+  { id: 'indiceCorrecao', rotulo: 'Índice de correção monetária (atraso)', exemplo: 'Ex.: IPCA' },
+  { id: 'reajuste', rotulo: 'Reajuste', exemplo: 'Ex.: sem reajuste durante a validade da proposta', largo: true },
+  { id: 'cidadeForo', rotulo: 'Cidade do foro e da assinatura', exemplo: 'Ex.: Palmas/TO' },
+  { id: 'responsavelTecnico', rotulo: 'Responsável técnico', exemplo: 'Nome do engenheiro' },
+  { id: 'crea', rotulo: 'CREA', exemplo: 'Número do CREA' },
+  { id: 'documentoCliente', rotulo: 'CPF/CNPJ do cliente', exemplo: '000.000.000-00' },
+];
 const infoTipo = (t: Tipo) => TIPOS.find((x) => x.id === t) ?? TIPOS[0];
 const ROTULO: Record<Status, string> = { rascunho: 'Rascunho', enviada: 'Enviada', aceita: 'Aceita', recusada: 'Recusada', cancelada: 'Cancelada' };
 const SELO: Record<Status, string> = { rascunho: 'selo-neutro', enviada: 'selo-aviso', aceita: 'selo-ok', recusada: 'selo-perigo', cancelada: 'selo-neutro' };
@@ -70,6 +81,7 @@ type Form = {
   origemPreco: Origem; dataInicio: string; meses: string; modo: 'valor_mensal' | 'percentual_obra'; honorarioMensal: string; percentualObra: string;
   taxaPct: string; baseAdm: 'custo_direto' | 'valor_obra'; valorBaseInformado: string; valorInformado: string; marcos: Marco[];
   numeroParcelas: string; entradaPct: string; prazoEntregaDias: string; itens: Linha[]; condicoes: string;
+  campos: Record<string, string>;
 };
 type Detalhe = {
   id: string; numero: number; tipo: Tipo; tipoNome: string; titulo: string; status: Status; valorTotal: number; origemPreco: Origem;
@@ -84,7 +96,7 @@ const FORM_VAZIO: Form = {
   tipo: 'acompanhamento', clienteId: '', obraId: '', titulo: '', objeto: '', endereco: '', prazoDias: '', validadeDias: '30',
   origemPreco: 'informado', dataInicio: '', meses: '', modo: 'valor_mensal', honorarioMensal: '', percentualObra: '', taxaPct: '',
   baseAdm: 'custo_direto', valorBaseInformado: '', valorInformado: '', marcos: [{ descricao: '', percentual: '', dias: '' }],
-  numeroParcelas: '', entradaPct: '50', prazoEntregaDias: '', itens: [], condicoes: '',
+  numeroParcelas: '', entradaPct: '50', prazoEntregaDias: '', itens: [], condicoes: '', campos: {},
 };
 
 function deProposta(p: Detalhe): Form {
@@ -113,6 +125,7 @@ function deProposta(p: Detalhe): Form {
     numeroParcelas: campo(q.numeroParcelas),
     entradaPct: campo(q.entradaPct),
     prazoEntregaDias: campo(q.prazoEntregaDias),
+    campos: (q.campos as Record<string, string>) ?? {},
     itens: p.itens.map((i) => ({ obraItemId: i.obraItemId, descricao: i.descricao, unidade: i.unidade, quantidade: campo(i.quantidade), precoUnitario: campo(i.precoUnitario) })),
     condicoes: p.condicoes ?? '',
   };
@@ -146,6 +159,7 @@ function corpoDe(f: Form) {
       numeroParcelas: n(f.numeroParcelas),
       entradaPct: n(f.entradaPct),
       prazoEntregaDias: n(f.prazoEntregaDias),
+      campos: f.campos,
     },
     itens: f.itens.map((i) => ({
       obraItemId: i.obraItemId,
@@ -522,6 +536,21 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
               </>
             )}
           </div>
+
+          {f.tipo === 'laudo' && (
+            <div className="card" style={{ marginTop: 16 }}>
+              <h3 style={{ fontSize: 14, margin: '0 0 4px' }}>Textos da proposta</h3>
+              <p className="small muted" style={{ margin: '0 0 10px' }}>Preencha o que deve aparecer na impressão. Campo vazio sai como linha em branco para escrever à mão.</p>
+              <div className="campos">
+                {CAMPOS_LAUDO.map((c) => (
+                  <div className="campo" key={c.id} style={c.largo ? { gridColumn: '1 / -1' } : undefined}>
+                    <label htmlFor={`cl-${c.id}`}>{c.rotulo}</label>
+                    <input id={`cl-${c.id}`} value={f.campos[c.id] ?? ''} placeholder={c.exemplo} onChange={(e) => set('campos', { ...f.campos, [c.id]: e.target.value })} />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {f.tipo === 'preco_global' && (
             <>
@@ -925,6 +954,8 @@ function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string })
   const saldo = p.parcelas.find((x) => x.descricao.startsWith('Saldo'));
   const pctEntrada = Number(q.entradaPct ?? 0);
   const linha = (n: number) => <span style={{ display: 'inline-block', minWidth: n, borderBottom: '1px solid currentColor' }}>&nbsp;</span>;
+  const c = (q.campos ?? {}) as Record<string, string>;
+  const preenchido = (k: string, n: number) => (c[k]?.trim() ? <>{c[k].trim()}</> : linha(n));
   const secao = (t: string) => <h3 style={{ fontSize: 14, margin: '14px 0 6px' }}>{t}</h3>;
   return (
     <div className="pagina romaneio">
@@ -932,7 +963,7 @@ function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string })
         modulo="Comercial"
         titulo={`Proposta técnica nº ${numeroFmt(p.numero)} · ${p.titulo}`}
         descricao="Laudos técnicos"
-        filtros={[`Cliente: ${p.clienteNome ?? '—'}`, `CPF/CNPJ: ${' '.repeat(20)}`, p.obraCodigo ? `Obra: ${p.obraCodigo}` : 'Sem obra vinculada', `Emissão: ${formatarData(p.criadoEm)}`, `Validade: ${p.validadeDias} dias`]}
+        filtros={[`Cliente: ${p.clienteNome ?? '—'}`, `CPF/CNPJ: ${c.documentoCliente?.trim() || ' '.repeat(20)}`, p.obraCodigo ? `Obra: ${p.obraCodigo}` : 'Sem obra vinculada', `Emissão: ${formatarData(p.criadoEm)}`, `Validade: ${p.validadeDias} dias`]}
       />
       <p style={{ margin: '0 0 6px' }}><strong>Obra:</strong> {p.endereco || '—'}</p>
 
@@ -947,7 +978,7 @@ function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string })
           <li key={k}>{i.descricao}{Number(i.quantidade) !== 1 ? ` (${Number(i.quantidade).toLocaleString('pt-BR')} ${i.unidade || 'un'})` : ''}</li>
         ))}
       </ol>
-      <p>2.3. Não estão incluídos nesta proposta: {linha(320)}</p>
+      <p>2.3. Não estão incluídos nesta proposta: {preenchido('naoIncluidos', 320)}</p>
 
       {secao('3. Prazo')}
       <p>3.1. Prazo de entrega dos laudos: {q.prazoEntregaDias ?? p.prazoDias ?? '—'} dias corridos, contados da aceitação.</p>
@@ -960,7 +991,7 @@ function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string })
         {entrada ? ` (${formatarMoeda(entrada.valor)})` : ''} e {(100 - pctEntrada).toLocaleString('pt-BR')}% na entrega dos laudos
         {saldo ? ` (${formatarMoeda(saldo.valor)})` : ''}.
       </p>
-      <p>4.3. Os pagamentos serão realizados por {linha(160)}, com vencimentos conforme o quadro abaixo.</p>
+      <p>4.3. Os pagamentos serão realizados por {preenchido('meioPagamento', 160)}, com vencimentos conforme o quadro abaixo.</p>
       {p.parcelas.length > 0 && (
         <table className="tabela">
           <thead><tr><th>Pagamento</th><th>Vencimento</th><th className="num">Valor</th></tr></thead>
@@ -971,27 +1002,27 @@ function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string })
           </tbody>
         </table>
       )}
-      <p>4.4. O atraso no pagamento sujeitará o valor em aberto a multa de 2% e juros de 1% ao mês, além de correção monetária pelo índice {linha(120)}.</p>
+      <p>4.4. O atraso no pagamento sujeitará o valor em aberto a multa de 2% e juros de 1% ao mês, além de correção monetária pelo índice {preenchido('indiceCorrecao', 120)}.</p>
 
       {secao('5. Responsabilidades')}
       <p>5.1. Cabe à contratada: a execução técnica dos laudos e a emissão dos documentos técnicos acordados.</p>
       <p>5.2. Cabe ao cliente: franquear o acesso ao local, fornecer as informações e os projetos necessários e efetuar os pagamentos no prazo.</p>
 
       {secao('6. Reajuste')}
-      <p>{linha(420)}</p>
+      <p>{preenchido('reajuste', 420)}</p>
 
       {secao('7. Aceite')}
       <p>7.1. A aceitação desta proposta, por escrito ou pelo pagamento da primeira parcela, implica a concordância com todas as condições acima.</p>
       <p>7.2. Após a aceitação, será gerado o contrato de prestação de serviços, que prevalecerá sobre esta proposta.</p>
 
       {secao('8. Foro')}
-      <p>Fica eleito o foro da comarca de {linha(200)} para dirimir eventuais questões decorrentes desta proposta.</p>
+      <p>Fica eleito o foro da comarca de {preenchido('cidadeForo', 200)} para dirimir eventuais questões decorrentes desta proposta.</p>
 
-      <p style={{ marginTop: 16 }}>{linha(200)}, {linha(40)} de {linha(120)} de {linha(60)}.</p>
+      <p style={{ marginTop: 16 }}>{preenchido('cidadeForo', 200)}, {linha(40)} de {linha(120)} de {linha(60)}.</p>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 36 }}>
-        <Assinatura nome={nomeEmpresa} papel="Pela contratada" detalhe={<>Responsável técnico: {linha(200)}<br />CREA: {linha(120)}</>} />
-        <Assinatura nome={p.clienteNome ?? 'Cliente'} papel="Pelo cliente" detalhe={<>CPF/CNPJ: {linha(160)}</>} />
+        <Assinatura nome={nomeEmpresa} papel="Pela contratada" detalhe={<>Responsável técnico: {c.responsavelTecnico?.trim() || linha(200)}<br />CREA: {c.crea?.trim() || linha(120)}</>} />
+        <Assinatura nome={p.clienteNome ?? 'Cliente'} papel="Pelo cliente" detalhe={<>CPF/CNPJ: {c.documentoCliente?.trim() || linha(160)}</>} />
       </div>
 
       <p style={{ marginTop: 28, fontWeight: 600 }}>Testemunhas</p>
