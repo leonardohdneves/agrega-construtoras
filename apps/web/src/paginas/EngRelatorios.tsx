@@ -63,10 +63,15 @@ export type ComprasRel = {
   itens: { codigo: string; descricao: string; unidade: string; grupo: string | null; total: number; primeira: string; usos: { atividade: string; inicio: string; quantidade: number }[] }[];
   semClasse: number; atividadesSemOrcamento: number;
 };
+type ValoresCusto = { material: number; mao_obra: number; equipamento: number; outros: number; total: number; peso: number };
 export type RelatorioCustos = {
   obra: Relatorio['obra'];
   classes: { classe: string; rotulo: string; valor: number; peso: number }[];
-  servicos: { item: string; codigo: string; descricao: string; unidade: string; quantidade: number; precoUnitario: number; material: number; mao_obra: number; equipamento: number; outros: number; total: number }[];
+  linhas: (
+    | ({ tipo: 'grupo'; nivel: NivelPlanilha; item: string; descricao: string } & ValoresCusto)
+    | ({ tipo: 'servico'; item: string; codigo: string; descricao: string; unidade: string; quantidade: number; precoUnitario: number } & ValoresCusto)
+    | { tipo: 'tarefa'; item: string; descricao: string }
+  )[];
   precoTotal: number;
   bdiValor: number;
 };
@@ -224,14 +229,26 @@ function CustosPorClasse({ rel }: { rel: RelatorioCustos }) {
               </tr>
             </thead>
             <tbody>
-              {rel.servicos.map((s) => (
-                <tr key={s.item}>
-                  <td className="mono">{s.item}</td><td className="mono">{s.codigo}</td><td>{s.descricao}</td><td>{s.unidade}</td>
-                  <td className="num">{num(s.quantidade)}</td><td className="num">{formatarMoeda(s.precoUnitario)}</td>
-                  <td className="num">{formatarMoeda(s.material)}</td><td className="num">{formatarMoeda(s.mao_obra)}</td><td className="num">{formatarMoeda(s.equipamento)}</td><td className="num">{formatarMoeda(s.outros)}</td>
-                  <td className="num">{formatarMoeda(s.total)}</td>
-                </tr>
-              ))}
+              {rel.linhas.map((l, i) =>
+                l.tipo === 'grupo' ? (
+                  <tr key={i} style={estiloGrupo(l.nivel)}>
+                    <td className="mono">{l.item}</td><td className="small">{ROTULO[l.nivel]}</td><td colSpan={4}>{l.descricao}</td>
+                    <td className="num">{formatarMoeda(l.material)}</td><td className="num">{formatarMoeda(l.mao_obra)}</td><td className="num">{formatarMoeda(l.equipamento)}</td><td className="num">{formatarMoeda(l.outros)}</td>
+                    <td className="num">{formatarMoeda(l.total)}</td>
+                  </tr>
+                ) : l.tipo === 'servico' ? (
+                  <tr key={i}>
+                    <td className="mono">{l.item}</td><td className="mono">{l.codigo}</td><td>{l.descricao}</td><td>{l.unidade}</td>
+                    <td className="num">{num(l.quantidade)}</td><td className="num">{formatarMoeda(l.precoUnitario)}</td>
+                    <td className="num">{formatarMoeda(l.material)}</td><td className="num">{formatarMoeda(l.mao_obra)}</td><td className="num">{formatarMoeda(l.equipamento)}</td><td className="num">{formatarMoeda(l.outros)}</td>
+                    <td className="num">{formatarMoeda(l.total)}</td>
+                  </tr>
+                ) : (
+                  <tr key={i}>
+                    <td className="mono">{l.item}</td><td /><td colSpan={9}>{l.descricao}</td>
+                  </tr>
+                ),
+              )}
             </tbody>
           </table>
         </div>
