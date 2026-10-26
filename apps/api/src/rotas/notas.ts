@@ -115,6 +115,41 @@ const esquemaConfirmar = z.object({
 // ---------- Leitura ----------
 type Nota = Record<string, any>;
 
+const semAcento = (s: string) => s.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
+const palavras = (s: string) => semAcento(s).split(/[^A-Z0-9]+/).filter((t) => t.length >= 2);
+/** Parte das palavras do texto menor que aparece no maior (0 a 1). */
+function parecenca(a: string[], b: string[]) {
+  const [menor, maior] = a.length <= b.length ? [a, b] : [b, a];
+  if (!menor.length) return 0;
+  const conjunto = new Set(maior);
+  return menor.filter((t) => conjunto.has(t)).length / menor.length;
+}
+
+/** Sugere, para cada item da nota, o item do pedido de mesma unidade, com saldo e descrição parecida (o usuário confere). */
+function sugerirVinculos(
+  itensNota: { id: string; descricao: string; unidade: string; quantidade: number }[],
+  itensPedido: { id: string; descricao: string; unidade: string; quantidade: number; recebido: number }[],
+) {
+  const usados = new Set<string>();
+  const out: { notaItemId: string; pedidoItemId: string; quantidade: number }[] = [];
+  for (const ni of itensNota) {
+    const tn = palavras(ni.descricao);
+    let melhor: { item: (typeof itensPedido)[number]; score: number } | null = null;
+    for (const pi of itensPedido) {
+      if (usados.has(pi.id) || semAcento(pi.unidade).trim() !== semAcento(ni.unidade).trim()) continue;
+      const saldo = pi.quantidade - pi.recebido;
+      if (saldo <= 0.0005) continue;
+      const score = parecenca(tn, palavras(pi.descricao));
+      if (score >= 0.6 && (!melhor || score > melhor.score)) melhor = { item: pi, score };
+    }
+    if (melhor) {
+      usados.add(melhor.item.id);
+      out.push({ notaItemId: ni.id, pedidoItemId: melhor.item.id, quantidade: Math.min(ni.quantidade, melhor.item.quantidade - melhor.item.recebido) });
+    }
+  }
+  return out;
+}
+
 async function carregarNota(c: Cliente, empresaId: string, id: string, travar = false) {
   if (!UUID.test(id)) throw naoEncontrado('Nota');
   const n = (
@@ -651,6 +686,70 @@ export function rotasNotas(banco: Banco) {
     });
 
     app.get<{ Params: { id: string } }>('/notas/:id', async (req) => ({ nota: await detalharNota(banco, empresaDo(req), req.params.id) }));
+
+    // Pedidos de compra do mesmo fornecedor que podem receber esta nota, com o cruzamento sugerido dos itens.
+    app.get<{ Params: { id: string } }>('/notas/:id/pedidos-candidatos', async (req) => {
+      const empresaId = empresaDo(req);
+      const n = await carregarNota(banco, empresaId, req.params.id);
+      if (n.direcao !== 'entrada' || !n.fornecedor_id || n.pedido_id) return { pedidos: [] };
+      const itensNota = (await banco.query('SELECT id, descricao, unidade, quantidade FROM notas_itens WHERE nota_id = $1 ORDER BY numero_item, criado_em', [n.id])).rows.map((i) => ({
+        id: i.id as string,
+        descricao: (i.descricao as string) ?? '',
+        unidade: (i.unidade as string) ?? '',
+        quantidade: Number(i.quantidade),
+      }));
+      const pedidos = (
+        await banco.query(
+          `SELECT id, numero, data, status, condicao_pagamento, frete_centavos, frete_tipo, total_centavos FROM pedidos_compra
+            WHERE empresa_id = $1 AND fornecedor_id = $2 AND status IN ('aprovado', 'enviado', 'parcial')
+            ORDER BY data DESC, numero DESC LIMIT 20`,
+          [empresaId, n.fornecedor_id],
+        )
+      ).rows;
+      if (!pedidos.length) return { pedidos: [] };
+      const ids = pedidos.map((p) => p.id as string);
+      const itens = (
+        await banco.query('SELECT id, pedido_id, descricao, unidade, quantidade, preco_unitario_centavos FROM pedidos_itens WHERE pedido_id = ANY($1::uuid[]) ORDER BY descricao, id', [ids])
+      ).rows;
+      const recebido = new Map<string, number>();
+      const rec = (
+        await banco.query(
+          `SELECT ni.pedido_item_id, sum(ni.quantidade_pedido) AS qtd FROM notas_itens ni JOIN notas_fiscais nf ON nf.id = ni.nota_id
+            WHERE ni.pedido_item_id IN (SELECT id FROM pedidos_itens WHERE pedido_id = ANY($1::uuid[])) AND nf.excluido_em IS NULL AND nf.status <> 'cancelada'
+            GROUP BY ni.pedido_item_id`,
+          [ids],
+        )
+      ).rows;
+      for (const x of rec) recebido.set(x.pedido_item_id as string, Number(x.qtd ?? 0));
+      return {
+        pedidos: pedidos.map((p) => {
+          const itensDoPedido = itens
+            .filter((i) => i.pedido_id === p.id)
+            .map((i) => ({
+              id: i.id as string,
+              descricao: i.descricao as string,
+              unidade: i.unidade as string,
+              quantidade: Number(i.quantidade),
+              recebido: recebido.get(i.id as string) ?? 0,
+              preco: Number(i.preco_unitario_centavos) / 100,
+            }));
+          const sugestoes = sugerirVinculos(itensNota, itensDoPedido);
+          return {
+            id: p.id as string,
+            numero: p.numero as number,
+            data: p.data,
+            status: p.status as string,
+            condicaoPagamento: (p.condicao_pagamento as string | null) ?? null,
+            freteTipo: (p.frete_tipo as string | null) ?? null,
+            frete: reais(p.frete_centavos) ?? 0,
+            total: reais(p.total_centavos) ?? 0,
+            itens: itensDoPedido,
+            sugestoes,
+          };
+        }),
+        itensNota: itensNota.length,
+      };
+    });
 
     app.get<{ Params: { id: string } }>('/notas/:id/xml', async (req, reply) => {
       const n = await carregarNota(banco, empresaDo(req), req.params.id);
