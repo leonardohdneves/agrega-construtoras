@@ -45,6 +45,7 @@ import { ConfigQualidade, EnsaiosInsumos, Equipamentos } from './paginas/QualCad
 import { NovaSolicitacao, SolicitacaoDetalhe, SupSolicitacoes } from './paginas/SupSolicitacoes';
 import { CotacaoDetalhe, NovaCotacao, SupCotacoes } from './paginas/SupCotacoes';
 import { PedidoDetalhe, SupPedidos } from './paginas/SupPedidos';
+import { SupPermutas, NovaPermuta, PermutaDetalhe, PermutaRomaneio } from './paginas/SupPermutas';
 import { SupAprovacoes } from './paginas/SupAprovacoes';
 import { ContratoDetalhe, NovoContrato, SupContratos } from './paginas/SupContratos';
 import { MedicaoDetalhe, NovaMedicao, SupMedicoes } from './paginas/SupMedicoes';
@@ -187,6 +188,11 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/cotacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><CotacaoDetalhe /></Protegido>} />
             <Route path="sup/pedidos" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><SupPedidos /></Protegido>} />
             <Route path="sup/pedidos/:id" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><PedidoDetalhe /></Protegido>} />
+            <Route path="sup/permutas" element={<Protegido perfis={['dono', 'gestor']}><SupPermutas /></Protegido>} />
+            <Route path="sup/permutas/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaPermuta /></Protegido>} />
+            <Route path="sup/permutas/:id" element={<Protegido perfis={['dono', 'gestor']}><PermutaDetalhe /></Protegido>} />
+            <Route path="sup/permutas/:id/editar" element={<Protegido perfis={['dono', 'gestor']}><NovaPermuta /></Protegido>} />
+            <Route path="sup/permutas/:id/romaneio" element={<Protegido perfis={['dono', 'gestor']}><PermutaRomaneio /></Protegido>} />
             <Route path="sup/contratos" element={<Protegido perfis={['dono', 'gestor']}><SupContratos /></Protegido>} />
             <Route path="sup/contratos/novo" element={<Protegido perfis={['dono', 'gestor']}><NovoContrato /></Protegido>} />
             <Route path="sup/contratos/:id" element={<Protegido perfis={['dono', 'gestor']}><ContratoDetalhe /></Protegido>} />
