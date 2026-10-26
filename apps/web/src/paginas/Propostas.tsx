@@ -4,6 +4,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda, lerNumero } from '../api';
 import { useSessao } from '../sessao';
+import { CabecalhoDocumento } from '../componentes/Documento';
+import { Assinatura } from '../componentes/Suprimentos';
 
 type Tipo = 'acompanhamento' | 'administracao' | 'preco_global' | 'preco_unitario' | 'laudo';
 type Origem = 'orcamento' | 'informado';
@@ -713,6 +715,7 @@ export function PropostaDetalhe() {
         <div className="acoes">
           <span className={`selo ${SELO[p.status]}`}>{ROTULO[p.status]}</span>
           {p.status === 'rascunho' && <Link className="btn btn-secundario" to={`/com/propostas/${p.id}/editar`}>Editar</Link>}
+          <Link className="btn btn-secundario" to={`/com/propostas/${p.id}/imprimir`}>Imprimir</Link>
           {p.status === 'rascunho' && <button type="button" className="btn btn-primario" disabled={ocupado} onClick={() => acao('/enviar')}>Marcar como enviada</button>}
           {aceitavel && (
             <button
@@ -829,5 +832,90 @@ export function PropostaDetalhe() {
         </aside>
       </div>
     </>
+  );
+}
+
+/** Proposta para impressão: cabeçalho do sistema, cliente, objeto, preço, pagamento e assinaturas. */
+export function PropostaImprimir() {
+  const { id } = useParams();
+  const { empresa } = useSessao();
+  const [p, setP] = useState<Detalhe | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    api<{ proposta: Detalhe }>(`/com/obra-propostas/${id}`)
+      .then((r) => setP(r.proposta))
+      .catch((e) => setErro((e as Error).message));
+  }, [id]);
+  if (erro) return <ErroCampo erro={erro} />;
+  if (!p) return <p className="muted">Carregando…</p>;
+  const q = p.parametros ?? {};
+  const nomeEmpresa = empresa?.nomeFantasia || empresa?.razaoSocial || 'Empresa';
+  return (
+    <div className="pagina romaneio">
+      <CabecalhoDocumento
+        modulo="Comercial"
+        titulo={`Proposta nº ${numeroFmt(p.numero)} · ${p.titulo}`}
+        descricao={p.tipoNome}
+        filtros={[
+          `Cliente: ${p.clienteNome ?? '—'}`,
+          p.obraCodigo ? `Obra: ${p.obraCodigo}` : 'Sem obra vinculada',
+          `Validade: ${p.validadeDias} dias`,
+          p.prazoDias ? `Prazo de execução: ${p.prazoDias} dias` : '',
+        ].filter(Boolean)}
+      />
+      {p.objeto && (
+        <section style={{ marginBottom: 14 }}>
+          <h3>Objeto</h3>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{p.objeto}</p>
+          {p.endereco && <p className="small">Endereço da obra: {p.endereco}</p>}
+        </section>
+      )}
+      {p.itens.length > 0 && (
+        <section style={{ marginBottom: 14 }}>
+          <h3>{p.tipo === 'laudo' ? 'Laudos' : 'Serviços'}</h3>
+          <table className="tabela">
+            <thead><tr><th>Descrição</th><th>Unid.</th><th className="num">Qtd.</th><th className="num">Preço unit.</th><th className="num">Total</th></tr></thead>
+            <tbody>
+              {p.itens.map((i, k) => (
+                <tr key={k}>
+                  <td>{i.descricao}</td><td>{i.unidade || '—'}</td>
+                  <td className="num">{Number(i.quantidade).toLocaleString('pt-BR')}</td>
+                  <td className="num">{formatarMoeda(i.precoUnitario)}</td>
+                  <td className="num">{formatarMoeda(i.quantidade * i.precoUnitario)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+      {p.tipo === 'acompanhamento' && (
+        <p className="small">Forma de cobrança: {q.modo === 'percentual_obra' ? `${q.percentualObra}% do valor da obra, em ${q.meses} parcelas mensais` : `honorário mensal de ${formatarMoeda(Number(q.honorarioMensal))} por ${q.meses} meses`}.</p>
+      )}
+      <section style={{ marginBottom: 14 }}>
+        <h3>Valor total: {formatarMoeda(p.valorTotal)}</h3>
+        {p.parcelas.length > 0 && (
+          <table className="tabela">
+            <thead><tr><th>Pagamento</th><th>Vencimento</th><th className="num">Valor</th></tr></thead>
+            <tbody>
+              {p.parcelas.map((x, i) => (
+                <tr key={i}><td>{x.descricao}</td><td>{formatarData(x.vencimento)}</td><td className="num">{formatarMoeda(x.valor)}</td></tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+      {p.condicoes && (
+        <section style={{ marginBottom: 14 }}>
+          <h3>Condições gerais</h3>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{p.condicoes}</p>
+        </section>
+      )}
+      <p className="small muted">Proposta válida por {p.validadeDias} dias a partir da emissão.</p>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 32, marginTop: 40 }}>
+        <Assinatura nome={nomeEmpresa} papel="Pela contratada" />
+        <Assinatura nome={p.clienteNome ?? 'Cliente'} papel="Pelo cliente" />
+      </div>
+      <Link className="btn btn-secundario nao-imprimir" to={`/com/propostas/${p.id}`} style={{ marginTop: 16 }}>Voltar à proposta</Link>
+    </div>
   );
 }
