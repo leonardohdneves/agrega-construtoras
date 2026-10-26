@@ -5,6 +5,7 @@ import { podeAcessar, temModulo } from '../acesso';
 import { useSessao } from '../sessao';
 import { Logo } from './Logo';
 import { lerEscolha } from './EscolhaTipo';
+import { modoAtual, PERFIS_CAMPO, salvarModo } from '../modo';
 
 const ORDEM_CONSTRUTORA = ['engenharia', 'suprimentos', 'financeiro', 'comercial', 'incorporacao', 'laudos', 'gerencial', 'administrativo', 'configuracoes'];
 import {
@@ -328,6 +329,12 @@ export function Layout() {
   // Quem tem módulos a mais (ou é administrador) usa o menu completo no celular.
   const menuCompleto = gestao || !!usuario.administrador || !!usuario.modulos || ['financeiro', 'administrativo', 'vendedor'].includes(perfil);
 
+  function alternarModo() {
+    const proximo = modoAtual() === 'campo' ? 'erp' : 'campo';
+    salvarModo(proximo);
+    navegar(proximo === 'campo' ? '/campo' : '/');
+  }
+
   async function aoSair() {
     await sair();
     navegar('/entrar');
@@ -339,6 +346,11 @@ export function Layout() {
       <span>
         {usuario.nome} · {NOMES_PERFIL[perfil]}
       </span>
+      {(PERFIS_CAMPO as readonly string[]).includes(perfil) && (
+        <button type="button" onClick={alternarModo}>
+          {modoAtual() === 'campo' ? 'Usar ERP completo' : 'Modo campo'}
+        </button>
+      )}
       <button type="button" onClick={aoSair}>
         Sair
       </button>

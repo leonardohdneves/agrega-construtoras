@@ -69,6 +69,8 @@ import { ComVendas, EditarVenda, NovaVenda, VendaDetalhe } from './paginas/Comer
 import { ComPropostas, PropostaDetalhe, PropostaEditar, PropostaImprimir, PropostaNova } from './paginas/Propostas';
 import { ComContratoDetalhe } from './paginas/ComContratos';
 import { ReciboRecebimento } from './paginas/ReciboRecebimento';
+import { Campo } from './paginas/Campo';
+import { modoAtual, PERFIS_CAMPO } from './modo';
 import { ComContratos } from './paginas/ComContratos';
 import { ComRelatoriosContratos } from './paginas/ComRelatoriosContratos';
 import { ComIncorporacao } from './paginas/ComIncorporacao';
@@ -133,7 +135,8 @@ createRoot(document.getElementById('raiz')!).render(
               </Protegido>
             }
           >
-            <Route index element={<Painel />} />
+            <Route index element={<InicioModo />} />
+            <Route path="campo" element={<Protegido perfis={[...PERFIS_CAMPO]}><Campo /></Protegido>} />
             <Route path="empresa" element={<Protegido perfis={['dono', 'gestor']}><Empresa /></Protegido>} />
             <Route path="usuarios" element={<Protegido perfis={['dono', 'gestor']}><Usuarios /></Protegido>} />
             <Route path="frota/veiculos" element={<Protegido perfis={['dono', 'gestor']}><Veiculos /></Protegido>} />
@@ -278,3 +281,10 @@ createRoot(document.getElementById('raiz')!).render(
     </ProvedorSessao>
   </StrictMode>,
 );
+
+/** Tela inicial: no modo campo (e para quem tem telas de campo), abre o modo campo; senão, o painel. */
+function InicioModo() {
+  const { usuario } = useSessao();
+  if (usuario && (PERFIS_CAMPO as readonly string[]).includes(usuario.perfil) && modoAtual() === 'campo') return <Navigate to="/campo" replace />;
+  return <Painel />;
+}
