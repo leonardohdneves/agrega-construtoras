@@ -54,6 +54,8 @@ export function SupEstoque() {
   const [novo, setNovo] = useState({ nome: '', obraId: '' });
   const [itens, setItens] = useState<ItemEstoque[] | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [unidadesCompra, setUnidadesCompra] = useState<{ obraItemId: string; unidade: string; fator: number }[]>([]);
+  const [unidadeVista, setUnidadeVista] = useState<Record<string, string>>({});
   const [insumos, setInsumos] = useState<InsumoObra[]>([]);
   const [etapas, setEtapas] = useState<NoEap[]>([]);
   const [etiquetas, setEtiquetas] = useState<Etiqueta[]>([]);
@@ -81,12 +83,19 @@ export function SupEstoque() {
     setEtiquetas(r.etiquetas);
   }
 
+  const unidadeDaVista = (it: ItemEstoque) => unidadeVista[it.obraItemId] ?? it.unidade;
+  const fatorDaVista = (it: ItemEstoque) => {
+    const uni = unidadeDaVista(it);
+    return uni === it.unidade ? 1 : unidadesCompra.find((u) => u.obraItemId === it.obraItemId && u.unidade === uni)?.fator ?? 1;
+  };
+
   async function carregarObra(obra: string) {
     const [saldo, etq] = await Promise.all([
-      api<{ itens: ItemEstoque[] }>(`/sup/estoque?obraId=${obra}`),
+      api<{ itens: ItemEstoque[]; unidadesCompra: { obraItemId: string; unidade: string; fator: number }[] }>(`/sup/estoque?obraId=${obra}`),
       api<{ etiquetas: Etiqueta[] }>(`/sup/etiquetas?obraId=${obra}&saldo=${soComSaldo ? '1' : '0'}`),
     ]);
     setItens(saldo.itens);
+    setUnidadesCompra(saldo.unidadesCompra);
     setEtiquetas(etq.etiquetas);
   }
 
@@ -306,10 +315,30 @@ export function SupEstoque() {
                   {itens.map((it) => (
                     <tr key={it.obraItemId} onClick={() => setAberto(aberto === it.obraItemId ? null : it.obraItemId)} style={{ cursor: 'pointer' }}>
                       <td>{it.codigo} · {it.descricao}</td>
-                      <td className="n">{num(it.saldo)} {it.unidade}</td>
+                      {(() => {
+                        // Saldo na unidade escolhida: a unidade base dividida pelo fator cadastrado no insumo.
+                        const opcoes = unidadesCompra.filter((u) => u.obraItemId === it.obraItemId);
+                        const uni = unidadeVista[it.obraItemId] ?? it.unidade;
+                        const fator = uni === it.unidade ? 1 : opcoes.find((u) => u.unidade === uni)?.fator ?? 1;
+                        return (
+                          <td className="n" onClick={(e) => e.stopPropagation()}>
+                            {num(it.saldo / fator)}{' '}
+                            {opcoes.length ? (
+                              <select aria-label={`Unidade de ${it.descricao}`} value={uni} onChange={(e) => setUnidadeVista({ ...unidadeVista, [it.obraItemId]: e.target.value })}>
+                                <option value={it.unidade}>{it.unidade}</option>
+                                {opcoes.map((u) => (
+                                  <option key={u.unidade} value={u.unidade}>{u.unidade}</option>
+                                ))}
+                              </select>
+                            ) : (
+                              it.unidade
+                            )}
+                          </td>
+                        );
+                      })()}
                       <td className="small">
                         {aberto === it.obraItemId
-                          ? it.apropriacoes.map((a) => <div key={`${a.estoqueId}-${a.eapNoId}`}>{a.estoqueNome ?? 'Recebimento'} · {a.eapCodigo} {a.eapDescricao}: {num(a.quantidade)} {it.unidade}</div>)
+                          ? it.apropriacoes.map((a) => <div key={`${a.estoqueId}-${a.eapNoId}`}>{a.estoqueNome ?? 'Recebimento'} · {a.eapCodigo} {a.eapDescricao}: {num(a.quantidade / fatorDaVista(it))} {unidadeDaVista(it)}</div>)
                           : `${it.apropriacoes.length} etapa(s) · clique para ver`}
                       </td>
                     </tr>
