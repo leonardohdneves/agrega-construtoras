@@ -1724,6 +1724,27 @@ export function rotasSuprimentos(banco: Banco) {
         if ((await c.query("SELECT 1 FROM notas_fiscais WHERE pedido_id = $1 AND excluido_em IS NULL AND status <> 'cancelada'", [p.id])).rowCount)
           throw new ErroHttp(409, 'Há nota ligada a este pedido. Desfaça o recebimento antes.');
         await c.query("UPDATE pedidos_compra SET status = 'cancelado', encerrado_motivo = $2, atualizado_em = now() WHERE id = $1", [p.id, d.motivo]);
+        // Pedido gerado por uma cotação: se nada mais ficou ativo, a compra volta a ficar pendente para nova cotação.
+        const origem = (await c.query('SELECT cotacao_id, solicitacao_id FROM pedidos_compra WHERE id = $1', [p.id])).rows[0];
+        if (origem?.cotacao_id) {
+          const necessidades = (
+            await c.query(
+              `SELECT DISTINCT pi.necessidade_id FROM pedidos_itens pi WHERE pi.pedido_id = $1 AND pi.necessidade_id IS NOT NULL
+                 AND NOT EXISTS (SELECT 1 FROM pedidos_itens o JOIN pedidos_compra op ON op.id = o.pedido_id
+                                  WHERE o.necessidade_id = pi.necessidade_id AND op.id <> $1 AND op.status <> 'cancelado')`,
+              [p.id],
+            )
+          ).rows.map((r) => r.necessidade_id);
+          if (necessidades.length)
+            await c.query("UPDATE obra_necessidades SET status = 'pendente', atualizado_em = now() WHERE id = ANY($1::uuid[]) AND status = 'comprada'", [necessidades]);
+          const outroPedido = (await c.query("SELECT 1 FROM pedidos_compra WHERE cotacao_id = $1 AND id <> $2 AND status <> 'cancelado'", [origem.cotacao_id, p.id])).rowCount;
+          const contrato = (await c.query('SELECT 1 FROM contratos WHERE cotacao_id = $1', [origem.cotacao_id])).rowCount;
+          if (origem.solicitacao_id && !outroPedido && !contrato) {
+            const outraCompra = (await c.query("SELECT 1 FROM pedidos_compra WHERE solicitacao_id = $1 AND id <> $2 AND status <> 'cancelado'", [origem.solicitacao_id, p.id])).rowCount;
+            if (!outraCompra)
+              await c.query("UPDATE solicitacoes_compra SET status = 'finalizada', atualizado_em = now() WHERE id = $1 AND status = 'atendida'", [origem.solicitacao_id]);
+          }
+        }
         await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, antes: { status: p.status }, depois: { status: 'cancelado', motivo: d.motivo } });
       });
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
