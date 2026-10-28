@@ -786,7 +786,15 @@ export function rotasSuprimentos(banco: Banco) {
         it.apropriacoes.push({ obraId: x.obra_id, obraCodigo: x.obra_codigo, estoqueId: x.obra_estoque_id ?? null, estoqueNome: x.estoque_nome ?? null, eapNoId: x.eap_no_id, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, quantidade: q });
         mapa.set(x.obra_item_id, it);
       }
-      return { itens: [...mapa.values()] };
+      // Unidades de compra já cadastradas na obra (com o fator para a unidade base), para mostrar o saldo em outra unidade.
+      const ids = [...mapa.keys()];
+      const unidades = ids.length
+        ? (await banco.query('SELECT obra_item_id, unidade, fator FROM obra_insumo_unidades WHERE obra_item_id = ANY($1::uuid[]) ORDER BY unidade', [ids])).rows
+        : [];
+      return {
+        itens: [...mapa.values()],
+        unidadesCompra: unidades.map((u) => ({ obraItemId: u.obra_item_id, unidade: u.unidade, fator: Number(u.fator) })),
+      };
     });
 
     // ----- Transferência entre estoques da mesma obra: saída na origem e entrada no destino, com a mesma referência.
