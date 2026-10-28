@@ -425,12 +425,7 @@ export function Layout() {
             <IconeCarrinho />
             Compras
           </NavLink>
-        ) : (
-          <NavLink to="/abastecer" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeBomba />
-            Abastecer
-          </NavLink>
-        )}
+        ) : null}
         {perfil === 'vendedor' && (
           <NavLink to="/com/vendas" end className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconePasta />
@@ -453,12 +448,6 @@ export function Layout() {
           <NavLink to="/minha-producao" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconeBetoneira />
             Produção
-          </NavLink>
-        )}
-        {gestao && (
-          <NavLink to="/frota/veiculos" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeCaminhao />
-            Frota
           </NavLink>
         )}
         {menuCompleto ? (
