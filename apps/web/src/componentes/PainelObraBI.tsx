@@ -23,7 +23,8 @@ type CurvaS = {
 type ObraLista = { id: string; codigo: string; nome: string };
 
 const ROTULO_STATUS: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída' };
-const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n * 100, 1)}%`);
+// O percentual já vem de 0 a 100 do relatório.
+const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n, 1)}%`);
 const indice = (n: number | null | undefined) => (n === null || n === undefined ? '—' : formatarNumero(n, 2));
 const tomIndice = (n: number | null | undefined) => (n === null || n === undefined ? undefined : n >= 1 ? 'ok' : n >= 0.9 ? 'aviso' : 'perigo');
 
@@ -119,6 +120,7 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
   const [curva, setCurva] = useState<CurvaS | null>(null);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
+  const [adotando, setAdotando] = useState(false);
 
   // Obra padrão: a primeira da lista (a ordem é a do código).
   useEffect(() => {
@@ -148,6 +150,27 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
     };
   }, [obraId]);
 
+  async function adotarDatas() {
+    if (!obraId) return;
+    setAdotando(true);
+    setErro('');
+    try {
+      await api(`/eng/obras/${obraId}/adotar-datas-planejamento`, { metodo: 'POST' });
+      const o = await api<{ obra: ObraInfo }>(`/eng/obras/${obraId}`);
+      setInfo(o.obra);
+      const [p, c] = await Promise.all([
+        api<PrevReal>(`/eng/obras/${obraId}/relatorios-gerenciais/previsto-realizado`),
+        api<CurvaS>(`/eng/obras/${obraId}/relatorios-gerenciais/curva-s`),
+      ]);
+      setPr(p);
+      setCurva(c);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setAdotando(false);
+    }
+  }
+
   const hoje = curva?.hoje ?? new Date().toISOString().slice(0, 10);
   const diasParaPrevisao = info?.dataPrevisao ? Math.round((new Date(info.dataPrevisao + 'T12:00:00').getTime() - new Date(hoje + 'T12:00:00').getTime()) / 86400000) : null;
   const t = pr?.totais;
@@ -165,6 +188,9 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
         </label>
         {info && (
           <div className="small muted" style={{ flex: '2 1 360px', minWidth: 0, overflowWrap: 'anywhere' }}>
+            <button className="btn btn-link" type="button" disabled={adotando} onClick={adotarDatas} style={{ float: 'right' }}>
+              Adotar datas do planejamento
+            </button>
             <b>{ROTULO_STATUS[info.status] ?? info.status}</b>
             {info.responsavel ? ` · Responsável: ${info.responsavel}` : ''}
             {info.cidade ? ` · ${info.cidade}${info.uf ? `/${info.uf}` : ''}` : ''}

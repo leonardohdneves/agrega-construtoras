@@ -1330,6 +1330,18 @@ export function rotasEngenharia(banco: Banco) {
      * Etapas e subetapas não viram atividade: aparecem no planejamento como resumo, com início e fim das tarefas abaixo.
      * Início: data de início da obra (ou hoje); duração 1 dia.
      */
+    // Adota o planejamento como datas da obra: início = primeira atividade, previsão = fim da última.
+    app.post<{ Params: { id: string } }>('/obras/:id/adotar-datas-planejamento', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const r = await banco.query('SELECT id, inicio, duracao_dias, predecessora_id FROM obra_atividades WHERE obra_id = $1', [obra.id]);
+      if (!r.rowCount) throw new ErroHttp(400, 'O planejamento está vazio. Monte as atividades antes de adotar as datas.');
+      const datas = calcularDatas(r.rows.map((a) => ({ id: a.id, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
+      const inicio = [...datas.values()].map((d) => d.inicio).sort()[0];
+      const fim = [...datas.values()].map((d) => d.fim).sort().at(-1)!;
+      await banco.query('UPDATE obras SET data_inicio = $2, data_previsao = $3 WHERE id = $1', [obra.id, inicio, fim]);
+      return { dataInicio: inicio, dataPrevisao: fim };
+    });
+
     app.post<{ Params: { id: string } }>('/obras/:id/planejamento/gerar-da-eap', async (req) => {
       const empresaId = empresaDo(req);
       return emTransacao(banco, async (c) => {
