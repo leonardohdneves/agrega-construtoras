@@ -39,6 +39,7 @@ import { NovaSolicitacao, SolicitacaoDetalhe, SupSolicitacoes } from './paginas/
 import { CotacaoDetalhe, NovaCotacao, SupCotacoes } from './paginas/SupCotacoes';
 import { PedidoDetalhe, SupPedidos } from './paginas/SupPedidos';
 import { SupPermutas, NovaPermuta, PermutaDetalhe, PermutaRomaneio } from './paginas/SupPermutas';
+import { SupConferenciaUnidades } from './paginas/SupConferenciaUnidades';
 import { SupAprovacoes } from './paginas/SupAprovacoes';
 import { ContratoDetalhe, NovoContrato, SupContratos } from './paginas/SupContratos';
 import { MedicaoDetalhe, NovaMedicao, SupMedicoes } from './paginas/SupMedicoes';
@@ -175,6 +176,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="sup/cotacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><CotacaoDetalhe /></Protegido>} />
             <Route path="sup/pedidos" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><SupPedidos /></Protegido>} />
             <Route path="sup/pedidos/:id" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><PedidoDetalhe /></Protegido>} />
+            <Route path="sup/conferencia-unidades" element={<Protegido perfis={['dono', 'gestor', 'almoxarife']}><SupConferenciaUnidades /></Protegido>} />
             <Route path="sup/permutas" element={<Protegido perfis={['dono', 'gestor']}><SupPermutas /></Protegido>} />
             <Route path="sup/permutas/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaPermuta /></Protegido>} />
             <Route path="sup/permutas/:id" element={<Protegido perfis={['dono', 'gestor']}><PermutaDetalhe /></Protegido>} />

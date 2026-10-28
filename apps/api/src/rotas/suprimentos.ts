@@ -1215,6 +1215,41 @@ export function rotasSuprimentos(banco: Banco) {
     });
 
     // ----- Cotações
+    // Linhas de nota ligadas a um item de pedido cuja unidade do insumo é diferente da unidade do pedido.
+    app.get('/conferencia-unidades', async (req) => {
+      const empresaId = empresaDo(req);
+      const r = await banco.query(
+        `SELECT ni.id, ni.descricao AS nota_descricao, ni.unidade AS nota_unidade, ni.quantidade, ni.fator_estoque,
+                nf.numero AS nota_numero, nf.status AS nota_status,
+                ins.id AS insumo_id, ins.nome AS insumo_nome, ins.unidade AS insumo_unidade,
+                pi.unidade AS pedido_unidade, pi.descricao AS pedido_descricao, pc.numero AS pedido_numero
+           FROM notas_itens ni
+           JOIN notas_fiscais nf ON nf.id = ni.nota_id
+           JOIN pedidos_itens pi ON pi.id = ni.pedido_item_id
+           JOIN pedidos_compra pc ON pc.id = pi.pedido_id
+           JOIN insumos ins ON ins.id = ni.insumo_id
+          WHERE ni.empresa_id = $1 AND nf.excluido_em IS NULL AND nf.status <> 'cancelada'
+            AND lower(trim(coalesce(ins.unidade, ''))) <> lower(trim(coalesce(pi.unidade, '')))
+          ORDER BY ins.nome, pc.numero, nf.numero`,
+        [empresaId],
+      );
+      return {
+        linhas: r.rows.map((x) => ({
+          id: x.id,
+          notaNumero: x.nota_numero,
+          notaStatus: x.nota_status,
+          notaDescricao: x.nota_descricao,
+          notaUnidade: x.nota_unidade,
+          quantidade: Number(x.quantidade),
+          fatorEstoque: x.fator_estoque === null ? null : Number(x.fator_estoque),
+          insumoNome: x.insumo_nome,
+          insumoUnidade: x.insumo_unidade,
+          pedidoNumero: x.pedido_numero,
+          pedidoUnidade: x.pedido_unidade,
+        })),
+      };
+    });
+
     app.get<{ Querystring: Record<string, string | undefined> }>('/cotacoes', async (req) => {
       const empresaId = empresaDo(req);
       const status = ['aberta', 'concluida', 'cancelada'].includes(req.query.status ?? '') ? req.query.status! : null;
