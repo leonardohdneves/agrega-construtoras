@@ -133,6 +133,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Pedidos de compra', para: '/sup/pedidos' },
       { rotulo: 'Contratos', para: '/sup/contratos' },
       { rotulo: 'Permutas', para: '/sup/permutas' },
+      { rotulo: 'Conferência de unidades', para: '/sup/conferencia-unidades' },
       { rotulo: 'Medições', para: '/sup/medicoes' },
       { rotulo: 'Estoque', para: '/sup/estoque' },
       { rotulo: 'Ferramentas e equipamentos', para: '/sup/patrimonio' },
