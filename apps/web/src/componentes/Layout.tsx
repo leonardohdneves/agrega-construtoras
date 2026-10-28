@@ -455,12 +455,6 @@ export function Layout() {
             Produção
           </NavLink>
         )}
-        {gestao && (
-          <NavLink to="/frota/veiculos" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeCaminhao />
-            Frota
-          </NavLink>
-        )}
         {menuCompleto ? (
           <button type="button" className="nav-botao" onClick={() => setGaveta(true)} aria-label="Abrir o menu com todos os módulos">
             <IconeMenu />
