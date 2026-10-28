@@ -19,14 +19,7 @@ import { MaterialPublicitario } from './paginas/MaterialPublicitario';
 import { ContratosSistema, PropostasSistema } from './paginas/ComercialSistema';
 import { ComercialInteressados } from './paginas/ComercialInteressados';
 import { Interesse } from './paginas/Interesse';
-import { Veiculos } from './paginas/Veiculos';
-import { VeiculoDetalhe } from './paginas/VeiculoDetalhe';
 import { Motoristas } from './paginas/Motoristas';
-import { Abastecer } from './paginas/Abastecer';
-import { Abastecimentos } from './paginas/Abastecimentos';
-import { Manutencao } from './paginas/Manutencao';
-import { OrdensServico } from './paginas/OrdensServico';
-import { OrdemServico } from './paginas/OrdemServico';
 import { Fornecedores } from './paginas/Fornecedores';
 import { ContasPagarReceber } from './paginas/ContasPagarReceber';
 import { Lancamentos, RedirecionaNotas } from './paginas/Lancamentos';
@@ -57,8 +50,6 @@ import { SupRelatorios } from './paginas/SupRelatorios';
 import { Regras } from './paginas/Regras';
 import { Dre } from './paginas/Dre';
 import { Fluxo } from './paginas/Fluxo';
-import { CustoVeiculo } from './paginas/CustoVeiculo';
-import { RelFrota } from './paginas/RelFrota';
 import { RelFinanceiro } from './paginas/RelFinanceiro';
 import { RelAdm } from './paginas/RelAdm';
 import { RelConfig } from './paginas/RelConfig';
@@ -139,14 +130,6 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="campo" element={<Protegido perfis={[...PERFIS_CAMPO]}><Campo /></Protegido>} />
             <Route path="empresa" element={<Protegido perfis={['dono', 'gestor']}><Empresa /></Protegido>} />
             <Route path="usuarios" element={<Protegido perfis={['dono', 'gestor']}><Usuarios /></Protegido>} />
-            <Route path="frota/veiculos" element={<Protegido perfis={['dono', 'gestor']}><Veiculos /></Protegido>} />
-            <Route path="frota/veiculos/:id" element={<Protegido perfis={['dono', 'gestor']}><VeiculoDetalhe /></Protegido>} />
-            <Route path="frota/motoristas" element={<Protegido perfis={['dono', 'gestor']}><Motoristas /></Protegido>} />
-            <Route path="abastecer" element={<Protegido perfis={['dono', 'gestor', 'motorista']}><Abastecer /></Protegido>} />
-            <Route path="frota/abastecimentos" element={<Protegido perfis={['dono', 'gestor']}><Abastecimentos /></Protegido>} />
-            <Route path="frota/manutencao" element={<Protegido perfis={['dono', 'gestor']}><Manutencao /></Protegido>} />
-            <Route path="frota/os" element={<Protegido perfis={['dono', 'gestor']}><OrdensServico /></Protegido>} />
-            <Route path="frota/os/:id" element={<Protegido perfis={['dono', 'gestor']}><OrdemServico /></Protegido>} />
             <Route path="fin/pagar-receber" element={<Protegido perfis={['dono', 'gestor']}><ContasPagarReceber /></Protegido>} />
             <Route path="fin/parcelas/:id/recibo" element={<Protegido perfis={['dono', 'gestor']}><ReciboRecebimento /></Protegido>} />
             <Route path="fin/lancamentos" element={<Protegido perfis={['dono', 'gestor']}><Lancamentos /></Protegido>} />
@@ -154,7 +137,6 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="fin/contas" element={<Protegido perfis={['dono', 'gestor']}><ContasFinanceiras /></Protegido>} />
             <Route path="fin/notas" element={<Protegido perfis={['dono', 'gestor']}><RedirecionaNotas /></Protegido>} />
             <Route path="fin/notas/:id" element={<Protegido perfis={['dono', 'gestor']}><Nota /></Protegido>} />
-            <Route path="frota/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelFrota /></Protegido>} />
             <Route path="fin/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelFinanceiro /></Protegido>} />
             <Route path="adm/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelAdm /></Protegido>} />
             <Route path="config/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelConfig /></Protegido>} />
@@ -166,7 +148,6 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="ger/indicadores" element={<Protegido perfis={['dono', 'gestor']}><Indicadores /></Protegido>} />
             <Route path="ger/dre" element={<Protegido perfis={['dono', 'gestor']}><Dre /></Protegido>} />
             <Route path="ger/fluxo" element={<Protegido perfis={['dono', 'gestor']}><Fluxo /></Protegido>} />
-            <Route path="ger/custo-veiculo" element={<Protegido perfis={['dono', 'gestor']}><CustoVeiculo /></Protegido>} />
             <Route path="fin/conciliacao" element={<Protegido perfis={['dono', 'gestor']}><Conciliacao /></Protegido>} />
             <Route path="fin/regras" element={<Protegido perfis={['dono', 'gestor']}><Regras /></Protegido>} />
             <Route path="fin/plano-contas" element={<Protegido perfis={['dono', 'gestor']}><PlanoContas /></Protegido>} />

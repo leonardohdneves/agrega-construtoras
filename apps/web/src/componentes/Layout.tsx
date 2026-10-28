@@ -425,12 +425,7 @@ export function Layout() {
             <IconeCarrinho />
             Compras
           </NavLink>
-        ) : (
-          <NavLink to="/abastecer" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeBomba />
-            Abastecer
-          </NavLink>
-        )}
+        ) : null}
         {perfil === 'vendedor' && (
           <NavLink to="/com/vendas" end className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconePasta />
