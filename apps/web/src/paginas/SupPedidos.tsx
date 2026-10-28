@@ -602,6 +602,9 @@ export function PedidoDetalhe() {
               {['rascunho', 'reprovado', 'aguardando_aprovacao', 'aprovado', 'enviado'].includes(p.status) && p.notas.length === 0 && (
                 <button className="btn btn-link" type="button" onClick={() => setModo('cancelar')}>Cancelar pedido</button>
               )}
+              {p.status === 'cancelado' && p.notas.length === 0 && (
+                <button className="btn btn-secundario" type="button" disabled={ocupado} onClick={() => executar(`${base}/reabrir`, 'Pedido reaberto como rascunho.')}>Reabrir pedido</button>
+              )}
             </div>
           )}
 

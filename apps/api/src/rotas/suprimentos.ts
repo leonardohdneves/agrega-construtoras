@@ -1750,6 +1750,36 @@ export function rotasSuprimentos(banco: Banco) {
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
     });
 
+    // Reabre um pedido cancelado: volta para rascunho. Só vale se nenhuma nota estiver ligada a ele
+    // e se a compra não tiver sido refeita em outra cotação.
+    app.post<{ Params: { id: string } }>('/pedidos/:id/reabrir', async (req) => {
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      await emTransacao(banco, async (c) => {
+        const p = await pedidoPara(c, empresaId, req.params.id);
+        if (p.status !== 'cancelado') throw new ErroHttp(409, 'Só dá para reabrir pedido cancelado.');
+        if ((await c.query("SELECT 1 FROM notas_fiscais WHERE pedido_id = $1 AND excluido_em IS NULL AND status <> 'cancelada'", [p.id])).rowCount)
+          throw new ErroHttp(409, 'Há nota ligada a este pedido. Não dá para reabri-lo.');
+        const origem = (await c.query('SELECT cotacao_id, solicitacao_id FROM pedidos_compra WHERE id = $1', [p.id])).rows[0];
+        if (origem?.solicitacao_id) {
+          const sol = (await c.query('SELECT status FROM solicitacoes_compra WHERE id = $1 FOR UPDATE', [origem.solicitacao_id])).rows[0];
+          if (sol && !['finalizada', 'atendida'].includes(sol.status))
+            throw new ErroHttp(409, 'A solicitação deste pedido está sendo cotada de novo. Cancele a cotação em andamento antes de reabrir o pedido.');
+          const outraCompra = (await c.query("SELECT 1 FROM pedidos_compra WHERE solicitacao_id = $1 AND id <> $2 AND status NOT IN ('cancelado')", [origem.solicitacao_id, p.id])).rowCount;
+          if (outraCompra) throw new ErroHttp(409, 'Esta solicitação já tem outro pedido ativo. Não dá para reabrir este.');
+          if (sol?.status === 'finalizada') await c.query("UPDATE solicitacoes_compra SET status = 'atendida', atualizado_em = now() WHERE id = $1", [origem.solicitacao_id]);
+        }
+        // As necessidades que o pedido cobria voltam a comprada, se ainda estiverem pendentes.
+        await c.query(
+          "UPDATE obra_necessidades SET status = 'comprada', atualizado_em = now() WHERE status = 'pendente' AND id IN (SELECT necessidade_id FROM pedidos_itens WHERE pedido_id = $1 AND necessidade_id IS NOT NULL)",
+          [p.id],
+        );
+        await c.query("UPDATE pedidos_compra SET status = 'rascunho', encerrado_motivo = NULL, atualizado_em = now() WHERE id = $1", [p.id]);
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, antes: { status: 'cancelado' }, depois: { status: 'rascunho' } });
+      });
+      return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
+    });
+
     app.post<{ Params: { id: string } }>('/pedidos/:id/encerrar', async (req) => {
       const d = z.object({ motivo: z.string().trim().min(3, 'Escreva por que o saldo não será entregue.').max(500) }).parse(req.body);
       const empresaId = empresaDo(req);
