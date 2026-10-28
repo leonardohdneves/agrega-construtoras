@@ -512,7 +512,27 @@ function LinhaItem({
 }) {
   const [vinculo, setVinculo] = useState(false);
   const [vincPedido, setVincPedido] = useState(false);
+  const [dividindo, setDividindo] = useState(false);
+  const [qtdSai, setQtdSai] = useState('');
   const [salvando, setSalvando] = useState(false);
+  async function dividir() {
+    aoErro('');
+    const q = lerNumero(qtdSai) ?? 0;
+    if (!(q > 0 && q < item.quantidade)) {
+      aoErro(`Informe uma quantidade entre 0 e ${formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0)} para a parte que sai desta linha.`);
+      return;
+    }
+    setSalvando(true);
+    try {
+      aoMudar((await api<{ nota: NotaFiscal }>(`/fin/notas/itens/${item.id}/dividir`, { metodo: 'POST', corpo: { quantidade: q } })).nota);
+      setDividindo(false);
+      setQtdSai('');
+    } catch (e) {
+      aoErro((e as Error).message);
+    } finally {
+      setSalvando(false);
+    }
+  }
   const [desc, setDesc] = useState({ descricao: item.descricao, quantidade: formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0), valor: moedaCampo(item.valorProduto) });
   const manual = DIGITAVEL.has(nota.origem);
   const [fator, setFator] = useState(item.fatorEstoque ? String(item.fatorEstoque).replace('.', ',') : '');
@@ -721,6 +741,11 @@ function LinhaItem({
                 {vinculo ? 'Fechar' : 'Frota'}
               </button>
             )}
+            {editavel && nota.direcao === 'entrada' && item.quantidade > 1 && (
+              <button className="btn btn-link" type="button" onClick={() => setDividindo(!dividindo)}>
+                {dividindo ? 'Fechar' : 'Dividir'}
+              </button>
+            )}
             {editavel && manual && nota.itens.length > 1 && (
               <button className="btn btn-link" type="button" onClick={remover}>
                 Remover
@@ -729,6 +754,26 @@ function LinhaItem({
           </div>
         </td>
       </tr>
+      {dividindo && (
+        <tr className="linha-form">
+          <td colSpan={nota.direcao === 'entrada' ? 7 : 6}>
+            <div className="row" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+              <label style={{ width: 260 }}>
+                <span className="small muted">
+                  Quantidade que sai para uma nova linha (de {formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0)})
+                </span>
+                <input className="mono" inputMode="decimal" value={qtdSai} onChange={(e) => setQtdSai(e.target.value)} />
+              </label>
+              <button className="btn btn-primario" type="button" onClick={dividir} disabled={salvando}>
+                Dividir linha
+              </button>
+              <span className="small muted" style={{ flex: '1 1 300px' }}>
+                Depois da divisão, ligue cada linha ao item do pedido correspondente com o botão Vincular.
+              </span>
+            </div>
+          </td>
+        </tr>
+      )}
       {vincPedido && nota.pedido && (
         <tr className="linha-form">
           <td colSpan={nota.direcao === 'entrada' ? 7 : 6}>
