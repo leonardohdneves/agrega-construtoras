@@ -28,6 +28,7 @@ import { MinhaEscala } from './ProdMotoristas';
 import { InicioLaboratorio } from './Qualidade';
 import { CardAprovacoes } from './SupAprovacoes';
 import { lerEscolha } from '../componentes/EscolhaTipo';
+import { PainelObraBI } from '../componentes/PainelObraBI';
 
 const ETAPAS: { n: number; nome: string; pronta?: boolean; adiada?: boolean }[] = [
   { n: 0, nome: 'Base: login, perfis, empresa e usuários', pronta: true },
@@ -623,6 +624,8 @@ function AbaObras() {
   const r = p?.resumo;
   return (
     <>
+      {p && p.obras.length > 0 && <PainelObraBI obras={p.obras} />}
+      <h2 style={{ marginTop: 24 }}>Todas as obras</h2>
       {(usuario?.perfil === 'dono' || usuario?.perfil === 'gestor' || usuario?.administrador) && temModulo(usuario, 'gerencial') && <CardAprovacoes />}
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {!p && !erro && carregando}
