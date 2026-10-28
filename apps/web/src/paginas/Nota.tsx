@@ -225,6 +225,71 @@ function NovaNota({ cadastros }: { cadastros: Cadastros }) {
   );
 }
 
+// ======================= Vínculo com o item do pedido de compra =======================
+function VinculoPedidoItem({
+  item,
+  pedido,
+  salvar,
+  aoFechar,
+}: {
+  item: ItemNota;
+  pedido: NonNullable<NotaFiscal['pedido']>;
+  salvar: (corpo: Record<string, unknown>) => Promise<void>;
+  aoFechar: () => void;
+}) {
+  const [pedidoItemId, setPedidoItemId] = useState(item.pedidoItemId ?? '');
+  const base = item.quantidadePedido ?? item.quantidade;
+  const [qtd, setQtd] = useState(formatarNumero(base, base % 1 ? 3 : 0));
+  const [ocupado, setOcupado] = useState(false);
+  const [erro, setErro] = useState('');
+
+  async function gravar() {
+    const quantidade = lerNumero(qtd) ?? 0;
+    if (pedidoItemId && !(quantidade > 0)) {
+      setErro('Informe a quantidade deste item que chega nesta linha da nota.');
+      return;
+    }
+    setErro('');
+    setOcupado(true);
+    try {
+      await salvar(pedidoItemId ? { pedidoItemId, quantidadePedido: quantidade } : { pedidoItemId: null, quantidadePedido: null });
+      aoFechar();
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="row" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
+      <label style={{ flex: '1 1 320px', minWidth: 0 }}>
+        <span className="small muted">Item do pedido nº {pedido.numero}</span>
+        <select aria-label="Item do pedido" value={pedidoItemId} onChange={(e) => setPedidoItemId(e.target.value)} style={{ width: '100%' }}>
+          <option value="">— sem vínculo —</option>
+          {pedido.itens.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.descricao} · {formatarNumero(p.quantidade, p.quantidade % 1 ? 3 : 0)} {p.unidade}
+              {p.nestaNota && p.id !== item.pedidoItemId ? ' (já vinculado a outra linha desta nota)' : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label style={{ width: 140 }}>
+        <span className="small muted">Quantidade nesta linha</span>
+        <input className="mono" inputMode="decimal" value={qtd} disabled={!pedidoItemId} onChange={(e) => setQtd(e.target.value)} />
+      </label>
+      <div className="row" style={{ gap: 8 }}>
+        <button className="btn btn-primario" type="button" onClick={gravar} disabled={ocupado}>
+          Salvar
+        </button>
+        <button className="btn btn-link" type="button" onClick={aoFechar}>
+          Cancelar
+        </button>
+      </div>
+      {erro && <div className="erro" style={{ width: '100%' }}>{erro}</div>}
+    </div>
+  );
+}
+
 // ======================= Vínculos com abastecimentos e OS =======================
 type Candidatos = {
   item: { id: string; descricao: string; quantidade: number; unidade: string | null; valorCusto: number };
@@ -446,6 +511,7 @@ function LinhaItem({
   aoErro: (m: string) => void;
 }) {
   const [vinculo, setVinculo] = useState(false);
+  const [vincPedido, setVincPedido] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [desc, setDesc] = useState({ descricao: item.descricao, quantidade: formatarNumero(item.quantidade, item.quantidade % 1 ? 3 : 0), valor: moedaCampo(item.valorProduto) });
   const manual = DIGITAVEL.has(nota.origem);
@@ -625,9 +691,34 @@ function LinhaItem({
         </td>
         <td>
           <div className="acoes" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: 2 }}>
+            {editavel && nota.direcao === 'entrada' && nota.pedido && (
+              <button
+                className="btn btn-link"
+                type="button"
+                onClick={() => {
+                  setVinculo(false);
+                  setVincPedido(!vincPedido);
+                }}
+              >
+                {vincPedido ? 'Fechar' : 'Vincular'}
+              </button>
+            )}
+            {nota.pedido && item.pedidoItemId && (
+              <span className="small muted">
+                {nota.pedido.itens.find((p) => p.id === item.pedidoItemId)?.descricao ?? 'Item do pedido'}
+                {item.quantidadePedido != null ? ` · ${formatarNumero(item.quantidadePedido, item.quantidadePedido % 1 ? 3 : 0)}` : ''}
+              </span>
+            )}
             {editavel && nota.direcao === 'entrada' && (
-              <button className="btn btn-link" type="button" onClick={() => setVinculo(!vinculo)}>
-                {vinculo ? 'Fechar' : 'Vincular'}
+              <button
+                className="btn btn-link"
+                type="button"
+                onClick={() => {
+                  setVincPedido(false);
+                  setVinculo(!vinculo);
+                }}
+              >
+                {vinculo ? 'Fechar' : 'Frota'}
               </button>
             )}
             {editavel && manual && nota.itens.length > 1 && (
@@ -638,6 +729,18 @@ function LinhaItem({
           </div>
         </td>
       </tr>
+      {vincPedido && nota.pedido && (
+        <tr className="linha-form">
+          <td colSpan={nota.direcao === 'entrada' ? 7 : 6}>
+            <VinculoPedidoItem
+              item={item}
+              pedido={nota.pedido}
+              salvar={salvar}
+              aoFechar={() => setVincPedido(false)}
+            />
+          </td>
+        </tr>
+      )}
       {vinculo && (
         <tr className="linha-form">
           <td colSpan={nota.direcao === 'entrada' ? 7 : 6}>

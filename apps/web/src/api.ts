@@ -627,6 +627,8 @@ export type ItemNota = {
   obraItemDescricao: string | null;
   eapNoId: string | null;
   eapCodigo: string | null;
+  pedidoItemId?: string | null;
+  quantidadePedido?: number | null;
   codigoProduto: string | null;
   descricao: string;
   ncm: string | null;
