@@ -4,88 +4,6 @@ import { api } from '../api';
 import { LeitorCodigo } from '../componentes/LeitorCodigo';
 import { qrSvg } from '../qr';
 
-// Unidades de compra de um insumo: outras unidades (ex.: a do pedido) com o fator para a unidade base do estoque.
-function UnidadesCompra({ obraItemId }: { obraItemId: string }) {
-  const [base, setBase] = useState('');
-  const [unidades, setUnidades] = useState<{ unidade: string; fator: number }[]>([]);
-  const [unidade, setUnidade] = useState('');
-  const [fator, setFator] = useState('');
-  const [erro, setErro] = useState('');
-  const [aviso, setAviso] = useState('');
-  const [ocupado, setOcupado] = useState(false);
-
-  function carregar() {
-    api<{ base: string; unidades: { unidade: string; fator: number }[] }>(`/sup/insumos/${obraItemId}/unidades-compra`)
-      .then((r) => {
-        setBase(r.base);
-        setUnidades(r.unidades);
-      })
-      .catch((e) => setErro((e as Error).message));
-  }
-  useEffect(() => {
-    setErro('');
-    setAviso('');
-    carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [obraItemId]);
-
-  async function adicionar(e: FormEvent) {
-    e.preventDefault();
-    setErro('');
-    setAviso('');
-    const f = Number(fator.replace(',', '.'));
-    if (!unidade.trim() || !(f > 0)) {
-      setErro('Informe a unidade e quantas unidades base ela vale.');
-      return;
-    }
-    setOcupado(true);
-    try {
-      await api(`/sup/insumos/${obraItemId}/unidades-compra`, { metodo: 'POST', corpo: { unidade: unidade.trim(), fator: f } });
-      setAviso(`Unidade ${unidade.trim()} cadastrada.`);
-      setUnidade('');
-      setFator('');
-      carregar();
-    } catch (err) {
-      setErro((err as Error).message);
-    } finally {
-      setOcupado(false);
-    }
-  }
-
-  return (
-    <div className="card" style={{ marginTop: 12 }}>
-      <h3>Unidades de compra</h3>
-      <p className="small muted">
-        Unidade base do estoque: <b>{base || '—'}</b>. Cadastre a unidade usada no pedido de compra e quantas unidades base ela vale.
-      </p>
-      {unidades.length > 0 && (
-        <ul className="small">
-          {unidades.map((u) => (
-            <li key={u.unidade}>
-              1 {u.unidade} = {u.fator.toLocaleString('pt-BR', { maximumFractionDigits: 6 })} {base}
-            </li>
-          ))}
-        </ul>
-      )}
-      <form onSubmit={adicionar} className="row" style={{ flexWrap: 'wrap', gap: 12, alignItems: 'flex-end' }}>
-        <label>
-          <span className="small muted">Unidade do pedido</span>
-          <input value={unidade} placeholder="Ex.: br, pç" onChange={(e) => setUnidade(e.target.value)} />
-        </label>
-        <label>
-          <span className="small muted">Quantas {base || 'unidades base'} vale 1</span>
-          <input className="mono" inputMode="decimal" value={fator} onChange={(e) => setFator(e.target.value)} style={{ width: 120 }} />
-        </label>
-        <button className="btn btn-primario" type="submit" disabled={ocupado}>
-          Cadastrar unidade
-        </button>
-      </form>
-      {erro && <div className="erro">{erro}</div>}
-      {aviso && <div className="aviso">{aviso}</div>}
-    </div>
-  );
-}
-
 type Apropriacao = { obraId: string; obraCodigo: string; estoqueId: string | null; estoqueNome: string | null; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number };
 type ItemEstoque = { obraItemId: string; codigo: string; descricao: string; unidade: string; saldo: number; apropriacoes: Apropriacao[] };
 type Obra = { id: string; codigo: string; nome: string };
@@ -399,7 +317,6 @@ export function SupEstoque() {
                 </tbody>
               </table>
             )}
-            {aberto && itens?.some((x) => x.obraItemId === aberto) && <UnidadesCompra key={aberto} obraItemId={aberto} />}
           </div>
 
           <div className="card">

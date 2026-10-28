@@ -1215,54 +1215,6 @@ export function rotasSuprimentos(banco: Banco) {
     });
 
     // ----- Cotações
-    // Unidades de compra de um insumo da obra (além da unidade base do estoque), com o fator para a unidade base.
-    app.get<{ Params: { id: string } }>('/insumos/:id/unidades-compra', async (req) => {
-      const empresaId = empresaDo(req);
-      const r = await banco.query(
-        `SELECT oi.unidade AS base, u.unidade, u.fator
-           FROM obra_itens oi JOIN obras o ON o.id = oi.obra_id
-           LEFT JOIN obra_insumo_unidades u ON u.obra_item_id = oi.id
-          WHERE oi.id = $1 AND o.empresa_id = $2 AND oi.tipo = 'insumo'
-          ORDER BY u.unidade`,
-        [UUID.test(req.params.id) ? req.params.id : null, empresaId],
-      );
-      if (!r.rowCount) throw naoEncontrado('Insumo');
-      return {
-        base: r.rows[0].base,
-        unidades: r.rows.filter((x) => x.unidade).map((x) => ({ unidade: x.unidade, fator: Number(x.fator) })),
-      };
-    });
-
-    app.post<{ Params: { id: string } }>('/insumos/:id/unidades-compra', async (req) => {
-      const d = z
-        .object({
-          unidade: z.string().trim().min(1, 'Informe a unidade.').max(20),
-          fator: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Fator inválido.' }).positive('O fator precisa ser maior que zero.').max(1_000_000)),
-        })
-        .strict()
-        .parse(req.body);
-      const empresaId = empresaDo(req);
-      await emTransacao(banco, async (c) => {
-        const oi = (
-          await c.query(
-            `SELECT oi.id, oi.unidade FROM obra_itens oi JOIN obras o ON o.id = oi.obra_id
-              WHERE oi.id = $1 AND o.empresa_id = $2 AND oi.tipo = 'insumo' FOR UPDATE OF oi`,
-            [UUID.test(req.params.id) ? req.params.id : null, empresaId],
-          )
-        ).rows[0];
-        if (!oi) throw naoEncontrado('Insumo');
-        if (d.unidade.toLowerCase() === String(oi.unidade ?? '').trim().toLowerCase())
-          throw new ErroHttp(400, `"${d.unidade}" já é a unidade base deste insumo.`);
-        await c.query(
-          `INSERT INTO obra_insumo_unidades (obra_item_id, unidade, fator) VALUES ($1, $2, $3)
-           ON CONFLICT (obra_item_id, unidade) DO UPDATE SET fator = EXCLUDED.fator`,
-          [oi.id, d.unidade, d.fator],
-        );
-        await auditar(c, { empresaId, usuarioId: usuarioDe(req).id, acao: 'alterar', entidade: 'obra_itens', entidadeId: oi.id, depois: { unidadeCompra: d.unidade, fator: d.fator } });
-      });
-      return { ok: true };
-    });
-
     // Linhas de nota ligadas a um item de pedido cuja unidade do insumo é diferente da unidade do pedido.
     app.get('/conferencia-unidades', async (req) => {
       const empresaId = empresaDo(req);
