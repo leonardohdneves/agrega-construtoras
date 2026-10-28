@@ -1119,6 +1119,47 @@ export function rotasNotas(banco: Banco) {
       return { nota: await detalharNota(banco, empresaId, req.params.id) };
     });
 
+    // Divide uma linha de nota de compra em duas, para ligar cada parte a um item diferente do pedido.
+    // A parte que sai (quantidade informada) vira uma linha nova, com valor proporcional.
+    app.post<{ Params: { id: string } }>('/notas/itens/:id/dividir', async (req) => {
+      const d = z
+        .object({ quantidade: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.')) })
+        .strict()
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const notaId = await emTransacao(banco, async (c) => {
+        const i = (await c.query('SELECT * FROM notas_itens WHERE id = $1 AND empresa_id = $2', [UUID.test(req.params.id) ? req.params.id : null, empresaId])).rows[0];
+        if (!i) throw naoEncontrado('Item');
+        const n = await exigirRascunho(c, empresaId, i.nota_id);
+        if (n.direcao !== 'entrada') throw new ErroHttp(400, 'Só notas de compra podem ser divididas.');
+        const qtdAtual = Number(i.quantidade);
+        const sai = Number(d.quantidade.toFixed(4));
+        if (!(sai > 0 && sai < qtdAtual)) throw new ErroHttp(400, `Informe uma quantidade entre 0 e ${qtdAtual.toLocaleString('pt-BR')} para a parte que sai desta linha.`);
+        const fica = Number((qtdAtual - sai).toFixed(4));
+        const valorTotal = Number(i.valor_produto_centavos);
+        const valorSai = Math.round((valorTotal * sai) / qtdAtual);
+        const valorFica = valorTotal - valorSai;
+        const prox = (await c.query('SELECT coalesce(max(numero_item), 0) + 1 AS n FROM notas_itens WHERE nota_id = $1', [n.id])).rows[0].n;
+        // A linha original fica com a parte restante; a vinculação ao pedido não pode passar do que ela agora recebe.
+        await c.query(
+          `UPDATE notas_itens SET quantidade = $2, valor_produto_centavos = $3,
+             quantidade_pedido = CASE WHEN quantidade_pedido IS NULL THEN NULL ELSE LEAST(quantidade_pedido, $2) END
+           WHERE id = $1`,
+          [i.id, fica, valorFica],
+        );
+        // A linha nova herda a obra, o insumo e o estoque; a etapa e o item da obra são escolhidos de novo.
+        await c.query(
+          `INSERT INTO notas_itens (empresa_id, nota_id, numero_item, codigo_produto, descricao, ncm, cfop, unidade, quantidade, valor_produto_centavos,
+                                    plano_conta_id, centro_custo_id, veiculo_id, obra_id, obra_estoque_id, insumo_id, fator_estoque)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)`,
+          [empresaId, n.id, prox, i.codigo_produto, i.descricao, i.ncm, i.cfop, i.unidade, sai, valorSai, i.plano_conta_id, i.centro_custo_id, i.veiculo_id, i.obra_id, i.obra_estoque_id, i.insumo_id, i.fator_estoque],
+        );
+        await recalcularManual(c, n.id);
+        return n.id;
+      });
+      return { nota: await detalharNota(banco, empresaId, notaId) };
+    });
+
     app.patch<{ Params: { id: string } }>('/notas/itens/:id', async (req) => {
       const d = esquemaAlterarItem.parse(req.body);
       const empresaId = empresaDo(req);
