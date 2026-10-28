@@ -119,6 +119,9 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
   const [curva, setCurva] = useState<CurvaS | null>(null);
   const [erro, setErro] = useState('');
   const [carregando, setCarregando] = useState(false);
+  const [versao, setVersao] = useState(0);
+  const [ocupado, setOcupado] = useState(false);
+  const [aviso, setAviso] = useState('');
 
   // Obra padrão: a primeira da lista (a ordem é a do código).
   useEffect(() => {
@@ -146,7 +149,22 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
     return () => {
       ativo = false;
     };
-  }, [obraId]);
+  }, [obraId, versao]);
+
+  async function adotarDatas() {
+    setErro('');
+    setAviso('');
+    setOcupado(true);
+    try {
+      const r = await api<{ dataInicio: string; dataPrevisao: string }>(`/eng/obras/${obraId}/adotar-datas-planejamento`, { metodo: 'POST' });
+      setAviso(`Datas da obra atualizadas: início ${formatarData(r.dataInicio)}, previsão ${formatarData(r.dataPrevisao)}.`);
+      setVersao((v) => v + 1);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
 
   const hoje = curva?.hoje ?? new Date().toISOString().slice(0, 10);
   const diasParaPrevisao = info?.dataPrevisao ? Math.round((new Date(info.dataPrevisao + 'T12:00:00').getTime() - new Date(hoje + 'T12:00:00').getTime()) / 86400000) : null;
@@ -163,6 +181,9 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
             ))}
           </select>
         </label>
+        <button className="btn btn-secundario" type="button" disabled={!obraId || ocupado} onClick={adotarDatas}>
+          Adotar datas do planejamento
+        </button>
         {info && (
           <div className="small muted" style={{ flex: '2 1 360px', minWidth: 0, overflowWrap: 'anywhere' }}>
             <b>{ROTULO_STATUS[info.status] ?? info.status}</b>
@@ -177,6 +198,7 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
       </div>
 
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
       {carregando && !pr && <p className="muted">Carregando dashboard…</p>}
 
       {t && (

@@ -763,6 +763,32 @@ export function rotasEngenharia(banco: Banco) {
       };
     });
 
+    // Adota as datas do planejamento: início = primeira atividade; previsão = fim da última atividade.
+    app.post<{ Params: { id: string } }>('/obras/:id/adotar-datas-planejamento', async (req) => {
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const r = await banco.query('SELECT a.id, a.inicio, a.duracao_dias, a.predecessora_id FROM obra_atividades a WHERE a.obra_id = $1', [obra.id]);
+      if (!r.rowCount) throw new ErroHttp(400, 'Monte o planejamento antes de adotar as datas.');
+      const dIso = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : v ? String(v).slice(0, 10) : null);
+      const datas = calcularDatas(r.rows.map((a) => ({ id: a.id, inicio: dIso(a.inicio)!, duracaoDias: Number(a.duracao_dias), predecessoraId: a.predecessora_id ?? null })));
+      const valores = [...datas.values()];
+      const inicio = valores.map((d) => d.inicio).sort()[0];
+      const previsao = valores.map((d) => d.fim).sort().at(-1)!;
+      await emTransacao(banco, async (c) => {
+        await c.query('UPDATE obras SET data_inicio = $2, data_previsao = $3 WHERE id = $1', [obra.id, inicio, previsao]);
+        await auditar(c, {
+          empresaId,
+          usuarioId: req.usuario!.id,
+          acao: 'alterar',
+          entidade: 'obras',
+          entidadeId: obra.id,
+          antes: { dataInicio: dIso(obra.data_inicio), dataPrevisao: dIso(obra.data_previsao) },
+          depois: { dataInicio: inicio, dataPrevisao: previsao },
+        });
+      });
+      return { dataInicio: inicio, dataPrevisao: previsao };
+    });
+
     app.post('/obras', async (req, reply) => {
       const d0 = esquemaObra.parse(req.body);
       if (!d0.nome) throw new ErroHttp(400, 'Dê um nome à obra.');
