@@ -102,6 +102,11 @@ const esquemaAlterarItem = z
     unidade: textoOpc(10),
     quantidade: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000)),
     valor: dinheiro('o valor do item'),
+    // Vínculo com um item do pedido de compra (nota ligada a pedido) e quanto deste item a linha recebe.
+    pedidoItemId: uuidOpc,
+    quantidadePedido: z
+      .union([z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000)), z.null()])
+      .optional(),
   })
   .partial()
   .strict();
@@ -369,6 +374,8 @@ function notaPublica(n: Nota, itens: Nota[], duplicatas: Nota[], lancamento: unk
       obraItemDescricao: i.obra_item_descricao ?? null,
       eapNoId: i.eap_no_id ?? null,
       eapCodigo: i.eap_codigo ?? null,
+      pedidoItemId: i.pedido_item_id ?? null,
+      quantidadePedido: i.quantidade_pedido === null || i.quantidade_pedido === undefined ? null : Number(i.quantidade_pedido),
       insumoId: i.insumo_id ?? null,
       insumoNome: i.insumo_nome ?? null,
       insumoUnidade: i.insumo_unidade ?? null,
@@ -1150,6 +1157,23 @@ export function rotasNotas(banco: Banco) {
           if (!fator) throw new ErroHttp(400, `Informe quantos ${ins.unidade === 'm3' ? 'm³' : ins.unidade} vale cada ${i.unidade || 'unidade'} da nota.`);
         }
         if (d.insumoId === null) fator = null;
+        // Vínculo com o item do pedido: a linha da nota recebe uma parte (ou o todo) desse item.
+        if (d.pedidoItemId !== undefined || d.quantidadePedido !== undefined) {
+          if (n.direcao !== 'entrada') throw new ErroHttp(400, 'Só notas de compra podem ser ligadas a itens do pedido.');
+          const pedidoItemId = d.pedidoItemId !== undefined ? d.pedidoItemId : i.pedido_item_id;
+          if (pedidoItemId) {
+            if (!n.pedido_id) throw new ErroHttp(400, 'Esta nota não está ligada a um pedido de compra.');
+            const pi = (await c.query('SELECT id FROM pedidos_itens WHERE id = $1 AND pedido_id = $2', [pedidoItemId, n.pedido_id])).rows[0];
+            if (!pi) throw new ErroHttp(400, 'Este item não pertence ao pedido desta nota.');
+          }
+          let qtdPedido: number | null = null;
+          if (pedidoItemId) {
+            if (typeof d.quantidadePedido === 'number') qtdPedido = d.quantidadePedido;
+            else if (d.pedidoItemId !== undefined && d.pedidoItemId !== i.pedido_item_id) qtdPedido = Number(i.quantidade);
+            else qtdPedido = i.quantidade_pedido !== null && i.quantidade_pedido !== undefined ? Number(i.quantidade_pedido) : Number(i.quantidade);
+          }
+          await c.query('UPDATE notas_itens SET pedido_item_id = $2, quantidade_pedido = $3 WHERE id = $1', [i.id, pedidoItemId ?? null, qtdPedido]);
+        }
         const campos: Record<string, unknown> = {
           vinculo_sugestao: d.insumoId !== undefined ? null : undefined,
           insumo_id: d.insumoId,
