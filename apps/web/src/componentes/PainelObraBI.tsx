@@ -23,7 +23,8 @@ type CurvaS = {
 type ObraLista = { id: string; codigo: string; nome: string };
 
 const ROTULO_STATUS: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída' };
-const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n * 100, 1)}%`);
+// A API já devolve o percentual em 0–100.
+const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n, 1)}%`);
 const indice = (n: number | null | undefined) => (n === null || n === undefined ? '—' : formatarNumero(n, 2));
 const tomIndice = (n: number | null | undefined) => (n === null || n === undefined ? undefined : n >= 1 ? 'ok' : n >= 0.9 ? 'aviso' : 'perigo');
 
