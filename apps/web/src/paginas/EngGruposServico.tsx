@@ -36,6 +36,21 @@ export function EngGruposServico() {
     }
   }
 
+  async function criarSugeridos() {
+    setErro('');
+    setAviso('');
+    setOcupado(true);
+    try {
+      const r = await api<{ criados: number }>('/eng/servico-grupos/sugeridos', { metodo: 'POST', corpo: {} });
+      setAviso(r.criados ? `${r.criados} grupo(s) sugerido(s) criado(s).` : 'Os grupos sugeridos já existem.');
+      carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   async function adicionar(e: FormEvent) {
     e.preventDefault();
     const nome = novo.trim();
@@ -73,6 +88,13 @@ export function EngGruposServico() {
           Criar grupo
         </button>
       </form>
+
+      <div className="acoes" style={{ marginBottom: 16, alignItems: 'center' }}>
+        <button className="btn" type="button" disabled={ocupado} onClick={criarSugeridos}>
+          Criar grupos sugeridos
+        </button>
+        <span className="small muted">Cria os 15 grupos sugeridos de frentes de obra. Os que já existem são mantidos.</span>
+      </div>
 
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}

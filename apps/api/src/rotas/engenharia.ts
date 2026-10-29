@@ -928,6 +928,40 @@ export function rotasEngenharia(banco: Banco) {
       return { id };
     });
 
+    // Grupos sugeridos de serviços (frentes de trabalho): cria só os que ainda não existem.
+    const GRUPOS_SERVICO_SUGERIDOS = [
+      'Canteiro e serviços preliminares',
+      'Movimentação de terra',
+      'Fundações e contenções',
+      'Estrutura de concreto',
+      'Alvenaria e vedações',
+      'Impermeabilização',
+      'Instalações hidráulicas',
+      'Instalações elétricas',
+      'Revestimentos de paredes e tetos',
+      'Pisos e rodapés',
+      'Esquadrias e vidros',
+      'Pintura',
+      'Cobertura e forro',
+      'Louças, metais e acabamentos',
+      'Limpeza e entrega',
+    ];
+
+    app.post('/servico-grupos/sugeridos', async (req) => {
+      const empresaId = empresaDo(req);
+      return emTransacao(banco, async (c) => {
+        let criados = 0;
+        for (const [ordem, nome] of GRUPOS_SERVICO_SUGERIDOS.entries()) {
+          const existe = await c.query('SELECT 1 FROM servico_grupos WHERE empresa_id = $1 AND lower(btrim(nome)) = lower(btrim($2))', [empresaId, nome]);
+          if (existe.rowCount) continue;
+          await c.query('INSERT INTO servico_grupos (empresa_id, nome, ordem) VALUES ($1, $2, $3)', [empresaId, nome, ordem]);
+          criados++;
+        }
+        if (criados) await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'servico_grupos', entidadeId: empresaId, depois: { sugeridos: criados } });
+        return { criados };
+      });
+    });
+
     app.put<{ Params: { id: string } }>('/servico-grupos/:id', async (req) => {
       const d = esquemaGrupoServico.partial().parse(req.body);
       const empresaId = empresaDo(req);
