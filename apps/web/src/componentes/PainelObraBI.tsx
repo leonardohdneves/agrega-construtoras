@@ -23,7 +23,36 @@ type CurvaS = {
 type ObraLista = { id: string; codigo: string; nome: string };
 
 const ROTULO_STATUS: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída' };
-const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n * 100, 1)}%`);
+// A API devolve valores monetários em centavos; o painel trabalha em reais.
+const emReais = (c: number) => c / 100;
+function previstoRealizadoEmReais(p: PrevReal): PrevReal {
+  return {
+    ...p,
+    linhas: p.linhas.map((l) => ({ ...l, custoPrevisto: emReais(l.custoPrevisto), previstoAte: emReais(l.previstoAte), executado: emReais(l.executado), saldo: emReais(l.saldo) })),
+    totais: {
+      ...p.totais,
+      custoPrevisto: emReais(p.totais.custoPrevisto),
+      previstoAte: emReais(p.totais.previstoAte),
+      executado: emReais(p.totais.executado),
+      realizado: emReais(p.totais.realizado),
+      saldo: emReais(p.totais.saldo),
+    },
+  };
+}
+function curvaSEmReais(c: CurvaS): CurvaS {
+  return {
+    ...c,
+    custoTotal: emReais(c.custoTotal),
+    pontos: c.pontos.map((ponto) => ({
+      ...ponto,
+      previsto: emReais(ponto.previsto),
+      executado: ponto.executado === null ? null : emReais(ponto.executado),
+      realizado: ponto.realizado === null ? null : emReais(ponto.realizado),
+    })),
+  };
+}
+// A API já devolve o percentual em 0–100.
+const pct = (n: number | null | undefined) => (n === null || n === undefined ? '—' : `${formatarNumero(n, 1)}%`);
 const indice = (n: number | null | undefined) => (n === null || n === undefined ? '—' : formatarNumero(n, 2));
 const tomIndice = (n: number | null | undefined) => (n === null || n === undefined ? undefined : n >= 1 ? 'ok' : n >= 0.9 ? 'aviso' : 'perigo');
 
@@ -141,8 +170,8 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
       .then(([o, p, c]) => {
         if (!ativo) return;
         setInfo(o.obra);
-        setPr(p);
-        setCurva(c);
+        setPr(previstoRealizadoEmReais(p));
+        setCurva(curvaSEmReais(c));
       })
       .catch((e) => ativo && setErro((e as Error).message))
       .finally(() => ativo && setCarregando(false));
@@ -204,7 +233,7 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
       {t && (
         <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            <Tile rotulo="Orçado" valor={formatarMoeda(t.custoPrevisto)} detalhe={info?.bdiPercentual !== null && info?.bdiPercentual !== undefined ? 'Custo previsto da planilha' : undefined} />
+            <Tile rotulo="Orçado" valor={formatarMoeda(t.custoPrevisto)} detalhe={info?.bdiPercentual !== null && info?.bdiPercentual !== undefined ? `Custo direto. Com BDI de ${formatarNumero(info.bdiPercentual, 1)}%: ${formatarMoeda(t.custoPrevisto * (1 + info.bdiPercentual / 100))}` : 'Custo direto (sem BDI)'} />
             <Tile rotulo="Previsto até a data" valor={formatarMoeda(t.previstoAte)} detalhe={`Referência: ${formatarData(pr!.dataRef)}`} />
             <Tile rotulo="Executado (medições)" valor={formatarMoeda(t.executado)} />
             <Tile rotulo="Realizado (despesas)" valor={formatarMoeda(t.realizado)} detalhe="Lançamentos confirmados no centro de custo" />
