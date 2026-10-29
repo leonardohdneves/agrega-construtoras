@@ -233,7 +233,7 @@ export function PainelObraBI({ obras }: { obras: ObraLista[] }) {
       {t && (
         <>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-            <Tile rotulo="Orçado" valor={formatarMoeda(t.custoPrevisto)} detalhe={info?.bdiPercentual !== null && info?.bdiPercentual !== undefined ? 'Custo previsto da planilha' : undefined} />
+            <Tile rotulo="Orçado" valor={formatarMoeda(t.custoPrevisto)} detalhe={info?.bdiPercentual !== null && info?.bdiPercentual !== undefined ? `Custo direto. Com BDI de ${formatarNumero(info.bdiPercentual, 1)}%: ${formatarMoeda(t.custoPrevisto * (1 + info.bdiPercentual / 100))}` : 'Custo direto (sem BDI)'} />
             <Tile rotulo="Previsto até a data" valor={formatarMoeda(t.previstoAte)} detalhe={`Referência: ${formatarData(pr!.dataRef)}`} />
             <Tile rotulo="Executado (medições)" valor={formatarMoeda(t.executado)} />
             <Tile rotulo="Realizado (despesas)" valor={formatarMoeda(t.realizado)} detalhe="Lançamentos confirmados no centro de custo" />
