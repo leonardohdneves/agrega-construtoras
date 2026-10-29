@@ -214,6 +214,24 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
     setEditandoQtd(null);
   }
 
+  // Exclui uma apropriação feita por engano (só enquanto ainda está pendente).
+  async function excluirNecessidade(n: Necessidade) {
+    if (!f.obraId) return;
+    if (!window.confirm(`Excluir a apropriação de ${n.descricao}? Ela sai da EAP e não aparece mais para comprar.`)) return;
+    setErro('');
+    try {
+      await api(`/eng/obras/${f.obraId}/necessidades/${n.id}`, { metodo: 'DELETE' });
+      setNecessidades((lista) => (lista ?? []).filter((x) => x.id !== n.id));
+      setMarcadas((atual) => {
+        const novo = new Set(atual);
+        novo.delete(n.id);
+        return novo;
+      });
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
   function alternar(id: string) {
     setMarcadas((atual) => {
       const novo = new Set(atual);
@@ -465,6 +483,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
                   <th>Un.</th>
                   <th className="num">Quantidade</th>
                   <th>Precisa até</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
@@ -478,6 +497,11 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
                     <td>{unidadeTexto(n.unidadeCompra ?? n.unidade)}</td>
                     <td className="num">{qtd(n.quantidadeCompra ?? n.quantidade, n.unidadeCompra ?? n.unidade)}</td>
                     <td>{n.dataNecessaria ? formatarData(n.dataNecessaria) : '—'}</td>
+                    <td>
+                      {n.status === 'pendente' && (
+                        <button className="btn btn-link" type="button" onClick={() => excluirNecessidade(n)}>Excluir</button>
+                      )}
+                    </td>
                   </tr>
                 ))}
               </tbody>
