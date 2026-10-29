@@ -691,7 +691,7 @@ export function rotasEngenharia(banco: Banco) {
                 (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_id = o.id) AS linhas_orcamento,
                 (SELECT coalesce(sum(oq.quantidade * ${precoObra('oi')}), 0) FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id WHERE oq.obra_id = o.id) AS subtotal
            FROM obras o JOIN centros_custo cc ON cc.id = o.centro_custo_id
-          WHERE o.empresa_id = $1 AND o.ativo
+          WHERE o.empresa_id = $1 AND o.ativo AND o.status <> 'arquivada'
             AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM obra_responsaveis r WHERE r.obra_id = o.id AND r.usuario_id = $2))
           ORDER BY o.codigo`,
         [empresaId, engenheiroDe(req)],
@@ -1027,7 +1027,8 @@ export function rotasEngenharia(banco: Banco) {
         if ((await c.query('SELECT 1 FROM obras WHERE empresa_id = $1 AND codigo = $2', [empresaId, codigo])).rowCount)
           throw new ErroHttp(409, `Já existe uma obra com o código ${codigo}.`);
         const centro = (
-          await c.query(`INSERT INTO centros_custo (empresa_id, nome) VALUES ($1, $2) RETURNING id`, [empresaId, `Obra ${codigo} - ${d.nome}`.slice(0, 120)])
+          // Obra em orçamento nasce com o centro de custo inativo: ele só fica ativo na aceitação da proposta.
+          await c.query(`INSERT INTO centros_custo (empresa_id, nome, ativo) VALUES ($1, $2, $3) RETURNING id`, [empresaId, `Obra ${codigo} - ${d.nome}`.slice(0, 120), d.status !== 'orcamento'])
         ).rows[0];
         const grupoId = await grupoDaEmpresa(c, empresaId, d.empresaGrupoId);
         const o = (
