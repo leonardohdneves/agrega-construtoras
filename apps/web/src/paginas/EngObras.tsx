@@ -19,7 +19,7 @@ export type Obra = {
   responsaveis?: { id: string; nome: string }[];
 };
 type Engenheiro = { id: string; nome: string; email: string; ativo: boolean; perfil: string };
-export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null; unidadesCompra?: { unidade: string; fator: number }[] };
+export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; grupoInsumoId?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null; unidadesCompra?: { unidade: string; fator: number }[] };
 
 type ClasseComponente = 'insumo' | 'servico' | 'equipamento';
 const ROTULO_CLASSE: Record<ClasseComponente, string> = { insumo: 'Insumo', servico: 'Serviço', equipamento: 'Equipamento' };
@@ -528,6 +528,57 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
     return termos.every((t) => texto.includes(t));
   });
 
+  // Insumos agrupados pelos grupos do cadastro (recolhidos por padrão; a busca abre todos).
+  const agrupar = tipo === 'insumo';
+  const [gruposCadastro, setGruposCadastro] = useState<{ id: string; nome: string }[]>([]);
+  const [abertos, setAbertos] = useState<Set<string>>(new Set());
+  useEffect(() => {
+    if (agrupar) api<{ grupos: { id: string; nome: string }[] }>('/eng/insumo-grupos').then((r) => setGruposCadastro(r.grupos)).catch(() => setGruposCadastro([]));
+  }, [agrupar, itens]);
+  const nomeGrupo = (id: string | null | undefined) => (id ? gruposCadastro.find((g) => g.id === id)?.nome ?? 'Grupo removido' : 'Sem grupo');
+  const chaveGrupo = (i: ItemObra) => i.grupoInsumoId ?? 'sem';
+  const ordenados = agrupar
+    ? [...itensVisiveis].sort((a, b) => {
+        const ka = a.grupoInsumoId ? nomeGrupo(a.grupoInsumoId) : '\uffff';
+        const kb = b.grupoInsumoId ? nomeGrupo(b.grupoInsumoId) : '\uffff';
+        return ka.localeCompare(kb, 'pt-BR') || a.codigo.localeCompare(b.codigo, 'pt-BR');
+      })
+    : itensVisiveis;
+  const estaAberto = (k: string) => !agrupar || termos.length > 0 || abertos.has(k);
+  function alternarGrupo(k: string) {
+    setAbertos((s) => {
+      const n = new Set(s);
+      if (n.has(k)) n.delete(k);
+      else n.add(k);
+      return n;
+    });
+  }
+  function cabecalhoGrupo(i: ItemObra, idx: number) {
+    if (!agrupar) return null;
+    const k = chaveGrupo(i);
+    if (idx > 0 && chaveGrupo(ordenados[idx - 1]) === k) return null;
+    const qtd = ordenados.filter((x) => chaveGrupo(x) === k).length;
+    return (
+      <tr style={{ background: 'var(--surface-sunken)' }}>
+        <td colSpan={20}>
+          <button className="btn btn-link" type="button" aria-expanded={estaAberto(k)} onClick={() => alternarGrupo(k)} style={{ fontWeight: 600 }}>
+            {estaAberto(k) ? '▾' : '▸'} {nomeGrupo(i.grupoInsumoId)} <span className="small muted">({qtd} {qtd === 1 ? 'insumo' : 'insumos'})</span>
+          </button>
+        </td>
+      </tr>
+    );
+  }
+  async function moverGrupo(i: ItemObra, grupoId: string | null) {
+    setErro('');
+    setMsg('');
+    try {
+      await api(`/eng/obras/${obraId}/insumos/grupo`, { metodo: 'PUT', corpo: { itemIds: [i.id], grupoId } });
+      aoMudar();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
   return (
     <>
       <div className="card">
@@ -556,8 +607,10 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                 </tr>
               </thead>
               <tbody>
-                {itensVisiveis.map((i) => (
+                {ordenados.map((i, idx) => (
                   <Fragment key={i.id}>
+                  {cabecalhoGrupo(i, idx)}
+                  {estaAberto(chaveGrupo(i)) && (<>
                   <tr>
                     {!tipo && <td>{i.tipo === 'composicao' ? `Serviço (${i.componentes})` : 'Insumo'}</td>}
                     <td>{i.codigo}{i.tipo === 'composicao' && tipo && <div className="small muted">{i.componentes} insumos</div>}</td>
@@ -600,6 +653,14 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                       })()}
                     </td>
                     <td className="acoes">
+                      {agrupar && i.tipo === 'insumo' && (
+                        <select aria-label={`Grupo de ${i.descricao}`} value={i.grupoInsumoId ?? ''} onChange={(e) => moverGrupo(i, e.target.value || null)} style={{ maxWidth: 170 }}>
+                          <option value="">Sem grupo</option>
+                          {gruposCadastro.map((g) => (
+                            <option key={g.id} value={g.id}>{g.nome}</option>
+                          ))}
+                        </select>
+                      )}
                       {i.tipo === 'insumo' && editando !== i.id && (
                         <button className="btn" type="button" onClick={() => { setEditando(i.id); setNovoPreco(String(i.preco ?? '').replace('.', ',')); }}>Editar preço</button>
                       )}
@@ -642,6 +703,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                       </td>
                     </tr>
                   )}
+                  </>)}
                   </Fragment>
                 ))}
               </tbody>
