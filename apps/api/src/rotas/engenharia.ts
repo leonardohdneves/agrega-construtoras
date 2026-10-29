@@ -16,6 +16,7 @@ import { empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import { producaoDoMes } from '../lib/equipes-servicos.ts';
+import { conciliarLinha, type LinhaPlanilha, type RefComposicao } from '../lib/conciliacao-orcamento.ts';
 import { curvaS, percentualDeQuantidade, previstoXExecutado, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import {
   abcInsumos,
@@ -1176,6 +1177,55 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Copia insumos e composições escolhidos da tabela para a obra. Quem já existe na obra é preservado. */
+    // Prévia da importação de planilha orçamentária (só leitura): casa cada serviço com a tabela de referência.
+    const esquemaPreviaPlanilha = z
+      .object({
+        tabelaId: z.string().regex(UUID),
+        linhas: z
+          .array(
+            z.object({
+              eap: z.string().max(60).nullable().optional(),
+              codigo: z.string().max(80).nullable().optional(),
+              descricao: z.string().trim().min(1).max(300),
+              unidade: z.string().trim().min(1).max(20),
+              quantidade: z.number().nonnegative(),
+              precoUnitario: z.number().nonnegative(),
+            }),
+          )
+          .min(1)
+          .max(5000),
+      })
+      .strict();
+
+    app.post<{ Params: { id: string } }>('/obras/:id/orcamento-importacao/previa', async (req) => {
+      const d = esquemaPreviaPlanilha.parse(req.body);
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const tabela = await tabelaDaEmpresa(banco, empresaId, d.tabelaId);
+      const r = await banco.query(
+        `SELECT id, codigo, descricao, unidade, custo_ref_item(id)::bigint AS preco FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao'`,
+        [tabela.id],
+      );
+      const referencias: RefComposicao[] = r.rows.map((x) => ({ id: x.id as string, codigo: x.codigo as string, descricao: x.descricao as string, unidade: x.unidade as string, precoCentavos: Number(x.preco ?? 0) }));
+      const linhas = d.linhas.map((l, i) => {
+        const linha: LinhaPlanilha = {
+          eap: l.eap ?? null,
+          codigo: l.codigo ?? null,
+          descricao: l.descricao,
+          unidade: l.unidade,
+          quantidade: l.quantidade,
+          precoUnitarioCentavos: Math.round(l.precoUnitario * 100),
+        };
+        return { linha: i + 1, eap: linha.eap, codigo: linha.codigo, descricao: linha.descricao, unidade: linha.unidade, quantidade: linha.quantidade, precoUnitario: l.precoUnitario, ...conciliarLinha(linha, referencias) };
+      });
+      const associados = linhas.filter((l) => l.status === 'associado').length;
+      return {
+        tabela: { id: tabela.id, nome: tabela.nome },
+        resumo: { total: linhas.length, associados, pendentes: linhas.length - associados, alertasUnidade: linhas.filter((l) => l.status === 'associado' && l.alertaUnidade).length },
+        linhas,
+      };
+    });
+
     app.post<{ Params: { id: string } }>('/obras/:id/importar', async (req) => {
       const d = z
         .object({ tabelaId: z.string().regex(UUID), composicaoIds: z.array(z.string().regex(UUID)).default([]), insumoIds: z.array(z.string().regex(UUID)).default([]) })
