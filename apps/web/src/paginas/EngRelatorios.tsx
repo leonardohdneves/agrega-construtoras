@@ -75,7 +75,22 @@ export type RelatorioCustos = {
   precoTotal: number;
   bdiValor: number;
 };
-export type AtividadeRede = { id: string; numero: number; ordem: number; descricaoResumida: string; eapCodigo: string | null; inicio: string; fim: string; duracaoDias: number; predecessoraId: string | null; critica: boolean; folgaDias: number };
+export type AtividadeRede = { id: string; numero: number; ordem: number; descricaoResumida: string; eapCodigo: string | null; inicio: string; fim: string; duracaoDias: number; predecessoraId: string | null; critica: boolean; folgaDias: number; resumo?: boolean };
+
+/** Só as tarefas: sai o que é etapa ou subetapa (linha da EAP com filhos). Quem dependia dela passa a depender da predecessora dela. */
+function somenteTarefas(atividades: AtividadeRede[]): AtividadeRede[] {
+  const resumos = new Map(atividades.filter((a) => a.resumo).map((a) => [a.id, a.predecessoraId]));
+  const achar = (id: string | null): string | null => {
+    let atual = id;
+    const visto = new Set<string>();
+    while (atual && resumos.has(atual) && !visto.has(atual)) {
+      visto.add(atual);
+      atual = resumos.get(atual) ?? null;
+    }
+    return atual;
+  };
+  return atividades.filter((a) => !a.resumo).map((a) => ({ ...a, predecessoraId: achar(a.predecessoraId) }));
+}
 type Tipo = 'sintetico' | 'analitico' | 'custos' | 'rede' | 'abc-servicos' | 'abc-insumos' | 'comparacao' | 'equipes' | 'compras' | 'calendario';
 const TIPOS: { id: Tipo; texto: string; titulo: string }[] = [
   { id: 'sintetico', texto: 'Orçamento sintético', titulo: 'Orçamento sintético' },
@@ -137,7 +152,7 @@ export function EngRelatorios() {
         : tipo === 'custos'
           ? api<RelatorioCustos>(`/eng/obras/${obraId}/relatorio-custos`).then((r) => { if (ativo) setCustos(r); })
         : tipo === 'rede'
-          ? api<{ atividades: AtividadeRede[] }>(`/eng/obras/${obraId}/planejamento`).then((r) => { if (ativo) setRede(r.atividades); })
+          ? api<{ atividades: AtividadeRede[] }>(`/eng/obras/${obraId}/planejamento`).then((r) => { if (ativo) setRede(somenteTarefas(r.atividades)); })
         : api<Relatorio>(`/eng/obras/${obraId}/relatorio-orcamento?tipo=${tipo}`).then((r) => { if (ativo) setRel(r); });
     pedido.catch((e) => { if (ativo) setErro((e as Error).message); });
     return () => { ativo = false; };
