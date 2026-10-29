@@ -247,22 +247,32 @@ function DiagramaRede({ atividades }: { atividades: AtividadeRede[] }) {
   const pos = new Map<string, { x: number; y: number }>();
   let maiorAltura = 0;
   for (const [n, lista] of colunas) {
-    lista.forEach((a, i) => pos.set(a.id, { x: pad + n * (W + colGap), y: pad + i * (H + rowGap) }));
+    lista.forEach((a, i) => pos.set(a.id, { x: pad + (n + 1) * (W + colGap), y: pad + i * (H + rowGap) }));
     maiorAltura = Math.max(maiorAltura, lista.length);
   }
   const colunasN = Math.max(...colunas.keys()) + 1;
-  const largura = pad * 2 + colunasN * W + (colunasN - 1) * colGap;
+  // Uma coluna a mais em cada extremidade para os marcos Início e Término.
+  const colunasTotal = colunasN + 2;
+  const largura = pad * 2 + colunasTotal * W + (colunasTotal - 1) * colGap;
   const altura = pad * 2 + maiorAltura * H + (maiorAltura - 1) * rowGap;
   const criticas = atividades.filter((a) => a.critica);
   const fimObra = atividades.reduce((m, a) => (a.fim > m ? a.fim : m), atividades[0].fim);
   const trunca = (t: string, n: number) => (t.length > n ? `${t.slice(0, n - 1)}…` : t);
   const ligacoes = atividades.filter((a) => a.predecessoraId && porId.has(a.predecessoraId) && pos.has(a.id));
+  // Marcos: Início liga às tarefas sem predecessora; Término recebe as tarefas sem sucessora.
+  const MH = 44;
+  const yMarco = pad + ((maiorAltura - 1) * (H + rowGap)) / 2 + H / 2 - MH / 2;
+  const xInicio = pad;
+  const xFim = pad + (colunasN + 1) * (W + colGap);
+  const dataInicio = atividades.reduce((m, a) => (a.inicio < m ? a.inicio : m), atividades[0].inicio);
+  const semPredecessora = atividades.filter((a) => !a.predecessoraId || !porId.has(a.predecessoraId));
+  const semSucessora = atividades.filter((a) => !atividades.some((b) => b.predecessoraId === a.id));
 
   return (
     <div className="card">
       <p className="small muted" style={{ marginTop: 0 }}>
         Caminho crítico: {criticas.length} de {atividades.length} atividades (folga zero). Término da obra em {dataCurta(fimObra)}.
-        Cada caixa traz o código da EAP, a descrição, as datas e a duração; a folga aparece quando há.
+        Início e término da obra aparecem nas extremidades. Cada caixa traz o código da EAP, a descrição, as datas e a duração; a folga aparece quando há.
       </p>
       <div style={{ overflowX: 'auto' }}>
         <svg width={largura} height={altura} role="img" aria-label="Diagrama de rede do planejamento" style={{ display: 'block', maxWidth: 'none' }}>
@@ -285,6 +295,31 @@ function DiagramaRede({ atividades }: { atividades: AtividadeRede[] }) {
                 stroke={critica ? '#c0392b' : 'var(--muted, #888)'} strokeWidth={critica ? 2.5 : 1.2} markerEnd={critica ? 'url(#seta-critica)' : 'url(#seta-rede)'} />
             );
           })}
+          {semPredecessora.map((a) => {
+            const para = pos.get(a.id)!;
+            const x1 = xInicio + W, y1 = yMarco + MH / 2, x2 = para.x, y2 = para.y + H / 2;
+            const m = (x1 + x2) / 2;
+            return (
+              <path key={`inicio-${a.id}`} d={`M ${x1} ${y1} C ${m} ${y1}, ${m} ${y2}, ${x2} ${y2}`} fill="none"
+                stroke={a.critica ? '#c0392b' : 'var(--muted, #888)'} strokeWidth={a.critica ? 2.5 : 1.2} markerEnd={a.critica ? 'url(#seta-critica)' : 'url(#seta-rede)'} />
+            );
+          })}
+          {semSucessora.map((a) => {
+            const de = pos.get(a.id)!;
+            const x1 = de.x + W, y1 = de.y + H / 2, x2 = xFim, y2 = yMarco + MH / 2;
+            const m = (x1 + x2) / 2;
+            return (
+              <path key={`termino-${a.id}`} d={`M ${x1} ${y1} C ${m} ${y1}, ${m} ${y2}, ${x2} ${y2}`} fill="none"
+                stroke={a.critica ? '#c0392b' : 'var(--muted, #888)'} strokeWidth={a.critica ? 2.5 : 1.2} markerEnd={a.critica ? 'url(#seta-critica)' : 'url(#seta-rede)'} />
+            );
+          })}
+          {[{ x: xInicio, rotulo: 'Início', data: dataInicio }, { x: xFim, rotulo: 'Término', data: fimObra }].map((marco) => (
+            <g key={marco.rotulo}>
+              <rect x={marco.x} y={yMarco} width={W} height={MH} rx={8} fill="var(--surface-sunken, #eee)" stroke="var(--border, #ccc)" strokeWidth={1.5} />
+              <text x={marco.x + 10} y={yMarco + 18} fontSize={12} fontWeight={700} fill="currentColor">{marco.rotulo}</text>
+              <text x={marco.x + 10} y={yMarco + 35} fontSize={11} fill="var(--muted, #666)">{dataCurta(marco.data)}</text>
+            </g>
+          ))}
           {atividades.map((a) => {
             const p = pos.get(a.id)!;
             return (
