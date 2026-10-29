@@ -19,7 +19,7 @@ export type Obra = {
   responsaveis?: { id: string; nome: string }[];
 };
 type Engenheiro = { id: string; nome: string; email: string; ativo: boolean; perfil: string };
-export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; grupoInsumoId?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null; unidadesCompra?: { unidade: string; fator: number }[] };
+export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo?: string | null; grupoInsumoId?: string | null; grupoServicoId?: string | null; preco: number | null; precoReferencia: number | null; editado: boolean; origem: string | null; componentes: number; origemTabelaId?: string | null; unidadesCompra?: { unidade: string; fator: number }[] };
 
 type ClasseComponente = 'insumo' | 'servico' | 'equipamento';
 const ROTULO_CLASSE: Record<ClasseComponente, string> = { insumo: 'Insumo', servico: 'Serviço', equipamento: 'Equipamento' };
@@ -529,18 +529,20 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
   });
 
   // Insumos agrupados pelos grupos do cadastro (recolhidos por padrão; a busca abre todos).
-  const agrupar = tipo === 'insumo';
+  const agrupar = !!tipo;
+  const ePagina = tipo === 'composicao';
   const [gruposCadastro, setGruposCadastro] = useState<{ id: string; nome: string }[]>([]);
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
   useEffect(() => {
-    if (agrupar) api<{ grupos: { id: string; nome: string }[] }>('/eng/insumo-grupos').then((r) => setGruposCadastro(r.grupos)).catch(() => setGruposCadastro([]));
-  }, [agrupar, itens]);
+    if (agrupar) api<{ grupos: { id: string; nome: string }[] }>(ePagina ? '/eng/servico-grupos' : '/eng/insumo-grupos').then((r) => setGruposCadastro(r.grupos)).catch(() => setGruposCadastro([]));
+  }, [agrupar, ePagina, itens]);
+  const grupoDe = (i: ItemObra) => (i.tipo === 'composicao' ? i.grupoServicoId : i.grupoInsumoId) ?? null;
   const nomeGrupo = (id: string | null | undefined) => (id ? gruposCadastro.find((g) => g.id === id)?.nome ?? 'Grupo removido' : 'Sem grupo');
-  const chaveGrupo = (i: ItemObra) => i.grupoInsumoId ?? 'sem';
+  const chaveGrupo = (i: ItemObra) => grupoDe(i) ?? 'sem';
   const ordenados = agrupar
     ? [...itensVisiveis].sort((a, b) => {
-        const ka = a.grupoInsumoId ? nomeGrupo(a.grupoInsumoId) : '\uffff';
-        const kb = b.grupoInsumoId ? nomeGrupo(b.grupoInsumoId) : '\uffff';
+        const ka = grupoDe(a) ? nomeGrupo(grupoDe(a)) : '\uffff';
+        const kb = grupoDe(b) ? nomeGrupo(grupoDe(b)) : '\uffff';
         return ka.localeCompare(kb, 'pt-BR') || a.codigo.localeCompare(b.codigo, 'pt-BR');
       })
     : itensVisiveis;
@@ -562,7 +564,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
       <tr style={{ background: 'var(--surface-sunken)' }}>
         <td colSpan={20}>
           <button className="btn btn-link" type="button" aria-expanded={estaAberto(k)} onClick={() => alternarGrupo(k)} style={{ fontWeight: 600 }}>
-            {estaAberto(k) ? '▾' : '▸'} {nomeGrupo(i.grupoInsumoId)} <span className="small muted">({qtd} {qtd === 1 ? 'insumo' : 'insumos'})</span>
+            {estaAberto(k) ? '▾' : '▸'} {nomeGrupo(grupoDe(i))} <span className="small muted">({qtd} {ePagina ? (qtd === 1 ? 'serviço' : 'serviços') : (qtd === 1 ? 'insumo' : 'insumos')})</span>
           </button>
         </td>
       </tr>
@@ -572,7 +574,7 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
     setErro('');
     setMsg('');
     try {
-      await api(`/eng/obras/${obraId}/insumos/grupo`, { metodo: 'PUT', corpo: { itemIds: [i.id], grupoId } });
+      await api(`/eng/obras/${obraId}/${ePagina ? 'servicos' : 'insumos'}/grupo`, { metodo: 'PUT', corpo: { itemIds: [i.id], grupoId } });
       aoMudar();
     } catch (e) {
       setErro((e as Error).message);
@@ -653,8 +655,8 @@ export function AbaInsumos({ obraId, itens, aoMudar, setErro, tipo }: { obraId: 
                       })()}
                     </td>
                     <td className="acoes">
-                      {agrupar && i.tipo === 'insumo' && (
-                        <select aria-label={`Grupo de ${i.descricao}`} value={i.grupoInsumoId ?? ''} onChange={(e) => moverGrupo(i, e.target.value || null)} style={{ maxWidth: 170 }}>
+                      {agrupar && (
+                        <select aria-label={`Grupo de ${i.descricao}`} value={grupoDe(i) ?? ''} onChange={(e) => moverGrupo(i, e.target.value || null)} style={{ maxWidth: 170 }}>
                           <option value="">Sem grupo</option>
                           {gruposCadastro.map((g) => (
                             <option key={g.id} value={g.id}>{g.nome}</option>

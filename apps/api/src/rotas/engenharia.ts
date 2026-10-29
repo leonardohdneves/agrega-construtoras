@@ -853,6 +853,96 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true };
     });
 
+    // ----- Grupos de serviços (cadastro da empresa): mesmo modelo dos grupos de insumos.
+    const esquemaGrupoServico = z.object({
+      nome: z.string().trim().min(2, 'Informe o nome do grupo.').max(80, 'Nome longo demais (até 80 caracteres).'),
+      ordem: z.number().int().min(0).max(9999).optional(),
+    }).strict();
+
+    async function nomeGrupoServicoLivre(c: Cliente, empresaId: string, nome: string, ignorarId: string | null) {
+      const r = await c.query(
+        'SELECT 1 FROM servico_grupos WHERE empresa_id = $1 AND lower(btrim(nome)) = lower(btrim($2)) AND ($3::uuid IS NULL OR id <> $3)',
+        [empresaId, nome, ignorarId],
+      );
+      if (r.rowCount) throw new ErroHttp(409, `Já existe um grupo chamado "${nome}".`);
+    }
+
+    app.get('/servico-grupos', async (req) => {
+      const empresaId = empresaDo(req);
+      const r = await banco.query(
+        `SELECT g.id, g.nome, g.ordem,
+                (SELECT count(*)::int FROM obra_itens oi WHERE oi.grupo_servico_id = g.id AND oi.tipo = 'composicao') AS servicos
+           FROM servico_grupos g WHERE g.empresa_id = $1 ORDER BY g.ordem, lower(g.nome)`,
+        [empresaId],
+      );
+      return { grupos: r.rows.map((g) => ({ id: g.id as string, nome: g.nome as string, ordem: Number(g.ordem), servicos: Number(g.servicos) })) };
+    });
+
+    app.post('/servico-grupos', async (req, reply) => {
+      const d = esquemaGrupoServico.parse(req.body);
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        await nomeGrupoServicoLivre(c, empresaId, d.nome, null);
+        const g = (
+          await c.query('INSERT INTO servico_grupos (empresa_id, nome, ordem) VALUES ($1, $2, $3) RETURNING id', [empresaId, d.nome, d.ordem ?? 0])
+        ).rows[0];
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'servico_grupos', entidadeId: g.id, depois: { nome: d.nome } });
+        return g.id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.put<{ Params: { id: string } }>('/servico-grupos/:id', async (req) => {
+      const d = esquemaGrupoServico.partial().parse(req.body);
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Grupo');
+      await emTransacao(banco, async (c) => {
+        const atual = (await c.query('SELECT id, nome FROM servico_grupos WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [req.params.id, empresaId])).rows[0];
+        if (!atual) throw naoEncontrado('Grupo');
+        if (d.nome !== undefined) await nomeGrupoServicoLivre(c, empresaId, d.nome, atual.id);
+        await c.query('UPDATE servico_grupos SET nome = coalesce($2, nome), ordem = coalesce($3, ordem) WHERE id = $1', [atual.id, d.nome ?? null, d.ordem ?? null]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'servico_grupos', entidadeId: atual.id, antes: { nome: atual.nome }, depois: { nome: d.nome ?? atual.nome } });
+      });
+      return { ok: true };
+    });
+
+    // Excluir o grupo não apaga serviços: eles ficam sem grupo ("Sem grupo").
+    app.delete<{ Params: { id: string } }>('/servico-grupos/:id', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Grupo');
+      await emTransacao(banco, async (c) => {
+        const atual = (await c.query('SELECT id, nome FROM servico_grupos WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [req.params.id, empresaId])).rows[0];
+        if (!atual) throw naoEncontrado('Grupo');
+        await c.query('DELETE FROM servico_grupos WHERE id = $1', [atual.id]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'servico_grupos', entidadeId: atual.id, antes: { nome: atual.nome } });
+      });
+      return { ok: true };
+    });
+
+    // Define o grupo de vários serviços da obra de uma vez (grupoId nulo remove o grupo).
+    app.put<{ Params: { id: string } }>('/obras/:id/servicos/grupo', async (req) => {
+      const d = z
+        .object({
+          itemIds: z.array(z.string().uuid()).min(1, 'Escolha ao menos um serviço.').max(2000),
+          grupoId: z.string().uuid().nullable(),
+        })
+        .strict()
+        .parse(req.body);
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      await emTransacao(banco, async (c) => {
+        if (d.grupoId && !(await c.query('SELECT 1 FROM servico_grupos WHERE id = $1 AND empresa_id = $2', [d.grupoId, empresaId])).rowCount)
+          throw new ErroHttp(400, 'Grupo não encontrado.');
+        const r = await c.query(
+          `UPDATE obra_itens SET grupo_servico_id = $3 WHERE obra_id = $1 AND tipo = 'composicao' AND id = ANY($2::uuid[])`,
+          [obra.id, d.itemIds, d.grupoId],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'obra_itens', entidadeId: obra.id, depois: { grupoServico: d.grupoId, servicos: r.rowCount } });
+      });
+      return { ok: true };
+    });
+
     // Adota as datas do planejamento: início = primeira atividade; previsão = fim da última atividade.
     app.post<{ Params: { id: string } }>('/obras/:id/adotar-datas-planejamento', async (req) => {
       const empresaId = empresaDo(req);
@@ -2609,6 +2699,7 @@ function itemObraPublico(i: Record<string, any>) {
     unidadesCompra: ((i.unidades_compra as { unidade: string; fator: number | string }[] | undefined) ?? []).map((u) => ({ unidade: u.unidade, fator: Number(u.fator) })),
     grupo: (i.grupo as string | null) ?? null,
     grupoInsumoId: (i.grupo_insumo_id as string | null) ?? null,
+    grupoServicoId: (i.grupo_servico_id as string | null) ?? null,
     preco: reais(i.preco),
     precoReferencia: reais(i.preco_referencia_centavos),
     editado: !!i.editado,

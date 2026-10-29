@@ -114,6 +114,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Insumos', para: '/eng/insumos' },
       { rotulo: 'Grupos de insumos', para: '/eng/grupos-insumos' },
       { rotulo: 'Serviços', para: '/eng/servicos' },
+      { rotulo: 'Grupos de serviços', para: '/eng/grupos-servicos' },
       { rotulo: 'EAP e orçamento', para: '/eng/eap' },
       { rotulo: 'Planejamento', para: '/eng/planejamento' },
       { rotulo: 'Acompanhamento de obra', para: '/eng/acompanhamento' },
