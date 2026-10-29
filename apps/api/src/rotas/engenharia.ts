@@ -803,6 +803,40 @@ export function rotasEngenharia(banco: Banco) {
       return { id };
     });
 
+    // Grupos sugeridos para obra civil: cria só os que ainda não existem (não altera os já cadastrados).
+    const GRUPOS_INSUMO_SUGERIDOS = [
+      'Cimento, argamassa e concreto',
+      'Aço e ferragens',
+      'Madeira e formas',
+      'Alvenaria',
+      'Areia, brita e agregados',
+      'Impermeabilização',
+      'Hidráulica',
+      'Elétrica',
+      'Revestimentos',
+      'Esquadrias e vidros',
+      'Pintura e acabamento',
+      'Cobertura e telhas',
+      'Louças e metais',
+      'Equipamentos e locação',
+      'Consumíveis e EPI',
+    ];
+
+    app.post('/insumo-grupos/sugeridos', async (req) => {
+      const empresaId = empresaDo(req);
+      return emTransacao(banco, async (c) => {
+        let criados = 0;
+        for (const [ordem, nome] of GRUPOS_INSUMO_SUGERIDOS.entries()) {
+          const existe = await c.query('SELECT 1 FROM insumo_grupos WHERE empresa_id = $1 AND lower(btrim(nome)) = lower(btrim($2))', [empresaId, nome]);
+          if (existe.rowCount) continue;
+          await c.query('INSERT INTO insumo_grupos (empresa_id, nome, ordem) VALUES ($1, $2, $3)', [empresaId, nome, ordem]);
+          criados++;
+        }
+        if (criados) await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'insumo_grupos', entidadeId: empresaId, depois: { sugeridos: criados } });
+        return { criados };
+      });
+    });
+
     app.put<{ Params: { id: string } }>('/insumo-grupos/:id', async (req) => {
       const d = esquemaGrupoInsumo.partial().parse(req.body);
       const empresaId = empresaDo(req);
