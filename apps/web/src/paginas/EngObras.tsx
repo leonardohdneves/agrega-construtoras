@@ -30,7 +30,7 @@ export type Orcamento = { nivelApropriacao: Nivel; bdiPercentual: number; subtot
 type ItemCatalogo = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; preco: number | null };
 
 export const ROTULO_NIVEL: Record<Nivel, string> = { obra: 'Obra', etapa: 'Etapa', subetapa: 'Sub Etapa', tarefa: 'Tarefa' };
-const ROTULO_STATUS: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída' };
+const ROTULO_STATUS: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída', arquivada: 'Arquivada' };
 const LIMITE_CATALOGO = 200;
 
 export function EngObras() {

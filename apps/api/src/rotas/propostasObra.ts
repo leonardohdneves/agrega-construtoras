@@ -456,6 +456,17 @@ export function rotasPropostasObra(banco: Banco) {
     });
 
     /** Muda o status de uma proposta, com as regras de cada transição. */
+    // Proposta recusada ou cancelada: a obra que estava em orçamento é arquivada e o centro de custo inativado.
+    async function arquivarObraDaProposta(c: { query: Cliente['query'] }, empresaId: string, propostaId: string) {
+      const r = await c.query(
+        `UPDATE obras o SET status = 'arquivada', atualizado_em = now() FROM propostas_obra p
+          WHERE p.id = $1 AND p.empresa_id = $2 AND o.id = p.obra_id AND o.status = 'orcamento'
+          RETURNING o.centro_custo_id`,
+        [propostaId, empresaId],
+      );
+      for (const o of r.rows) await c.query('UPDATE centros_custo SET ativo = false WHERE id = $1', [o.centro_custo_id]);
+    }
+
     async function transicao(req: { params: { id: string }; usuario?: { id: string } } & object, empresaId: string, de: string[], para: string, acao: string) {
       if (!UUID.test(req.params.id)) throw naoEncontrado('Proposta');
       return emTransacao(banco, async (c) => {
@@ -480,11 +491,13 @@ export function rotasPropostasObra(banco: Banco) {
     app.post<{ Params: { id: string } }>('/obra-propostas/:id/recusar', async (req) => {
       if (!gestao(req as never)) throw new ErroHttp(403, 'Só o dono ou o gestor registra a recusa.');
       await transicao(req as never, empresaDo(req), ['enviada'], 'recusada', 'recusar');
+      await emTransacao(banco, (c) => arquivarObraDaProposta(c, empresaDo(req), req.params.id));
       return { ok: true };
     });
 
     app.post<{ Params: { id: string } }>('/obra-propostas/:id/cancelar', async (req) => {
       await transicao(req as never, empresaDo(req), ['rascunho', 'enviada'], 'cancelada', 'cancelar');
+      await emTransacao(banco, (c) => arquivarObraDaProposta(c, empresaDo(req), req.params.id));
       return { ok: true };
     });
 
@@ -557,6 +570,9 @@ export function rotasPropostasObra(banco: Banco) {
           [empresaId, numero, p.id, p.cliente_id, p.obra_id, p.tipo, p.titulo, p.valor_total_centavos, lancamento.id, escopo],
         )).rows[0];
         await c.query(`UPDATE propostas_obra SET status = 'aceita', decidida_em = now(), atualizado_em = now() WHERE id = $1`, [p.id]);
+        // Aceita: a obra passa a existir de fato (planejamento) e o centro de custo fica ativo.
+        if (p.obra_id) await c.query(`UPDATE obras SET status = CASE WHEN status = 'orcamento' THEN 'planejamento' ELSE status END, atualizado_em = now() WHERE id = $1`, [p.obra_id]);
+        if (p.obra_centro) await c.query('UPDATE centros_custo SET ativo = true WHERE id = $1', [p.obra_centro]);
         await auditar(c, { empresaId, usuarioId, acao: 'confirmar', entidade: 'propostas_obra', entidadeId: p.id, depois: { contrato: ct.numero, lancamento: lancamento.id } });
         return { id: ct.id, numero: ct.numero, lancamentoId: lancamento.id };
       });
