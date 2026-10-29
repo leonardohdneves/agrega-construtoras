@@ -1,0 +1,599 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Agrega Construtoras · Manual de operação</title>
+<style>
+@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega · Manual de operação · versão 1.3"; font: 7.5pt 'Inter', sans-serif; color: #5d6675; } @bottom-right { content: counter(page); font: 7.5pt 'Inter', sans-serif; color: #5d6675; } }
+:root { --ink:#1c2230; --muted:#5d6675; --line:#d9dde5; --accent:#1f5fae; --soft:#f2f5fa; --warn:#8a5a00; --warnbg:#fff6e0; }
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body { font: 9.6pt/1.42 'Inter', 'DejaVu Sans', sans-serif; color: var(--ink); }
+h1 { font-size: 20pt; margin: 0 0 4mm; letter-spacing: -.01em; color: var(--ink); }
+h2 { font-size: 12pt; margin: 6mm 0 2mm; color: var(--accent); }
+h3 { font-size: 10.5pt; margin: 4mm 0 1.5mm; }
+p { margin: 0 0 2.2mm; }
+.cap { break-before: page; page-break-before: always; }
+.cap:first-of-type { break-before: auto; page-break-before: auto; }
+.intro { color: var(--muted); margin-bottom: 4mm; }
+.passos { list-style: none; padding: 0; margin: 0 0 3mm; counter-reset: p; }
+.passos li { counter-increment: p; display: grid; grid-template-columns: 9mm 1fr; gap: 2mm; margin-bottom: 1.6mm; }
+.passos li::before { content: counter(p); font-weight: 700; color: var(--accent); }
+.nota { background: var(--soft); border-left: 3px solid var(--accent); padding: 2.5mm 3mm; margin: 3mm 0; border-radius: 0 2mm 2mm 0; }
+.nota b { display:block; margin-bottom: 1mm; }
+.alerta { background: var(--warnbg); border-left: 3px solid var(--warn); padding: 2.5mm 3mm; margin: 3mm 0; }
+.alerta b { display:block; margin-bottom: 1mm; color: var(--warn); }
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 3mm; font-size: 9pt; }
+th, td { text-align: left; padding: 1.6mm 2mm; border-bottom: 0.4pt solid var(--line); vertical-align: top; }
+th { font-size: 8pt; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); font-weight: 600; }
+.tela { border: 0.6pt solid var(--line); border-radius: 2mm; padding: 3mm; margin: 3mm 0; background: #fff; }
+.tela .rot { font-size: 7.5pt; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 2mm; }
+.fluxo { display:flex; flex-wrap: wrap; gap: 1.5mm; align-items: center; font-size: 8.5pt; margin: 2mm 0 3mm; }
+.fluxo span { background: var(--soft); border: 0.5pt solid var(--line); border-radius: 1.5mm; padding: 1mm 2mm; }
+.fluxo i { font-style: normal; color: var(--accent); }
+.grade { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm 6mm; margin: 2mm 0 3mm; }
+.grade div b { display:block; color: var(--accent); margin-bottom: .5mm; }
+.rodape-pagina { position: fixed; bottom: -12mm; left: 0; right: 0; font-size: 7.5pt; color: var(--muted); border-top: .4pt solid var(--line); padding-top: 1.5mm; }
+.rodape-pagina span.r { float: right; }
+.capa { height: 252mm; display: flex; flex-direction: column; justify-content: space-between; }
+.capa .marca { font-weight: 700; letter-spacing: .12em; text-transform: lowercase; color: var(--accent); font-size: 12pt; }
+.capa h1 { font-size: 34pt; line-height: 1.05; }
+.capa .sub { font-size: 12pt; color: var(--muted); max-width: 120mm; }
+.capa .rod { color: var(--muted); font-size: 9pt; }
+.sumario td { border: none; padding: 1.2mm 2mm; font-size: 9.5pt; }
+.sumario b { color: var(--accent); }
+.ordem { font-size: 8.5pt; color: var(--muted); }
+.novo { display:inline-block; font-size: 7pt; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 1mm; padding: .3mm 1.4mm; vertical-align: middle; margin-left: 1mm; }
+</style>
+</head>
+<body>
+
+
+
+<!-- CAPA -->
+<section class="capa">
+  <div class="marca">agrega construtoras</div>
+  <div>
+    <h1>Manual de<br>operação</h1>
+    <p class="sub">Engenharia, suprimentos, estoque e patrimônio, medições, financeiro e gerencial para construtoras e incorporadoras.</p>
+  </div>
+  <div class="rod">
+    <p>Versão 1.3 · outubro de 2026</p>
+    <p>Para dono, gestor, engenharia, orçamento, compras, almoxarife, financeiro, administrativo e vendas.</p>
+  </div>
+</section>
+
+<!-- SUMÁRIO -->
+<section class="cap">
+  <h1>Sumário</h1>
+  <p class="intro">Leia o capítulo 1 e siga a ordem do capítulo 2 para implantar o sistema. Depois, use o manual como consulta.</p>
+  <table class="sumario">
+    <tr><td><b>1</b> Primeiros passos<br><span class="ordem">Acesso, perfis e o menu</span></td><td><b>2</b> Implantação<br><span class="ordem">A ordem certa de cadastrar tudo</span></td></tr>
+    <tr><td><b>3</b> Engenharia<br><span class="ordem">Obras, EAP e orçamento, planejamento e acompanhamento</span></td><td><b>4</b> Suprimentos<br><span class="ordem">Solicitações, cotações, pedidos, recebimento e contratos</span></td></tr>
+    <tr><td><b>5</b> Estoque<br><span class="ordem">Estoques, saldo, etiquetas QR e saídas para a obra</span></td><td><b>6</b> Ferramentas e equipamentos<br><span class="ordem">Patrimônio, depreciação, retirada e devolução</span></td></tr>
+    <tr><td><b>7</b> Medições e pagamentos<br><span class="ordem">Medições, descontos e autorizações de pagamento</span></td><td><b>8</b> Propostas e contratos<br><span class="ordem">Cinco tipos de proposta, aceitação, contrato e contas a receber</span></td></tr>
+    <tr><td><b>9</b> Financeiro<br><span class="ordem">Plano de contas, lançamentos, bancos e conciliação</span></td><td><b>10</b> Gerencial<br><span class="ordem">DRE, fluxo de caixa, Curva S, indicadores e aprovações</span></td></tr>
+    <tr><td><b>11</b> Administrativo<br><span class="ordem">Clientes, fornecedores, credores e colaboradores</span></td><td><b>12</b> Configurações<br><span class="ordem">Empresa, usuários, backup e exportação</span></td></tr>
+    <tr><td><b>13</b> Rotinas recomendadas<br><span class="ordem">O que fazer todo dia, toda semana e todo mês</span></td><td><b>14</b> Dúvidas frequentes e glossário<br><span class="ordem">Problemas comuns e os termos usados no sistema</span></td></tr>
+  </table>
+</section>
+
+<!-- 1 PRIMEIROS PASSOS -->
+<section class="cap">
+  <h1>1 Primeiros passos</h1>
+  <p class="intro">O Agrega Construtoras funciona no navegador, no computador e no celular, sem instalar nada. Cada construtora enxerga só os próprios dados.</p>
+  <h2>Acesso</h2>
+  <ol class="passos">
+    <li><span>Abra o endereço do Agrega informado pela sua empresa.</span></li>
+    <li><span>Entre com o e-mail e a senha cadastrados pelo dono ou por um administrador.</span></li>
+    <li><span>Troque a senha provisória na área <b>Minha conta</b>.</span></li>
+  </ol>
+  <h2>Perfis</h2>
+  <p>O perfil indica a função de cada pessoa. O dono ou um administrador pode ajustar os módulos liberados para cada uma.</p>
+  <div class="grade">
+    <div><b>Dono</b>Acesso a tudo. Aprova todos os valores e define as regras de aprovação.</div>
+    <div><b>Gestor</b>Acompanha a gestão da empresa. Pode ser administrador e aprovar até o limite definido.</div>
+    <div><b>Engenheiro de obra</b>Trabalha nas obras atribuídas a ele: EAP, medições, RDO, contratos das obras e retirada e devolução de ferramentas.</div>
+    <div><b>Orçamentista</b>Monta a EAP, o orçamento e o planejamento das obras.</div>
+    <div><b>Comprador</b>Solicitações, cotações, pedidos e contratos de suprimentos.</div>
+    <div><b>Financeiro</b>Lançamentos, contas, bancos, conciliação e relatórios financeiros.</div>
+    <div><b>Administrativo</b>Cadastros de clientes, fornecedores, credores e colaboradores.</div>
+    <div><b>Vendedor</b>Módulo comercial: vendas da empresa.</div>
+    <div><b>Almoxarife</b>Estoque da obra, saídas por etiqueta, pedidos de compra das obras atribuídas (somente leitura, com preços) e ferramentas e equipamentos.</div>
+  </div>
+  <div class="nota"><b>Módulos por pessoa</b>Em Configurações › Usuários e acessos é possível marcar os módulos que cada pessoa vê. O menu mostra só os módulos liberados.</div>
+  <div class="nota"><b>Obras atribuídas</b>Engenheiros de obra e almoxarifes só veem as obras que o dono ou o gestor marcou como responsabilidade deles, no cadastro da obra (Engenharia › Obras).</div>
+  <div class="nota"><b>Dados restritos</b>Saldos bancários e fluxo de caixa só aparecem para quem tem acesso a eles. Peça ao dono para ajustar, se precisar.</div>
+</section>
+
+<section class="cap">
+  <h1>1 Menu por módulos</h1>
+  <p class="intro">O menu muda conforme os módulos liberados para cada pessoa. Os módulos ficam sempre na mesma ordem.</p>
+  <p>No computador, o menu fica à esquerda e mostra os módulos. Clique no módulo para abrir os itens. No celular, use o menu da barra de baixo.</p>
+  <table>
+    <tr><th>Módulo</th><th>O que tem dentro</th></tr>
+    <tr><td><b>Engenharia</b></td><td>Obras, insumos, serviços, EAP e orçamento, planejamento, acompanhamento e relatórios</td></tr>
+    <tr><td><b>Suprimentos</b></td><td>Solicitações de compra e de serviços, cotações, pedidos, recebimento, contratos, medições, estoque e ferramentas e equipamentos</td></tr>
+    <tr><td><b>Financeiro</b></td><td>Contas a pagar e a receber, lançamentos, bancos e caixa, conciliação OFX, plano de contas</td></tr>
+    <tr><td><b>Comercial</b></td><td>Propostas de obra, vendas e relatórios comerciais</td></tr>
+    <tr><td><b>Gerencial</b></td><td>DRE, fluxo de caixa, Curva S, indicadores, aprovações e autorizações de pagamento</td></tr>
+    <tr><td><b>Administrativo</b></td><td>Clientes, fornecedores, credores e colaboradores</td></tr>
+    <tr><td><b>Configurações</b></td><td>Empresa, usuários e acessos, mural de avisos, minha conta, relatórios de uso. Fica sempre por último.</td></tr>
+  </table>
+</section>
+
+<!-- 2 IMPLANTAÇÃO -->
+<section class="cap">
+  <h1>2 Implantação</h1>
+  <p class="intro">Siga esta ordem na primeira vez. Cada etapa usa informações da anterior: a obra precisa existir antes do orçamento, e o orçamento antes da solicitação de serviços.</p>
+  <div class="fluxo"><span>Empresa</span><i>→</i><span>Usuários</span><i>→</i><span>Plano de contas</span><i>→</i><span>Cadastros</span><i>→</i><span>Obra</span><i>→</i><span>EAP e orçamento</span><i>→</i><span>Planejamento</span><i>→</i><span>Bancos</span></div>
+  <ol class="passos">
+    <li><span><b>Empresa.</b> Em Configurações › Empresa, confira razão social, CNPJ, endereço e logo. Esses dados aparecem nos documentos impressos.</span></li>
+    <li><span><b>Usuários.</b> Em Configurações › Usuários e acessos, cadastre cada pessoa com o perfil certo e ajuste os módulos, se precisar.</span></li>
+    <li><span><b>Plano de contas.</b> Em Financeiro › Plano de contas, revise as categorias (por exemplo, 3.7 Serviços terceirizados). Elas são usadas nos lançamentos e nas solicitações de serviço.</span></li>
+    <li><span><b>Cadastros.</b> Cadastre clientes, fornecedores, credores e colaboradores em Administrativo. A leitura por foto ou PDF ajuda (capítulo 11).</span></li>
+    <li><span><b>Obra.</b> Em Engenharia › Obras, cadastre a obra com código, nome, endereço e centro de custo. Em <b>Responsáveis pela obra</b>, marque os engenheiros de obra e os almoxarifes que vão trabalhar nela.</span></li>
+    <li><span><b>Insumos e serviços.</b> Cadastre os insumos e serviços da obra em Engenharia.</span></li>
+    <li><span><b>EAP e orçamento.</b> Monte a estrutura da obra (etapas, subetapas e tarefas) e lance a quantidade de cada serviço.</span></li>
+    <li><span><b>Planejamento.</b> Cadastre as atividades ligadas à EAP, com datas e predecessoras. O planejamento alimenta a Curva S.</span></li>
+    <li><span><b>Bancos e caixa.</b> Cadastre as contas bancárias e o caixa em Financeiro › Bancos e caixa.</span></li>
+    <li><span><b>Regras de aprovação.</b> Em Gerencial › Aprovações, defina até qual valor os administradores aprovam e quais valores dispensam aprovação.</span></li>
+  </ol>
+  <div class="nota"><b>Antes de lançar movimentos</b>Confirme o plano de contas e o orçamento da obra. Solicitações, contratos e medições usam as categorias e as quantidades do orçamento.</div>
+</section>
+
+<!-- 3 ENGENHARIA -->
+<section class="cap">
+  <h1>3 Engenharia</h1>
+  <p class="intro">A engenharia organiza a obra: o que será feito (EAP e orçamento), quando (planejamento) e quanto já foi executado (acompanhamento).</p>
+  <h2>Obras</h2>
+  <p>Cada obra tem código, nome, endereço e centro de custo, usado para apropriar as despesas. Os responsáveis pela obra (engenheiros de obra e almoxarifes) também são marcados aqui. Só eles, e o dono e o gestor, veem a obra nas telas de estoque, pedidos e ferramentas.</p>
+  <h2>EAP e orçamento</h2>
+  <p>A EAP divide a obra em níveis: etapa, subetapa e tarefa. Cada linha folha recebe os serviços do orçamento, com a quantidade e o custo calculado a partir da composição de insumos. O BDI é aplicado sobre o custo direto.</p>
+  <div class="tela"><div class="rot">Engenharia › EAP e orçamento</div>1.2.1 · Escavação vertical &nbsp;&nbsp; Serviço: Escavação vertical para edificação &nbsp;&nbsp; Quantidade: 120,00 m³ <br><br><span class="ordem">[ Adicionar ao orçamento ]</span></div>
+  <h2>Planejamento</h2>
+  <p>Em Engenharia › Planejamento, o planejamento tem cinco abas. A estrutura segue a EAP do orçamento: etapas e subetapas agrupam as tarefas e podem ser expandidas ou recolhidas pelo botão ▸ ao lado do nome.</p>
+  <ul>
+    <li><b>Planejamento.</b> Clique em Atualizar pela EAP para criar uma atividade para cada tarefa nova da EAP, com 1 dia. Ajuste início, duração e predecessora. Etapas e subetapas não recebem atividade: as datas delas são as das tarefas abaixo.</li>
+    <li><b>Gantt.</b> Uma barra por tarefa. A barra vazada de uma etapa vai do início ao fim das tarefas abaixo dela.</li>
+    <li><b>Equipes necessárias.</b> Trabalhadores por dia de cada tipo de mão de obra, no período escolhido.</li>
+    <li><b>Materiais necessários.</b> Só os insumos da classe Material, com a quantidade total e a data em que devem estar na obra.</li>
+    <li><b>Equipamentos.</b> Só os insumos da classe Equipamento, com a quantidade total e a data em que devem estar na obra.</li>
+  </ul>
+  <p>Cada aba tem o botão Imprimir. Os botões de edição não aparecem na impressão. As datas seguem a cadeia de predecessoras. O custo de cada linha é distribuído ao longo das datas da atividade: essa distribuição é o previsto da Curva S.</p>
+  <h2>Grupos de insumos e de serviços <span class="novo">novo</span></h2>
+  <p>Em Engenharia › Grupos de insumos e Engenharia › Grupos de serviços, cadastre as famílias usadas para organizar a obra. Crie, renomeie ou exclua grupos. Não é possível ter dois grupos com o mesmo nome, mesmo que mudem as maiúsculas.</p>
+  <ul>
+    <li><b>Criar grupos sugeridos.</b> O botão cria os grupos sugeridos para obra civil (15 em cada tela). Grupos que já existem com o mesmo nome são mantidos.</li>
+    <li><b>Na obra.</b> As abas Insumos e Serviços mostram os itens agrupados e recolhidos. Clique no nome do grupo para abrir. Ao buscar, os grupos com resultado abrem sozinhos.</li>
+    <li><b>Trocar o grupo.</b> Em cada linha, escolha o grupo na seleção Grupo de. Os itens sem grupo ficam em Sem grupo, no fim da lista.</li>
+    <li><b>Excluir um grupo</b> não apaga nada: os insumos ou serviços dele voltam para Sem grupo.</li>
+  </ul>
+  <h2>Painel da obra <span class="novo">novo</span></h2>
+  <p>O dono vê, na aba Obras do Painel, um resumo de cada obra: orçado, previsto até a data, executado (medições), realizado (despesas), saldo a executar, SPI e CPI. Também mostra a Curva S, o executado por etapa e a tabela de etapas.</p>
+  <ul>
+    <li><b>Orçado.</b> É o custo direto da planilha. Logo abaixo aparecem o BDI da obra e o total com BDI, que é o valor da planilha.</li>
+    <li><b>SPI</b> = executado ÷ previsto até a data (abaixo de 1 indica atraso). <b>CPI</b> = executado ÷ realizado (abaixo de 1 indica custo acima do executado).</li>
+    <li><b>Adotar datas do planejamento.</b> Põe o início da obra na data da primeira atividade e a previsão de término na data da última atividade.</li>
+  </ul>
+  <h2>Diagrama de rede <span class="novo">novo</span></h2>
+  <p>Em Engenharia › Relatórios › Diagrama de rede, cada tarefa do planejamento é uma caixa ligada à sua predecessora. Etapas e subetapas não aparecem no diagrama. Início e Término marcam as extremidades da obra. O caminho crítico fica em vermelho, e a folga aparece nas tarefas que têm folga.</p>
+</section>
+
+<section class="cap">
+  <h1>3 Engenharia (continuação)</h1>
+  <h2>Cadastro de insumo</h2>
+  <p>Em Insumos › Novo insumo, escolha a tabela que vai receber o item. O código é gerado sozinho, na sequência da tabela (ex.: INS-0001).</p>
+  <ul>
+    <li><b>Preço.</b> Escolha Não registrar agora ou Informar valor. O preço pode ficar para depois.</li>
+    <li><b>Unidades de compra.</b> Se o insumo é orçado numa unidade e comprado em outra, cadastre a unidade de compra e quantas unidades do orçamento cabem nela. Ex.: aço orçado em kg e comprado em barra: 1 barra = 46,2 kg.</li>
+  </ul>
+  <p>Para corrigir um insumo da tabela própria, clique em Editar na linha dele. Obras que já copiaram o insumo não mudam sozinhas. Na obra, em Engenharia › Obras › Insumos, clique em Editar no insumo para cadastrar ou corrigir as unidades de compra só daquela obra.</p>
+  <p>Depois da primeira compra, o preço pode vir da nota mais recente. Em Engenharia › Tabelas de referência, na linha do insumo de uma tabela própria, use <b>Usar última compra</b>. O sistema converte o valor para a unidade do cadastro.</p>
+  <h2>Acompanhamento de obra</h2>
+  <p>Registre as medições físicas por data, em percentual ou em quantidade executada, por linha folha da EAP. O valor executado é o percentual da linha multiplicado pelo custo da linha.</p>
+  <h2>Indicadores</h2>
+  <table>
+    <tr><th>Indicador</th><th>Como é calculado</th><th>Leitura</th></tr>
+    <tr><td><b>SPI</b></td><td>Executado ÷ previsto</td><td>Abaixo de 1, a obra está atrasada em relação ao planejado.</td></tr>
+    <tr><td><b>CPI</b></td><td>Executado ÷ realizado (despesas confirmadas)</td><td>Abaixo de 1, a obra gasta mais do que o executado.</td></tr>
+  </table>
+  <p><b>Curva S.</b> Mostra previsto, executado e realizado mês a mês. A curva vai até o mês de hoje, ou até o fim do planejamento se ele for depois. Executado e realizado só aparecem até hoje.</p>
+  <h2>Tabelas de referência e relatórios</h2>
+  <p>As tabelas de referência trazem insumos e composições de preços. Copie para a obra só o que for usar e ajuste os preços sem alterar a tabela original. Os relatórios da obra ficam em Engenharia › Relatórios.</p>
+  <p>O <b>Calendário de produção</b> mostra a programação em formato de planner, por dia, semana, quinzena ou mês. Em cada dia, a atividade marca o início (▶), a continuação (faixa colorida) e o término (■). Uma atividade de um dia só recebe ◆.</p>
+</section>
+
+<!-- 4 SUPRIMENTOS -->
+<section class="cap">
+  <h1>4 Suprimentos</h1>
+  <p class="intro">Do pedido de compra ou de serviço até o contrato. Cada etapa tem registro próprio.</p>
+  <div class="fluxo"><span>Solicitação</span><i>→</i><span>Cotação</span><i>→</i><span>Pedido ou contrato</span><i>→</i><span>Recebimento ou medição</span><i>→</i><span>Autorização</span><i>→</i><span>Contas a pagar</span></div>
+  <h2>Solicitação de compra (insumos)</h2>
+  <p>Escolha a obra, a data e a data em que o material é necessário. Use Buscar insumo para filtrar pelo código ou parte da descrição. Adicione os insumos com a quantidade na unidade do item.</p>
+  <p>Sempre aparece o campo <b>Unidade do pedido</b>, com a unidade do orçamento e as outras unidades de compra cadastradas para o insumo. Digite a quantidade na unidade escolhida (ex.: 2 barras) e confira o equivalente na unidade do orçamento (ex.: 92,4 kg). O pedido, a cotação e a nota seguem a unidade escolhida.</p>
+  <p>Use <b>Salvar</b> para guardar a solicitação com os insumos já incluídos. Só o <b>Registrar</b> envia a solicitação para cotação.</p>
+  <h2>Solicitação de serviços</h2>
+  <p>Serve para contratar serviços de terceiros. Escolha a obra, a categoria (do plano de contas, por exemplo 3.7 Serviços terceirizados) e o serviço cadastrado no orçamento da obra. Ao escolher o serviço, o sistema mostra a unidade e a referência da obra.</p>
+  <div class="tela"><div class="rot">Suprimentos › Nova solicitação de serviços</div>Serviço: Escavação vertical &nbsp;&nbsp; Quantidade: 40 (m³)<br>Referência: orçado 120 m³ · já contratado 80 m³ · já medido 30 m³ · saldo a contratar 40 m³</div>
+  <p>O saldo a contratar é o orçado menos o já contratado e o já medido, na mesma unidade do serviço. Contratos cancelados não entram nessa conta.</p>
+  <h2>Excluir apropriação pendente <span class="novo">novo</span></h2>
+  <p>Em Solicitações, a seção Já apropriados e pendentes lista os insumos apropriados que ainda não foram pedidos. Se um insumo foi apropriado por engano, clique em Excluir na linha dele. O botão só aparece para insumos pendentes: se o insumo já foi solicitado ou comprado, a exclusão é recusada.</p>
+  <h2>Cotações</h2>
+  <ol class="passos">
+    <li><span>Crie a cotação a partir da solicitação e envie aos fornecedores.</span></li>
+    <li><span>Registre as respostas. Para cada fornecedor, informe o preço unitário de cada item, o prazo de entrega, a condição de pagamento, o <b>frete</b>, a validade e observações.</span></li>
+    <li><span>Leia a proposta por PDF ou foto. Os dados aparecem para conferência e só são gravados quando você salva a resposta.</span></li>
+    <li><span>Mapa de cotação. Compare os preços lado a lado e escolha o fornecedor de cada item.</span></li>
+  </ol>
+</section>
+
+<section class="cap">
+  <h1>4 Suprimentos (continuação)</h1>
+  <h2>Pedidos de compra</h2>
+  <p>Ao concluir a cotação, cada fornecedor escolhido gera um pedido de compra. O pedido precisa ser aprovado antes de ser enviado ao fornecedor. Quando o pedido é aprovado, ele vale para o recebimento.</p>
+  <h3>Frete no pedido</h3>
+  <p>O total do pedido já inclui o frete. Escolha a forma de frete no pedido:</p>
+  <table>
+    <tr><th>Frete por</th><th>O que preencher</th></tr>
+    <tr><td>CIF (incluso no preço)</td><td>Só o valor total do pedido, sem frete separado.</td></tr>
+    <tr><td>Fornecedor de transporte</td><td>Escolha a transportadora cadastrada e digite o valor do frete.</td></tr>
+    <tr><td>Transporte próprio</td><td>Digite o valor do frete, sem transportadora.</td></tr>
+  </table>
+  <h2>Recebimento com a nota fiscal</h2>
+  <p>Ao receber o material, ligue a nota fiscal de compra ao pedido. Cada item da nota é ligado a um item do pedido, com a quantidade recebida. O sistema confere a nota com o pedido e <b>bloqueia a confirmação</b> da nota se houver divergência:</p>
+  <ul>
+    <li>item da nota que não está ligado a nenhum item do pedido;</li>
+    <li>quantidade recebida maior que a quantidade do pedido, somando todas as notas do pedido;</li>
+    <li>valor da nota diferente da quantidade recebida vezes o preço do pedido (tolerância de 0,5%).</li>
+  </ul>
+  <div class="alerta"><b>Corrija antes de confirmar</b>A mensagem indica o item, o valor da nota e o valor do pedido. Ajuste a ligação ou a nota, e só depois confirme. A nota com divergência não entra no financeiro nem no estoque.</div>
+  <h2>Cancelar e reabrir pedido <span class="novo">novo</span></h2>
+  <p>Um pedido cancelado libera a necessidade da obra, que volta a ficar pendente, desde que nenhum outro pedido a use. Se o pedido foi cancelado por engano e não tem nota ligada, clique em Reabrir pedido: ele volta a rascunho e a solicitação volta a ficar atendida. A reabertura é recusada se a solicitação já estiver em outra cotação ou em outro pedido ativo.</p>
+  <h2>Conferência de unidades <span class="novo">novo</span></h2>
+  <p>Em Suprimentos › Conferência de unidades aparecem as linhas das notas cuja unidade do insumo é diferente da unidade do pedido. Informe quantas unidades do insumo cabem em uma unidade de compra (por exemplo, 1 barra = 12 metros). O fator fica gravado na linha da nota.</p>
+  <h2>Vincular e dividir itens da nota <span class="novo">novo</span></h2>
+  <p>Na nota, o botão Vincular liga cada item a um item do pedido e informa a quantidade pedida. Quando a mesma linha da nota corresponde a apropriações diferentes, o botão Dividir separa a linha em duas, com a quantidade e o valor de cada parte. O botão Frota continua disponível para ligar o item a um veículo ou equipamento.</p>
+  <h2>Quem vê o pedido</h2>
+  <p>O almoxarife vê, em modo somente leitura, os pedidos aprovados (ou já enviados, recebidos e encerrados) que tenham itens de obras atribuídas a ele, com preços e valores. Ele confere o material no recebimento contra a nota. Não altera o pedido.</p>
+  <h2>Contratos</h2>
+  <p>Pedidos e contratos de serviço passam pela alçada de aprovação e ficam vigentes depois de aprovados.</p>
+  <table>
+    <tr><th>Tipo de contrato</th><th>Como é medido</th></tr>
+    <tr><td>Por itens</td><td>Quantidade e preço unitário, por quantitativos ou percentual.</td></tr>
+    <tr><td>Global</td><td>Valor total, por valor ou percentual do contrato.</td></tr>
+    <tr><td>Retenções</td><td>Caução, ISS, INSS, IR e PIS/COFINS/CSLL, descontados de cada pagamento.</td></tr>
+  </table>
+</section>
+
+<!-- 5 ESTOQUE -->
+<section class="cap">
+  <h1>5 Estoque</h1>
+  <p class="intro">O estoque mostra, para cada insumo da obra, quanto há disponível e em qual etapa da EAP. É isso que permite saber se um insumo pedido de novo é para a mesma etapa ou para outra.</p>
+  <h2>Como o saldo entra</h2>
+  <ol class="passos">
+    <li><span><b>Solicitação.</b> Cada insumo pedido já está apropriado a uma etapa da EAP.</span></li>
+    <li><span><b>Pedido e nota.</b> O pedido de compra guarda essa apropriação. Quando a nota de compra é ligada ao pedido, cada item herda a obra, o insumo da obra e a etapa.</span></li>
+    <li><span><b>Compra direta.</b> Se a nota não vem de um pedido, escolha em cada item a obra, o insumo da obra, a etapa da EAP e, se quiser, o estoque de recebimento (por padrão, o Recebimento da obra).</span></li>
+    <li><span><b>Despesa com estoque.</b> Um lançamento de despesa também pode dar entrada no estoque, da mesma forma (capítulo 9).</span></li>
+    <li><span><b>Confirmação.</b> Cada item com apropriação completa entra no estoque escolhido e <b>recebe a sua etiqueta</b>. Item sem obra, insumo ou etapa não entra no estoque e não gera etiqueta.</span></li>
+  </ol>
+</section>
+
+<section class="cap">
+  <h1>5 Estoque (continuação)</h1>
+  <h2>Estoques</h2>
+  <p>Em Suprimentos › Estoque, clique em Novo estoque. Informe o nome e, se o estoque for de uma obra, escolha a obra a que ele pertence; sem obra, ele é um estoque geral. O código (EST-0001, EST-0002…) é dado automaticamente.</p>
+  <p>Cada obra tem o estoque de Recebimento, que recebe as notas e não pode ser desativado. Os outros servem para organizar o material, como almoxarifado ou canteiro. Use Desativar para tirar um estoque de uso sem apagá-lo.</p>
+  <h2>Saldo</h2>
+  <p>Escolha a obra no topo da tela. A lista mostra o saldo de cada insumo. Clique no insumo para ver quanto há em cada estoque e etapa. O saldo é a soma das entradas menos as saídas daquela etapa.</p>
+  <div class="tela"><div class="rot">Suprimentos › Estoque · obra 0012</div>Cimento CP-II 50 kg &nbsp;&nbsp; <b>180 sc</b><br><span class="ordem">Recebimento · 1.2.1 Fundação: 120 · 2.1.3 Alvenaria: 60</span></div>
+  <p><b>Na solicitação de insumos.</b> Ao escolher um insumo na solicitação, o sistema mostra se ele já está em estoque, quanto há em cada etapa e quanto há na etapa escolhida. Assim você decide se pede de novo ou usa o que já existe.</p>
+  <div class="nota"><b>Só o que tem apropriação entra</b>Notas de compra sem obra, insumo ou etapa não aparecem no saldo. Confira o lançamento da nota antes de confirmar.</div>
+</section>
+
+<section class="cap">
+  <h1>5 Estoque (etiquetas e saídas)</h1>
+  <h2>Unidade no saldo <span class="novo">novo</span></h2>
+  <p>Na tabela de saldo, a coluna Unidade permite ver o saldo e as saídas na unidade de compra cadastrada para o insumo (por exemplo, barra ou saco). A conversão é só de visualização: o estoque continua gravado na unidade do orçamento. As unidades de compra são cadastradas em Insumos da obra, no botão Editar do insumo.</p>
+  <h2>Etiquetas QR <span class="novo">atualizado</span></h2>
+  <p>Toda entrada no estoque gera uma etiqueta com QR code: a de nota fiscal e a de despesa com estoque. A etiqueta traz o código do insumo, a descrição, a etapa, a obra, o estoque, a data de entrada e a quantidade.</p>
+  <ul>
+    <li><b>O QR não muda.</b> Ele identifica aquela entrada no estoque. A etiqueta impressa continua válida nas saídas enquanto a entrada existir.</li>
+    <li><b>Se a entrada for cancelada</b> (nota ou lançamento cancelado), a etiqueta sai junto. Uma nova entrada gera um QR novo.</li>
+  </ul>
+  <h3>Imprimir as etiquetas</h3>
+  <p>Em Suprimentos › Estoque, escolha a obra e clique em <b>Imprimir etiquetas</b>. A página abre com folhas A4 de 24 etiquetas (3 × 8, 70 × 37 mm). Use Somente com saldo para imprimir só as etiquetas que ainda têm material. Clique em Imprimir e escolha a impressora.</p>
+  <h2>Saída de material</h2>
+  <ol class="passos">
+    <li><span><b>Abra a saída.</b> Em Suprimentos › Estoque, escolha a obra e vá até Saída de material.</span></li>
+    <li><span><b>Colaborador.</b> Escolha quem pegou o material. A lista traz os colaboradores cadastrados em Administrativo.</span></li>
+    <li><span><b>Etapa e dados.</b> Escolha a etapa da EAP, a data e, se precisar, uma observação.</span></li>
+    <li><span><b>Leia a etiqueta.</b> Use a câmera (Ler QR com a câmera) ou digite o código. O sistema mostra o insumo e o saldo. Não aceita etiqueta de outra obra, sem saldo ou de outra etapa.</span></li>
+    <li><span><b>Quantidade e registro.</b> Informe quanto sai de cada insumo e registre. A saída recebe um número (SAI-0001…) e o saldo da etiqueta diminui. Quem registra, o almoxarife, fica gravado como quem entregou.</span></li>
+  </ol>
+  <h2>Colaboradores</h2>
+  <p>Quem retira material é um colaborador do cadastro do Administrativo; não há cadastro separado no estoque. Quem deixa a empresa deve ser desativado no cadastro de colaboradores: some da lista de saída, mas o histórico fica.</p>
+  <h2>Transferir entre estoques</h2>
+  <p>Para mover material de um estoque para outro, use Transferir entre estoques: insumo, etapa, origem, destino, quantidade e data. A transferência não gera etiqueta nova, e a etiqueta continua ligada ao estoque de origem.</p>
+  <div class="nota"><b>Prefira receber no estoque certo</b>Como a etiqueta não muda na transferência, o ideal é escolher o estoque certo ao receber a nota, e não transferir depois.</div>
+</section>
+
+<!-- 6 FERRAMENTAS E EQUIPAMENTOS -->
+<section class="cap">
+  <h1>6 Ferramentas e equipamentos <span class="novo">novo</span></h1>
+  <p class="intro">O patrimônio da construtora: ferramentas e equipamentos próprios. Cada bem tem código, etiqueta QR e depreciação. Em Suprimentos › Ferramentas e equipamentos.</p>
+  <h2>Cadastro do bem</h2>
+  <p>Só o dono e o gestor cadastram ou alteram um bem. Clique em <b>Cadastrar bem</b> e preencha:</p>
+  <table>
+    <tr><th>Campo</th><th>O que informar</th></tr>
+    <tr><td>Nome, marca e série</td><td>Como o bem é identificado. A série ajuda a diferenciar bens iguais.</td></tr>
+    <tr><td>Data e valor de aquisição</td><td>Quando e por quanto o bem foi comprado. É a base da depreciação.</td></tr>
+    <tr><td>Valor residual</td><td>O que se espera que o bem valha no fim da vida útil. Pode ser zero.</td></tr>
+    <tr><td>Vida útil (meses)</td><td>Por quantos meses o bem é depreciado.</td></tr>
+  </table>
+  <p>O código (PAT-0001, PAT-0002…) é dado automaticamente.</p>
+  <h2>Depreciação</h2>
+  <p>A depreciação é linear: (valor de aquisição − valor residual) dividido pela vida útil, por mês. A tela mostra a depreciação mensal, a acumulada até hoje (com os meses já usados) e o valor contábil (o que ainda resta do bem). Um bem depreciado por completo mostra o valor residual.</p>
+  <div class="tela"><div class="rot">Suprimentos › Ferramentas e equipamentos · PAT-0001</div>Aquisição: 15/03/2026 · R$ 3.600,00 &nbsp;&nbsp; Vida útil: 36 meses (residual R$ 0,00)<br>Depreciação mensal: R$ 100,00 &nbsp;&nbsp; Acumulada: R$ 700,00 (7 de 36 meses) &nbsp;&nbsp; Valor contábil: R$ 2.900,00</div>
+  <div class="nota"><b>Lançamento contábil</b>Por enquanto, a depreciação aparece na tela, mas não gera lançamento no financeiro. Se for preciso lançar a depreciação no centro de custo da obra, peça o ajuste ao suporte técnico.</div>
+</section>
+
+<section class="cap">
+  <h1>6 Ferramentas e equipamentos (continuação)</h1>
+  <h2>Retirada e devolução</h2>
+  <p>O almoxarife, o engenheiro de obra e o dono registram a retirada e a devolução. Quem não é dono só registra para as obras atribuídas a ele.</p>
+  <ol class="passos">
+    <li><span><b>Retirar.</b> Abra o bem (ou leia a etiqueta com o botão <b>Ler QR</b>), escolha a obra, informe quem está retirando e registre. O bem passa a estar em uso naquela obra.</span></li>
+    <li><span><b>Devolver.</b> Abra o bem em uso, escolha o estado (Bom, disponível, ou Precisa de manutenção) e registre. O bem volta para o estoque de ferramentas ou vai para manutenção.</span></li>
+  </ol>
+  <h2>Situação do bem</h2>
+  <table>
+    <tr><th>Situação</th><th>Significado</th><th>Quem muda</th></tr>
+    <tr><td>Disponível</td><td>Pode ser retirado.</td><td>Dono, gestor, ou ao devolver em bom estado</td></tr>
+    <tr><td>Em uso</td><td>Está numa obra, com um responsável.</td><td>Quem registra a retirada</td></tr>
+    <tr><td>Em manutenção</td><td>Não pode ser retirado até voltar.</td><td>Dono, gestor, ou ao devolver com defeito</td></tr>
+    <tr><td>Baixado</td><td>Saiu do patrimônio (perda, venda ou descarte). Fica no histórico.</td><td>Dono e gestor</td></tr>
+  </table>
+  <p>Um bem em uso não muda de situação pelo cadastro: devolva antes. Cada retirada e devolução fica no histórico do bem, com a obra, quem retirou, o estado, a data, a observação e quem registrou.</p>
+  <h2>Etiqueta QR do bem</h2>
+  <p>Cada bem tem o seu QR, que não muda. Ele aparece na tela do bem. Para imprimir, clique em <b>Imprimir etiquetas</b> na tela de ferramentas e equipamentos: a folha A4 traz 24 etiquetas (3 × 8, 70 × 37 mm) com código, nome, marca e série. Bens baixados não entram na impressão.</p>
+  <div class="nota"><b>A etiqueta não tem obra nem responsável</b>Esses dados mudam a cada retirada, então ficam só no cadastro. Por isso, a etiqueta não precisa ser reimpressa quando o bem muda de obra.</div>
+</section>
+
+<!-- 7 MEDIÇÕES -->
+<section class="cap">
+  <h1>7 Medições e pagamentos</h1>
+  <p class="intro">A medição registra o que foi executado no período. Aprovada a medição, a autorização de pagamento calcula o valor líquido a pagar.</p>
+  <h2>Nova medição</h2>
+  <ol class="passos">
+    <li><span>Escolha o contrato, o período medido e a data da medição.</span></li>
+    <li><span>Escolha como medir. Em contrato por itens, use Quantitativos (quantidade executada de cada serviço) ou % do contratado (um percentual aplicado a todos os serviços). Em contrato global, informe o valor ou o percentual.</span></li>
+    <li><span>Se houver valores a deduzir do pagamento ao terceiro, informe-os em Descontos: adiantamento, alimentação, EPI e outros. Cada desconto tem descrição e valor.</span></li>
+    <li><span>Salve e envie para aprovação.</span></li>
+  </ol>
+  <div class="tela"><div class="rot">Suprimentos › Medições › Nova medição</div>Medir por: % do contratado &nbsp;&nbsp; Percentual executado: 25 %<br>Escavação vertical &nbsp; Contratado 120 m³ &nbsp; Executado 30 m³<br>Armação de laje &nbsp; Contratado 800 kg &nbsp; Executado 200 kg<br>Descontos: Adiantamento · R$ 1.500,00 &nbsp; Alimentação · R$ 320,00</div>
+  <h2>Aprovação</h2>
+  <p>A medição enviada entra na fila de aprovações (Gerencial › Aprovações). Quem tem alçada aprova. Confira quantidades, percentuais e descontos antes de enviar.</p>
+  <h2>Autorização de pagamento</h2>
+  <p>A partir da medição, gere a autorização. As retenções do contrato são calculadas e os descontos da medição também saem do valor pago:</p>
+  <table>
+    <tr><td>Valor bruto da medição</td></tr>
+    <tr><td>(−) retenções do contrato (caução, ISS, INSS, IR, PIS/COFINS/CSLL)</td></tr>
+    <tr><td>(−) descontos (adiantamento, alimentação, EPI)</td></tr>
+    <tr><td><b>= líquido a pagar</b>, que vai para a conta a pagar.</td></tr>
+  </table>
+  <p>Autorizações dentro do valor de dispensa são aprovadas automaticamente; as demais seguem para a fila de aprovações. A caução é liberada ao encerrar o contrato, também por autorização.</p>
+</section>
+
+<!-- 8 PROPOSTAS -->
+<section class="cap">
+  <h1>8 Propostas e contratos</h1>
+  <p class="intro">A proposta é o preço apresentado ao cliente. Aceita, ela gera o contrato e os lançamentos a receber.</p>
+  <h2>Os cinco tipos</h2>
+  <table>
+    <tr><th>Tipo</th><th>Quando usar</th><th>Como é cobrado</th></tr>
+    <tr><td>Acompanhamento de obra</td><td>Acompanhar a execução para o cliente</td><td>Honorário mensal fixo, ou percentual do valor da obra dividido pelos meses</td></tr>
+    <tr><td>Administração de obra</td><td>Administrar a obra em nome do cliente</td><td>Taxa sobre o custo direto ou sobre o valor da obra, em parcelas mensais</td></tr>
+    <tr><td>Contrato de preço global</td><td>Executar a obra inteira por valor fechado</td><td>Marcos de pagamento; os percentuais somam 100%</td></tr>
+    <tr><td>Contrato de preços unitários</td><td>Executar serviços medidos por quantidade</td><td>Quantidades estimadas × preço unitário; o total é parcelado em meses</td></tr>
+    <tr><td>Laudos técnicos</td><td>Emitir laudos avulsos</td><td>Entrada na aceitação e saldo na entrega dos laudos</td></tr>
+  </table>
+  <h2>Origem do preço</h2>
+  <p>Em Puxar do orçamento da obra, os valores vêm da obra: valor da obra (custo direto com BDI), custo direto e preço de cada serviço. Em Informar valores, você digita. Laudos técnicos sempre usam valores informados.</p>
+  <h2>Como gerar uma proposta</h2>
+  <ol class="passos">
+    <li><span>Abra Comercial › Propostas e clique em Nova proposta.</span></li>
+    <li><span>Escolha o tipo, o cliente e a obra. Para usar o orçamento, a obra é obrigatória.</span></li>
+    <li><span>Escolha a origem do preço e preencha os campos do tipo.</span></li>
+    <li><span>Confira a prévia do cálculo à direita: valor total e cronograma de recebimento.</span></li>
+    <li><span>Salve o rascunho, que pode ser editado até ser enviado.</span></li>
+  </ol>
+  <h2>Situação da proposta</h2>
+  <table>
+    <tr><th>Situação</th><th>O que significa</th><th>Quem pode</th></tr>
+    <tr><td>Rascunho</td><td>Em preparo. Pode ser editada.</td><td>Quem cria a proposta</td></tr>
+    <tr><td>Enviada</td><td>Entregue ao cliente, aguardando resposta.</td><td>Quem cria a proposta</td></tr>
+    <tr><td>Aceita</td><td>O cliente aceitou. Gera o contrato e os lançamentos a receber.</td><td>Dono e gestor</td></tr>
+    <tr><td>Recusada</td><td>O cliente recusou.</td><td>Dono e gestor</td></tr>
+    <tr><td>Cancelada</td><td>Retirada antes da aceitação.</td><td>Quem cria a proposta</td></tr>
+  </table>
+  <h2>Obra da proposta <span class="novo">novo</span></h2>
+  <p>A obra criada para uma proposta fica Em orçamento, e o centro de custo dela fica inativo. Assim ela não polui os relatórios financeiros.</p>
+  <ul>
+    <li><b>Proposta aceita.</b> A obra passa para Planejamento e o centro de custo fica ativo.</li>
+    <li><b>Proposta recusada ou cancelada.</b> A obra é arquivada: sai das listas de obras, mas os dados ficam guardados e o centro de custo é inativado.</li>
+  </ul>
+  <h2>Aceitação: contrato e contas a receber</h2>
+  <p>Ao registrar a aceitação, o sistema cria o contrato, o lançamento a receber com as parcelas do cronograma e a receita no centro de custo da obra. Se algo falhar, nada é gravado. Uma proposta aceita não volta a rascunho: confira valores, parcelas e o cliente antes.</p>
+  
+</section>
+
+<!-- 9 FINANCEIRO -->
+<section class="cap">
+  <h1>9 Financeiro</h1>
+  <p class="intro">O financeiro guarda o que a empresa deve, o que vai receber, o dinheiro nas contas e a classificação de cada despesa.</p>
+  <h2>Plano de contas</h2>
+  <p>O plano de contas organiza receitas e despesas em categorias e contas. A categoria aparece junto da conta, por exemplo 3 · Despesas › 3.7 · Serviços terceirizados. Só as contas que aceitam lançamento podem ser escolhidas nos documentos.</p>
+  <h2>Lançamentos e contas a pagar e a receber</h2>
+  <p>Cada despesa ou receita gera um lançamento, com categoria, centro de custo, obra e competência. Os lançamentos podem ser parcelados. Para dar baixa numa parcela, informe a data do pagamento e a conta bancária.</p>
+  <h2>Despesa a partir de um pedido de compra <span class="novo">novo</span></h2>
+  <p>Ao lançar uma despesa avulsa, escolha <b>Preencher pelo pedido de compra aprovado</b>. A lista traz os pedidos aprovados que ainda não viraram despesa. Ao escolher um pedido:</p>
+  <ul>
+    <li>o fornecedor, a descrição e o valor total (com frete) vêm do pedido;</li>
+    <li>o pedido fica ligado à despesa e sai da lista de pedidos disponíveis;</li>
+    <li>se o pedido tiver material de estoque, os itens de estoque vêm preenchidos com a obra, o insumo da obra, a etapa e a descrição da solicitação de origem. Quantidade, unidade e valor são os comprados.</li>
+  </ul>
+  <div class="nota"><b>Não duplique a despesa</b>Um pedido com despesa lançada, ou com nota já lançada, não aparece de novo na lista. Para liberar o pedido, cancele o lançamento.</div>
+  <h2>Entrada no estoque pela despesa</h2>
+  <p>Em uma despesa avulsa, marque <b>Esta compra dá entrada no estoque da construtora</b> e preencha os itens, como numa nota. Cada item gera a sua etiqueta QR. Se o lançamento for cancelado, as entradas saem do estoque.</p>
+  <h2>Ler a foto ou o PDF do documento <span class="novo">novo</span></h2>
+  <p>No formulário de despesa ou receita, clique em <b>Preencher pela foto ou PDF</b> e escolha a nota, o boleto, a fatura ou o recibo (até 10 MB). O sistema preenche:</p>
+  <ul>
+    <li>descrição, documento, data, valor e vencimento da parcela única ou da primeira;</li>
+    <li>o fornecedor ou cliente, encontrado pelo CNPJ ou CPF nos cadastros.</li>
+  </ul>
+  <p>Nada é salvo na leitura: confira e salve. Se a pessoa não estiver cadastrada, o sistema avisa. Com várias parcelas, ajuste o parcelamento. A categoria você escolhe.</p>
+  <h2>Permuta como forma de pagamento <span class="novo">novo</span></h2>
+  <p>Permuta é uma forma de pagamento disponível em parcelas, vendas, autorizações de pagamento, notas, contratos e propostas, junto com PIX, boleto, transferência, cartão, dinheiro, cheque e débito automático. Escolha Permuta quando o pagamento for feito com um bem ou direito, e não com dinheiro.</p>
+  <h2>Bancos, caixa e conciliação (OFX)</h2>
+  <p>Cadastre cada conta e o caixa; os saldos têm acesso restrito. Para conciliar, baixe o extrato OFX no internet banking, importe em Financeiro › Conciliação OFX, escolha a conta e concilie cada linha, ou marque como ignorada (tarifas, por exemplo). Faça isso pelo menos uma vez por semana.</p>
+</section>
+
+<!-- 10 GERENCIAL -->
+<section class="cap">
+  <h1>10 Gerencial</h1>
+  <p class="intro">Os números da empresa para decidir: resultado, caixa, andamento das obras e o que está esperando aprovação.</p>
+  <table>
+    <tr><th>Submenu</th><th>Telas em abas</th></tr>
+    <tr><td>Gerencial Financeiro</td><td>DRE gerencial e Fluxo de caixa</td></tr>
+    <tr><td>Gerencial Obras</td><td>Acompanhamento de obra (Curva S, SPI e CPI) e Produção por equipe</td></tr>
+    <tr><td>Gerencial Administrativo</td><td>Indicadores</td></tr>
+  </table>
+  <p>Fora dos submenus ficam Relatórios gerais, Autorizações de pagamento e Aprovações.</p>
+  <h2>DRE e fluxo de caixa</h2>
+  <p>O DRE mostra receitas, custos e despesas por período, com as linhas do plano de contas. O custo das obras aparece como (−) Custo de produção de obras. O fluxo de caixa mostra entradas e saídas, e tem acesso restrito.</p>
+  <h2>Acompanhamento de obra e Curva S</h2>
+  <p>Mostra, por obra, o previsto, o executado e o realizado mês a mês, com SPI e CPI. Use na reunião mensal de obra para ver se cronograma e custo estão no caminho.</p>
+  <h2>Indicadores</h2>
+  <p>Resumo da empresa: obras em andamento, medições pendentes, contratos e autorizações aguardando aprovação.</p>
+  <h2>Aprovações</h2>
+  <p>A fila reúne o que está esperando aprovação, como pedidos, contratos, medições e autorizações de pagamento.</p>
+  <table>
+    <tr><th>Regra</th><th>Como funciona</th></tr>
+    <tr><td>Padrão</td><td>O dono aprova todos os valores.</td></tr>
+    <tr><td>Alçada de administradores</td><td>Administradores aprovam até o valor definido. Acima dele, só o dono.</td></tr>
+    <tr><td>Dispensa</td><td>Valores até o limite de dispensa são aprovados automaticamente.</td></tr>
+  </table>
+</section>
+
+<!-- 11 ADMINISTRATIVO -->
+<section class="cap">
+  <h1>11 Administrativo</h1>
+  <p class="intro">Os cadastros que alimentam os documentos: quem vende para a empresa, quem recebe dela, quem financia e quem trabalha nas obras.</p>
+  <div class="grade">
+    <div><b>Clientes</b>Quem compra da construtora. Nome, documento, endereço e contato.</div>
+    <div><b>Fornecedores</b>Quem vende materiais ou presta serviços. Usado nas cotações, pedidos e contratos.</div>
+    <div><b>Credores</b>Quem recebe pagamentos que não são compras, como bancos, financiamentos e impostos.</div>
+    <div><b>Colaboradores</b>Funcionários e operadores, com cargo, função e documentos.</div>
+  </div>
+  <h2>Preencher pela foto ou PDF</h2>
+  <p>Em clientes, fornecedores, credores e colaboradores, o botão Preencher pela foto ou PDF lê o documento (cartão de CNPJ, contrato social, CNH e outros) e preenche o formulário.</p>
+  <ol class="passos">
+    <li><span>Clique em Preencher pela foto ou PDF e escolha o arquivo (PDF ou foto, de até 10 MB).</span></li>
+    <li><span>Confira os campos preenchidos antes de salvar.</span></li>
+    <li><span>Salve pelo próprio formulário. Nada é gravado enquanto você não salvar.</span></li>
+  </ol>
+  <div class="alerta"><b>Sempre confira</b>A leitura automática ajuda, mas quem salva é responsável pelo cadastro. Confira CNPJ, CPF, chave PIX e número da CNH.</div>
+</section>
+
+<!-- 12 CONFIGURAÇÕES -->
+<section class="cap">
+  <h1>12 Configurações</h1>
+  <p class="intro">Dados da empresa, pessoas e acessos, backup e exportação.</p>
+  <h2>Manual de operação</h2>
+  <p>Em Configurações › Manual de operação, baixe o PDF deste manual para consulta.</p>
+  <h2>Comercial do sistema (somente administrador)</h2>
+  <p>Em Comercial (só o administrador do sistema): proposta, preços, contrato, material e Interessados, com os cadastros do QR code de cada material.</p>
+  <h2>Empresa</h2>
+  <p>Razão social, nome fantasia, CNPJ, endereço, logo e dados que saem nos documentos impressos.</p>
+  <h2>Usuários e acessos</h2>
+  <p>Cadastre cada pessoa com um perfil, ajuste os módulos e defina quem é administrador. Para o almoxarife e o engenheiro de obra, as obras são definidas no cadastro da obra (capítulo 3).</p>
+  <h2>Minha conta e mural de avisos</h2>
+  <p>Em Minha conta, cada pessoa troca a própria senha. O Mural de avisos serve para recados à equipe.</p>
+  <h2>Backup da empresa (dono)</h2>
+  <p>Na seção Backup da empresa, em Configurações › Empresa, o dono guarda uma cópia de todos os dados da construtora, com a data do momento. Clique em Fazer backup agora. Os backups ficam listados e podem ser baixados por 30 dias. Para restaurar um backup, é preciso apoio técnico.</p>
+  <h2>Exportação de dados</h2>
+  <p>O botão Baixar exportação (.zip), na mesma tela, gera um arquivo com os dados da empresa para consulta.</p>
+  <div class="alerta"><b>Backup e exportação não são a mesma coisa</b>O backup serve para restaurar a empresa. A exportação serve para consulta e não restaura o sistema.</div>
+</section>
+
+<!-- 13 ROTINAS -->
+<section class="cap">
+  <h1>13 Rotinas recomendadas</h1>
+  <p class="intro">Poucos minutos por dia e uma reunião curta por semana mantêm os números em dia.</p>
+  <table>
+    <tr><th>Quando</th><th>O que fazer</th><th>Quem</th></tr>
+    <tr><td>Todo dia</td><td>Confira a fila de aprovações. Registre as solicitações, os pedidos e as notas fiscais recebidas. Ligue cada nota ao pedido e confira as divergências antes de confirmar.</td><td>Compras, almoxarife, gestor, dono</td></tr>
+    <tr><td>Toda vez que houver entrada</td><td>Imprima a etiqueta QR de cada entrada e cole no material antes de guardá-lo.</td><td>Almoxarife</td></tr>
+    <tr><td>Toda vez que houver retirada</td><td>Registre a retirada e a devolução de ferramentas e equipamentos, com a obra e quem retirou.</td><td>Almoxarife, engenheiro, dono</td></tr>
+    <tr><td>Toda semana</td><td>Concilie o extrato OFX. Registre a medição física das obras e confira o saldo a contratar das solicitações de serviço.</td><td>Financeiro, engenharia</td></tr>
+    <tr><td>Todo mês</td><td>Faça as medições de cada contrato e gere as autorizações de pagamento. Confira a Curva S e o DRE. Confira a depreciação dos bens. Faça um backup da empresa.</td><td>Engenharia, administrativo, dono</td></tr>
+    <tr><td>Ao encerrar contrato</td><td>Confirme as medições e a liberação da caução.</td><td>Engenharia, dono</td></tr>
+  </table>
+  <div class="nota"><b>Reunião de obra</b>Uma vez por semana, abra o acompanhamento de cada obra: o SPI mostra o atraso do cronograma e o CPI mostra se o gasto está dentro do executado.</div>
+</section>
+
+<!-- 14 DÚVIDAS E GLOSSÁRIO -->
+<section class="cap">
+  <h1>14 Dúvidas frequentes</h1>
+  <p class="intro">Problemas comuns e como resolver.</p>
+  <table>
+    <tr><th>O que acontece</th><th>O que fazer</th></tr>
+    <tr><td>A medição não aceita a quantidade.</td><td>A quantidade passa do saldo do contrato. Confira a quantidade executada. Se o contrato precisa de mais quantidade, faça um aditivo antes.</td></tr>
+    <tr><td>A solicitação de serviço não mostra o serviço.</td><td>Escolha a obra primeiro. Os serviços listados são os do orçamento da obra. Se o serviço não aparece, cadastre-o no orçamento.</td></tr>
+    <tr><td>A Curva S não mostra meses ou não atualiza.</td><td>Verifique se o planejamento tem atividades ligadas à EAP. A curva vai até o mês de hoje.</td></tr>
+    <tr><td>O desconto não aparece no pagamento.</td><td>Os descontos são somados quando a autorização é gerada. Confira os descontos na medição antes de gerar a autorização.</td></tr>
+    <tr><td>A nota não é confirmada e mostra divergência com o pedido.</td><td>Leia a mensagem: ela aponta o item, o valor da nota e o valor do pedido. Corrija a ligação dos itens ou a quantidade recebida e confirme de novo.</td></tr>
+    <tr><td>O pedido não aparece para o almoxarife.</td><td>Ele só vê pedidos aprovados (ou já enviados, recebidos e encerrados) com itens de obras atribuídas a ele. Confira em Engenharia › Obras se ele está marcado como responsável.</td></tr>
+    <tr><td>A despesa não mostra o pedido.</td><td>O pedido precisa estar aprovado e sem despesa ou nota lançada. Se já tem um lançamento, cancele-o antes.</td></tr>
+    <tr><td>Uma entrada não gerou etiqueta.</td><td>Confira se o item tem obra, insumo da obra e etapa da EAP. Sem isso, o item não entra no estoque e não gera etiqueta.</td></tr>
+    <tr><td>O bem não pode ser retirado.</td><td>Ele pode estar em uso numa obra ou em manutenção. Devolva antes ou peça ao dono para mudar a situação.</td></tr>
+    <tr><td>A leitura por foto ou PDF não funciona.</td><td>Confira se o arquivo é PDF ou foto e tem até 10 MB. Se a mensagem disser que a leitura não está configurada, procure o suporte.</td></tr>
+    <tr><td>Não consigo ver saldos ou o fluxo de caixa.</td><td>Esses dados têm acesso restrito. Peça ao dono para ajustar os módulos.</td></tr>
+    <tr><td>Preciso restaurar o backup da empresa.</td><td>A restauração é feita com apoio técnico. Informe a data do backup que deseja restaurar.</td></tr>
+  </table>
+</section>
+
+<section class="cap">
+  <h1>14 Glossário</h1>
+  <p class="intro">Os termos usados no sistema.</p>
+  <table>
+    <tr><th>Termo</th><th>Significado</th></tr>
+    <tr><td>Alçada</td><td>Até qual valor uma pessoa pode aprovar um pedido, contrato, medição ou autorização.</td></tr>
+    <tr><td>Autorização de pagamento</td><td>Documento que transforma uma medição em pagamento: bruto, retenções, descontos e líquido.</td></tr>
+    <tr><td>Caução</td><td>Parte de cada medição retida como garantia, que pode ser liberada ao encerrar o contrato.</td></tr>
+    <tr><td>Categoria</td><td>Grupo do plano de contas (por exemplo, 3.7 Serviços terceirizados).</td></tr>
+    <tr><td>Centro de custo</td><td>Onde a despesa é apropriada, normalmente a obra.</td></tr>
+    <tr><td>Cotação</td><td>Pedido de preços enviado a fornecedores, com o mapa para comparar as respostas.</td></tr>
+    <tr><td>CPI</td><td>Executado dividido pelo realizado. Abaixo de 1, o gasto está acima do executado.</td></tr>
+    <tr><td>Curva S</td><td>Gráfico mensal de previsto, executado e realizado da obra.</td></tr>
+    <tr><td>Depreciação linear</td><td>Redução do valor de um bem por igual a cada mês, durante a vida útil.</td></tr>
+    <tr><td>Descontos</td><td>Valores deduzidos do pagamento ao terceiro (adiantamento, alimentação, EPI).</td></tr>
+    <tr><td>Divergência</td><td>Diferença entre a nota fiscal e o pedido de compra (item, quantidade ou preço). Bloqueia a confirmação da nota.</td></tr>
+    <tr><td>EAP</td><td>Estrutura analítica da obra: etapas, subetapas e tarefas onde o orçamento é lançado.</td></tr>
+    <tr><td>Etiqueta QR</td><td>Etiqueta com código de barras em QR, fixa para cada entrada de estoque e para cada bem do patrimônio.</td></tr>
+    <tr><td>Frete CIF</td><td>Frete incluso no preço do fornecedor; não aparece separado no pedido.</td></tr>
+    <tr><td>Medição</td><td>Registro do que foi executado num período, por quantitativos, percentual ou valor.</td></tr>
+    <tr><td>Orçado</td><td>Quantidade ou custo previsto no orçamento da obra.</td></tr>
+    <tr><td>Patrimônio</td><td>Ferramentas e equipamentos próprios da construtora, cadastrados com valor e vida útil.</td></tr>
+    <tr><td>Pedido de compra</td><td>Compra aprovada com um fornecedor, gerada a partir da cotação. Vale para o recebimento e a despesa.</td></tr>
+    <tr><td>Retenções</td><td>Percentuais descontados de cada pagamento: caução, ISS, INSS, IR e PIS/COFINS/CSLL.</td></tr>
+    <tr><td>Saldo a contratar</td><td>Orçado menos o já contratado e o já medido de um serviço na obra.</td></tr>
+    <tr><td>SPI</td><td>Executado dividido pelo previsto. Abaixo de 1, a obra está atrasada.</td></tr>
+    <tr><td>Valor contábil</td><td>O que ainda resta de um bem depois da depreciação acumulada.</td></tr>
+  </table>
+</section>
+
+</body>
+</html>
