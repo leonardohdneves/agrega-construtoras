@@ -546,9 +546,9 @@ export type LancamentoResumo = {
   valorAberto: number;
   proximoVencimento: string | null;
 };
-export type FormaPagamento = 'pix' | 'boleto' | 'transferencia' | 'cartao' | 'dinheiro' | 'cheque' | 'debito_automatico';
+export type FormaPagamento = 'pix' | 'boleto' | 'transferencia' | 'cartao' | 'dinheiro' | 'cheque' | 'debito_automatico' | 'permuta';
 export const NOMES_FORMA: Record<FormaPagamento, string> = {
-  pix: 'PIX', boleto: 'Boleto', transferencia: 'Transferência', cartao: 'Cartão', dinheiro: 'Dinheiro', cheque: 'Cheque', debito_automatico: 'Débito automático',
+  pix: 'PIX', boleto: 'Boleto', transferencia: 'Transferência', cartao: 'Cartão', dinheiro: 'Dinheiro', cheque: 'Cheque', debito_automatico: 'Débito automático', permuta: 'Permuta',
 };
 export const NOMES_TIPO_CONTA: Record<ContaFinanceira['tipo'], string> = { banco: 'Conta bancária', caixa: 'Caixa', cartao: 'Cartão de crédito', aplicacao: 'Aplicação' };
 export const NOMES_LINHA_DRE: Record<LinhaDre, string> = {

@@ -34,7 +34,7 @@ const decimal = (msg: string) =>
   });
 const naoNegativo = (msg: string) => decimal(msg).refine((n) => n >= 0, msg);
 const positivo = (msg: string) => decimal(msg).refine((n) => n > 0, msg);
-const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico'] as const;
+const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico', 'permuta'] as const;
 const usuarioDe = (req: FastifyRequest) => req.usuario!;
 const pctNum = (v: unknown) => Number(v ?? 0);
 /** Medições que contam no saldo do contrato (as que não foram reprovadas nem canceladas). */
