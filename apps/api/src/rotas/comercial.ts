@@ -25,9 +25,9 @@ const decimal = (msg: string) =>
     return n;
   });
 
-export const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico'] as const;
+export const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico', 'permuta'] as const;
 export const TIPOS_ADICIONAL = ['feriado', 'hora_excedente', 'equipamento_parado', 'volume_minimo', 'outro'] as const;
-const NOMES_FORMA: Record<string, string> = { pix: 'PIX', boleto: 'boleto', transferencia: 'transferência', cartao: 'cartão', dinheiro: 'dinheiro', cheque: 'cheque', debito_automatico: 'débito automático' };
+const NOMES_FORMA: Record<string, string> = { pix: 'PIX', boleto: 'boleto', transferencia: 'transferência', cartao: 'cartão', dinheiro: 'dinheiro', cheque: 'cheque', debito_automatico: 'débito automático', permuta: 'permuta' };
 
 /** "28 dias no boleto", "30/60 dias no boleto", "À vista no PIX". */
 export function textoCondicao(forma: string | null, prazos: number[] | null): string | null {

@@ -30,7 +30,7 @@ const textoOpc = (max = 200) => z.string().trim().max(max).optional().nullable()
 const MODELOS = ['nfe', 'nfce', 'nfse', 'cte', 'cupom', 'recibo', 'outro'] as const;
 /** Origens em que os dados fiscais e os itens podem ser corrigidos à mão. */
 const DIGITAVEL = new Set(['manual', 'pdf', 'chave']);
-const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico'] as const;
+const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico', 'permuta'] as const;
 
 const esquemaDuplicata = z.object({ numero: textoOpc(30), vencimento: dataObrig('Vencimento inválido.'), valor: dinheiro('o valor da parcela') });
 

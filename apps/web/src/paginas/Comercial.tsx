@@ -65,7 +65,7 @@ type Dados = {
   observacoes: string;
 };
 
-const FORMAS: [string, string][] = [['boleto', 'Boleto'], ['pix', 'PIX'], ['transferencia', 'Transferência'], ['cartao', 'Cartão'], ['dinheiro', 'Dinheiro'], ['cheque', 'Cheque']];
+const FORMAS: [string, string][] = [['boleto', 'Boleto'], ['pix', 'PIX'], ['transferencia', 'Transferência'], ['cartao', 'Cartão'], ['dinheiro', 'Dinheiro'], ['cheque', 'Cheque'], ['permuta', 'Permuta']];
 const PRAZOS_RAPIDOS: [string, string][] = [['0', 'À vista'], ['28', '28 dias'], ['30/60', '30/60'], ['30/60/90', '30/60/90']];
 /** "30/60" → [30, 60]; "à vista" ou "0" → [0]. */
 export function lerPrazos(t: string): number[] | null {

@@ -54,7 +54,7 @@ export const dinheiro = (campo: string, { positivo = true } = {}) =>
 const dataObrig = (msg: string) => z.string({ required_error: msg }).regex(/^\d{4}-\d{2}-\d{2}$/, msg);
 const textoOpc = (max = 200) => z.string().trim().max(max).optional().nullable().transform((v) => v || null);
 const uuidOpc = z.union([z.string().uuid(), z.literal(''), z.null()]).optional().transform((v) => v || null);
-const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico'] as const;
+const FORMAS = ['pix', 'boleto', 'transferencia', 'cartao', 'dinheiro', 'cheque', 'debito_automatico', 'permuta'] as const;
 const formaOpc = z.union([z.enum(FORMAS), z.literal(''), z.null()]).optional().transform((v) => v || null);
 const LINHAS = [
   'receita_bruta', 'deducoes', 'custo_producao', 'custo_frota', 'custo_pessoal', 'despesas_pessoal', 'despesas_administrativas',
