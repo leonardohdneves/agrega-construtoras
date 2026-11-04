@@ -145,7 +145,6 @@ export function preencherProposta(
   remetente: Remetente,
   data: string,
   condicoes: Condicoes = CONDICOES_PADRAO,
-  linkAceite: string | null = null,
 ): string {
   const cliente = esc(d.empresa);
   const cnpjCliente = esc(formatarCnpjProposta(d.cnpj) ?? 'a informar');
@@ -160,11 +159,6 @@ export function preencherProposta(
       '[CONTATO COMERCIAL] · [TELEFONE] · [E-MAIL]',
       esc([remetente.nome, remetente.telefone ?? 'telefone a informar', remetente.email ?? 'e-mail a informar'].join(' · ')),
     );
-
-  // Botão de aceite só aparece quando há link (proposta gerada pelo sistema). Sem link, a capa sai sem o botão.
-  html = linkAceite
-    ? html.replace('{{link_aceite}}', esc(linkAceite)).replace(/<!--\/?aceite-->/g, '')
-    : html.replace(/<!--aceite-->[\s\S]*?<!--\/aceite-->\s*/, '');
 
   // Pacote destacado: o modelo traz o Completo destacado; tira-se esse destaque e aplica-se o do pacote indicado.
   // Personalizado e "ainda não sei" não destacam nenhum cartão.
