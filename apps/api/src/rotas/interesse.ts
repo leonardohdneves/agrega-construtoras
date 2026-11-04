@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Banco } from '../db.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
-import { preencherProposta } from '../lib/proposta-interessado.ts';
+import { indicacaoInteressado, preencherProposta } from '../lib/proposta-interessado.ts';
 import { esquemaEmail } from '../esquemas.ts';
 import { exigir } from '../sessao.ts';
 
@@ -91,13 +91,11 @@ export function rotasInteresse(banco: Banco) {
         {
           empresa: i.empresa,
           responsavel: i.responsavel,
-          cidade: i.cidade ?? null,
-          uf: i.uf ? String(i.uf).trim() : null,
-          obrasAtivas: i.obras_ativas ?? null,
-          usuarios: i.usuarios ?? null,
+          cnpj: null,
           pacote: i.pacote,
+          indicacao: indicacaoInteressado(i.pacote, i.obras_ativas ?? null, i.usuarios ?? null),
         },
-        { nome: req.usuario!.nome, email: req.usuario!.email ?? null, telefone: quem.rows[0]?.telefone_whatsapp ?? null },
+        { nome: req.usuario!.nome, email: req.usuario!.email ?? null, telefone: quem.rows[0]?.telefone_whatsapp ?? null, cnpj: null },
         hoje,
       );
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);

@@ -357,6 +357,9 @@ export function AdminEmpresas() {
                     <button className="btn btn-link" type="button" onClick={() => setContrato(editarContrato(e))}>
                       Editar contrato
                     </button>
+                    <button className="btn btn-link" type="button" onClick={() => window.open(`/api/admin/empresas/${e.id}/proposta`, '_blank', 'noopener')}>
+                      Gerar proposta
+                    </button>
                   </td>
                 </tr>
               ))}

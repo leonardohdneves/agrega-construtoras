@@ -12,6 +12,7 @@ import { contratoComBase } from '../lib/modulos.ts';
 import { PACOTES } from '../lib/pacotes.ts';
 import { naoEncontrado } from '../lib/erros.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
+import { indicacaoContrato, preencherProposta } from '../lib/proposta-interessado.ts';
 import { exigir } from '../sessao.ts';
 
 export function rotasAdmin(banco: Banco) {
@@ -62,6 +63,40 @@ export function rotasAdmin(banco: Banco) {
            FROM empresas e WHERE e.excluido_em IS NULL ORDER BY e.razao_social`,
       );
       return { empresas: r.rows.map((e) => ({ ...empresaPublica(e), totalUsuarios: e.total_usuarios })) };
+    });
+
+    // Proposta comercial de uma construtora já cadastrada: pacote e limites do contrato, dono como responsável.
+    app.get<{ Params: { id: string } }>('/empresas/:id/proposta', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) throw naoEncontrado('Empresa');
+      const e = (
+        await banco.query(
+          `SELECT razao_social, nome_fantasia, cnpj, contrato_pacote, limite_obras, limite_usuarios FROM empresas WHERE id = $1 AND excluido_em IS NULL`,
+          [req.params.id],
+        )
+      ).rows[0];
+      if (!e) throw naoEncontrado('Empresa');
+      const dono = (
+        await banco.query(
+          `SELECT nome FROM usuarios WHERE empresa_id = $1 AND perfil = 'dono' AND ativo AND excluido_em IS NULL ORDER BY criado_em LIMIT 1`,
+          [req.params.id],
+        )
+      ).rows[0];
+      const quem = await banco.query('SELECT telefone_whatsapp FROM usuarios WHERE id = $1', [req.usuario!.id]);
+      const modelo = await readFile(path.join(PASTA_MATERIAL, 'proposta-comercial.html'), 'utf8');
+      const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const html = preencherProposta(
+        modelo,
+        {
+          empresa: e.nome_fantasia || e.razao_social,
+          responsavel: dono?.nome ?? null,
+          cnpj: e.cnpj ? String(e.cnpj).trim() : null,
+          pacote: e.contrato_pacote,
+          indicacao: indicacaoContrato(e.contrato_pacote, e.limite_obras ?? null, e.limite_usuarios ?? null),
+        },
+        { nome: req.usuario!.nome, email: req.usuario!.email ?? null, telefone: quem.rows[0]?.telefone_whatsapp ?? null, cnpj: null },
+        hoje,
+      );
+      return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });
 
     // Contrato da construtora: pacote vendido, módulos liberados e limites de obras e usuários.
