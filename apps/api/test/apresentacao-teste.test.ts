@@ -26,3 +26,16 @@ test('não traz preços nem a proposta', () => {
   const html = preencherApresentacao(modelo, { cliente: 'Y', responsavel: null }, 'hoje');
   assert.doesNotMatch(html, /R\$|\/mês|Investimento/);
 });
+
+test('construtora já cadastrada: o botão leva ao login do app', () => {
+  const html = preencherApresentacao(modelo, { cliente: 'Construtora Beta', responsavel: 'Ana', cadastrado: true }, 'hoje');
+  assert.match(html, /href="\/entrar"[^>]*>Entrar no Agrega</);
+  assert.ok(html.includes('Para Construtora Beta, é só entrar com o seu usuário e senha.'));
+  assert.doesNotMatch(html, /href="\/interesse"/);
+});
+
+test('interessado: o botão leva ao cadastro de interessados', () => {
+  const html = preencherApresentacao(modelo, { cliente: 'Gama', responsavel: null }, 'hoje');
+  assert.match(html, /href="\/interesse"[^>]*>Quero o período de testes</);
+  assert.doesNotMatch(html, /\{\{\w+\}\}/);
+});

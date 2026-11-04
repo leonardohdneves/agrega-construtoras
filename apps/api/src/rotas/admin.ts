@@ -75,7 +75,7 @@ export function rotasAdmin(banco: Banco) {
       if (!e) throw naoEncontrado('Empresa');
       const dono = (await banco.query(`SELECT nome FROM usuarios WHERE empresa_id = $1 AND perfil = 'dono' AND ativo AND excluido_em IS NULL ORDER BY criado_em LIMIT 1`, [req.params.id])).rows[0];
       const modelo = await readFile(path.join(PASTA_MATERIAL, 'apresentacao-teste.html'), 'utf8');
-      const html = preencherApresentacao(modelo, { cliente: e.nome_fantasia || e.razao_social, responsavel: dono?.nome ?? null }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
+      const html = preencherApresentacao(modelo, { cliente: e.nome_fantasia || e.razao_social, responsavel: dono?.nome ?? null, cadastrado: true }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });
 
