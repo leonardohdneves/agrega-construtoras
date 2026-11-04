@@ -3,7 +3,17 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { formatarCnpjProposta, indicacaoContrato, indicacaoInteressado, preencherProposta, type PacoteProposta } from '../src/lib/proposta-interessado.ts';
+import {
+  aplicarCondicoes,
+  CONDICOES_PADRAO,
+  formatarCnpjProposta,
+  indicacaoContrato,
+  indicacaoInteressado,
+  lerCondicoes,
+  preencherProposta,
+  type Condicoes,
+  type PacoteProposta,
+} from '../src/lib/proposta-interessado.ts';
 
 const modelo = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'material', 'proposta-comercial.html'), 'utf8');
 const remetente = { nome: 'Leonardo Neves', email: 'comercial@agrega.test', telefone: '(63) 99999-0000', cnpj: null };
@@ -64,6 +74,45 @@ test('indicação da construtora cadastrada usa os limites do contrato', () => {
   assert.equal(indicacaoContrato('completo', 10, 8), 'pacote Completo, com até 10 obra(s) ativa(s) e até 8 usuário(s).');
   assert.equal(indicacaoContrato('personalizado', 15, null), 'pacote personalizado, com os módulos combinados e até 15 obra(s) ativa(s).');
   assert.equal(indicacaoContrato('personalizado', null, null), 'pacote personalizado, com os módulos combinados no contrato.');
+});
+
+test('sem condições informadas, o modelo sai com os valores que estavam fixos', () => {
+  const html = aplicarCondicoes(modelo);
+  assert.doesNotMatch(html, /\{\{\w+\}\}/, 'não pode sobrar marcador de condição');
+  assert.ok(html.includes('R$ 379<small>'));
+  assert.ok(html.includes('R$ 578<small>'));
+  assert.ok(html.includes('R$ 649<small>'));
+  assert.ok(html.includes('R$ 450<small>'));
+  assert.ok(html.includes('2.500 a 6.000'));
+  assert.ok(html.includes('Validade desta proposta: 30 dias'));
+  assert.ok(html.includes('No anual, a mensalidade tem 15% de desconto, com fidelidade de 12 meses.'));
+  assert.ok(html.includes('com aviso de 30 dias'));
+  assert.ok(html.includes('multa de 30% sobre'));
+  assert.ok(html.includes('<b>Teste gratuito</b>15 dias'));
+});
+
+test('condições editadas entram no lugar dos padrões, com milhar em pt-BR', () => {
+  const c: Condicoes = { ...CONDICOES_PADRAO, precoCompleto: 1290, implantacaoMin: 3000, implantacaoMax: 12000, descontoAnual: 20, diasTeste: 30, multaAnual: 50 };
+  const html = aplicarCondicoes(modelo, c);
+  assert.ok(html.includes('R$ 1.290<small>'));
+  assert.ok(html.includes('3.000 a 12.000'));
+  assert.ok(html.includes('mensalidade tem 20% de desconto'));
+  assert.ok(html.includes('<b>Teste gratuito</b>30 dias'));
+  assert.ok(html.includes('multa de 50% sobre'));
+});
+
+test('a indicação continua sendo inserida quando o desconto anual muda', () => {
+  const c: Condicoes = { ...CONDICOES_PADRAO, descontoAnual: 25 };
+  const html = preencherProposta(modelo, dados('completo', 'pacote Completo.'), remetente, 'hoje', c);
+  assert.match(html, /mensalidade tem 25% de desconto[^<]*<\/p>\s*<div class="info"><b>Indicação para Construtora Alfa &amp; Filhos:<\/b>/);
+});
+
+test('lerCondicoes usa o padrão quando o campo não vem e recusa valor inválido', () => {
+  assert.deepEqual(lerCondicoes({}), CONDICOES_PADRAO);
+  assert.equal(lerCondicoes({ diasTeste: '45' }).diasTeste, 45);
+  assert.throws(() => lerCondicoes({ descontoAnual: '150' }), /descontoAnual/);
+  assert.throws(() => lerCondicoes({ validade: 'trinta' }), /validade/);
+  assert.throws(() => lerCondicoes({ implantacaoMin: '9000', implantacaoMax: '3000' }), /mínimo passa do máximo/);
 });
 
 test('texto vindo do cadastro é escapado (sem injeção de HTML)', () => {

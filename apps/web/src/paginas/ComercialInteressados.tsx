@@ -2,6 +2,7 @@
 // Só o administrador do sistema vê esta tela.
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
+import { CondicoesProposta } from '../componentes/CondicoesProposta';
 
 type Interessado = {
   id: string; empresa: string; responsavel: string; email: string; telefone: string; cidade: string | null; uf: string | null;
@@ -30,6 +31,7 @@ export function ComercialInteressados() {
   const [lista, setLista] = useState<Interessado[] | null>(null);
   const [erro, setErro] = useState('');
   const [filtro, setFiltro] = useState<string>('todos');
+  const [propostaDe, setPropostaDe] = useState<Interessado | null>(null);
 
   useEffect(() => {
     api<{ interessados: Interessado[] }>('/interesse')
@@ -70,6 +72,16 @@ export function ComercialInteressados() {
       </div>
 
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {propostaDe && (
+        <CondicoesProposta
+          titulo={`Proposta para ${propostaDe.empresa}`}
+          aoFechar={() => setPropostaDe(null)}
+          aoGerar={(query) => {
+            window.open(`/api/interesse/${propostaDe.id}/proposta?${query}`, '_blank', 'noopener');
+            setPropostaDe(null);
+          }}
+        />
+      )}
       {!lista && !erro && <p className="muted">Carregando…</p>}
 
       {lista && (
@@ -129,7 +141,7 @@ export function ComercialInteressados() {
                       <td className="small">{i.obrasAtivas ?? '—'} / {i.usuarios ?? '—'}</td>
                       <td>{NOMES_PACOTE[i.pacote] ?? i.pacote}</td>
                       <td className="small">{nomeOrigem(i.origem)}</td>
-                      <td><button className="btn btn-link small" type="button" onClick={() => window.open(`/api/interesse/${i.id}/proposta`, '_blank', 'noopener')}>Gerar proposta</button></td>
+                      <td><button className="btn btn-link small" type="button" onClick={() => setPropostaDe(i)}>Gerar proposta</button></td>
                     </tr>
                   ))}
                 </tbody>

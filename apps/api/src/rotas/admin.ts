@@ -10,9 +10,9 @@ import { esquemaContrato, esquemaNovaEmpresa } from '../esquemas.ts';
 import { empresaPublica } from '../formatos.ts';
 import { contratoComBase } from '../lib/modulos.ts';
 import { PACOTES } from '../lib/pacotes.ts';
-import { naoEncontrado } from '../lib/erros.ts';
+import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
-import { indicacaoContrato, preencherProposta } from '../lib/proposta-interessado.ts';
+import { aplicarCondicoes, CONDICOES_PADRAO, indicacaoContrato, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
 import { exigir } from '../sessao.ts';
 
 export function rotasAdmin(banco: Banco) {
@@ -33,7 +33,9 @@ export function rotasAdmin(banco: Banco) {
     app.get<{ Params: { arquivo: string } }>('/material/:arquivo', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
       const tipo = MATERIAIS[req.params.arquivo];
       if (!tipo) throw naoEncontrado('Material');
-      const conteudo = await readFile(path.join(PASTA_MATERIAL, req.params.arquivo));
+      const bruto = await readFile(path.join(PASTA_MATERIAL, req.params.arquivo));
+      // O modelo de proposta leva marcadores de condição: sem parâmetros, sai com os valores padrão.
+      const conteudo = req.params.arquivo === 'proposta-comercial.html' ? Buffer.from(aplicarCondicoes(bruto.toString('utf8'))) : bruto;
       return reply
         .header('Content-Type', tipo)
         .header('Cache-Control', 'private, no-store')
@@ -65,9 +67,18 @@ export function rotasAdmin(banco: Banco) {
       return { empresas: r.rows.map((e) => ({ ...empresaPublica(e), totalUsuarios: e.total_usuarios })) };
     });
 
+    // Condições padrão da proposta: o painel usa para preencher o formulário de condições.
+    app.get('/proposta/condicoes', { preHandler: exigir(banco, 'admin_sistema') }, async () => ({ padrao: CONDICOES_PADRAO }));
+
     // Proposta comercial de uma construtora já cadastrada: pacote e limites do contrato, dono como responsável.
     app.get<{ Params: { id: string } }>('/empresas/:id/proposta', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) throw naoEncontrado('Empresa');
+      let condicoes;
+      try {
+        condicoes = lerCondicoes(req.query as Record<string, unknown>);
+      } catch (err) {
+        throw new ErroHttp(400, (err as Error).message);
+      }
       const e = (
         await banco.query(
           `SELECT razao_social, nome_fantasia, cnpj, contrato_pacote, limite_obras, limite_usuarios FROM empresas WHERE id = $1 AND excluido_em IS NULL`,
@@ -95,6 +106,7 @@ export function rotasAdmin(banco: Banco) {
         },
         { nome: req.usuario!.nome, email: req.usuario!.email ?? null, telefone: quem.rows[0]?.telefone_whatsapp ?? null, cnpj: null },
         hoje,
+        condicoes,
       );
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });

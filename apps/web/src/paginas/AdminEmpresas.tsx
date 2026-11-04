@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { api, formatarCnpj, type Empresa, type PacoteContrato } from '../api';
+import { CondicoesProposta } from '../componentes/CondicoesProposta';
 
 type Nova = {
   razaoSocial: string;
@@ -172,6 +173,7 @@ export function AdminEmpresas() {
   const [aviso, setAviso] = useState('');
   const [salvando, setSalvando] = useState(false);
   const [contrato, setContrato] = useState<EdicaoContrato | null>(null);
+  const [propostaDe, setPropostaDe] = useState<Empresa | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -309,6 +311,17 @@ export function AdminEmpresas() {
         </form>
       )}
 
+      {propostaDe && (
+        <CondicoesProposta
+          titulo={`Proposta para ${propostaDe.nomeFantasia || propostaDe.razaoSocial}`}
+          aoFechar={() => setPropostaDe(null)}
+          aoGerar={(query) => {
+            window.open(`/api/admin/empresas/${propostaDe.id}/proposta?${query}`, '_blank', 'noopener');
+            setPropostaDe(null);
+          }}
+        />
+      )}
+
       {contrato && (
         <ContratoEmpresa
           edicao={contrato}
@@ -357,7 +370,7 @@ export function AdminEmpresas() {
                     <button className="btn btn-link" type="button" onClick={() => setContrato(editarContrato(e))}>
                       Editar contrato
                     </button>
-                    <button className="btn btn-link" type="button" onClick={() => window.open(`/api/admin/empresas/${e.id}/proposta`, '_blank', 'noopener')}>
+                    <button className="btn btn-link" type="button" onClick={() => setPropostaDe(e)}>
                       Gerar proposta
                     </button>
                   </td>
