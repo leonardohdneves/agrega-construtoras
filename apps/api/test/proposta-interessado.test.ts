@@ -78,7 +78,8 @@ test('indicação da construtora cadastrada usa os limites do contrato', () => {
 
 test('sem condições informadas, o modelo sai com os valores que estavam fixos', () => {
   const html = aplicarCondicoes(modelo);
-  assert.doesNotMatch(html, /\{\{\w+\}\}/, 'não pode sobrar marcador de condição');
+  // {{link_aceite}} só é preenchido na geração da proposta, com o link do aceite.
+  assert.doesNotMatch(html, /\{\{(?!link_aceite\})\w+\}\}/, 'não pode sobrar marcador de condição');
   assert.ok(html.includes('R$ 379<small>'));
   assert.ok(html.includes('R$ 578<small>'));
   assert.ok(html.includes('R$ 649<small>'));
@@ -119,4 +120,13 @@ test('texto vindo do cadastro é escapado (sem injeção de HTML)', () => {
   const html = preencherProposta(modelo, dados('obra', 'x', { empresa: '<img src=x onerror=1>' }), remetente, 'hoje');
   assert.ok(!html.includes('<img src=x'));
   assert.ok(html.includes('&lt;img src=x onerror=1&gt;'));
+});
+
+test('com link de aceite, a capa traz o botão com o link; sem link, o bloco some', () => {
+  const com = preencherProposta(modelo, dados('obra', 'x'), remetente, 'hoje', CONDICOES_PADRAO, 'https://app.test/aceite/abc');
+  assert.match(com, /href="https:\/\/app\.test\/aceite\/abc"/);
+  assert.match(com, /teste gratuito de 15 dias/);
+  assert.doesNotMatch(com, /\{\{link_aceite\}\}|<!--aceite-->/);
+  const sem = preencherProposta(modelo, dados('obra', 'x'), remetente, 'hoje');
+  assert.doesNotMatch(sem, /Aceitar e iniciar|link_aceite|<!--aceite-->/);
 });

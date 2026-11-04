@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { api } from '../api';
 import { CondicoesProposta } from '../componentes/CondicoesProposta';
+import { AceitesProposta } from '../componentes/AceitesProposta';
 
 type Interessado = {
   id: string; empresa: string; responsavel: string; email: string; telefone: string; cidade: string | null; uf: string | null;
@@ -71,6 +72,7 @@ export function ComercialInteressados() {
         </div>
       </div>
 
+      <AceitesProposta />
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {propostaDe && (
         <CondicoesProposta
