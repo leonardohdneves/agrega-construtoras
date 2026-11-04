@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Banco } from '../db.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
-import { indicacaoInteressado, preencherProposta } from '../lib/proposta-interessado.ts';
+import { indicacaoInteressado, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
 import { esquemaEmail } from '../esquemas.ts';
 import { exigir } from '../sessao.ts';
 
@@ -77,6 +77,12 @@ export function rotasInteresse(banco: Banco) {
     // Proposta comercial preenchida com o cadastro do interessado (só o administrador do sistema).
     app.get<{ Params: { id: string } }>('/:id/proposta', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
       if (!UUID.test(req.params.id)) throw naoEncontrado('Interessado');
+      let condicoes;
+      try {
+        condicoes = lerCondicoes(req.query as Record<string, unknown>);
+      } catch (err) {
+        throw new ErroHttp(400, (err as Error).message);
+      }
       const r = await banco.query(
         'SELECT empresa, responsavel, cidade, uf, obras_ativas, usuarios, pacote FROM interessados WHERE id = $1',
         [req.params.id],
@@ -97,6 +103,7 @@ export function rotasInteresse(banco: Banco) {
         },
         { nome: req.usuario!.nome, email: req.usuario!.email ?? null, telefone: quem.rows[0]?.telefone_whatsapp ?? null, cnpj: null },
         hoje,
+        condicoes,
       );
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });
