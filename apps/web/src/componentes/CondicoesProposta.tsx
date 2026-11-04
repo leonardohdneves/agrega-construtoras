@@ -14,8 +14,7 @@ export type CampoCondicao =
   | 'descontoAnual'
   | 'fidelidade'
   | 'avisoPrevio'
-  | 'multaAnual'
-  | 'diasTeste';
+  | 'multaAnual';
 
 type Grupo = { titulo: string; campos: Array<[CampoCondicao, string]> };
 
@@ -40,7 +39,6 @@ const GRUPOS: Grupo[] = [
   {
     titulo: 'Prazos e contrato',
     campos: [
-      ['diasTeste', 'Dias gratuitos para teste'],
       ['validade', 'Validade da proposta (dias)'],
       ['descontoAnual', 'Desconto no plano anual (%)'],
       ['fidelidade', 'Fidelidade do plano anual (meses)'],

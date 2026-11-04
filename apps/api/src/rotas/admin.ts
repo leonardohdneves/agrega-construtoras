@@ -13,7 +13,6 @@ import { PACOTES } from '../lib/pacotes.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import { aplicarCondicoes, CONDICOES_PADRAO, indicacaoContrato, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
-import { criarAceite } from '../lib/aceite.ts';
 import { exigir } from '../sessao.ts';
 
 export function rotasAdmin(banco: Banco) {
@@ -96,8 +95,6 @@ export function rotasAdmin(banco: Banco) {
       const quem = await banco.query('SELECT telefone_whatsapp FROM usuarios WHERE id = $1', [req.usuario!.id]);
       const modelo = await readFile(path.join(PASTA_MATERIAL, 'proposta-comercial.html'), 'utf8');
       const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
-      const codigo = await criarAceite(banco, { empresaId: req.params.id, interessadoId: null, nomeCliente: e.nome_fantasia || e.razao_social, condicoes, criadoPor: req.usuario!.id });
-      const linkAceite = `${req.protocol}://${req.headers.host}/aceite/${codigo}`;
       const html = preencherProposta(
         modelo,
         {
@@ -110,7 +107,6 @@ export function rotasAdmin(banco: Banco) {
         { nome: req.usuario!.nome, email: req.usuario!.email ?? null, telefone: quem.rows[0]?.telefone_whatsapp ?? null, cnpj: null },
         hoje,
         condicoes,
-        linkAceite,
       );
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });

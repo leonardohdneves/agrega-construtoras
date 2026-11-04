@@ -89,7 +89,6 @@ test('sem condições informadas, o modelo sai com os valores que estavam fixos'
   assert.ok(html.includes('No anual, a mensalidade tem 15% de desconto, com fidelidade de 12 meses.'));
   assert.ok(html.includes('com aviso de 30 dias'));
   assert.ok(html.includes('multa de 30% sobre'));
-  assert.ok(html.includes('<b>Teste gratuito</b>15 dias'));
 });
 
 test('condições editadas entram no lugar dos padrões, com milhar em pt-BR', () => {
@@ -98,7 +97,6 @@ test('condições editadas entram no lugar dos padrões, com milhar em pt-BR', (
   assert.ok(html.includes('R$ 1.290<small>'));
   assert.ok(html.includes('3.000 a 12.000'));
   assert.ok(html.includes('mensalidade tem 20% de desconto'));
-  assert.ok(html.includes('<b>Teste gratuito</b>30 dias'));
   assert.ok(html.includes('multa de 50% sobre'));
 });
 
@@ -122,11 +120,9 @@ test('texto vindo do cadastro é escapado (sem injeção de HTML)', () => {
   assert.ok(html.includes('&lt;img src=x onerror=1&gt;'));
 });
 
-test('com link de aceite, a capa traz o botão com o link; sem link, o bloco some', () => {
-  const com = preencherProposta(modelo, dados('obra', 'x'), remetente, 'hoje', CONDICOES_PADRAO, 'https://app.test/aceite/abc');
-  assert.match(com, /href="https:\/\/app\.test\/aceite\/abc"/);
-  assert.match(com, /teste gratuito de 15 dias/);
-  assert.doesNotMatch(com, /\{\{link_aceite\}\}|<!--aceite-->/);
-  const sem = preencherProposta(modelo, dados('obra', 'x'), remetente, 'hoje');
-  assert.doesNotMatch(sem, /Aceitar e iniciar|link_aceite|<!--aceite-->/);
+test('a proposta não trata de teste nem de aceite, e tem o botão de imprimir', () => {
+  const html = preencherProposta(modelo, dados('obra', 'x'), remetente, 'hoje');
+  assert.doesNotMatch(html, /Teste gratuito|Aceitar e iniciar|aceite/i);
+  assert.match(html, /onclick="window\.print\(\)"/);
+  assert.match(html, /class="nao-imprimir"/);
 });

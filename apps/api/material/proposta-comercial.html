@@ -94,6 +94,7 @@
     .capa h1 { padding-top: 72px; }
   }
   @media (prefers-reduced-motion: no-preference) { .pacote { transition: border-color .2s; } }
+  @media print { .nao-imprimir { display: none !important; } }
 </style>
 
 <main class="folha">
@@ -107,7 +108,7 @@
     <h1>Proposta comercial</h1>
     <p class="sub">Controle de obras, suprimentos, estoque e financeiro em um único sistema, feito para construtoras de médio porte.</p>
     <p class="para"><b>[NOME DA CONSTRUTORA]</b><br>A/C: [NOME DO RESPONSÁVEL], [CARGO]<br>Data: [DD/MM/AAAA] · Validade desta proposta: {{validade}} dias</p>
-    <!--aceite--><p class="para"><a href="{{link_aceite}}" style="display:inline-block;padding:10px 16px;border-radius:6px;background:#1d4ed8;color:#fff;font-weight:600;text-decoration:none">Aceitar e iniciar o teste gratuito de {{dias_teste}} dias</a></p><!--/aceite-->
+    <p class="nao-imprimir" style="margin-top:12px"><button type="button" onclick="window.print()" style="padding:8px 14px;border:1px solid #1d4ed8;border-radius:6px;background:#fff;color:#1d4ed8;font-weight:600;cursor:pointer">Imprimir proposta</button></p>
   </section>
 
   <section class="bloco">
@@ -194,7 +195,6 @@
       </table>
     </div>
     <p class="muted" style="margin-top:10px">A implantação é cobrada uma única vez. O valor final depende da quantidade de cadastros e orçamentos a migrar, e é confirmado antes do início.</p>
-    <div class="info"><b>Teste gratuito</b>{{dias_teste}} dias de uso do Agrega, sem cobrança, para a construtora conhecer o sistema antes de contratar.</div>
   </section>
 
   <section class="bloco">
