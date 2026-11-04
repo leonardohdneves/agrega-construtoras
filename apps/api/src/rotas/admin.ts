@@ -25,6 +25,7 @@ export function rotasAdmin(banco: Banco) {
       'banner-piloto.html': 'text/html; charset=utf-8',
       'banner-saiba-mais.html': 'text/html; charset=utf-8',
       'material-detalhado.html': 'text/html; charset=utf-8',
+      'apresentacao-teste.html': 'text/html; charset=utf-8',
       'banner-curso-orcamento.html': 'text/html; charset=utf-8',
       'banner-curso-whatsapp.html': 'text/html; charset=utf-8',
       'qr-banner-piloto.svg': 'image/svg+xml; charset=utf-8',
