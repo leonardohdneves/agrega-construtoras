@@ -143,7 +143,7 @@ export function ComercialInteressados() {
                       <td className="small">{i.obrasAtivas ?? '—'} / {i.usuarios ?? '—'}</td>
                       <td>{NOMES_PACOTE[i.pacote] ?? i.pacote}</td>
                       <td className="small">{nomeOrigem(i.origem)}</td>
-                      <td><button className="btn btn-link small" type="button" onClick={() => setPropostaDe(i)}>Gerar proposta</button></td>
+                      <td><button className="btn btn-link small" type="button" onClick={() => setPropostaDe(i)}>Gerar proposta</button>{' '}<button className="btn btn-link small" type="button" onClick={() => window.open(`/api/interesse/${i.id}/apresentacao`, '_blank', 'noopener')}>Apresentação</button></td>
                     </tr>
                   ))}
                 </tbody>

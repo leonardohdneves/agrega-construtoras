@@ -7,6 +7,7 @@ import { z } from 'zod';
 import type { Banco } from '../db.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { indicacaoInteressado, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
+import { preencherApresentacao } from '../lib/apresentacao-teste.ts';
 import { criarAceite } from '../lib/aceite.ts';
 import { esquemaEmail } from '../esquemas.ts';
 import { exigir } from '../sessao.ts';
@@ -73,6 +74,16 @@ export function rotasInteresse(banco: Banco) {
           criadoEm: i.criado_em,
         })),
       };
+    });
+
+    // Apresentação para o período de testes, endereçada ao interessado (só o administrador do sistema).
+    app.get<{ Params: { id: string } }>('/:id/apresentacao', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Interessado');
+      const r = await banco.query('SELECT empresa, responsavel FROM interessados WHERE id = $1', [req.params.id]);
+      if (!r.rowCount) throw naoEncontrado('Interessado');
+      const modelo = await readFile(path.join(PASTA_MATERIAL, 'apresentacao-teste.html'), 'utf8');
+      const html = preencherApresentacao(modelo, { cliente: r.rows[0].empresa, responsavel: r.rows[0].responsavel }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
+      return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });
 
     // Proposta comercial preenchida com o cadastro do interessado (só o administrador do sistema).

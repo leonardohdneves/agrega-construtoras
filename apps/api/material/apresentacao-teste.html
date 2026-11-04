@@ -27,6 +27,7 @@ p { margin: 0 0 12px; }
 /* capa */
 .capa { background: var(--capa); color: #fff; min-height: 680px; display: flex; flex-direction: column; justify-content: space-between; padding: 48px clamp(20px, 5vw, 56px); border-radius: 0; }
 .capa .marca span { color: var(--azul-claro); }
+.capa .kicker { color: var(--azul-claro); }
 .capa h1 { font-size: clamp(40px, 7vw, 64px); line-height: 1.02; font-weight: 800; margin-bottom: 20px; }
 .capa .sub { font-size: 20px; color: #c9ccd1; max-width: 560px; }
 .capa .rod { color: #c9ccd1; font-size: 14px; border-top: 1px solid #3a4150; padding-top: 16px; }
@@ -78,17 +79,17 @@ p { margin: 0 0 12px; }
   <section class="capa">
     <div class="marca">agrega <span>construtoras</span></div>
     <div>
-      <p class="kicker">Apresentação</p>
+      <p class="kicker">Apresentação para {{cliente}}</p>
       <h1>Controle da obra,<br>compras, estoque e financeiro em um lugar só.</h1>
       <p class="sub">Um sistema para construtoras e incorporadoras de médio porte: do orçamento à medição, do pedido ao pagamento.</p>
     </div>
-    <div class="rod">Período de testes gratuito para a sua equipe conhecer o sistema na prática, antes de qualquer contratação.</div>
+    <div class="rod">A/C: {{responsavel}} · {{data}}</div>
   </section>
 
   <section class="pag">
     <p class="kicker">O problema</p>
     <h2>Orçamento, compra, estoque e pagamento em planilhas separadas</h2>
-    <p class="lead">Quando cada etapa vive em um arquivo, o número que vale depende de quem perguntou. O Agrega liga essas etapas, para que cada número tenha uma origem.</p>
+    <p class="lead">Para {{cliente}}, como em outras construtoras, quando cada etapa vive em um arquivo, o número que vale depende de quem perguntou. O Agrega liga essas etapas, para que cada número tenha uma origem.</p>
     <div class="grade">
       <div class="card"><h3>Orçado não bate com comprado</h3><p>O pedido sai sem ligação com a planilha de orçamento, e o estouro aparece só no fim.</p></div>
       <div class="card"><h3>Material sem rastro</h3><p>Entrou na obra? Quanto sobrou? Quem retirou? Ninguém sabe ao certo sem conferir na mão.</p></div>
@@ -149,6 +150,7 @@ p { margin: 0 0 12px; }
     </div>
     <div class="chamada">
       <h3>Quer conhecer o Agrega na sua construtora?</h3>
+      <p>Para {{cliente}}, o período de testes começa com uma conversa de diagnóstico.</p>
       <p><a class="botao" href="/interesse">Quero o período de testes</a></p>
       <p class="rod">Agrega Construtoras · agrega construtoras</p>
     </div>
