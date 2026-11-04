@@ -1,8 +1,12 @@
 // Cadastro público de interessados no programa piloto (página /interesse e QR code).
 import type { FastifyInstance } from 'fastify';
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import type { Banco } from '../db.ts';
-import { ErroHttp } from '../lib/erros.ts';
+import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { preencherProposta } from '../lib/proposta-interessado.ts';
 import { esquemaEmail } from '../esquemas.ts';
 import { exigir } from '../sessao.ts';
 
@@ -26,6 +30,8 @@ const esquemaInteresse = z.object({
   site: z.string().optional(),
 });
 const ORIGEM_VALIDA = /^[a-z0-9-]{1,60}$/;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PASTA_MATERIAL = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'material');
 
 export function rotasInteresse(banco: Banco) {
   return async function (app: FastifyInstance) {
@@ -66,6 +72,35 @@ export function rotasInteresse(banco: Banco) {
           criadoEm: i.criado_em,
         })),
       };
+    });
+
+    // Proposta comercial preenchida com o cadastro do interessado (só o administrador do sistema).
+    app.get<{ Params: { id: string } }>('/:id/proposta', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
+      if (!UUID.test(req.params.id)) throw naoEncontrado('Interessado');
+      const r = await banco.query(
+        'SELECT empresa, responsavel, cidade, uf, obras_ativas, usuarios, pacote FROM interessados WHERE id = $1',
+        [req.params.id],
+      );
+      if (!r.rowCount) throw naoEncontrado('Interessado');
+      const i = r.rows[0];
+      const quem = await banco.query('SELECT telefone_whatsapp FROM usuarios WHERE id = $1', [req.usuario!.id]);
+      const modelo = await readFile(path.join(PASTA_MATERIAL, 'proposta-comercial.html'), 'utf8');
+      const hoje = new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+      const html = preencherProposta(
+        modelo,
+        {
+          empresa: i.empresa,
+          responsavel: i.responsavel,
+          cidade: i.cidade ?? null,
+          uf: i.uf ? String(i.uf).trim() : null,
+          obrasAtivas: i.obras_ativas ?? null,
+          usuarios: i.usuarios ?? null,
+          pacote: i.pacote,
+        },
+        { nome: req.usuario!.nome, email: req.usuario!.email ?? null, telefone: quem.rows[0]?.telefone_whatsapp ?? null },
+        hoje,
+      );
+      return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });
   };
 }

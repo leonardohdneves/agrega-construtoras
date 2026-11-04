@@ -115,6 +115,7 @@ export function ComercialInteressados() {
                     <th>Obras / usuários</th>
                     <th>Pacote de interesse</th>
                     <th>Material de origem</th>
+                    <th>Proposta</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -128,6 +129,7 @@ export function ComercialInteressados() {
                       <td className="small">{i.obrasAtivas ?? '—'} / {i.usuarios ?? '—'}</td>
                       <td>{NOMES_PACOTE[i.pacote] ?? i.pacote}</td>
                       <td className="small">{nomeOrigem(i.origem)}</td>
+                      <td><button className="btn btn-link small" type="button" onClick={() => window.open(`/api/interesse/${i.id}/proposta`, '_blank', 'noopener')}>Gerar proposta</button></td>
                     </tr>
                   ))}
                 </tbody>
