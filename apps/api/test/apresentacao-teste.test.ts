@@ -9,15 +9,17 @@ const modelo = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url
 
 test('personaliza capa, problema e fechamento com o cliente', () => {
   const html = preencherApresentacao(modelo, { cliente: 'Construtora Alfa & Filhos', responsavel: 'Ana Souza' }, '04/11/2026');
-  assert.ok(html.includes('Apresentação para Construtora Alfa &amp; Filhos'));
-  assert.ok(html.includes('A/C: Ana Souza · 04/11/2026'));
+  assert.ok(html.includes('Apresentação para <b>Construtora Alfa &amp; Filhos</b>'));
+  assert.ok(html.includes('Responsável: <b>Ana Souza</b>'));
+  assert.ok(html.includes('04/11/2026'));
+  assert.ok(html.includes('class="icone"'), 'logo oficial presente');
   assert.ok(html.includes('Para Construtora Alfa &amp; Filhos, como em outras construtoras'));
   assert.doesNotMatch(html, /\{\{\w+\}\}/, 'não pode sobrar marcador');
 });
 
 test('sem responsável, usa "a informar" e escapa HTML', () => {
   const html = preencherApresentacao(modelo, { cliente: '<b>X</b>', responsavel: null }, 'hoje');
-  assert.ok(html.includes('A/C: a informar'));
+  assert.ok(html.includes('Responsável: <b>a informar</b>'));
   assert.ok(html.includes('&lt;b&gt;X&lt;/b&gt;'));
   assert.ok(!html.includes('<b>X</b>'));
 });

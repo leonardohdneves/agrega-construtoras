@@ -17,5 +17,6 @@ export function preencherApresentacao(
     .replaceAll('{{data}}', esc(data))
     .replaceAll('{{texto_cta}}', esc(cta.texto))
     .replaceAll('{{link_cta}}', cta.link)
-    .replaceAll('{{rotulo_cta}}', esc(cta.rotulo));
+    .replaceAll('{{rotulo_cta}}', esc(cta.rotulo))
+    .replaceAll('{{rotulo_responsavel}}', d.cadastrado ? 'Dono' : 'Responsável');
 }

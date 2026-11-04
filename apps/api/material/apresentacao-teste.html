@@ -26,11 +26,27 @@ p { margin: 0 0 12px; }
 .muted { color: var(--cinza); font-size: 14px; }
 /* capa */
 .capa { background: var(--capa); color: #fff; min-height: 680px; display: flex; flex-direction: column; justify-content: space-between; padding: 48px clamp(20px, 5vw, 56px); border-radius: 0; }
-.capa .marca span { color: var(--azul-claro); }
 .capa .kicker { color: var(--azul-claro); }
 .capa h1 { font-size: clamp(40px, 7vw, 64px); line-height: 1.02; font-weight: 800; margin-bottom: 20px; }
 .capa .sub { font-size: 20px; color: #c9ccd1; max-width: 560px; }
 .capa .rod { color: #c9ccd1; font-size: 14px; border-top: 1px solid #3a4150; padding-top: 16px; }
+/* logo oficial: ícone com o símbolo + palavra "agrega" */
+.logo { display: inline-flex; align-items: center; gap: 12px; }
+.logo .icone { width: 56px; height: 56px; flex: none; }
+.logo .nome { font: 800 26px 'Archivo', system-ui, sans-serif; letter-spacing: -0.03em; color: var(--ink); line-height: 1; }
+.logo .nome span { font-weight: 500; color: var(--azul); }
+.logo-pequena .icone { width: 30px; height: 30px; }
+.logo-pequena .nome { font-size: 16px; }
+.logo-capa .icone { width: 84px; height: 84px; box-shadow: 0 0 0 2px #3a4150; border-radius: 22px; }
+.logo-capa .nome { font-size: 40px; color: #fff; }
+.logo-capa .nome span { color: var(--azul-claro); }
+.cab-pag { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-bottom: 14px; margin-bottom: 26px; border-bottom: 1px solid var(--sutil); font-size: 13px; color: var(--cinza); }
+.cab-pag b { color: var(--ink); font-weight: 600; }
+.cliente-bloco { margin-top: 36px; padding: 20px 22px; border-radius: 12px; background: #1b1f25; border-left: 5px solid var(--azul-claro); }
+.cliente-bloco .rotulo { display: block; text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 600; color: var(--azul-claro); margin-bottom: 6px; }
+.cliente-bloco .nome-cliente { display: block; font: 800 30px/1.15 'Archivo', system-ui, sans-serif; color: #fff; letter-spacing: -0.02em; margin-bottom: 8px; }
+.cliente-bloco .dono { font-size: 17px; color: #c9ccd1; }
+.cliente-bloco .dono b { color: #fff; font-weight: 600; }
 /* módulos */
 .grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 8px; }
 .card { border: 1px solid var(--borda); border-radius: 10px; padding: 18px; background: #fff; }
@@ -63,6 +79,7 @@ p { margin: 0 0 12px; }
 .rodape { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--cinza); padding: 16px clamp(20px, 5vw, 56px); border-top: 1px solid var(--sutil); }
 @media (max-width: 560px) { body { padding: 12px 0; } .folha { border-radius: 0; border-left: 0; border-right: 0; } h2 { font-size: 26px; } }
 @media print {
+  .cab-pag { margin-bottom: 18px; }
   html, body { background: #fff; padding: 0; }
   .folha { max-width: none; margin: 0; border: 0; border-radius: 0; overflow: visible; }
   .pag { break-before: page; page-break-before: always; padding: 14mm 16mm; }
@@ -77,16 +94,18 @@ p { margin: 0 0 12px; }
 <main class="folha">
 
   <section class="capa">
-    <div class="marca">agrega <span>construtoras</span></div>
+    <div class="logo logo-capa"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div>
     <div>
-      <p class="kicker">Apresentação para {{cliente}}</p>
+      <p class="kicker">Apresentação</p>
       <h1>Controle da obra,<br>compras, estoque e financeiro em um lugar só.</h1>
       <p class="sub">Um sistema para construtoras e incorporadoras de médio porte: do orçamento à medição, do pedido ao pagamento.</p>
+      <div class="cliente-bloco"><span class="rotulo">Preparada para</span><span class="nome-cliente">{{cliente}}</span><span class="dono">{{rotulo_responsavel}}: <b>{{responsavel}}</b></span></div>
     </div>
-    <div class="rod">A/C: {{responsavel}} · {{data}}</div>
+    <div class="rod">{{data}}</div>
   </section>
 
   <section class="pag">
+    <header class="cab-pag"><div class="logo logo-pequena"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div><span>Apresentação para <b>{{cliente}}</b></span></header>
     <p class="kicker">O problema</p>
     <h2>Orçamento, compra, estoque e pagamento em planilhas separadas</h2>
     <p class="lead">Para {{cliente}}, como em outras construtoras, quando cada etapa vive em um arquivo, o número que vale depende de quem perguntou. O Agrega liga essas etapas, para que cada número tenha uma origem.</p>
@@ -98,6 +117,7 @@ p { margin: 0 0 12px; }
   </section>
 
   <section class="pag">
+    <header class="cab-pag"><div class="logo logo-pequena"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div><span>Apresentação para <b>{{cliente}}</b></span></header>
     <p class="kicker">A solução</p>
     <h2>Um sistema, do orçamento ao resultado da empresa</h2>
     <p class="lead">Cada módulo cobre uma parte da construtora, e todos conversam entre si. Os dados são digitados uma vez e aparecem onde são necessários.</p>
@@ -114,6 +134,7 @@ p { margin: 0 0 12px; }
   </section>
 
   <section class="pag">
+    <header class="cab-pag"><div class="logo logo-pequena"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div><span>Apresentação para <b>{{cliente}}</b></span></header>
     <p class="kicker">Como funciona</p>
     <h2>O caminho de uma compra, da planilha ao pagamento</h2>
     <p class="lead">Cada passo parte do anterior. Ninguém precisa redigitar nada.</p>
@@ -128,6 +149,7 @@ p { margin: 0 0 12px; }
   </section>
 
   <section class="pag">
+    <header class="cab-pag"><div class="logo logo-pequena"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div><span>Apresentação para <b>{{cliente}}</b></span></header>
     <p class="kicker">Para quem é</p>
     <h2>Cada pessoa vê o que precisa, e só isso</h2>
     <p class="lead">Dono, gestor, engenharia, compras, almoxarife, financeiro, administrativo e vendas trabalham no mesmo sistema, cada um com o seu perfil e os seus módulos liberados.</p>
@@ -140,6 +162,27 @@ p { margin: 0 0 12px; }
   </section>
 
   <section class="pag">
+    <header class="cab-pag"><div class="logo logo-pequena"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div><span>Apresentação para <b>{{cliente}}</b></span></header>
+    <p class="kicker">Modo campo</p>
+    <h2>O sistema na mão de quem está na obra</h2>
+    <p class="lead">No celular, o Agrega abre numa tela simples, com botões grandes e só as telas que cada pessoa usa. O sistema completo continua a um toque de distância.</p>
+    <div class="grade">
+      <div class="card destaque"><h3>Visitas de acompanhamento</h3><p>Registrar a visita com fotos e anotações, e gerar o relatório em PDF para o cliente. Engenheiro de obra, gestor e dono.</p></div>
+      <div class="card destaque"><h3>Diário de obra</h3><p>Registrar o dia: clima, equipe e equipamentos. Gestor e dono.</p></div>
+      <div class="card destaque"><h3>Estoque</h3><p>Consultar saldos e registrar entradas e saídas para a obra. Almoxarife, gestor e dono.</p></div>
+      <div class="card destaque"><h3>Ferramentas e equipamentos</h3><p>Ver e movimentar o patrimônio da obra. Almoxarife, engenheiro de obra, gestor e dono.</p></div>
+      <div class="card"><h3>Solicitações de compra</h3><p>Pedir material para a obra. Gestor e dono.</p></div>
+      <div class="card"><h3>Medições e autorizações</h3><p>Acompanhar as medições dos contratos e aprovar ou acompanhar pagamentos. Gestor e dono.</p></div>
+    </div>
+    <ul class="lista" style="margin-top:22px">
+      <li><span><b>Entra direto no celular.</b> Dono, gestor, almoxarife e engenheiro de obra começam no modo campo quando acessam pelo celular. A escolha fica salva no aparelho.</span></li>
+      <li><span><b>Mesmas regras.</b> As telas e as permissões são as do perfil. O modo campo muda a ordem dos atalhos e o tamanho dos botões, não o que cada pessoa pode fazer.</span></li>
+      <li><span><b>Troca a qualquer momento.</b> No menu, o botão Modo campo leva ao sistema completo, e Usar ERP completo volta ao modo campo.</span></li>
+    </ul>
+  </section>
+
+  <section class="pag">
+    <header class="cab-pag"><div class="logo logo-pequena"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div><span>Apresentação para <b>{{cliente}}</b></span></header>
     <p class="kicker">O período de testes</p>
     <h2>Use o sistema com as suas obras, antes de decidir</h2>
     <p class="lead">O teste é para a sua equipe trabalhar no sistema de verdade, com dados reais da construtora.</p>
@@ -157,7 +200,7 @@ p { margin: 0 0 12px; }
   </section>
 
   <div class="rodape">
-    <span>agrega construtoras · Apresentação · novembro de 2026</span>
+    <div class="logo logo-pequena"><svg class="icone" viewBox="0 0 512 512" aria-hidden="true"><rect width="512" height="512" rx="112" fill="#1F2328"/><g transform="translate(77 77) scale(5.6)"><circle cx="22" cy="40" r="14" fill="#1F5FAD"/><circle cx="45" cy="45" r="10" fill="#FFFFFF"/><circle cx="38" cy="20" r="9" fill="#FFFFFF"/><circle cx="54" cy="25" r="5" fill="#1F5FAD"/></g></svg><span class="nome">agrega <span>construtoras</span></span></div><span>Apresentação · novembro de 2026</span>
     <span>Documento para divulgação. Não é proposta comercial nem contrato.</span>
   </div>
 </main>
