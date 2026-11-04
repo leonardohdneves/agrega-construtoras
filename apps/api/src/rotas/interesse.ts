@@ -81,7 +81,7 @@ export function rotasInteresse(banco: Banco) {
       const r = await banco.query('SELECT empresa, responsavel FROM interessados WHERE id = $1', [req.params.id]);
       if (!r.rowCount) throw naoEncontrado('Interessado');
       const modelo = await readFile(path.join(PASTA_MATERIAL, 'apresentacao-teste.html'), 'utf8');
-      const html = preencherApresentacao(modelo, { cliente: r.rows[0].empresa, responsavel: r.rows[0].responsavel }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
+      const html = preencherApresentacao(modelo, { cliente: r.rows[0].empresa, responsavel: r.rows[0].responsavel }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }), `${req.protocol}://${req.headers.host}`);
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });
 

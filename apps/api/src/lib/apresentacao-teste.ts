@@ -7,6 +7,7 @@ export function preencherApresentacao(
   modelo: string,
   d: { cliente: string; responsavel: string | null; cadastrado?: boolean },
   data: string,
+  origem = '',
 ): string {
   const cta = d.cadastrado
     ? { link: '/entrar', rotulo: 'Entrar no Agrega', texto: 'é só entrar com o seu usuário e senha.' }
@@ -16,7 +17,7 @@ export function preencherApresentacao(
     .replaceAll('{{responsavel}}', esc(d.responsavel ?? 'a informar'))
     .replaceAll('{{data}}', esc(data))
     .replaceAll('{{texto_cta}}', esc(cta.texto))
-    .replaceAll('{{link_cta}}', cta.link)
+    .replaceAll('{{link_cta}}', esc(origem.replace(/\/$/, '') + cta.link))
     .replaceAll('{{rotulo_cta}}', esc(cta.rotulo))
     .replaceAll('{{rotulo_responsavel}}', d.cadastrado ? 'Dono' : 'Responsável');
 }
