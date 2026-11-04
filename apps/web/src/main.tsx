@@ -19,6 +19,7 @@ import { MaterialPublicitario } from './paginas/MaterialPublicitario';
 import { ContratosSistema, PropostasSistema } from './paginas/ComercialSistema';
 import { ComercialInteressados } from './paginas/ComercialInteressados';
 import { Interesse } from './paginas/Interesse';
+import { Aceite } from './paginas/Aceite';
 import { Motoristas } from './paginas/Motoristas';
 import { Fornecedores } from './paginas/Fornecedores';
 import { ContasPagarReceber } from './paginas/ContasPagarReceber';
@@ -123,6 +124,7 @@ createRoot(document.getElementById('raiz')!).render(
         <Routes>
           <Route path="/entrar" element={<Entrar />} />
           <Route path="/interesse" element={<Interesse />} />
+          <Route path="/aceite/:codigo" element={<Aceite />} />
           <Route
             element={
               <Protegido>
