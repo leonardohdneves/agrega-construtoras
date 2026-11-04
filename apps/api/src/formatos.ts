@@ -35,6 +35,8 @@ export function empresaPublica(r: Record<string, any>) {
     email: r.email,
     cidade: r.cidade,
     uf: r.uf ? String(r.uf).trim() : null,
+    corPrimaria: (r.cor_primaria as string | null) ?? null,
+    corSecundaria: (r.cor_secundaria as string | null) ?? null,
     plano: r.plano,
     contrato: {
       pacote: r.contrato_pacote ?? 'completo',

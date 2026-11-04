@@ -322,6 +322,8 @@ function LogoEImpressao({ empresa, podeEditar, aoMudar }: { empresa: TEmpresa; p
   const [ok, setOk] = useState('');
   const [enviando, setEnviando] = useState(false);
   const [imp, setImp] = useState<Impressao>(empresa.impressao ?? { orientacao: 'paisagem', papel: 'A4' });
+  const [cor1, setCor1] = useState(empresa.corPrimaria ?? '#1f2937');
+  const [cor2, setCor2] = useState(empresa.corSecundaria ?? '#b45309');
 
   async function executar(acao: () => Promise<{ empresa: TEmpresa }>, mensagem: string) {
     setErro('');
@@ -348,7 +350,7 @@ function LogoEImpressao({ empresa, podeEditar, aoMudar }: { empresa: TEmpresa; p
 
   return (
     <div className="card form" style={{ marginTop: 16 }}>
-      <h2>Relatórios: logo e impressão</h2>
+      <h2>Relatórios: logo, cores e impressão</h2>
       <span className="small muted">
         {podeEditar ? 'A logo aparece no cabeçalho de todos os relatórios. O padrão de impressão vale para todos os usuários, que ainda podem mudar na hora de imprimir.' : 'Somente administradores alteram a logo e o padrão de impressão.'}
       </span>
@@ -387,6 +389,28 @@ function LogoEImpressao({ empresa, podeEditar, aoMudar }: { empresa: TEmpresa; p
           </select>
         </div>
       </div>
+      {podeEditar && (
+        <div className="visitas-bloco">
+          <h3 style={{ margin: '0 0 6px' }}>Cores dos relatórios</h3>
+          <span className="small muted">Usadas no cabeçalho e nos títulos dos relatórios que vão para o cliente (ex.: relatório de visita). Sem cores, o relatório usa cinza e âmbar.</span>
+          <div className="visitas-campos" style={{ marginTop: 10 }}>
+            <div className="campo">
+              <label htmlFor="emp-cor-1">Cor principal</label>
+              <input id="emp-cor-1" type="color" value={cor1} onChange={(e) => setCor1(e.target.value)} />
+            </div>
+            <div className="campo">
+              <label htmlFor="emp-cor-2">Cor de destaque</label>
+              <input id="emp-cor-2" type="color" value={cor2} onChange={(e) => setCor2(e.target.value)} />
+            </div>
+          </div>
+          <div className="acoes">
+            <button className="btn btn-secundario" type="button" disabled={enviando}
+              onClick={() => void executar(() => api('/empresa/identidade', { metodo: 'PUT', corpo: { corPrimaria: cor1, corSecundaria: cor2 } }), 'Cores salvas. Elas aparecem nos relatórios.')}>
+              Salvar cores
+            </button>
+          </div>
+        </div>
+      )}
       {podeEditar && (
         <div className="acoes">
           <button className="btn btn-secundario" type="button" disabled={enviando}
