@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Agrega Construtoras · Apresentação</title>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"></noscript>
+<style>
+@page { size: A4; margin: 0; }
+:root { --azul:#1f5fad; --azul-escuro:#174a8a; --azul-claro:#a9c7ee; --ink:#1f2328; --ink-muted:#4a4f57; --cinza:#6b7078; --papel:#ffffff; --pagina:#f4f3f0; --borda:#dedbd5; --sutil:#eceae6; --info-bg:#e7eff9; --capa:#1f2328; }
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body { background: var(--pagina); color: var(--ink); font: 16px/1.55 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; padding: 24px 16px; }
+h1, h2, h3 { font-family: 'Archivo', system-ui, sans-serif; letter-spacing: -0.02em; text-wrap: balance; margin: 0; }
+h2 { font-size: 30px; font-weight: 800; line-height: 1.15; margin-bottom: 14px; }
+h3 { font-size: 18px; font-weight: 800; margin-bottom: 6px; }
+p { margin: 0 0 12px; }
+.folha { width: 100%; max-width: 860px; margin: 0 auto 24px; background: var(--papel); border: 1px solid var(--borda); border-radius: 12px; overflow: hidden; }
+.pag { padding: 48px clamp(20px, 5vw, 56px); }
+.pag + .pag { border-top: 1px solid var(--sutil); }
+.marca { font: 800 20px 'Archivo', system-ui, sans-serif; letter-spacing: -0.01em; }
+.marca span { font-weight: 500; color: var(--azul); }
+.kicker { text-transform: uppercase; letter-spacing: .14em; font-size: 12px; font-weight: 600; color: var(--azul); margin-bottom: 10px; }
+.lead { font-size: 19px; color: var(--ink-muted); margin-bottom: 24px; }
+.muted { color: var(--cinza); font-size: 14px; }
+/* capa */
+.capa { background: var(--capa); color: #fff; min-height: 680px; display: flex; flex-direction: column; justify-content: space-between; padding: 48px clamp(20px, 5vw, 56px); border-radius: 0; }
+.capa .marca span { color: var(--azul-claro); }
+.capa .kicker { color: var(--azul-claro); }
+.capa h1 { font-size: clamp(40px, 7vw, 64px); line-height: 1.02; font-weight: 800; margin-bottom: 20px; }
+.capa .sub { font-size: 20px; color: #c9ccd1; max-width: 560px; }
+.capa .rod { color: #c9ccd1; font-size: 14px; border-top: 1px solid #3a4150; padding-top: 16px; }
+/* módulos */
+.grade { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; margin-top: 8px; }
+.card { border: 1px solid var(--borda); border-radius: 10px; padding: 18px; background: #fff; }
+.card h3 { color: var(--azul); font-size: 17px; }
+.card p { font-size: 15px; color: var(--ink-muted); margin: 0; }
+.card.destaque { background: var(--info-bg); border-color: #c5d7ef; }
+.selo { display: inline-block; font-size: 11px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--azul); border-radius: 4px; padding: 2px 7px; margin-left: 6px; vertical-align: middle; }
+/* fluxo */
+.fluxo { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0; margin: 20px 0; counter-reset: etapa; }
+.fluxo div { position: relative; padding: 16px 14px; background: var(--sutil); border-right: 3px solid var(--papel); }
+.fluxo div:first-child { border-radius: 10px 0 0 10px; }
+.fluxo div:last-child { border-radius: 0 10px 10px 0; border-right: 0; }
+.fluxo b { display: block; font-family: 'Archivo', sans-serif; font-weight: 800; color: var(--azul); margin-bottom: 4px; }
+.fluxo span { font-size: 14px; color: var(--ink-muted); }
+/* lista de checagem */
+.lista { list-style: none; padding: 0; margin: 16px 0 0; }
+.lista li { display: grid; grid-template-columns: 28px 1fr; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--sutil); }
+.lista li::before { content: "✓"; width: 22px; height: 22px; border-radius: 50%; background: var(--azul); color: #fff; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; margin-top: 2px; }
+/* passos */
+.passos { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 18px; }
+.passo { border-top: 4px solid var(--azul); background: var(--sutil); border-radius: 0 0 10px 10px; padding: 16px; }
+.passo .n { font: 800 28px 'Archivo', sans-serif; color: var(--azul); line-height: 1; margin-bottom: 8px; }
+.passo p { font-size: 15px; color: var(--ink-muted); margin: 0; }
+/* chamada */
+.chamada { background: var(--capa); color: #fff; border-radius: 12px; padding: 28px; margin-top: 28px; }
+.chamada h3 { color: #fff; font-size: 24px; margin-bottom: 8px; }
+.chamada p { color: #c9ccd1; margin: 0; font-size: 16px; }
+.botao { display: inline-block; background: #fff; color: var(--capa); font: 700 17px 'Archivo', system-ui, sans-serif; padding: 14px 24px; border-radius: 8px; text-decoration: none; margin-top: 4px; }
+.chamada .rod { color: var(--azul-claro); font-weight: 600; margin-top: 16px; }
+.rodape { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--cinza); padding: 16px clamp(20px, 5vw, 56px); border-top: 1px solid var(--sutil); }
+@media (max-width: 560px) { body { padding: 12px 0; } .folha { border-radius: 0; border-left: 0; border-right: 0; } h2 { font-size: 26px; } }
+@media print {
+  html, body { background: #fff; padding: 0; }
+  .folha { max-width: none; margin: 0; border: 0; border-radius: 0; overflow: visible; }
+  .pag { break-before: page; page-break-before: always; padding: 14mm 16mm; }
+  .pag:first-child, .capa { break-before: auto; page-break-before: auto; }
+  .pag + .pag { border-top: 0; }
+  .capa { min-height: 283mm; border-radius: 0; padding: 16mm; }
+  .card, .passo, .chamada, .fluxo div { break-inside: avoid; }
+}
+</style>
+</head>
+<body>
+<main class="folha">
+
+  <section class="capa">
+    <div class="marca">agrega <span>construtoras</span></div>
+    <div>
+      <p class="kicker">Apresentação para {{cliente}}</p>
+      <h1>Controle da obra,<br>compras, estoque e financeiro em um lugar só.</h1>
+      <p class="sub">Um sistema para construtoras e incorporadoras de médio porte: do orçamento à medição, do pedido ao pagamento.</p>
+    </div>
+    <div class="rod">A/C: {{responsavel}} · {{data}}</div>
+  </section>
+
+  <section class="pag">
+    <p class="kicker">O problema</p>
+    <h2>Orçamento, compra, estoque e pagamento em planilhas separadas</h2>
+    <p class="lead">Para {{cliente}}, como em outras construtoras, quando cada etapa vive em um arquivo, o número que vale depende de quem perguntou. O Agrega liga essas etapas, para que cada número tenha uma origem.</p>
+    <div class="grade">
+      <div class="card"><h3>Orçado não bate com comprado</h3><p>O pedido sai sem ligação com a planilha de orçamento, e o estouro aparece só no fim.</p></div>
+      <div class="card"><h3>Material sem rastro</h3><p>Entrou na obra? Quanto sobrou? Quem retirou? Ninguém sabe ao certo sem conferir na mão.</p></div>
+      <div class="card"><h3>Pagamento fora de hora</h3><p>Medição aprovada, nota sem conferência e pagamento na correria do fim do mês.</p></div>
+    </div>
+  </section>
+
+  <section class="pag">
+    <p class="kicker">A solução</p>
+    <h2>Um sistema, do orçamento ao resultado da empresa</h2>
+    <p class="lead">Cada módulo cobre uma parte da construtora, e todos conversam entre si. Os dados são digitados uma vez e aparecem onde são necessários.</p>
+    <div class="grade">
+      <div class="card destaque"><h3>Engenharia</h3><p>Obras, EAP, orçamento com composições, planejamento com Gantt e Curva S, e acompanhamento físico.</p></div>
+      <div class="card destaque"><h3>Suprimentos</h3><p>Solicitações, cotações, pedidos, contratos e recebimento com a nota fiscal, com saldo por obra.</p></div>
+      <div class="card destaque"><h3>Estoque <span class="selo">QR</span></h3><p>Etiqueta em cada lote de material, saídas para a obra com rastro e transferência entre estoques.</p></div>
+      <div class="card"><h3>Medições e pagamentos</h3><p>Medição por etapa, aprovação, descontos e autorização de pagamento antes da saída do caixa.</p></div>
+      <div class="card"><h3>Financeiro</h3><p>Plano de contas, contas a pagar e a receber, bancos, conciliação de extratos OFX e caixa.</p></div>
+      <div class="card"><h3>Gerencial</h3><p>DRE, fluxo de caixa, Curva S, indicadores de prazo e custo, e aprovações de valores.</p></div>
+      <div class="card"><h3>Ferramentas e equipamentos</h3><p>Cadastro do bem, depreciação, retirada e devolução, com etiqueta QR em cada item.</p></div>
+      <div class="card destaque"><h3>Acompanhamento por visitas <span class="selo">novo</span></h3><p>Para obras acompanhadas pelo engenheiro: fotos, anotações e relatório da visita com a identidade da empresa.</p></div>
+    </div>
+  </section>
+
+  <section class="pag">
+    <p class="kicker">Como funciona</p>
+    <h2>O caminho de uma compra, da planilha ao pagamento</h2>
+    <p class="lead">Cada passo parte do anterior. Ninguém precisa redigitar nada.</p>
+    <div class="fluxo">
+      <div><b>1 Orçamento</b><span>Serviços e composições por etapa.</span></div>
+      <div><b>2 Compra</b><span>Solicitação, cotação e pedido ligados à obra.</span></div>
+      <div><b>3 Recebimento</b><span>Conferência com a nota fiscal e entrada no estoque.</span></div>
+      <div><b>4 Medição</b><span>Execução medida por etapa e aprovada.</span></div>
+      <div><b>5 Pagamento</b><span>Autorização antes da saída do caixa.</span></div>
+    </div>
+    <p>Ao fim do mês, o gerencial mostra o resultado de cada obra e da empresa, sem planilha de conciliação no meio do caminho.</p>
+  </section>
+
+  <section class="pag">
+    <p class="kicker">Para quem é</p>
+    <h2>Cada pessoa vê o que precisa, e só isso</h2>
+    <p class="lead">Dono, gestor, engenharia, compras, almoxarife, financeiro, administrativo e vendas trabalham no mesmo sistema, cada um com o seu perfil e os seus módulos liberados.</p>
+    <ul class="lista">
+      <li><span><b>Dono e gestor</b>: acompanham o resultado, aprovam valores e veem todas as obras.</span></li>
+      <li><span><b>Engenharia e orçamento</b>: montam a EAP, o orçamento e o planejamento de cada obra.</span></li>
+      <li><span><b>Compras e almoxarife</b>: pedidos, recebimento e saídas para a obra, com a obra certa em cada movimento.</span></li>
+      <li><span><b>Financeiro e administrativo</b>: lançamentos, bancos, conciliação e cadastros de clientes e fornecedores.</span></li>
+    </ul>
+  </section>
+
+  <section class="pag">
+    <p class="kicker">O período de testes</p>
+    <h2>Use o sistema com as suas obras, antes de decidir</h2>
+    <p class="lead">O teste é para a sua equipe trabalhar no sistema de verdade, com dados reais da construtora.</p>
+    <div class="passos">
+      <div class="passo"><div class="n">1</div><h3>Conversa de diagnóstico</h3><p>Entendemos como a construtora trabalha hoje, quais obras estão em andamento e quem usa o quê.</p></div>
+      <div class="passo"><div class="n">2</div><h3>Acesso para a equipe</h3><p>Cadastramos a empresa, os usuários e os perfis, com a ajuda da nossa equipe.</p></div>
+      <div class="passo"><div class="n">3</div><h3>Uso com obras reais</h3><p>Sua equipe registra pedidos, recebimentos, medições e visitas durante o período de testes.</p></div>
+    </div>
+    <div class="chamada">
+      <h3>Quer conhecer o Agrega na sua construtora?</h3>
+      <p>Para {{cliente}}, o período de testes começa com uma conversa de diagnóstico.</p>
+      <p><a class="botao" href="/interesse">Quero o período de testes</a></p>
+      <p class="rod">Agrega Construtoras · agrega construtoras</p>
+    </div>
+  </section>
+
+  <div class="rodape">
+    <span>agrega construtoras · Apresentação · novembro de 2026</span>
+    <span>Documento para divulgação. Não é proposta comercial nem contrato.</span>
+  </div>
+</main>
+</body>
+</html>

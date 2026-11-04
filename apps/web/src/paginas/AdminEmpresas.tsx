@@ -373,6 +373,9 @@ export function AdminEmpresas() {
                     <button className="btn btn-link" type="button" onClick={() => setPropostaDe(e)}>
                       Gerar proposta
                     </button>
+                    <button className="btn btn-link" type="button" onClick={() => window.open(`/api/admin/empresas/${e.id}/apresentacao`, '_blank', 'noopener')}>
+                      Apresentação
+                    </button>
                   </td>
                 </tr>
               ))}

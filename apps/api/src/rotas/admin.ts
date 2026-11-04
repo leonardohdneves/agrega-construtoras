@@ -13,6 +13,7 @@ import { PACOTES } from '../lib/pacotes.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import { aplicarCondicoes, CONDICOES_PADRAO, indicacaoContrato, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
+import { preencherApresentacao } from '../lib/apresentacao-teste.ts';
 import { criarAceite } from '../lib/aceite.ts';
 import { exigir } from '../sessao.ts';
 
@@ -66,6 +67,17 @@ export function rotasAdmin(banco: Banco) {
            FROM empresas e WHERE e.excluido_em IS NULL ORDER BY e.razao_social`,
       );
       return { empresas: r.rows.map((e) => ({ ...empresaPublica(e), totalUsuarios: e.total_usuarios })) };
+    });
+
+    // Apresentação para o período de testes, endereçada à construtora cadastrada (dono como responsável).
+    app.get<{ Params: { id: string } }>('/empresas/:id/apresentacao', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) throw naoEncontrado('Empresa');
+      const e = (await banco.query('SELECT razao_social, nome_fantasia FROM empresas WHERE id = $1 AND excluido_em IS NULL', [req.params.id])).rows[0];
+      if (!e) throw naoEncontrado('Empresa');
+      const dono = (await banco.query(`SELECT nome FROM usuarios WHERE empresa_id = $1 AND perfil = 'dono' AND ativo AND excluido_em IS NULL ORDER BY criado_em LIMIT 1`, [req.params.id])).rows[0];
+      const modelo = await readFile(path.join(PASTA_MATERIAL, 'apresentacao-teste.html'), 'utf8');
+      const html = preencherApresentacao(modelo, { cliente: e.nome_fantasia || e.razao_social, responsavel: dono?.nome ?? null }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }));
+      return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
     });
 
     // Condições padrão da proposta: o painel usa para preencher o formulário de condições.
