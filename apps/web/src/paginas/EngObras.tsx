@@ -10,7 +10,7 @@ import { SeletorBusca } from '../componentes/SeletorBusca';
 
 export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export type Obra = {
-  id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null; referenciaEntrega?: string | null;
+  id: string; tipo?: 'execucao' | 'acompanhamento'; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null; referenciaEntrega?: string | null;
   status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number; horasDia?: number;
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
@@ -135,11 +135,12 @@ export function bdiCalculadoPrevia(p: Partial<Record<CampoBdi, number>>): number
 
 const paraTexto = (n: number | undefined) => String(n ?? 0).replace('.', ',');
 
-type DadosForm = { codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; referenciaEntrega: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
+type DadosForm = { tipo: 'execucao' | 'acompanhamento'; codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; referenciaEntrega: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
 
 function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar: (o: Obra) => void; aoCancelar?: () => void }) {
   const editando = !!inicial;
   const [d, setD] = useState<DadosForm>({
+    tipo: inicial?.tipo ?? 'execucao',
     codigo: inicial?.codigo ?? '',
     nome: inicial?.nome ?? '',
     endereco: inicial?.endereco ?? '',
@@ -177,7 +178,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
     setErro('');
     setOcupado(true);
     const corpo = {
-      ...(editando ? {} : { codigo: d.codigo.trim() || undefined }),
+      ...(editando ? {} : { codigo: d.codigo.trim() || undefined, tipo: d.tipo }),
       nome: d.nome.trim(),
       endereco: d.endereco.trim() || null,
       cidade: d.cidade.trim() || null,
@@ -211,6 +212,15 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
       <h2 style={{ margin: 0 }}>{editando ? 'Dados da obra' : 'Nova obra'}</h2>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+        {!editando && (
+          <div className="campo" style={{ gridColumn: 'span 2' }}>
+            <label htmlFor="ob-tipo">Tipo de obra</label>
+            <select id="ob-tipo" value={d.tipo} onChange={(e) => setD({ ...d, tipo: e.target.value as DadosForm['tipo'] })}>
+              <option value="execucao">Execução (orçamento, EAP, planejamento, estoque e diário)</option>
+              <option value="acompanhamento">Acompanhamento por visitas (fotos, anotações e relatório)</option>
+            </select>
+          </div>
+        )}
         {!editando && (
           <div className="campo">
             <label htmlFor="ob-codigo">Código</label>
@@ -381,6 +391,7 @@ export function EngObraDetalhe() {
           </span>
         </div>
         <div className="acoes">
+          {obra.tipo === 'acompanhamento' && <Link className="btn btn-primario" to={`/eng/visitas/${obra.id}`}>Visitas de acompanhamento</Link>}
           <Link className="btn" to="/eng/obras">Todas as obras</Link>
         </div>
       </div>

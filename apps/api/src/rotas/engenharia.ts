@@ -152,6 +152,8 @@ const esquemaObra = z.object({
   contatoObraTelefone: texto(30),
   referenciaEntrega: texto(200),
   status: z.enum(['orcamento', 'planejamento', 'em_andamento', 'suspensa', 'concluida']).optional(),
+  // Tipo só é escolhido na criação: execução (EAP, orçamento, planejamento, estoque) ou acompanhamento por visitas.
+  tipo: z.enum(['execucao', 'acompanhamento']).optional(),
   dataInicio: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
   dataPrevisao: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
   nivelApropriacao: z.enum(NIVEIS_OBRA).optional(),
@@ -691,10 +693,10 @@ export function rotasEngenharia(banco: Banco) {
                 (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_id = o.id) AS linhas_orcamento,
                 (SELECT coalesce(sum(oq.quantidade * ${precoObra('oi')}), 0) FROM orcamento_itens oq JOIN obra_itens oi ON oi.id = oq.obra_item_id WHERE oq.obra_id = o.id) AS subtotal
            FROM obras o JOIN centros_custo cc ON cc.id = o.centro_custo_id
-          WHERE o.empresa_id = $1 AND o.ativo AND o.status <> 'arquivada'
+          WHERE o.empresa_id = $1 AND o.ativo AND o.status <> 'arquivada' AND o.tipo = $3
             AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM obra_responsaveis r WHERE r.obra_id = o.id AND r.usuario_id = $2))
           ORDER BY o.codigo`,
-        [empresaId, engenheiroDe(req)],
+        [empresaId, engenheiroDe(req), (req.query as { tipo?: string }).tipo === 'acompanhamento' ? 'acompanhamento' : 'execucao'],
       );
       const obras = await Promise.all(
         r.rows.map(async (o) => ({ ...obraPublica(o), itens: o.itens, linhasOrcamento: o.linhas_orcamento, total: r2(reais(o.subtotal)! * (1 + (await bdiDaObra(banco, o)) / 100)) })),
@@ -1072,8 +1074,10 @@ export function rotasEngenharia(banco: Banco) {
             [empresaId, codigo, d.nome, d.endereco, d.cidade, d.uf, d.responsavel, d.status, d.dataInicio, d.dataPrevisao, d.nivelApropriacao, d.bdiPercentual, d.bdiModo, JSON.stringify(d.bdiParametros), centro.id, grupoId, d.horasDia ?? 8, d.contatoObraNome ?? null, d.contatoObraTelefone ?? null, d.referenciaEntrega ?? null],
           )
         ).rows[0];
+        if (d.tipo === 'acompanhamento') await c.query(`UPDATE obras SET tipo = 'acompanhamento' WHERE id = $1`, [o.id]);
         if (d.responsaveis?.length) await gravarResponsaveis(c, empresaId, o.id, d.responsaveis);
-        await estoqueRecebimento(c, empresaId, o.id);
+        // Obra de acompanhamento não tem estoque próprio: o almoxarifado de recebimento só existe nas de execução.
+        if (d.tipo !== 'acompanhamento') await estoqueRecebimento(c, empresaId, o.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obras', entidadeId: o.id, depois: { ...d, codigo } });
         return o.id as string;
       });
@@ -2783,6 +2787,7 @@ function tabelaPublica(t: Record<string, any>) {
 function obraPublica(o: Record<string, any>) {
   return {
     id: o.id as string,
+    tipo: (o.tipo as string | undefined) ?? 'execucao',
     codigo: o.codigo as string,
     nome: o.nome as string,
     endereco: (o.endereco as string | null) ?? null,

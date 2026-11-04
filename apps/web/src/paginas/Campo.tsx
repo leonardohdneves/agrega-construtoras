@@ -4,6 +4,7 @@ import { useSessao } from '../sessao';
 import { PERFIS_CAMPO, salvarModo } from '../modo';
 
 const ATALHOS: { rotulo: string; para: string; ajuda: string; perfis: string[] }[] = [
+  { rotulo: 'Visitas de acompanhamento', para: '/eng/visitas', ajuda: 'Registrar a visita: fotos, anotações e relatório em PDF.', perfis: ['dono', 'gestor', 'engenheiro_obra'] },
   { rotulo: 'Diário de obra', para: '/eng/rdo', ajuda: 'Registrar o dia: clima, equipe e equipamentos.', perfis: ['dono', 'gestor'] },
   { rotulo: 'Estoque', para: '/sup/estoque', ajuda: 'Consultar saldos e registrar movimentações.', perfis: ['dono', 'gestor', 'almoxarife'] },
   { rotulo: 'Ferramentas e equipamentos', para: '/sup/patrimonio', ajuda: 'Ver e movimentar patrimônio.', perfis: ['dono', 'gestor', 'almoxarife', 'engenheiro_obra'] },

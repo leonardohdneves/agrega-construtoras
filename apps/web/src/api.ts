@@ -103,6 +103,8 @@ export type Empresa = {
   temLogo?: boolean;
   logoVersao?: number | null;
   impressao?: Impressao;
+  corPrimaria?: string | null;
+  corSecundaria?: string | null;
 };
 
 export const NOMES_PERFIL: Record<Perfil, string> = {

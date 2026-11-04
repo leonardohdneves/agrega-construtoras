@@ -126,6 +126,19 @@ export function rotasEmpresa(banco: Banco) {
       return { empresa: empresaPublica((await banco.query('SELECT * FROM empresas WHERE id = $1', [id])).rows[0]) };
     });
 
+    // ----- Identidade visual dos relatórios (cores; a logo é enviada em /logo) -----
+    app.put('/identidade', { preHandler: exigir(banco, ...TODOS) }, async (req) => {
+      administrador(req);
+      const cor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use uma cor no formato #RRGGBB.').nullable();
+      const d = z.object({ corPrimaria: cor, corSecundaria: cor }).parse(req.body);
+      const id = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        await c.query('UPDATE empresas SET cor_primaria = $2, cor_secundaria = $3, atualizado_em = now() WHERE id = $1', [id, d.corPrimaria, d.corSecundaria]);
+        await auditar(c, { empresaId: id, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas', entidadeId: id, depois: { identidade: d } });
+      });
+      return { empresa: empresaPublica((await banco.query('SELECT * FROM empresas WHERE id = $1', [id])).rows[0]) };
+    });
+
     // ----- Padrão de impressão dos relatórios -----
     app.put('/impressao', { preHandler: exigir(banco, ...TODOS) }, async (req) => {
       administrador(req);

@@ -119,6 +119,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Planejamento', para: '/eng/planejamento' },
       { rotulo: 'Acompanhamento de obra', para: '/eng/acompanhamento' },
       { rotulo: 'Diário de obra (RDO)', para: '/eng/rdo' },
+      { rotulo: 'Visitas de acompanhamento', para: '/eng/visitas' },
       { rotulo: 'Tabelas de referência', para: '/eng/tabelas' },
       { rotulo: 'Relatórios', para: '/eng/relatorios' },
     ],
