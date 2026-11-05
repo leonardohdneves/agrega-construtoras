@@ -125,6 +125,8 @@ export function EngVisitaDetalhe() {
   const [dados, setDados] = useState<VisitaCompleta | null>(null);
   const [data, setData] = useState('');
   const [responsavel, setResponsavel] = useState('');
+  // Responsável como está salvo no banco: é o que sai no relatório.
+  const [responsavelSalvo, setResponsavelSalvo] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
@@ -139,6 +141,7 @@ export function EngVisitaDetalhe() {
         setDados(r);
         setData(r.visita.data);
         setResponsavel(r.visita.responsavel ?? '');
+        setResponsavelSalvo(r.visita.responsavel ?? '');
         setObservacoes(r.visita.observacoes ?? '');
         setErro('');
       })
@@ -230,6 +233,11 @@ export function EngVisitaDetalhe() {
           <Link className="btn" to={`/eng/visitas/${obraId}`}>Visitas da obra</Link>
           <Link className="btn btn-primario" to={`/eng/visitas/${obraId}/${visitaId}/relatorio`}>Relatório em PDF</Link>
         </div>
+        {responsavel.trim() !== responsavelSalvo.trim() && (
+          <div className="alerta alerta-aviso nao-imprimir" role="status" style={{ marginTop: 8 }}>
+            O responsável pela visita foi alterado e ainda não está salvo. Clique em Salvar visita antes de abrir o relatório, senão ele sai sem o nome.
+          </div>
+        )}
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       {aviso && <div className="alerta alerta-ok" role="status">{aviso}</div>}
@@ -355,6 +363,19 @@ export function EngVisitaRelatorio() {
             </div>
           </section>
         )}
+
+        <section className="rel-assinaturas">
+          <div>
+            <span className="rel-linha" />
+            <b>{visita.responsavel || ' '}</b>
+            <small>Responsável pela visita</small>
+          </div>
+          <div>
+            <span className="rel-linha" />
+            <b>&nbsp;</b>
+            <small>Dono da obra</small>
+          </div>
+        </section>
 
         <footer className="rel-rodape">
           <span>{empresa?.razaoSocial ?? ''}{empresa?.telefone ? ` · ${empresa.telefone}` : ''}{empresa?.email ? ` · ${empresa.email}` : ''}</span>
