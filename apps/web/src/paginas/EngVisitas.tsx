@@ -15,7 +15,7 @@ type VisitaCompleta = {
   obra: { id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null };
 };
 
-const base = (obraId: string, visitaId?: string) => `/eng/obras/${obraId}/visitas${visitaId ? `/${visitaId}` : ''}`;
+const base = (obraId: string, visitaId?: string) => `/eng/visitas/${obraId}${visitaId ? `/${visitaId}` : ''}`;
 
 /** Lista das obras de acompanhamento (o engenheiro vê só as que foram atribuídas a ele). */
 export function EngVisitasObras() {
