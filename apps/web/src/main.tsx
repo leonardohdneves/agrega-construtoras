@@ -16,6 +16,7 @@ import { Usuarios } from './paginas/Usuarios';
 import { Conta } from './paginas/Conta';
 import { AdminEmpresas } from './paginas/AdminEmpresas';
 import { AdminAcompanhamento } from './paginas/AdminAcompanhamento';
+import { AssinarVisita } from './paginas/AssinarVisita';
 import { MaterialPublicitario } from './paginas/MaterialPublicitario';
 import { ContratosSistema, PropostasSistema } from './paginas/ComercialSistema';
 import { ComercialInteressados } from './paginas/ComercialInteressados';
@@ -126,6 +127,7 @@ createRoot(document.getElementById('raiz')!).render(
           <Route path="/entrar" element={<Entrar />} />
           <Route path="/interesse" element={<Interesse />} />
           <Route path="/aceite/:codigo" element={<Aceite />} />
+          <Route path="/assinar/:token" element={<AssinarVisita />} />
           <Route
             element={
               <Protegido>
