@@ -870,6 +870,9 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .rel-fotos figure { margin: 0; break-inside: avoid; min-width: 0; }
 .rel-fotos img { display: block; width: 100%; max-height: 80mm; object-fit: contain; background: #f3f4f6; border-radius: 3px; }
 .rel-fotos figcaption { font-size: 9pt; color: #444; margin-top: 3px; }
+.rel-assinatura-img { display: block; max-height: 22mm; max-width: 80%; margin: 0 auto -2mm; }
+.assinatura-img { display: block; max-height: 120px; max-width: 100%; border: 1px solid var(--borda, #dedbd5); border-radius: 8px; background: #fff; }
+.assinatura-pad canvas { display: block; width: 100%; max-width: 600px; height: auto; aspect-ratio: 3 / 1; background: #fff; border: 1px dashed #9ca3af; border-radius: 8px; touch-action: none; }
 .rel-rodape { margin-top: 14mm; border-top: 1px solid var(--cor-2); padding-top: 4px; display: flex; justify-content: space-between; flex-wrap: wrap; gap: 6px 12px; font-size: 8.5pt; color: #555; }
 /* Página própria do relatório do cliente: mesmo tamanho e papel escolhidos, sem o rodapé de marca do sistema. */
 @page relatorio-cliente { margin: 12mm 12mm 12mm; @bottom-left { content: none; } @bottom-right { content: none; } }

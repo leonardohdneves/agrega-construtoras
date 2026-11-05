@@ -5,8 +5,10 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
+import { randomBytes } from 'node:crypto';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { codigoDaVisita, validarImagemAssinatura } from '../lib/assinatura.ts';
 import { obrasPermitidas } from '../lib/obras-acesso.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 
@@ -47,6 +49,23 @@ async function visitaDaObra(c: Cliente | Banco, empresaId: string, obraId: strin
 }
 
 const dataTexto = (d: unknown) => (d instanceof Date ? d.toISOString().slice(0, 10) : String(d));
+
+/** Código de verificação atual da visita (texto e fotos). */
+async function codigoAtual(c: Cliente, visitaId: string): Promise<string> {
+  const v = (await c.query(`SELECT numero, data::text AS data, responsavel, observacoes FROM obra_visitas WHERE id = $1`, [visitaId])).rows[0];
+  const fotos = (await c.query('SELECT id::text AS id FROM obra_visita_fotos WHERE visita_id = $1', [visitaId])).rows.map((f) => f.id as string);
+  return codigoDaVisita(v, fotos);
+}
+
+/** Remove as assinaturas que não conferem mais com o conteúdo da visita (ao alterar texto ou fotos). */
+async function reconciliarAssinaturas(c: Cliente, visitaId: string) {
+  await c.query('DELETE FROM visita_assinaturas WHERE visita_id = $1 AND codigo <> $2', [visitaId, await codigoAtual(c, visitaId)]);
+}
+
+const esquemaAssinatura = z.object({
+  nome: z.string({ required_error: 'Informe o nome de quem assina.' }).trim().min(3, 'Informe o nome de quem assina.').max(120),
+  imagem: z.string({ required_error: 'Assine na tela.' }).min(10, 'Assine na tela.'),
+});
 
 export function rotasAcompanhamento(banco: Banco) {
   return async function (app: FastifyInstance) {
@@ -105,8 +124,12 @@ export function rotasAcompanhamento(banco: Banco) {
       const obra = await obraDeVisita(banco, empresaId, req.params.obraId, req.usuario);
       const v = await visitaDaObra(banco, empresaId, obra.id, req.params.id);
       const fotos = await banco.query('SELECT id, legenda, ordem FROM obra_visita_fotos WHERE visita_id = $1 ORDER BY ordem, criado_em', [v.id]);
+      const assinaturas = await banco.query(
+        'SELECT papel, nome, imagem, codigo, assinado_em FROM visita_assinaturas WHERE visita_id = $1',
+        [v.id],
+      );
       return {
-        visita: { ...v, data: dataTexto(v.data), fotos: fotos.rows },
+        visita: { ...v, data: dataTexto(v.data), fotos: fotos.rows, assinaturas: assinaturas.rows },
         obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel },
       };
     });
@@ -121,6 +144,7 @@ export function rotasAcompanhamento(banco: Banco) {
           `UPDATE obra_visitas SET data = coalesce($2::date, data), responsavel = $3, observacoes = $4, atualizado_em = now() WHERE id = $1`,
           [antes.id, d.data ?? null, d.responsavel, d.observacoes],
         );
+        await reconciliarAssinaturas(c, antes.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'obra_visitas', entidadeId: antes.id, antes: { numero: antes.numero }, depois: d });
       });
       return { ok: true };
@@ -135,6 +159,43 @@ export function rotasAcompanhamento(banco: Banco) {
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'obra_visitas', entidadeId: v.id, antes: { numero: v.numero, data: dataTexto(v.data) } });
       });
       return { ok: true };
+    });
+
+    // Assinatura do responsável pela visita, desenhada na tela do celular (quem está logado).
+    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id/assinaturas', async (req) => {
+      const empresaId = empresaDo(req);
+      const d = esquemaAssinatura.parse(req.body ?? {});
+      const imagem = validarImagemAssinatura(d.imagem);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDeVisita(c, empresaId, req.params.obraId, req.usuario);
+        const v = await visitaDaObra(c, empresaId, obra.id, req.params.id);
+        const codigo = await codigoAtual(c, v.id);
+        await c.query(
+          `INSERT INTO visita_assinaturas (empresa_id, visita_id, papel, nome, imagem, codigo, assinado_por, ip)
+           VALUES ($1, $2, 'responsavel', $3, $4, $5, $6, $7)
+           ON CONFLICT (visita_id, papel) DO UPDATE SET nome = EXCLUDED.nome, imagem = EXCLUDED.imagem, codigo = EXCLUDED.codigo,
+             assinado_em = now(), assinado_por = EXCLUDED.assinado_por, ip = EXCLUDED.ip`,
+          [empresaId, v.id, d.nome, imagem, codigo, req.usuario!.id, req.ip],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'confirmar', entidade: 'obra_visitas', entidadeId: v.id, depois: { papel: 'responsavel', codigo } });
+      });
+      return { ok: true };
+    });
+
+    // Gera o link para o dono da obra assinar a visita, sem login. Vale 30 dias; um link novo substitui o anterior.
+    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id/link-assinatura', async (req) => {
+      const empresaId = empresaDo(req);
+      const token = randomBytes(24).toString('base64url');
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDeVisita(c, empresaId, req.params.obraId, req.usuario);
+        const v = await visitaDaObra(c, empresaId, obra.id, req.params.id);
+        await c.query(
+          `UPDATE obra_visitas SET assinatura_token = $2, assinatura_token_expira = now() + interval '30 days' WHERE id = $1`,
+          [v.id, token],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obra_visitas', entidadeId: v.id, depois: { link_assinatura: true } });
+      });
+      return { caminho: `/assinar/${token}`, validoAte: 30 };
     });
 
     app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id/fotos', { bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
@@ -152,6 +213,7 @@ export function rotasAcompanhamento(banco: Banco) {
            VALUES ($1, (SELECT coalesce(max(ordem), -1) + 1 FROM obra_visita_fotos WHERE visita_id = $1), $2, $3, $4) RETURNING id`,
           [v.id, d.legenda, d.tipo, bytes],
         );
+        await reconciliarAssinaturas(c, v.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obra_visita_fotos', entidadeId: nova.rows[0].id, depois: { visita: v.id } });
         return nova.rows[0].id as string;
       });
@@ -188,6 +250,7 @@ export function rotasAcompanhamento(banco: Banco) {
         const v = await visitaDaObra(c, empresaId, obra.id, req.params.id);
         const r = await c.query('DELETE FROM obra_visita_fotos WHERE id = $1 AND visita_id = $2 RETURNING id', [req.params.fotoId, v.id]);
         if (!r.rowCount) throw naoEncontrado('Foto');
+        await reconciliarAssinaturas(c, v.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'obra_visita_fotos', entidadeId: req.params.fotoId, antes: { visita: v.id } });
       });
       return { ok: true };
