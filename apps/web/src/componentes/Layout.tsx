@@ -40,7 +40,10 @@ export const MODULOS: Modulo[] = [
     titulo: 'Construtoras',
     icone: <IconeEmpresa />,
     perfis: ['admin_sistema'],
-    itens: [{ rotulo: 'Construtoras clientes', para: '/admin/empresas' }],
+    itens: [
+      { rotulo: 'Construtoras clientes', para: '/admin/empresas' },
+      { rotulo: 'Acompanhamento', para: '/admin/acompanhamento' },
+    ],
   },
   {
     id: 'comercial-sistema',

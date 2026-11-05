@@ -15,7 +15,7 @@ import { gerarHashSenha } from '../lib/senha.ts';
 import { aplicarCondicoes, CONDICOES_PADRAO, indicacaoContrato, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
 import { preencherApresentacao } from '../lib/apresentacao-teste.ts';
 import { exigir } from '../sessao.ts';
-import { SQL_EM_TESTE } from '../lib/teste.ts';
+import { limitesVigentes, SQL_EM_TESTE } from '../lib/teste.ts';
 import { criarAceite } from '../lib/aceite.ts';
 
 export function rotasAdmin(banco: Banco) {
@@ -32,6 +32,7 @@ export function rotasAdmin(banco: Banco) {
       'qr-banner-piloto.svg': 'image/svg+xml; charset=utf-8',
       'qr-banner-saiba-mais.svg': 'image/svg+xml; charset=utf-8',
       'qr-curso-orcamento.svg': 'image/svg+xml; charset=utf-8',
+      'manual-administrador.pdf': 'application/pdf',
     };
     app.get<{ Params: { arquivo: string } }>('/material/:arquivo', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
       const tipo = MATERIAIS[req.params.arquivo];
@@ -79,6 +80,49 @@ export function rotasAdmin(banco: Banco) {
       const modelo = await readFile(path.join(PASTA_MATERIAL, 'apresentacao-teste.html'), 'utf8');
       const html = preencherApresentacao(modelo, { cliente: e.nome_fantasia || e.razao_social, responsavel: dono?.nome ?? null, cadastrado: true }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }), `${req.protocol}://${req.headers.host}`);
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
+    });
+
+    // Acompanhamento das construtoras contratadas: usuários ativos e perfis em uso, obras ativas e período de teste.
+    app.get('/acompanhamento', { preHandler: exigir(banco, 'admin_sistema') }, async () => {
+      const r = await banco.query(
+        `SELECT e.id, e.razao_social, e.nome_fantasia, e.contrato_pacote, e.limite_obras, e.limite_usuarios,
+                to_char(e.teste_inicio, 'YYYY-MM-DD') AS teste_inicio_txt, to_char(e.teste_fim, 'YYYY-MM-DD') AS teste_fim_txt,
+                ${SQL_EM_TESTE} AS em_teste,
+                (e.teste_fim - (now() AT TIME ZONE 'America/Sao_Paulo')::date) AS dias_restantes,
+                (SELECT count(*)::int FROM usuarios u WHERE u.empresa_id = e.id AND u.ativo AND u.excluido_em IS NULL) AS usuarios_ativos,
+                (SELECT coalesce(array_agg(DISTINCT u.perfil::text ORDER BY u.perfil::text), '{}') FROM usuarios u WHERE u.empresa_id = e.id AND u.ativo AND u.excluido_em IS NULL) AS perfis_ativos,
+                (SELECT count(*)::int FROM obras o WHERE o.empresa_id = e.id AND o.status <> 'concluida') AS obras_ativas
+           FROM empresas e
+          WHERE e.excluido_em IS NULL
+          ORDER BY e.razao_social`,
+      );
+      const hoje = (await banco.query(`SELECT to_char((now() AT TIME ZONE 'America/Sao_Paulo')::date, 'YYYY-MM-DD') AS hoje`)).rows[0].hoje;
+      return {
+        hoje,
+        empresas: r.rows.map((e) => {
+          const lim = limitesVigentes({ limite_obras: e.limite_obras ?? null, limite_usuarios: e.limite_usuarios ?? null, em_teste: !!e.em_teste });
+          const situacao = e.em_teste
+            ? 'em_teste'
+            : e.teste_fim_txt
+              ? e.teste_fim_txt < hoje ? 'teste_encerrado' : 'teste_agendado'
+              : 'sem_teste';
+          return {
+            id: e.id,
+            razaoSocial: e.razao_social,
+            nomeFantasia: e.nome_fantasia ?? null,
+            pacote: e.contrato_pacote,
+            usuariosAtivos: e.usuarios_ativos,
+            limiteUsuarios: lim.usuarios,
+            perfisAtivos: e.perfis_ativos as string[],
+            obrasAtivas: e.obras_ativas,
+            limiteObras: lim.obras,
+            situacaoTeste: situacao,
+            testeInicio: e.teste_inicio_txt ?? null,
+            testeFim: e.teste_fim_txt ?? null,
+            diasRestantes: e.em_teste ? Number(e.dias_restantes) : null,
+          };
+        }),
+      };
     });
 
     // Link de aceite do período de testes para uma construtora cadastrada. Quem aceita pelo link inicia o teste dela.

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Agrega Construtoras · Manual do administrador</title>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"></noscript>
+<style>
+@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega construtoras · Manual do administrador · versão 1.0"; font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } @bottom-right { content: counter(page); font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } }
+:root { --ink:#1f2328; --muted:#4a4f57; --cinza:#6b7078; --line:#dedbd5; --accent:#1f5fad; --accent-escuro:#174a8a; --soft:#e7eff9; --warn:#78350f; --warnbg:#fdf0d5; --capa:#1f2328; }
+* { box-sizing: border-box; }
+html, body { margin:0; padding:0; }
+body { font: 9.6pt/1.5 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif; color: var(--ink); }
+h1 { font: 800 20pt/1.15 'Archivo', system-ui, sans-serif; letter-spacing: -.02em; margin: 0 0 4mm; padding-bottom: 2.5mm; border-bottom: 2pt solid var(--accent); color: var(--ink); text-wrap: balance; }
+h2 { font: 800 12.5pt/1.2 'Archivo', system-ui, sans-serif; letter-spacing: -.01em; margin: 6mm 0 2mm; padding-left: 3mm; border-left: 3pt solid var(--accent); color: var(--ink); }
+h3 { font: 700 10.5pt 'Archivo', system-ui, sans-serif; margin: 4mm 0 1.5mm; }
+p { margin: 0 0 2.2mm; }
+.cap { break-before: page; page-break-before: always; }
+.cap:first-of-type { break-before: auto; page-break-before: auto; }
+.intro { color: var(--muted); margin-bottom: 4mm; font-size: 10.5pt; }
+.passos { list-style: none; padding: 0; margin: 0 0 3mm; counter-reset: p; }
+.passos li { counter-increment: p; display: grid; grid-template-columns: 9mm 1fr; gap: 2mm; margin-bottom: 1.6mm; }
+.passos li::before { content: counter(p); font-weight: 700; color: var(--accent); }
+.nota { background: var(--soft); border-left: 3px solid var(--accent); padding: 2.5mm 3mm; margin: 3mm 0; border-radius: 0 2mm 2mm 0; }
+.nota b { display:block; margin-bottom: 1mm; color: var(--accent-escuro); }
+.alerta { background: var(--warnbg); border-left: 3px solid var(--warn); padding: 2.5mm 3mm; margin: 3mm 0; border-radius: 0 2mm 2mm 0; }
+.alerta b { display:block; margin-bottom: 1mm; color: var(--warn); }
+table { width: 100%; border-collapse: collapse; margin: 2mm 0 3mm; font-size: 9pt; }
+th, td { text-align: left; padding: 1.8mm 2mm; border-bottom: 0.4pt solid var(--line); vertical-align: top; }
+th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: var(--cinza); font-weight: 600; background: #f7f6f3; }
+.tela { border: 0.6pt solid var(--line); border-radius: 2mm; padding: 3mm; margin: 3mm 0; background: #fff; }
+.tela .rot { font-size: 7.5pt; color: var(--cinza); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 2mm; font-weight: 600; }
+.fluxo { display:flex; flex-wrap: wrap; gap: 1.5mm; align-items: center; font-size: 8.5pt; margin: 2mm 0 3mm; }
+.fluxo span { background: var(--soft); border: 0.5pt solid var(--line); border-radius: 1.5mm; padding: 1mm 2mm; }
+.fluxo i { font-style: normal; color: var(--accent); }
+.grade { display: grid; grid-template-columns: 1fr 1fr; gap: 3mm 6mm; margin: 2mm 0 3mm; }
+.grade div b { display:block; color: var(--accent); margin-bottom: .5mm; }
+.rodape-pagina { position: fixed; bottom: -12mm; left: 0; right: 0; font-size: 7.5pt; color: var(--cinza); border-top: .4pt solid var(--line); padding-top: 1.5mm; }
+.rodape-pagina span.r { float: right; }
+.capa { height: 252mm; display: flex; flex-direction: column; justify-content: space-between; background: var(--capa); color: #fff; border-radius: 4mm; padding: 16mm 14mm; }
+.capa .marca { font: 800 14pt 'Archivo', system-ui, sans-serif; letter-spacing: -.01em; color: #fff; }
+.capa .marca span { font-weight: 500; color: #a9c7ee; }
+.capa .kicker { text-transform: uppercase; letter-spacing: .14em; font-size: 8.5pt; font-weight: 600; color: #a9c7ee; margin-bottom: 4mm; }
+.capa h1 { font-size: 40pt; line-height: 1.02; color: #fff; border: 0; padding: 0; margin: 0 0 6mm; }
+.capa .sub { font-size: 12pt; color: #c9ccd1; max-width: 120mm; }
+.capa .rod { color: #c9ccd1; font-size: 9pt; border-top: .5pt solid #3a4150; padding-top: 4mm; }
+.capa .rod p { margin: 0 0 1.5mm; }
+.sumario td { border: none; padding: 1.4mm 2mm; font-size: 9.5pt; }
+.sumario b { color: var(--accent); }
+.ordem { font-size: 8.5pt; color: var(--cinza); }
+.novo { display:inline-block; font-size: 6.8pt; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: #fff; background: var(--accent); border-radius: 1mm; padding: .3mm 1.4mm; vertical-align: middle; margin-left: 1mm; }
+</style>
+</head>
+<body>
+
+
+
+<!-- CAPA -->
+<section class="capa">
+  <div class="marca">agrega <span>construtoras</span></div>
+  <div>
+    <p class="kicker">Manual do administrador</p>
+    <h1>Manual do<br>administrador</h1>
+    <p class="sub">Cadastro das construtoras, contratos e períodos de teste, propostas, aceites e acompanhamento.</p>
+  </div>
+  <div class="rod">
+    <p>Versão 1.0 · novembro de 2026</p>
+    <p>Para o administrador do sistema Agrega. Não é material para as construtoras clientes.</p>
+  </div>
+</section>
+<section class="cap">
+  <h1>1 Painel do administrador</h1>
+  <p class="intro">Este manual é para o administrador do sistema Agrega, que cadastra as construtoras e acompanha contratos e testes. As construtoras clientes usam o manual de operação.</p>
+  <p>Só a conta de administrador do sistema vê o menu <b>Construtoras</b> (Construtoras clientes e Acompanhamento) e o menu <b>Comercial</b> (Propostas, Contratos, Material e Interessados).</p>
+</section>
+
+<section class="cap">
+  <h1>2 Cadastrar uma construtora</h1>
+  <p class="intro">Cada construtora cadastrada recebe um dono, que é o primeiro usuário e o responsável pela conta.</p>
+  <ol class="passos">
+    <li><span>Em Construtoras clientes, preencha o formulário de nova construtora.</span></li>
+    <li><span>Informe os dados da empresa, como razão social, CNPJ, telefone, e-mail e cidade.</span></li>
+    <li><span>Informe o nome, o e-mail e a senha provisória do dono. Ele troca a senha em Minha conta.</span></li>
+  </ol>
+  <p>A construtora nasce com o pacote Obra. Ajuste o contrato em seguida, como descrito no capítulo 3.</p>
+</section>
+
+<section class="cap">
+  <h1>3 Contrato, limites e período de teste</h1>
+  <p class="intro">O contrato define o pacote, os módulos liberados e os limites de obras e de usuários ativos. Em Construtoras clientes, clique em <b>Editar contrato</b>.</p>
+  <table>
+    <tr><th>Campo</th><th>O que definir</th></tr>
+    <tr><td>Pacote</td><td>Obra, Obra + gestão, Completo ou Personalizado (com os módulos escolhidos)</td></tr>
+    <tr><td>Limite de obras ativas</td><td>Quantas obras podem estar ativas. Obra concluída não conta. Vazio = sem limite.</td></tr>
+    <tr><td>Limite de usuários ativos</td><td>Quantos usuários podem estar ativos. Usuário desativado não conta. Vazio = sem limite.</td></tr>
+    <tr><td>Período de teste até</td><td>Data final do teste. Vazio encerra o teste.</td></tr>
+  </table>
+  <h2>Como o período de teste funciona</h2>
+  <p>Durante o teste valem <b>1 obra ativa</b> e <b>3 usuários ativos</b>, com <b>um usuário ativo por perfil</b>. Terminado o teste, voltam os limites do contrato. O teste começa no dia em que a data final é salva. Mudar a data final ao salvar reinicia o início do teste para o dia da mudança.</p>
+  <p>O sistema recusa criar ou reativar usuário, e criar obra, além dos limites vigentes. Dados que já estavam acima dos limites não são bloqueados.</p>
+</section>
+
+<section class="cap">
+  <h1>4 Propostas, apresentação e impressão</h1>
+  <p class="intro">Cada construtora cadastrada e cada interessado tem proposta e apresentação geradas a partir do cadastro.</p>
+  <h2>Gerar a proposta</h2>
+  <p>O botão <b>Gerar proposta</b> abre as condições. Os valores preenchidos valem só para essa proposta; os padrões do sistema não mudam. Para uma construtora cadastrada, o pacote e os limites vêm do contrato, e o dono aparece como responsável.</p>
+  <h2>Apresentação para o período de teste</h2>
+  <p>O botão <b>Apresentação</b> gera a apresentação personalizada para o cliente. Para construtora cadastrada, o botão de acesso leva ao login. Para interessado, leva ao formulário de interesse.</p>
+  <h2>Imprimir</h2>
+  <p>A proposta e a apresentação têm o botão <b>Imprimir</b>. No diálogo de impressão, marque <b>Gráficos de plano de fundo</b> para sair com as cores e a capa escura.</p>
+  <div class="nota"><b>Pendente</b>O CNPJ e o cargo do representante da Agrega ainda aparecem como “a informar” nas propostas.</div>
+</section>
+
+<section class="cap">
+  <h1>5 Link de aceite do teste</h1>
+  <p class="intro">O cliente inicia o período de teste aceitando pelo link. O administrador gera o link.</p>
+  <ol class="passos">
+    <li><span>Em Construtoras clientes, clique em <b>Link de aceite</b> na linha da construtora.</span></li>
+    <li><span>Copie o link exibido no aviso da tela e envie ao responsável.</span></li>
+    <li><span>O responsável abre o link, confere as condições e informa nome, cargo e CPF ou CNPJ.</span></li>
+  </ol>
+  <p>O aceite inicia o teste da construtora na hora: a data de início é o dia do aceite e a data final soma os dias de teste da proposta (15 dias por padrão). O link vale 30 dias e aceita uma vez só. Cada clique em Link de aceite gera um link novo, e os anteriores continuam válidos até vencer.</p>
+  <div class="nota"><b>Interessado sem cadastro</b>O aceite de um interessado registra o pedido, mas o teste só começa quando você cadastrar a construtora e informar a data final em Editar contrato.</div>
+</section>
+
+<section class="cap">
+  <h1>6 Acompanhamento das construtoras</h1>
+  <p class="intro">Em Construtoras › Acompanhamento você vê, para cada construtora, o que está em uso e o que falta no teste.</p>
+  <table>
+    <tr><th>Coluna</th><th>O que mostra</th></tr>
+    <tr><td>Usuários ativos</td><td>Quantos estão ativos em relação ao limite vigente. Acima do limite aparece um selo vermelho.</td></tr>
+    <tr><td>Perfis em uso</td><td>Os perfis com usuário ativo.</td></tr>
+    <tr><td>Obras ativas</td><td>Obras que não estão concluídas, em relação ao limite vigente.</td></tr>
+    <tr><td>Período de teste</td><td>Em teste (com os dias que faltam), agendado, encerrado ou sem teste.</td></tr>
+  </table>
+  <p>Use o botão <b>Atualizar</b> para recarregar os números.</p>
+</section>
+
+<section class="cap">
+  <h1>7 Regras de cuidado</h1>
+  <ul class="lista">
+    <li>Uma construtora precisa ter pelo menos um dono ativo. O sistema recusa tirar o último dono.</li>
+    <li>Apagar a data final encerra o teste na hora: os limites do contrato voltam a valer imediatamente.</li>
+  </ul>
+</section>
+
+</body>
+</html>
