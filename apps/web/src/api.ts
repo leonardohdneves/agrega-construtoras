@@ -84,7 +84,7 @@ export type Impressao = { orientacao: 'retrato' | 'paisagem'; papel: 'A4' | 'Car
 
 export type PacoteContrato = 'obra' | 'obra_gestao' | 'completo' | 'personalizado';
 export type Empresa = {
-  contrato?: { pacote: PacoteContrato; nomePacote: string; modulos: Modulo[]; limiteObras: number | null; limiteUsuarios: number | null };
+  contrato?: { pacote: PacoteContrato; nomePacote: string; modulos: Modulo[]; limiteObras: number | null; limiteUsuarios: number | null; testeInicio: string | null; testeFim: string | null };
   id: string;
   razaoSocial: string;
   nomeFantasia: string | null;

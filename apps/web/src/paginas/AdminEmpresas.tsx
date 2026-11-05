@@ -38,7 +38,7 @@ const MODULOS_CONTRATO: [string, string][] = [
   ['laudos', 'Laudos (contratado à parte)'],
 ];
 
-type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; limiteObras: string; limiteUsuarios: string };
+type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; limiteObras: string; limiteUsuarios: string; testeFim: string };
 
 function editarContrato(e: Empresa): EdicaoContrato {
   return {
@@ -48,6 +48,7 @@ function editarContrato(e: Empresa): EdicaoContrato {
     modulos: (e.contrato?.modulos ?? []).filter((m) => m !== 'configuracoes'),
     limiteObras: e.contrato?.limiteObras?.toString() ?? '',
     limiteUsuarios: e.contrato?.limiteUsuarios?.toString() ?? '',
+    testeFim: e.contrato?.testeFim ?? '',
   };
 }
 
@@ -91,6 +92,13 @@ function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { ed
         <div className="campo">
           <label htmlFor="ct-usuarios">Limite de usuários ativos</label>
           <input id="ct-usuarios" inputMode="numeric" value={edicao.limiteUsuarios} placeholder="Sem limite" onChange={(e) => aoMudar({ ...edicao, limiteUsuarios: e.target.value })} />
+        </div>
+      </div>
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="ct-teste-fim">Período de teste até</label>
+          <input id="ct-teste-fim" type="date" value={edicao.testeFim} onChange={(e) => aoMudar({ ...edicao, testeFim: e.target.value })} />
+          <span className="ajuda">Durante o teste valem 1 obra e 3 usuários. O teste começa hoje, ao salvar a data. Vazio encerra o teste e volta a valer o contrato.</span>
         </div>
       </div>
       {edicao.pacote === 'personalizado' ? (
@@ -219,7 +227,7 @@ export function AdminEmpresas() {
     try {
       await api(`/admin/empresas/${contrato.id}/contrato`, {
         metodo: 'PUT',
-        corpo: { pacote: contrato.pacote, modulos: contrato.pacote === 'personalizado' ? contrato.modulos : undefined, limiteObras: obras, limiteUsuarios: usuarios },
+        corpo: { pacote: contrato.pacote, modulos: contrato.pacote === 'personalizado' ? contrato.modulos : undefined, limiteObras: obras, limiteUsuarios: usuarios, testeFim: contrato.testeFim.trim() || null },
       });
       setAviso(`Contrato de ${contrato.nome} salvo. Os novos limites valem a partir de agora.`);
       setContrato(null);
@@ -364,6 +372,7 @@ export function AdminEmpresas() {
                     <span className="selo selo-neutro">{e.contrato?.nomePacote ?? e.plano}</span>
                     <div className="ajuda">
                       Obras: {e.contrato?.limiteObras ?? 'sem limite'} · Usuários: {e.contrato?.limiteUsuarios ?? 'sem limite'}
+                      {e.contrato?.testeFim && <> · Teste até {e.contrato.testeFim.split('-').reverse().join('/')}</>}
                     </div>
                   </td>
                   <td>
@@ -372,6 +381,22 @@ export function AdminEmpresas() {
                     </button>
                     <button className="btn btn-link" type="button" onClick={() => setPropostaDe(e)}>
                       Gerar proposta
+                    </button>
+                    <button
+                      className="btn btn-link"
+                      type="button"
+                      onClick={async () => {
+                        setErro('');
+                        setAviso('');
+                        try {
+                          const r = await api<{ url: string; validadeDias: number; diasTeste: number }>(`/admin/empresas/${e.id}/aceite`, { metodo: 'POST' });
+                          setAviso(`Link de aceite do período de testes de ${e.nomeFantasia || e.razaoSocial} (${r.diasTeste} dias de teste, válido por ${r.validadeDias} dias): ${r.url}`);
+                        } catch (err) {
+                          setErro((err as Error).message);
+                        }
+                      }}
+                    >
+                      Link de aceite
                     </button>
                     <button className="btn btn-link" type="button" onClick={() => window.open(`/api/admin/empresas/${e.id}/apresentacao`, '_blank', 'noopener')}>
                       Apresentação

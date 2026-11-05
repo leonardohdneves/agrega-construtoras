@@ -6,6 +6,7 @@ import { esquemaAlterarUsuario, esquemaNovoUsuario } from '../esquemas.ts';
 import { usuarioPublico } from '../formatos.ts';
 import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
 import { MODULOS_PADRAO } from '../lib/modulos.ts';
+import { limitesVigentes, SQL_EM_TESTE } from '../lib/teste.ts';
 import { PERFIS_EMPRESA, podeGerenciarPerfil } from '../lib/perfis.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import type { Perfil } from '../lib/token.ts';
@@ -24,10 +25,24 @@ async function modulosDaEmpresa(banco: Banco, empresaId: string): Promise<string
 
 /** Confere o limite de usuários ativos do contrato antes de ativar mais um. */
 async function limiteUsuarios(c: Cliente, empresaId: string) {
-  const e = (await c.query('SELECT limite_usuarios FROM empresas WHERE id = $1 FOR UPDATE', [empresaId])).rows[0];
-  if (!e?.limite_usuarios) return;
+  const e = (await c.query(`SELECT limite_usuarios, ${SQL_EM_TESTE} AS em_teste FROM empresas WHERE id = $1 FOR UPDATE`, [empresaId])).rows[0];
+  const lim = limitesVigentes({ limite_obras: null, limite_usuarios: e?.limite_usuarios ?? null, em_teste: !!e?.em_teste });
+  if (!lim.usuarios) return;
   const n = (await c.query('SELECT count(*)::int AS n FROM usuarios WHERE empresa_id = $1 AND ativo AND excluido_em IS NULL', [empresaId])).rows[0].n;
-  if (n >= e.limite_usuarios) throw new ErroHttp(403, `Seu contrato permite até ${e.limite_usuarios} usuários ativos. Desative um usuário ou amplie o contrato.`);
+  if (n >= lim.usuarios) throw new ErroHttp(403, lim.emTeste ? `Durante o período de teste, a construtora pode ter até ${lim.usuarios} usuários ativos. Para mais pessoas, contrate um plano.` : `Seu contrato permite até ${lim.usuarios} usuários ativos. Desative um usuário ou amplie o contrato.`);
+}
+
+/** Durante o período de teste, cada perfil tem no máximo um usuário ativo (ignorarId: o próprio usuário, na troca de perfil). */
+async function perfilLivreNoTeste(c: Cliente, empresaId: string, perfil: Perfil, ignorarId?: string) {
+  const e = (await c.query(`SELECT ${SQL_EM_TESTE} AS em_teste FROM empresas WHERE id = $1`, [empresaId])).rows[0];
+  if (!e?.em_teste) return;
+  const ocupado = (
+    await c.query(
+      `SELECT nome FROM usuarios WHERE empresa_id = $1 AND perfil = $2 AND ativo AND excluido_em IS NULL AND ($3::uuid IS NULL OR id <> $3::uuid) LIMIT 1`,
+      [empresaId, perfil, ignorarId ?? null],
+    )
+  ).rows[0];
+  if (ocupado) throw new ErroHttp(403, `Durante o período de teste, cada perfil tem um único usuário ativo. O perfil ${perfil} já é usado por ${ocupado.nome}.`);
 }
 
 function normalizarModulos(perfil: Perfil, modulos: string[] | null | undefined) {
@@ -59,6 +74,7 @@ export function rotasUsuarios(banco: Banco) {
       const hash = await gerarHashSenha(d.senha);
       const novo = await emTransacao(banco, async (c) => {
         await limiteUsuarios(c, empresaId);
+        await perfilLivreNoTeste(c, empresaId, d.perfil);
         const u = (
           await c.query(
             `INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil, telefone_whatsapp, administrador, modulos)
@@ -83,7 +99,11 @@ export function rotasUsuarios(banco: Banco) {
           await c.query('SELECT * FROM usuarios WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])
         ).rows[0];
         if (!antes) throw naoEncontrado('Usuário');
-        if (d.ativo === true && !antes.ativo) await limiteUsuarios(c, empresaId);
+        if (d.ativo === true && !antes.ativo) {
+          await limiteUsuarios(c, empresaId);
+          await perfilLivreNoTeste(c, empresaId, d.perfil ?? antes.perfil, antes.id);
+        }
+        if (antes.ativo && d.perfil && d.perfil !== antes.perfil) await perfilLivreNoTeste(c, empresaId, d.perfil, antes.id);
         if (!podeGerenciarPerfil(eu.perfil, antes.perfil)) throw semPermissao();
         if (d.perfil && !podeGerenciarPerfil(eu.perfil, d.perfil)) throw semPermissao();
         if (antes.id === eu.id && ((d.perfil && d.perfil !== antes.perfil) || d.ativo === false || d.administrador === false || d.modulos !== undefined)) {

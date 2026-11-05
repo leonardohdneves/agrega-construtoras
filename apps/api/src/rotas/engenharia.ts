@@ -39,6 +39,7 @@ import {
   type NivelPlanilha,
 } from '../lib/engenharia.ts';
 import { escolherUltimaCompra, unidadesValidas } from '../lib/unidades-insumo.ts';
+import { limitesVigentes, SQL_EM_TESTE } from '../lib/teste.ts';
 import { bdiCalculado, calcularDatas, codigoDoNo, datasComResumos, erroItemOrcamento, aliquotaSimples, formacaoPreco, resumosDaEap, lerCsvReferencia, NIVEIS_OBRA, numeroBr, temCiclo, type ParametrosBdi } from '../lib/engenharia.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -183,10 +184,11 @@ function resolverBdi(d: { bdiModo?: 'calculado' | 'informado'; bdiPercentual?: n
 
 /** Confere o limite de obras ativas (não concluídas) do contrato antes de criar mais uma. */
 async function limiteObrasAtivas(c: Cliente, empresaId: string) {
-  const e = (await c.query('SELECT limite_obras FROM empresas WHERE id = $1 FOR UPDATE', [empresaId])).rows[0];
-  if (!e?.limite_obras) return;
+  const e = (await c.query(`SELECT limite_obras, ${SQL_EM_TESTE} AS em_teste FROM empresas WHERE id = $1 FOR UPDATE`, [empresaId])).rows[0];
+  const lim = limitesVigentes({ limite_obras: e?.limite_obras ?? null, limite_usuarios: null, em_teste: !!e?.em_teste });
+  if (!lim.obras) return;
   const n = (await c.query(`SELECT count(*)::int AS n FROM obras WHERE empresa_id = $1 AND status <> 'concluida'`, [empresaId])).rows[0].n;
-  if (n >= e.limite_obras) throw new ErroHttp(403, `Seu contrato permite até ${e.limite_obras} obras ativas. Conclua uma obra ou amplie o contrato.`);
+  if (n >= lim.obras) throw new ErroHttp(403, lim.emTeste ? `Durante o período de teste, a construtora pode ter até ${lim.obras} obra. Para mais obras, contrate um plano.` : `Seu contrato permite até ${lim.obras} obras ativas. Conclua uma obra ou amplie o contrato.`);
 }
 
 export function rotasEngenharia(banco: Banco) {

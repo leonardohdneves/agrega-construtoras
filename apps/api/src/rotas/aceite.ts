@@ -2,6 +2,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Banco } from '../db.ts';
+import { emTransacao } from '../db.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { exigir } from '../sessao.ts';
 
@@ -66,15 +67,25 @@ export function rotasAceite(banco: Banco) {
       const d = esquemaAceite.parse(req.body);
       const documento = d.documento.replace(/\D/g, '');
       if (documento.length !== 11 && documento.length !== 14) throw new ErroHttp(400, 'Informe um CPF (11 dígitos) ou CNPJ (14 dígitos).');
-      const r = await banco.query(
-        `UPDATE propostas_aceite
-            SET aceito_em = now(), aceito_nome = $2, aceito_cargo = $3, aceito_documento = $4, aceito_ip = $5,
-                teste_inicio = (now() AT TIME ZONE 'America/Sao_Paulo')::date,
-                teste_fim = (now() AT TIME ZONE 'America/Sao_Paulo')::date + dias_teste
-          WHERE codigo = $1 AND aceito_em IS NULL AND expira_em > now()
-          RETURNING teste_inicio, teste_fim`,
-        [req.params.codigo, d.nome, d.cargo, documento, req.ip],
-      );
+      // Na mesma transação: grava o aceite e, se a proposta é de uma construtora cadastrada, inicia o teste dela.
+      const r = await emTransacao(banco, async (c) => {
+        const u = await c.query(
+          `UPDATE propostas_aceite
+              SET aceito_em = now(), aceito_nome = $2, aceito_cargo = $3, aceito_documento = $4, aceito_ip = $5,
+                  teste_inicio = (now() AT TIME ZONE 'America/Sao_Paulo')::date,
+                  teste_fim = (now() AT TIME ZONE 'America/Sao_Paulo')::date + dias_teste
+            WHERE codigo = $1 AND aceito_em IS NULL AND expira_em > now()
+            RETURNING teste_inicio, teste_fim, empresa_id`,
+          [req.params.codigo, d.nome, d.cargo, documento, req.ip],
+        );
+        if (u.rowCount && u.rows[0].empresa_id) {
+          await c.query(
+            `UPDATE empresas SET teste_inicio = $2, teste_fim = $3, atualizado_em = now() WHERE id = $1`,
+            [u.rows[0].empresa_id, u.rows[0].teste_inicio, u.rows[0].teste_fim],
+          );
+        }
+        return u;
+      });
       if (!r.rowCount) {
         const atual = (await banco.query('SELECT aceito_em, expira_em FROM propostas_aceite WHERE codigo = $1', [req.params.codigo])).rows[0];
         if (!atual) throw naoEncontrado('Proposta');
