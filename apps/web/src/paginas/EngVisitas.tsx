@@ -16,6 +16,8 @@ type VisitaCompleta = {
 };
 
 const base = (obraId: string, visitaId?: string) => `/eng/visitas/${obraId}${visitaId ? `/${visitaId}` : ''}`;
+/** Caminho da API (sem o prefixo /api, que o cliente já põe). */
+const apiBase = (obraId: string, visitaId?: string) => `/eng/obras/${obraId}/visitas${visitaId ? `/${visitaId}` : ''}`;
 
 /** Lista das obras de acompanhamento (o engenheiro vê só as que foram atribuídas a ele). */
 export function EngVisitasObras() {
@@ -69,14 +71,14 @@ export function EngVisitasObra() {
     api<{ obras: ObraVisitas[] }>('/eng/acompanhamento/obras')
       .then((r) => setObra(r.obras.find((o) => o.id === obraId) ?? null))
       .catch(() => undefined);
-    api<{ visitas: Visita[] }>(`/eng${base(obraId!)}`).then((r) => setVisitas(r.visitas)).catch((e) => setErro((e as Error).message));
+    api<{ visitas: Visita[] }>(`${apiBase(obraId!)}`).then((r) => setVisitas(r.visitas)).catch((e) => setErro((e as Error).message));
   }, [obraId]);
 
   async function novaVisita() {
     setErro('');
     setCriando(true);
     try {
-      const r = await api<{ id: string }>(`/eng${base(obraId!)}`, { metodo: 'POST', corpo: {} });
+      const r = await api<{ id: string }>(`${apiBase(obraId!)}`, { metodo: 'POST', corpo: {} });
       navegar(`/eng/visitas/${obraId}/${r.id}`);
     } catch (e) {
       setErro((e as Error).message);
@@ -129,10 +131,10 @@ export function EngVisitaDetalhe() {
   const [salvando, setSalvando] = useState(false);
   const [enviandoFotos, setEnviandoFotos] = useState(false);
 
-  const urlFoto = (fotoId: string) => `/api/eng${base(obraId!, visitaId!)}/fotos/${fotoId}`;
+  const urlFoto = (fotoId: string) => `/api${apiBase(obraId!, visitaId!)}/fotos/${fotoId}`;
 
   function carregar() {
-    return api<VisitaCompleta>(`/eng${base(obraId!, visitaId!)}`)
+    return api<VisitaCompleta>(`${apiBase(obraId!, visitaId!)}`)
       .then((r) => {
         setDados(r);
         setData(r.visita.data);
@@ -152,7 +154,7 @@ export function EngVisitaDetalhe() {
     setErro('');
     setAviso('');
     try {
-      await api(`/eng${base(obraId!, visitaId!)}`, { metodo: 'PUT', corpo: { data, responsavel: responsavel.trim() || null, observacoes: observacoes.trim() || null } });
+      await api(`${apiBase(obraId!, visitaId!)}`, { metodo: 'PUT', corpo: { data, responsavel: responsavel.trim() || null, observacoes: observacoes.trim() || null } });
       setAviso('Visita salva.');
       await carregar();
     } catch (err) {
@@ -171,7 +173,7 @@ export function EngVisitaDetalhe() {
     try {
       for (const arquivo of Array.from(lista)) {
         const { imagem, tipo } = await comprimirImagem(arquivo);
-        await api(`/eng${base(obraId!, visitaId!)}/fotos`, { metodo: 'POST', corpo: { imagem, tipo, legenda: null } });
+        await api(`${apiBase(obraId!, visitaId!)}/fotos`, { metodo: 'POST', corpo: { imagem, tipo, legenda: null } });
         enviadas += 1;
       }
     } catch (err) {
@@ -187,7 +189,7 @@ export function EngVisitaDetalhe() {
     const atual = dados?.visita.fotos.find((f) => f.id === fotoId)?.legenda ?? '';
     if (legenda.trim() === atual) return;
     try {
-      await api(`/eng${base(obraId!, visitaId!)}/fotos/${fotoId}`, { metodo: 'PUT', corpo: { legenda: legenda.trim() || null } });
+      await api(`${apiBase(obraId!, visitaId!)}/fotos/${fotoId}`, { metodo: 'PUT', corpo: { legenda: legenda.trim() || null } });
       await carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -197,7 +199,7 @@ export function EngVisitaDetalhe() {
   async function excluirFoto(fotoId: string) {
     if (!window.confirm('Excluir esta foto?')) return;
     try {
-      await api(`/eng${base(obraId!, visitaId!)}/fotos/${fotoId}`, { metodo: 'DELETE' });
+      await api(`${apiBase(obraId!, visitaId!)}/fotos/${fotoId}`, { metodo: 'DELETE' });
       await carregar();
     } catch (err) {
       setErro((err as Error).message);
@@ -207,7 +209,7 @@ export function EngVisitaDetalhe() {
   async function excluirVisita() {
     if (!window.confirm('Excluir esta visita, com as fotos e anotações? Isso não pode ser desfeito.')) return;
     try {
-      await api(`/eng${base(obraId!, visitaId!)}`, { metodo: 'DELETE' });
+      await api(`${apiBase(obraId!, visitaId!)}`, { metodo: 'DELETE' });
       navegar(`/eng/visitas/${obraId}`);
     } catch (err) {
       setErro((err as Error).message);
@@ -290,7 +292,7 @@ export function EngVisitaRelatorio() {
   const [pagina, setPagina] = usePaginaImpressao();
 
   useEffect(() => {
-    api<VisitaCompleta>(`/eng${base(obraId!, visitaId!)}`).then(setDados).catch((e) => setErro((e as Error).message));
+    api<VisitaCompleta>(`${apiBase(obraId!, visitaId!)}`).then(setDados).catch((e) => setErro((e as Error).message));
     api<{ empresa: TEmpresa }>('/empresa').then((r) => setEmpresa(r.empresa)).catch(() => setEmpresa(null));
   }, [obraId, visitaId]);
 
@@ -346,7 +348,7 @@ export function EngVisitaRelatorio() {
             <div className="rel-fotos">
               {visita.fotos.map((f, i) => (
                 <figure key={f.id}>
-                  <img src={`/api/eng${base(obraId!, visitaId!)}/fotos/${f.id}`} alt={f.legenda || `Foto ${i + 1}`} />
+                  <img src={`/api${apiBase(obraId!, visitaId!)}/fotos/${f.id}`} alt={f.legenda || `Foto ${i + 1}`} />
                   <figcaption>Foto {i + 1}{f.legenda ? ` – ${f.legenda}` : ''}</figcaption>
                 </figure>
               ))}
