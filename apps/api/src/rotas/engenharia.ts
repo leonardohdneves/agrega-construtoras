@@ -1,6 +1,7 @@
 // Engenharia (Fase 1): tabelas de referência (SINAPI e próprio), obras com centro de custo e nível de apropriação,
 // itens copiados para cada obra (editáveis só na obra), EAP por níveis e orçamento.
 import { estoqueRecebimento } from '../lib/estoque.ts';
+import { aplicarEapPadrao } from '../lib/eap-padrao.ts';
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Banco, Cliente } from '../db.ts';
@@ -155,6 +156,8 @@ const esquemaObra = z.object({
   status: z.enum(['orcamento', 'planejamento', 'em_andamento', 'suspensa', 'concluida']).optional(),
   // Tipo só é escolhido na criação: execução (EAP, orçamento, planejamento, estoque) ou acompanhamento por visitas.
   tipo: z.enum(['execucao', 'acompanhamento']).optional(),
+  // Só na criação: começa a planilha com a EAP padrão (etapas da planilha AltoQi Visus).
+  eapPadrao: z.boolean().optional(),
   dataInicio: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
   dataPrevisao: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
   nivelApropriacao: z.enum(NIVEIS_OBRA).optional(),
@@ -1080,6 +1083,8 @@ export function rotasEngenharia(banco: Banco) {
         if (d.responsaveis?.length) await gravarResponsaveis(c, empresaId, o.id, d.responsaveis);
         // Obra de acompanhamento não tem estoque próprio: o almoxarifado de recebimento só existe nas de execução.
         if (d.tipo !== 'acompanhamento') await estoqueRecebimento(c, empresaId, o.id);
+        // A EAP padrão é de execução: obra de acompanhamento não tem planilha.
+        if (d.eapPadrao && d.tipo !== 'acompanhamento') await aplicarEapPadrao(c, o.id);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obras', entidadeId: o.id, depois: { ...d, codigo } });
         return o.id as string;
       });

@@ -135,12 +135,13 @@ export function bdiCalculadoPrevia(p: Partial<Record<CampoBdi, number>>): number
 
 const paraTexto = (n: number | undefined) => String(n ?? 0).replace('.', ',');
 
-type DadosForm = { tipo: 'execucao' | 'acompanhamento'; codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; referenciaEntrega: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
+type DadosForm = { tipo: 'execucao' | 'acompanhamento'; eapPadrao: boolean; codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; referenciaEntrega: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
 
 function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar: (o: Obra) => void; aoCancelar?: () => void }) {
   const editando = !!inicial;
   const [d, setD] = useState<DadosForm>({
     tipo: inicial?.tipo ?? 'execucao',
+    eapPadrao: false,
     codigo: inicial?.codigo ?? '',
     nome: inicial?.nome ?? '',
     endereco: inicial?.endereco ?? '',
@@ -178,7 +179,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
     setErro('');
     setOcupado(true);
     const corpo = {
-      ...(editando ? {} : { codigo: d.codigo.trim() || undefined, tipo: d.tipo }),
+      ...(editando ? {} : { codigo: d.codigo.trim() || undefined, tipo: d.tipo, eapPadrao: d.tipo === 'execucao' && d.eapPadrao }),
       nome: d.nome.trim(),
       endereco: d.endereco.trim() || null,
       cidade: d.cidade.trim() || null,
@@ -219,6 +220,14 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
               <option value="execucao">Execução (orçamento, EAP, planejamento, estoque e diário)</option>
               <option value="acompanhamento">Acompanhamento por visitas (fotos, anotações e relatório)</option>
             </select>
+          </div>
+        )}
+        {!editando && d.tipo === 'execucao' && (
+          <div className="campo" style={{ gridColumn: 'span 2' }}>
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontWeight: 400 }}>
+              <input type="checkbox" checked={d.eapPadrao} onChange={(e) => setD({ ...d, eapPadrao: e.target.checked })} />
+              Começar a EAP com as etapas padrão (20 etapas, sub etapas e tarefas da planilha AltoQi Visus, sem os serviços)
+            </label>
           </div>
         )}
         {!editando && (
