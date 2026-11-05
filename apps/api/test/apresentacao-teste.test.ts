@@ -41,3 +41,16 @@ test('interessado: o botão leva ao cadastro de interessados', () => {
   assert.match(html, /href="\/interesse"[^>]*>Quero o período de testes</);
   assert.doesNotMatch(html, /\{\{\w+\}\}/);
 });
+
+test('com o endereço do sistema, o botão tem link absoluto (funciona no PDF)', () => {
+  const html = preencherApresentacao(modelo, { cliente: 'Delta', responsavel: null, cadastrado: true }, 'hoje', 'https://app.agrega.test');
+  assert.match(html, /href="https:\/\/app\.agrega\.test\/entrar"/);
+  const interessado = preencherApresentacao(modelo, { cliente: 'Eta', responsavel: null }, 'hoje', 'https://app.agrega.test/');
+  assert.match(interessado, /href="https:\/\/app\.agrega\.test\/interesse"/);
+});
+
+test('a apresentação traz o botão de imprimir, que some na impressão', () => {
+  const html = preencherApresentacao(modelo, { cliente: 'Theta', responsavel: null }, 'hoje');
+  assert.match(html, /onclick="window\.print\(\)"/);
+  assert.match(html, /\.nao-imprimir \{ display: none !important; \}/);
+});
