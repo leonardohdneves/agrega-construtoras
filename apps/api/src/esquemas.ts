@@ -113,6 +113,8 @@ export const esquemaContrato = z
     modulos: z.array(z.enum(['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'])).optional(),
     limiteObras: z.number().int('Use número inteiro.').positive('O limite de obras precisa ser maior que zero.').nullable(),
     limiteUsuarios: z.number().int('Use número inteiro.').positive('O limite de usuários precisa ser maior que zero.').nullable(),
+    // Fim do período de teste (AAAA-MM-DD). Ausente: não mexe. Nulo: encerra o teste.
+    testeFim: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use a data no formato AAAA-MM-DD.').nullable().optional(),
   })
   .superRefine((c, ctx) => {
     if (c.pacote === 'personalizado' && !c.modulos?.length) ctx.addIssue({ code: 'custom', message: 'Escolha pelo menos um módulo.', path: ['modulos'] });

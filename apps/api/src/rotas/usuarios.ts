@@ -6,6 +6,7 @@ import { esquemaAlterarUsuario, esquemaNovoUsuario } from '../esquemas.ts';
 import { usuarioPublico } from '../formatos.ts';
 import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
 import { MODULOS_PADRAO } from '../lib/modulos.ts';
+import { limitesVigentes, SQL_EM_TESTE } from '../lib/teste.ts';
 import { PERFIS_EMPRESA, podeGerenciarPerfil } from '../lib/perfis.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import type { Perfil } from '../lib/token.ts';
@@ -24,10 +25,11 @@ async function modulosDaEmpresa(banco: Banco, empresaId: string): Promise<string
 
 /** Confere o limite de usuários ativos do contrato antes de ativar mais um. */
 async function limiteUsuarios(c: Cliente, empresaId: string) {
-  const e = (await c.query('SELECT limite_usuarios FROM empresas WHERE id = $1 FOR UPDATE', [empresaId])).rows[0];
-  if (!e?.limite_usuarios) return;
+  const e = (await c.query(`SELECT limite_usuarios, ${SQL_EM_TESTE} AS em_teste FROM empresas WHERE id = $1 FOR UPDATE`, [empresaId])).rows[0];
+  const lim = limitesVigentes({ limite_obras: null, limite_usuarios: e?.limite_usuarios ?? null, em_teste: !!e?.em_teste });
+  if (!lim.usuarios) return;
   const n = (await c.query('SELECT count(*)::int AS n FROM usuarios WHERE empresa_id = $1 AND ativo AND excluido_em IS NULL', [empresaId])).rows[0].n;
-  if (n >= e.limite_usuarios) throw new ErroHttp(403, `Seu contrato permite até ${e.limite_usuarios} usuários ativos. Desative um usuário ou amplie o contrato.`);
+  if (n >= lim.usuarios) throw new ErroHttp(403, lim.emTeste ? `Durante o período de teste, a construtora pode ter até ${lim.usuarios} usuários ativos. Para mais pessoas, contrate um plano.` : `Seu contrato permite até ${lim.usuarios} usuários ativos. Desative um usuário ou amplie o contrato.`);
 }
 
 function normalizarModulos(perfil: Perfil, modulos: string[] | null | undefined) {

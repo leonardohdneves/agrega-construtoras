@@ -21,6 +21,13 @@ export function usuarioPublico(r: Record<string, any>, contratados?: readonly st
   };
 }
 
+/** Data do banco (coluna date) em AAAA-MM-DD. O pg entrega Date à meia-noite local: lê pelos componentes locais. */
+function dataCurta(v: unknown): string | null {
+  if (!v) return null;
+  if (v instanceof Date) return `${v.getFullYear()}-${String(v.getMonth() + 1).padStart(2, '0')}-${String(v.getDate()).padStart(2, '0')}`;
+  return String(v).slice(0, 10);
+}
+
 export function empresaPublica(r: Record<string, any>) {
   return {
     id: r.id,
@@ -44,6 +51,8 @@ export function empresaPublica(r: Record<string, any>) {
       modulos: contratoComBase(r.modulos_contratados),
       limiteObras: r.limite_obras ?? null,
       limiteUsuarios: r.limite_usuarios ?? null,
+      testeInicio: dataCurta(r.teste_inicio),
+      testeFim: dataCurta(r.teste_fim),
     },
     ativo: r.ativo,
     temLogo: !!r.logo_tipo,

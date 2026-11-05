@@ -15,6 +15,7 @@ import { gerarHashSenha } from '../lib/senha.ts';
 import { aplicarCondicoes, CONDICOES_PADRAO, indicacaoContrato, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
 import { preencherApresentacao } from '../lib/apresentacao-teste.ts';
 import { exigir } from '../sessao.ts';
+import { SQL_EM_TESTE } from '../lib/teste.ts';
 
 export function rotasAdmin(banco: Banco) {
   return async function (app: FastifyInstance) {
@@ -128,16 +129,30 @@ export function rotasAdmin(banco: Banco) {
       const d = esquemaContrato.parse(req.body);
       const modulos: string[] = d.pacote === 'personalizado' ? (d.modulos ?? []) : PACOTES[d.pacote].modulos;
       const empresa = await emTransacao(banco, async (c) => {
-        const antes = (await c.query('SELECT * FROM empresas WHERE id = $1 AND excluido_em IS NULL FOR UPDATE', [req.params.id])).rows[0];
+        const antes = (await c.query(`SELECT *, to_char(teste_inicio, 'YYYY-MM-DD') AS teste_inicio_txt, to_char(teste_fim, 'YYYY-MM-DD') AS teste_fim_txt, to_char((now() AT TIME ZONE 'America/Sao_Paulo')::date, 'YYYY-MM-DD') AS hoje FROM empresas WHERE id = $1 AND excluido_em IS NULL FOR UPDATE`, [req.params.id])).rows[0];
         if (!antes) throw naoEncontrado('Empresa');
+        // Período de teste: sem informar a data, o teste não muda. Ao mudar a data final, o teste começa hoje (horário de Brasília).
+        let testeInicio: string | null = antes.teste_inicio_txt ?? null;
+        let testeFim: string | null = antes.teste_fim_txt ?? null;
+        if (d.testeFim !== undefined && d.testeFim !== testeFim) {
+          if (d.testeFim === null) {
+            testeInicio = null;
+            testeFim = null;
+          } else {
+            if (d.testeFim < antes.hoje) throw new ErroHttp(400, 'A data final do teste precisa ser hoje ou depois.');
+            testeInicio = antes.hoje;
+            testeFim = d.testeFim;
+          }
+        }
         const depois = (
           await c.query(
-            `UPDATE empresas SET contrato_pacote = $2, modulos_contratados = $3, limite_obras = $4, limite_usuarios = $5, atualizado_em = now()
-              WHERE id = $1 RETURNING *`,
-            [antes.id, d.pacote, contratoComBase(modulos), d.limiteObras, d.limiteUsuarios],
+            `UPDATE empresas SET contrato_pacote = $2, modulos_contratados = $3, limite_obras = $4, limite_usuarios = $5,
+                    teste_inicio = $6, teste_fim = $7, atualizado_em = now()
+              WHERE id = $1 RETURNING *, ${SQL_EM_TESTE} AS em_teste`,
+            [antes.id, d.pacote, contratoComBase(modulos), d.limiteObras, d.limiteUsuarios, testeInicio, testeFim],
           )
         ).rows[0];
-        await auditar(c, { empresaId: antes.id, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas', entidadeId: antes.id, antes: { contrato: antes.modulos_contratados, limites: [antes.limite_obras, antes.limite_usuarios] }, depois: { pacote: d.pacote, modulos: contratoComBase(modulos), limiteObras: d.limiteObras, limiteUsuarios: d.limiteUsuarios } });
+        await auditar(c, { empresaId: antes.id, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas', entidadeId: antes.id, antes: { contrato: antes.modulos_contratados, limites: [antes.limite_obras, antes.limite_usuarios], teste: [antes.teste_inicio_txt ?? null, antes.teste_fim_txt ?? null] }, depois: { pacote: d.pacote, modulos: contratoComBase(modulos), limiteObras: d.limiteObras, limiteUsuarios: d.limiteUsuarios, teste: [testeInicio, testeFim] } });
         return depois;
       });
       return { empresa: empresaPublica(empresa) };
