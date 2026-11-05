@@ -67,6 +67,9 @@ export function AdminAcompanhamento() {
           <h1>Acompanhamento das construtoras</h1>
           <p className="ajuda">Usuários e perfis ativos, obras ativas e o período de teste de cada construtora{hoje ? `, em ${data(hoje)}` : ''}.</p>
         </div>
+        <button className="btn btn-secundario" type="button" onClick={() => window.open('/api/admin/material/manual-administrador.pdf', '_blank', 'noopener')}>
+          Manual do administrador
+        </button>
         <button className="btn btn-secundario" type="button" onClick={carregar} disabled={carregando}>
           {carregando ? 'Atualizando…' : 'Atualizar'}
         </button>

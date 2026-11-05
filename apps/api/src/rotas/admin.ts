@@ -32,6 +32,7 @@ export function rotasAdmin(banco: Banco) {
       'qr-banner-piloto.svg': 'image/svg+xml; charset=utf-8',
       'qr-banner-saiba-mais.svg': 'image/svg+xml; charset=utf-8',
       'qr-curso-orcamento.svg': 'image/svg+xml; charset=utf-8',
+      'manual-administrador.pdf': 'application/pdf',
     };
     app.get<{ Params: { arquivo: string } }>('/material/:arquivo', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
       const tipo = MATERIAIS[req.params.arquivo];
