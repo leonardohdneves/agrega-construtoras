@@ -94,7 +94,10 @@
     .capa h1 { padding-top: 72px; }
   }
   @media (prefers-reduced-motion: no-preference) { .pacote { transition: border-color .2s; } }
-  @media print { .nao-imprimir { display: none !important; } }
+  @media print {
+    *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    .nao-imprimir { display: none !important; }
+  }
 </style>
 
 <main class="folha">

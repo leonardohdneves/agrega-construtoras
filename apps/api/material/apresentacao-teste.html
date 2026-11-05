@@ -79,6 +79,8 @@ p { margin: 0 0 12px; }
 .rodape { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 13px; color: var(--cinza); padding: 16px clamp(20px, 5vw, 56px); border-top: 1px solid var(--sutil); }
 @media (max-width: 560px) { body { padding: 12px 0; } .folha { border-radius: 0; border-left: 0; border-right: 0; } h2 { font-size: 26px; } }
 @media print {
+  /* Imprime as cores e os fundos da tela (capa escura, cartões, faixas): sem isso o navegador tira o fundo. */
+  *, *::before, *::after { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
   .cab-pag { margin-bottom: 18px; }
   .nao-imprimir { display: none !important; }
   html, body { background: #fff; padding: 0; }
