@@ -382,6 +382,22 @@ export function AdminEmpresas() {
                     <button className="btn btn-link" type="button" onClick={() => setPropostaDe(e)}>
                       Gerar proposta
                     </button>
+                    <button
+                      className="btn btn-link"
+                      type="button"
+                      onClick={async () => {
+                        setErro('');
+                        setAviso('');
+                        try {
+                          const r = await api<{ url: string; validadeDias: number; diasTeste: number }>(`/admin/empresas/${e.id}/aceite`, { metodo: 'POST' });
+                          setAviso(`Link de aceite do período de testes de ${e.nomeFantasia || e.razaoSocial} (${r.diasTeste} dias de teste, válido por ${r.validadeDias} dias): ${r.url}`);
+                        } catch (err) {
+                          setErro((err as Error).message);
+                        }
+                      }}
+                    >
+                      Link de aceite
+                    </button>
                     <button className="btn btn-link" type="button" onClick={() => window.open(`/api/admin/empresas/${e.id}/apresentacao`, '_blank', 'noopener')}>
                       Apresentação
                     </button>

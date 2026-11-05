@@ -16,6 +16,7 @@ import { aplicarCondicoes, CONDICOES_PADRAO, indicacaoContrato, lerCondicoes, pr
 import { preencherApresentacao } from '../lib/apresentacao-teste.ts';
 import { exigir } from '../sessao.ts';
 import { SQL_EM_TESTE } from '../lib/teste.ts';
+import { criarAceite } from '../lib/aceite.ts';
 
 export function rotasAdmin(banco: Banco) {
   return async function (app: FastifyInstance) {
@@ -78,6 +79,22 @@ export function rotasAdmin(banco: Banco) {
       const modelo = await readFile(path.join(PASTA_MATERIAL, 'apresentacao-teste.html'), 'utf8');
       const html = preencherApresentacao(modelo, { cliente: e.nome_fantasia || e.razao_social, responsavel: dono?.nome ?? null, cadastrado: true }, new Date().toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }), `${req.protocol}://${req.headers.host}`);
       return reply.header('Content-Type', 'text/html; charset=utf-8').header('Cache-Control', 'private, no-store').header('X-Robots-Tag', 'noindex').send(html);
+    });
+
+    // Link de aceite do período de testes para uma construtora cadastrada. Quem aceita pelo link inicia o teste dela.
+    app.post<{ Params: { id: string } }>('/empresas/:id/aceite', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) throw naoEncontrado('Empresa');
+      const e = (await banco.query('SELECT razao_social, nome_fantasia FROM empresas WHERE id = $1 AND excluido_em IS NULL', [req.params.id])).rows[0];
+      if (!e) throw naoEncontrado('Empresa');
+      const codigo = await criarAceite(banco, {
+        empresaId: req.params.id,
+        interessadoId: null,
+        nomeCliente: e.nome_fantasia || e.razao_social,
+        condicoes: CONDICOES_PADRAO,
+        criadoPor: req.usuario!.id,
+      });
+      reply.code(201);
+      return { url: `${req.protocol}://${req.headers.host}/aceite/${codigo}`, validadeDias: CONDICOES_PADRAO.validade, diasTeste: CONDICOES_PADRAO.diasTeste };
     });
 
     // Condições padrão da proposta: o painel usa para preencher o formulário de condições.
