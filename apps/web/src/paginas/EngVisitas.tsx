@@ -3,15 +3,18 @@
 // com a logo e as cores da empresa, para enviar ao cliente.
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, formatarData, formatarCnpj, type TEmpresa } from '../api';
+import { api, formatarData, formatarDataHora, formatarCnpj, type TEmpresa } from '../api';
+import { AssinaturaPad } from '../componentes/AssinaturaPad';
 import { OpcoesPagina, imprimirPagina, usePaginaImpressao } from '../componentes/Documento';
 import { comprimirImagem } from '../lib/comprimirFoto';
 
 type ObraVisitas = { id: string; codigo: string; nome: string; cidade: string | null; uf: string | null; status: string; visitas: number; ultimaVisita: string | null };
 type Visita = { id: string; numero: number; data: string; responsavel: string | null; observacoes: string | null; fotos: number };
 type FotoVisita = { id: string; legenda: string | null; ordem: number };
+type Assinatura = { papel: 'responsavel' | 'dono_obra'; nome: string; imagem: string; codigo: string; assinado_em: string };
+
 type VisitaCompleta = {
-  visita: { id: string; numero: number; data: string; responsavel: string | null; observacoes: string | null; fotos: FotoVisita[] };
+  visita: { id: string; numero: number; data: string; responsavel: string | null; observacoes: string | null; fotos: FotoVisita[]; assinaturas: Assinatura[] };
   obra: { id: string; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null };
 };
 
@@ -127,6 +130,7 @@ export function EngVisitaDetalhe() {
   const [responsavel, setResponsavel] = useState('');
   // Responsável como está salvo no banco: é o que sai no relatório.
   const [responsavelSalvo, setResponsavelSalvo] = useState('');
+  const [linkDono, setLinkDono] = useState('');
   const [observacoes, setObservacoes] = useState('');
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState('');
@@ -150,6 +154,35 @@ export function EngVisitaDetalhe() {
   useEffect(() => {
     void carregar();
   }, [obraId, visitaId]);
+
+  /** Assinatura do responsável, desenhada na tela: usa o nome já salvo na visita. */
+  async function assinarResponsavel(imagem: string) {
+    const nome = responsavelSalvo.trim();
+    if (nome.length < 3) {
+      setErro('Preencha e salve o responsável pela visita antes de assinar.');
+      return;
+    }
+    setErro('');
+    setAviso('');
+    try {
+      await api(`${apiBase(obraId!, visitaId!)}/assinaturas`, { metodo: 'POST', corpo: { nome, imagem } });
+      setAviso('Assinatura do responsável registrada.');
+      await carregar();
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+  }
+
+  /** Link para o dono da obra assinar a visita sem login. */
+  async function gerarLinkDono() {
+    setErro('');
+    try {
+      const r = await api<{ caminho: string }>(`${apiBase(obraId!, visitaId!)}/link-assinatura`, { metodo: 'POST', corpo: {} });
+      setLinkDono(`${window.location.origin}${r.caminho}`);
+    } catch (err) {
+      setErro((err as Error).message);
+    }
+  }
 
   async function salvar(e: FormEvent) {
     e.preventDefault();
@@ -266,6 +299,58 @@ export function EngVisitaDetalhe() {
       </form>
 
       <div className="card visitas-bloco" style={{ marginTop: 16 }}>
+        <h2>Assinaturas</h2>
+        <p className="small muted">Assine na tela do celular. Se o texto ou as fotos da visita mudarem depois, as assinaturas que ficarem desatualizadas são removidas.</p>
+        <div style={{ display: 'grid', gap: 20, gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))' }}>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ fontSize: 15 }}>Responsável pela visita</h3>
+            {visita.assinaturas.find((a) => a.papel === 'responsavel') ? (
+              (() => {
+                const a = visita.assinaturas.find((x) => x.papel === 'responsavel')!;
+                return (
+                  <>
+                    <img className="assinatura-img" src={a.imagem} alt={`Assinatura de ${a.nome}`} />
+                    <p className="small muted">{a.nome} · {formatarDataHora(a.assinado_em)}</p>
+                  </>
+                );
+              })()
+            ) : (
+              <>
+                <p className="small muted">{responsavelSalvo.trim() ? `${responsavelSalvo.trim()} ainda não assinou.` : 'Preencha e salve o responsável pela visita para assinar.'}</p>
+                {responsavelSalvo.trim().length >= 3 && <AssinaturaPad rotulo="Registrar assinatura do responsável" aoConfirmar={(img) => void assinarResponsavel(img)} />}
+              </>
+            )}
+          </div>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ fontSize: 15 }}>Dono da obra</h3>
+            {visita.assinaturas.find((a) => a.papel === 'dono_obra') ? (
+              (() => {
+                const a = visita.assinaturas.find((x) => x.papel === 'dono_obra')!;
+                return (
+                  <>
+                    <img className="assinatura-img" src={a.imagem} alt={`Assinatura de ${a.nome}`} />
+                    <p className="small muted">{a.nome} · {formatarDataHora(a.assinado_em)}</p>
+                  </>
+                );
+              })()
+            ) : (
+              <>
+                <p className="small muted">O dono assina pelo link, sem precisar de login.</p>
+                <button className="btn" type="button" onClick={() => void gerarLinkDono()}>Gerar link para o dono assinar</button>
+                {linkDono && (
+                  <div className="campo" style={{ marginTop: 10 }}>
+                    <label htmlFor="link-dono">Link para enviar ao dono da obra</label>
+                    <input id="link-dono" readOnly value={linkDono} onFocus={(e) => e.currentTarget.select()} />
+                    <span className="ajuda">Válido por 30 dias. Gerar um novo link substitui este.</span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      <div className="card visitas-bloco" style={{ marginTop: 16 }}>
         <h2>Registro fotográfico <span className="small muted" style={{ fontWeight: 400 }}>· {visita.fotos.length} {visita.fotos.length === 1 ? 'foto' : 'fotos'}</span></h2>
         <p className="small muted">No celular, a câmera abre direto. As fotos são reduzidas antes do envio.</p>
         <div className="acoes">
@@ -309,6 +394,9 @@ export function EngVisitaRelatorio() {
   // Sem cores cadastradas, o relatório usa um padrão neutro.
   const cores = { '--cor-1': empresa?.corPrimaria || '#1f2937', '--cor-2': empresa?.corSecundaria || '#b45309' } as CSSProperties;
   const local = [obra.endereco, [obra.cidade, obra.uf].filter(Boolean).join('/')].filter(Boolean).join(' · ');
+  const assinaturaResponsavel = visita.assinaturas.find((a) => a.papel === 'responsavel');
+  const assinaturaDono = visita.assinaturas.find((a) => a.papel === 'dono_obra');
+  const codigoVerificacao = visita.assinaturas[0]?.codigo ?? '';
 
   return (
     <>
@@ -366,20 +454,24 @@ export function EngVisitaRelatorio() {
 
         <section className="rel-assinaturas">
           <div>
+            {assinaturaResponsavel && <img className="rel-assinatura-img" src={assinaturaResponsavel.imagem} alt={`Assinatura de ${assinaturaResponsavel.nome}`} />}
             <span className="rel-linha" />
             <b>{visita.responsavel || ' '}</b>
             <small>Responsável pela visita</small>
+            {assinaturaResponsavel && <small>Assinado em {formatarDataHora(assinaturaResponsavel.assinado_em)}</small>}
           </div>
           <div>
+            {assinaturaDono && <img className="rel-assinatura-img" src={assinaturaDono.imagem} alt={`Assinatura de ${assinaturaDono.nome}`} />}
             <span className="rel-linha" />
-            <b>&nbsp;</b>
+            <b>{assinaturaDono?.nome || ' '}</b>
             <small>Dono da obra</small>
+            {assinaturaDono && <small>Assinado em {formatarDataHora(assinaturaDono.assinado_em)}</small>}
           </div>
         </section>
 
         <footer className="rel-rodape">
           <span>{empresa?.razaoSocial ?? ''}{empresa?.telefone ? ` · ${empresa.telefone}` : ''}{empresa?.email ? ` · ${empresa.email}` : ''}</span>
-          <span>Obra {obra.codigo} · Visita nº {visita.numero}</span>
+          <span>Obra {obra.codigo} · Visita nº {visita.numero}{codigoVerificacao ? ` · Código de verificação ${codigoVerificacao}` : ''}</span>
         </footer>
       </article>
     </>
