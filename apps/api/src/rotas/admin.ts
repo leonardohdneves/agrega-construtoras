@@ -7,7 +7,7 @@ import type { Banco } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { esquemaContrato, esquemaNovaEmpresa } from '../esquemas.ts';
-import { empresaPublica } from '../formatos.ts';
+import { empresaPublica, usuarioPublico } from '../formatos.ts';
 import { contratoComBase } from '../lib/modulos.ts';
 import { PACOTES } from '../lib/pacotes.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
@@ -69,6 +69,18 @@ export function rotasAdmin(banco: Banco) {
            FROM empresas e WHERE e.excluido_em IS NULL ORDER BY e.razao_social`,
       );
       return { empresas: r.rows.map((e) => ({ ...empresaPublica(e), totalUsuarios: e.total_usuarios })) };
+    });
+
+    // Ficha da construtora cadastrada: dados da empresa, dono e usuários (sem senhas).
+    app.get<{ Params: { id: string } }>('/empresas/:id/dados', { preHandler: exigir(banco, 'admin_sistema') }, async (req) => {
+      const e = (await banco.query('SELECT * FROM empresas WHERE id = $1 AND excluido_em IS NULL', [req.params.id])).rows[0];
+      if (!e) throw naoEncontrado('Construtora');
+      const u = await banco.query(
+        `SELECT * FROM usuarios WHERE empresa_id = $1 AND excluido_em IS NULL ORDER BY (perfil = 'dono') DESC, nome`,
+        [e.id],
+      );
+      const usuarios = u.rows.map((x) => usuarioPublico(x));
+      return { empresa: empresaPublica(e), usuarios };
     });
 
     // Apresentação para o período de testes, endereçada à construtora cadastrada (dono como responsável).
@@ -234,7 +246,7 @@ export function rotasAdmin(banco: Banco) {
         ).rows[0];
         const dono = (
           await c.query(
-            `INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil) VALUES ($1, $2, $3, $4, 'dono') RETURNING id`,
+            `INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil, senha_provisoria) VALUES ($1, $2, $3, $4, 'dono', true) RETURNING id`,
             [e.id, d.dono.nome, d.dono.email, hash],
           )
         ).rows[0];

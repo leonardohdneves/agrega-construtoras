@@ -61,6 +61,8 @@ export type Usuario = {
   nome: string;
   email: string;
   perfil: Perfil;
+  /** Senha inicial ainda não trocada: o sistema só libera a tela Conta. */
+  senhaProvisoria?: boolean;
   empresaId: string | null;
   telefoneWhatsapp: string | null;
   ativo: boolean;

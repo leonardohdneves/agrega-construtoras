@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
-import { api, formatarCnpj, type Empresa, type PacoteContrato } from '../api';
+import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { api, formatarCnpj, formatarDataHora, NOMES_PERFIL, type Empresa, type PacoteContrato, type Perfil } from '../api';
 import { CondicoesProposta } from '../componentes/CondicoesProposta';
 
 type Nova = {
@@ -57,6 +57,90 @@ function lerLimite(v: string): number | null | undefined {
   if (v.trim() === '') return null;
   const n = Number(v);
   return Number.isInteger(n) && n > 0 ? n : undefined;
+}
+
+type UsuarioFicha = { id: string; nome: string; email: string; perfil: Perfil; ativo: boolean; ultimoAcesso: string | null; senhaProvisoria: boolean };
+type DadosFicha = { empresa: Empresa; usuarios: UsuarioFicha[] };
+
+/** Ficha da construtora cadastrada: dados da empresa, dono, usuários e situação do teste. */
+function FichaConstrutora({ id, aoFechar }: { id: string; aoFechar: () => void }) {
+  const [dados, setDados] = useState<DadosFicha | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    setDados(null);
+    setErro('');
+    api<DadosFicha>(`/admin/empresas/${id}/dados`)
+      .then(setDados)
+      .catch((e: Error) => setErro(e.message));
+  }, [id]);
+
+  const cabecalho = (titulo: string) => (
+    <div className="cabecalho" style={{ marginBottom: 12 }}>
+      <div className="titulo"><h2 style={{ margin: 0 }}>{titulo}</h2></div>
+      <button className="btn btn-secundario" type="button" onClick={aoFechar}>Fechar</button>
+    </div>
+  );
+  if (erro) return <div className="card">{cabecalho('Dados da construtora')}<div className="alerta alerta-erro" role="alert">{erro}</div></div>;
+  if (!dados) return <div className="card">{cabecalho('Dados da construtora')}<p className="muted">Carregando…</p></div>;
+
+  const e = dados.empresa;
+  const campo = (rotulo: string, valor: ReactNode) => (
+    <div>
+      <span className="ajuda">{rotulo}</span>
+      <div>{valor || '—'}</div>
+    </div>
+  );
+  const dono = dados.usuarios.find((u) => u.perfil === 'dono');
+  const data = (iso: string | null) => (iso ? iso.split('-').reverse().join('/') : null);
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      {cabecalho(e.nomeFantasia || e.razaoSocial)}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 14 }}>
+        {campo('Razão social', e.razaoSocial)}
+        {campo('Nome fantasia', e.nomeFantasia)}
+        {campo('CNPJ', e.cnpj ? formatarCnpj(e.cnpj) : null)}
+        {campo('Regime tributário', REGIMES[e.regimeTributario])}
+        {campo('Cidade / UF', [e.cidade, e.uf].filter(Boolean).join(' / '))}
+        {campo('Telefone', e.telefone)}
+        {campo('E-mail da empresa', e.email)}
+        {campo('Dono', dono ? `${dono.nome} · ${dono.email}` : null)}
+        {campo('Pacote', e.contrato?.nomePacote)}
+        {campo('Limites', `Obras: ${e.contrato?.limiteObras ?? 'sem limite'} · Usuários: ${e.contrato?.limiteUsuarios ?? 'sem limite'}`)}
+        {campo('Período de teste', e.contrato?.testeInicio && e.contrato?.testeFim ? `${data(e.contrato.testeInicio)} a ${data(e.contrato.testeFim)}` : null)}
+        {campo('Situação', e.ativo ? 'Ativa' : 'Suspensa')}
+      </div>
+      <h3 style={{ marginTop: 18 }}>Usuários</h3>
+      {dados.usuarios.length === 0 ? (
+        <p className="muted" style={{ margin: 0 }}>Nenhum usuário cadastrado.</p>
+      ) : (
+        <table className="tabela">
+          <thead>
+            <tr>
+              <th>Nome</th>
+              <th>E-mail</th>
+              <th>Perfil</th>
+              <th>Situação</th>
+              <th>Último acesso</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dados.usuarios.map((u) => (
+              <tr key={u.id}>
+                <td>{u.nome}</td>
+                <td className="small">{u.email}</td>
+                <td>{NOMES_PERFIL[u.perfil]}</td>
+                <td>
+                  {u.ativo ? 'Ativo' : 'Inativo'}
+                  {u.senhaProvisoria && <div className="selo selo-aviso">Senha inicial, não trocada</div>}
+                </td>
+                <td className="small">{u.ultimoAcesso ? formatarDataHora(u.ultimoAcesso) : 'Nunca acessou'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
 }
 
 function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { edicao: EdicaoContrato; aoMudar: (e: EdicaoContrato) => void; aoSalvar: (ev: FormEvent) => void; aoFechar: () => void; salvando: boolean }) {
@@ -182,6 +266,7 @@ export function AdminEmpresas() {
   const [salvando, setSalvando] = useState(false);
   const [contrato, setContrato] = useState<EdicaoContrato | null>(null);
   const [propostaDe, setPropostaDe] = useState<Empresa | null>(null);
+  const [dadosDe, setDadosDe] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     try {
@@ -340,6 +425,8 @@ export function AdminEmpresas() {
         />
       )}
 
+      {dadosDe && <FichaConstrutora id={dadosDe} aoFechar={() => setDadosDe(null)} />}
+
       <div className="card tabela-caixa">
         {!lista ? (
           <p className="muted">Carregando…</p>
@@ -378,6 +465,9 @@ export function AdminEmpresas() {
                   <td>
                     <button className="btn btn-link" type="button" onClick={() => setContrato(editarContrato(e))}>
                       Editar contrato
+                    </button>
+                    <button className="btn btn-link" type="button" onClick={() => setDadosDe(e.id)}>
+                      Dados
                     </button>
                     <button className="btn btn-link" type="button" onClick={() => setPropostaDe(e)}>
                       Gerar proposta

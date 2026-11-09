@@ -77,8 +77,8 @@ export function rotasUsuarios(banco: Banco) {
         await perfilLivreNoTeste(c, empresaId, d.perfil);
         const u = (
           await c.query(
-            `INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil, telefone_whatsapp, administrador, modulos)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+            `INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil, telefone_whatsapp, administrador, modulos, senha_provisoria)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, true) RETURNING *`,
             [empresaId, d.nome, d.email, hash, d.perfil, d.telefoneWhatsapp, d.perfil === 'dono' || d.administrador, normalizarModulos(d.perfil, d.modulos) ?? null],
           )
         ).rows[0];
@@ -130,12 +130,13 @@ export function rotasUsuarios(banco: Banco) {
                ativo = COALESCE($5, ativo),
                telefone_whatsapp = CASE WHEN $6::boolean THEN $7 ELSE telefone_whatsapp END,
                senha_hash = COALESCE($8, senha_hash),
+               senha_provisoria = CASE WHEN $12::boolean THEN true ELSE senha_provisoria END,
                administrador = COALESCE($9, administrador),
                modulos = CASE WHEN $10::boolean THEN $11::text[] ELSE modulos END,
                atualizado_em = now()
              WHERE id = $1 AND empresa_id = $2 RETURNING *`,
             [antes.id, empresaId, d.nome ?? null, d.perfil ?? null, d.ativo ?? null, 'telefoneWhatsapp' in (req.body as object), d.telefoneWhatsapp ?? null, hash,
-              administrador ?? null, modulos !== undefined, modulos ?? null],
+              administrador ?? null, modulos !== undefined, modulos ?? null, !!hash && antes.id !== eu.id],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: eu.id, acao: 'alterar', entidade: 'usuarios', entidadeId: antes.id, antes, depois });

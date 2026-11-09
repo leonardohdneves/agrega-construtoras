@@ -15,6 +15,7 @@ export function usuarioPublico(r: Record<string, any>, contratados?: readonly st
     ultimoAcesso: r.ultimo_acesso ?? null,
     criadoEm: r.criado_em,
     administrador: r.perfil === 'dono' || !!r.administrador,
+    senhaProvisoria: !!r.senha_provisoria,
     // null = segue o padrão do perfil
     modulos: r.perfil === 'dono' ? null : (r.modulos ?? null),
     modulosEfetivos: r.perfil === 'admin_sistema' ? [] : modulosEfetivos(r.perfil, listaDoUsuario(r.perfil, r.modulos, r.perfil === 'dono' || !!r.administrador), contratados ? contratoComBase(contratados) : undefined),

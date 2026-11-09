@@ -52,9 +52,10 @@ export function rotasAuth(banco: Banco) {
 
     app.put('/senha', { preHandler: exigir(banco) }, async (req) => {
       const dados = z.object({ senhaAtual: z.string().min(1, 'Informe a senha atual.'), novaSenha: esquemaSenha }).parse(req.body);
+      if (dados.novaSenha === dados.senhaAtual) throw new ErroHttp(400, 'A nova senha precisa ser diferente da senha atual.');
       const u = (await banco.query('SELECT senha_hash FROM usuarios WHERE id = $1', [req.usuario!.id])).rows[0];
       if (!(await conferirSenha(dados.senhaAtual, u.senha_hash))) throw new ErroHttp(400, 'A senha atual não confere.');
-      await banco.query('UPDATE usuarios SET senha_hash = $1, atualizado_em = now() WHERE id = $2', [
+      await banco.query('UPDATE usuarios SET senha_hash = $1, senha_provisoria = false, atualizado_em = now() WHERE id = $2', [
         await gerarHashSenha(dados.novaSenha),
         req.usuario!.id,
       ]);

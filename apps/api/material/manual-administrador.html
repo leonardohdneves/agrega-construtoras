@@ -6,7 +6,7 @@
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"></noscript>
 <style>
-@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega construtoras · Manual do administrador · versão 1.0"; font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } @bottom-right { content: counter(page); font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } }
+@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega construtoras · Manual do administrador · versão 1.1"; font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } @bottom-right { content: counter(page); font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } }
 :root { --ink:#1f2328; --muted:#4a4f57; --cinza:#6b7078; --line:#dedbd5; --accent:#1f5fad; --accent-escuro:#174a8a; --soft:#e7eff9; --warn:#78350f; --warnbg:#fdf0d5; --capa:#1f2328; }
 * { box-sizing: border-box; }
 html, body { margin:0; padding:0; }
@@ -64,7 +64,7 @@ th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: 
     <p class="sub">Cadastro das construtoras, contratos e períodos de teste, propostas, aceites e acompanhamento.</p>
   </div>
   <div class="rod">
-    <p>Versão 1.0 · novembro de 2026</p>
+    <p>Versão 1.1 · novembro de 2026</p>
     <p>Para o administrador do sistema Agrega. Não é material para as construtoras clientes.</p>
   </div>
 </section>
@@ -80,9 +80,13 @@ th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: 
   <ol class="passos">
     <li><span>Em Construtoras clientes, preencha o formulário de nova construtora.</span></li>
     <li><span>Informe os dados da empresa, como razão social, CNPJ, telefone, e-mail e cidade.</span></li>
-    <li><span>Informe o nome, o e-mail e a senha provisória do dono. Ele troca a senha em Minha conta.</span></li>
+    <li><span>Informe o nome, o e-mail e a senha provisória do dono.</span></li>
   </ol>
   <p>A construtora nasce com o pacote Obra. Ajuste o contrato em seguida, como descrito no capítulo 3.</p>
+  <h2>Senha provisória</h2>
+  <p>Quem recebe uma senha inicial (o dono no cadastro e qualquer usuário criado ou com senha redefinida) só usa o sistema depois de trocá-la. Até lá, o sistema abre apenas a tela Minha conta. Usuários que já existiam antes desta regra não são afetados.</p>
+  <h2>Dados da construtora cadastrada</h2>
+  <p>Em Construtoras clientes, o botão <b>Dados</b> abre a ficha da construtora: razão social, CNPJ, regime, dono, pacote, limites, período de teste e a lista de usuários com o último acesso. Usuários com senha inicial ainda não trocada aparecem marcados. As senhas nunca são exibidas.</p>
 </section>
 
 <section class="cap">
