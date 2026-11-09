@@ -17,7 +17,11 @@ export type UsuarioSessao = {
   empresaId: string | null;
   administrador: boolean;
   modulos: Modulo[];
+  senhaProvisoria: boolean;
 };
+
+/** Enquanto a senha inicial não for trocada, só estas rotas respondem. */
+const ROTAS_COM_SENHA_PROVISORIA = new Set(['GET /api/auth/eu', 'PUT /api/auth/senha', 'POST /api/auth/sair']);
 
 declare module 'fastify' {
   interface FastifyRequest {
@@ -54,7 +58,7 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
   return async function (req: FastifyRequest): Promise<void> {
     if (!req.sessao) throw naoAutenticado();
     const r = await banco.query(
-      `SELECT u.id, u.nome, u.email, u.perfil, u.empresa_id, u.ativo, u.administrador, u.modulos, e.ativo AS empresa_ativa, e.modulos_contratados
+      `SELECT u.id, u.nome, u.email, u.perfil, u.empresa_id, u.ativo, u.administrador, u.modulos, u.senha_provisoria, e.ativo AS empresa_ativa, e.modulos_contratados
          FROM usuarios u LEFT JOIN empresas e ON e.id = u.empresa_id
         WHERE u.id = $1 AND u.excluido_em IS NULL`,
       [req.sessao.sub],
@@ -66,7 +70,11 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
     const lista = listaDoUsuario(u.perfil, u.modulos, administrador);
     // Sem empresa (administrador do sistema) não há contrato; com empresa, vale o que foi vendido.
     const contratados = u.empresa_id ? contratoComBase(u.modulos_contratados) : undefined;
-    req.usuario = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id, administrador, modulos: modulosEfetivos(u.perfil, lista, contratados) };
+    const senhaProvisoria = !!u.senha_provisoria;
+    req.usuario = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id, administrador, modulos: modulosEfetivos(u.perfil, lista, contratados), senhaProvisoria };
+    if (senhaProvisoria && !ROTAS_COM_SENHA_PROVISORIA.has(`${req.method} ${req.url.split('?')[0]}`)) {
+      throw new ErroHttp(403, 'Troque a senha inicial para continuar.', { senhaProvisoria: true });
+    }
     if (!acessoPermitido({ perfil: u.perfil, modulos: lista, perfisRota: perfis, url: req.url, metodo: req.method, contratados })) throw semPermissao();
   };
 }

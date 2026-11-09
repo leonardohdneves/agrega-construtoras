@@ -104,6 +104,8 @@ function Protegido({ children, perfis }: { children: ReactNode; perfis?: Perfil[
   const local = useLocation();
   if (carregando) return <div className="carregando">Carregando…</div>;
   if (!usuario) return <Navigate to="/entrar" replace state={{ de: local.pathname }} />;
+  // Primeiro acesso: antes de qualquer outra tela, a pessoa troca a senha inicial.
+  if (usuario.senhaProvisoria && local.pathname !== '/conta') return <Navigate to="/conta" replace />;
   if (!podeAcessar(usuario, perfis, local.pathname)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }

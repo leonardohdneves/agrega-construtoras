@@ -4,7 +4,7 @@ import { api, NOMES_PERFIL } from '../api';
 import { useSessao } from '../sessao';
 
 export function Conta() {
-  const { usuario, sair } = useSessao();
+  const { usuario, sair, recarregar } = useSessao();
   const navegar = useNavigate();
   const [atual, setAtual] = useState('');
   const [nova, setNova] = useState('');
@@ -19,10 +19,13 @@ export function Conta() {
     setOk('');
     setSalvando(true);
     try {
+      const eraProvisoria = !!usuario.senhaProvisoria;
       await api('/auth/senha', { metodo: 'PUT', corpo: { senhaAtual: atual, novaSenha: nova } });
       setAtual('');
       setNova('');
       setOk('Senha alterada.');
+      await recarregar();
+      if (eraProvisoria) navegar('/');
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -42,6 +45,11 @@ export function Conta() {
       </div>
       <form className="card form" onSubmit={trocar} style={{ maxWidth: 520 }}>
         <h2>Trocar senha</h2>
+        {usuario.senhaProvisoria && (
+          <div className="alerta alerta-aviso" role="alert">
+            Este é o seu primeiro acesso. Troque a senha inicial para continuar usando o Agrega.
+          </div>
+        )}
         {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
         {ok && <div className="alerta alerta-ok" role="status">{ok}</div>}
         <div className="campo">
