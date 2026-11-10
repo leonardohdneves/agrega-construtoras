@@ -41,14 +41,25 @@ export function imprimirPagina(p: Impressao) {
   imprimirNaTela();
 }
 
+/** iPhone e iPad (inclui o app instalado na tela inicial). */
+export function ehIOS(): boolean {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
 /**
- * No iPhone, o app instalado na tela inicial (modo standalone) ignora window.print(), e o botão não faz nada.
- * Nesse caso a mesma tela abre numa aba do Safari, onde a impressão e "Salvar em PDF" funcionam.
+ * No iPhone, o Safari não abre a janela de impressão por script, e o app instalado na tela inicial também não.
+ * Então a tela abre numa aba do Safari por um clique em link (aceito pelo iOS, mesmo no app instalado),
+ * e a impressão ou o PDF sai do menu Compartilhar, opção Imprimir.
  */
 export function imprimirNaTela(): void {
-  const instaladoNoIphone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
-  if (instaladoNoIphone) {
-    window.open(window.location.href, '_blank', 'noopener');
+  if (ehIOS()) {
+    const link = document.createElement('a');
+    link.href = window.location.href;
+    link.target = '_blank';
+    link.rel = 'noopener';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
     return;
   }
   window.print();
