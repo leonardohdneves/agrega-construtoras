@@ -37,7 +37,20 @@ export function imprimirPagina(p: Impressao) {
   }
   el.textContent = `@page { size: ${TAMANHO[p.papel]} ${p.orientacao === 'retrato' ? 'portrait' : 'landscape'}; }`;
   document.documentElement.dataset.orientacao = p.orientacao;
-  setTimeout(() => window.print(), 60);
+  setTimeout(() => imprimirNaTela(), 60);
+}
+
+/**
+ * No iPhone, o app instalado na tela inicial (modo standalone) ignora window.print(), e o botão não faz nada.
+ * Nesse caso a mesma tela abre numa aba do Safari, onde a impressão e "Salvar em PDF" funcionam.
+ */
+export function imprimirNaTela(): void {
+  const instaladoNoIphone = (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  if (instaladoNoIphone) {
+    window.open(window.location.href, '_blank', 'noopener');
+    return;
+  }
+  window.print();
 }
 
 export function OpcoesPagina({ valor, aoMudar }: { valor: Impressao; aoMudar: (p: Impressao) => void }) {

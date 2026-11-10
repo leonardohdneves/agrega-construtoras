@@ -1,3 +1,4 @@
+import { imprimirNaTela } from '../componentes/Documento';
 // Patrimônio da construtora: ferramentas e equipamentos próprios, com retirada e devolução por obra e depreciação linear.
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
@@ -307,7 +308,7 @@ export function PatrimonioEtiquetasImprimir() {
           <span className="muted">{bens ? `${bens.length} bem(ns) · folha A4 com 24 etiquetas (3 × 8, 70 × 37 mm).` : 'Carregando…'}</span>
         </div>
         <div className="acoes">
-          <button className="btn btn-primario" type="button" disabled={!bens?.length} onClick={() => window.print()}>Imprimir</button>
+          <button className="btn btn-primario" type="button" disabled={!bens?.length} onClick={() => imprimirNaTela()}>Imprimir</button>
           <Link className="btn btn-secundario" to="/sup/patrimonio">Voltar</Link>
         </div>
       </div>

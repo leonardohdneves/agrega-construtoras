@@ -1,3 +1,4 @@
+import { imprimirNaTela } from '../componentes/Documento';
 // Engenharia · Planejamento em abas: Planejamento (atividades), Gantt, Equipes necessárias, Materiais necessários e Equipamentos.
 // A estrutura é a EAP do orçamento: etapas e subetapas são resumos (expansíveis) e as tarefas são as atividades.
 // Cada aba tem botão de impressão.
@@ -97,7 +98,7 @@ function ControlesArvore({ nos, fechados, setFechados }: { nos: No[]; fechados: 
 }
 
 function BotaoImprimir() {
-  return <button className="btn nao-imprimir" type="button" onClick={() => window.print()}>Imprimir</button>;
+  return <button className="btn nao-imprimir" type="button" onClick={() => imprimirNaTela()}>Imprimir</button>;
 }
 
 function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setFechados }: {
