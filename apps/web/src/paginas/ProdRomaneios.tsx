@@ -1,3 +1,4 @@
+import { imprimirNaTela } from '../componentes/Documento';
 // Produção › Romaneios e etiquetas: documento de entrega de cada carga (NBR 7212, A4 com 2 vias)
 // e etiquetas dos corpos de prova (folha A4 de etiquetas adesivas 3 × 8, 70 × 37 mm).
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
@@ -407,7 +408,7 @@ function imprimirParte(parte: 'romaneio' | 'etiquetas' | 'tudo', depois?: () => 
     depois?.();
   };
   window.addEventListener('afterprint', fim);
-  setTimeout(() => window.print(), 50);
+  setTimeout(() => imprimirNaTela(), 50);
 }
 
 export function ImprimirEtiquetas() {

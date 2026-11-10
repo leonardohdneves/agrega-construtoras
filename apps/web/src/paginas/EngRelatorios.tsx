@@ -4,7 +4,7 @@
 import { Component, useEffect, useState, type ReactNode } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda } from '../api';
-import { CabecalhoDocumento } from '../componentes/Documento';
+import { CabecalhoDocumento, imprimirNaTela } from '../componentes/Documento';
 import type { Obra } from './EngObras';
 import { ROTULO, type NivelPlanilha } from './EngPlanilha';
 
@@ -787,7 +787,7 @@ function ComparacaoVersoes({ obraId }: { obraId: string }) {
           <input type="checkbox" checked={soMudancas} onChange={(e) => setSoMudancas(e.target.checked)} />
           Mostrar só o que mudou
         </label>
-        <button className="btn" type="button" onClick={() => window.print()} disabled={!comp}>Imprimir / salvar em PDF</button>
+        <button className="btn" type="button" onClick={() => imprimirNaTela()} disabled={!comp}>Imprimir / salvar em PDF</button>
       </div>
 
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}

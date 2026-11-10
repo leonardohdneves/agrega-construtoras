@@ -1,3 +1,4 @@
+import { imprimirNaTela } from '../componentes/Documento';
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatarData, formatarMoeda } from '../api';
@@ -161,7 +162,7 @@ export function SupRelatorios() {
         extra={
           <>
             <SeletorPeriodo valor={periodo} aoMudar={(p) => mudar(p)} />
-            <button className="btn" type="button" onClick={() => window.print()} disabled={!r}>Imprimir / salvar em PDF</button>
+            <button className="btn" type="button" onClick={() => imprimirNaTela()} disabled={!r}>Imprimir / salvar em PDF</button>
           </>
         }
       />

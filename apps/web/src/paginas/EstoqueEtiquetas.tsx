@@ -1,3 +1,4 @@
+import { imprimirNaTela } from '../componentes/Documento';
 // Etiquetas QR do estoque da construtora: folha A4 com 24 etiquetas (3 × 8, 70 × 37 mm), uma por entrada de insumo.
 // O QR é o identificador da entrada; ele não muda enquanto a entrada existir, então a etiqueta impressa segue válida.
 import { useEffect, useMemo, useState } from 'react';
@@ -61,7 +62,7 @@ export function EstoqueEtiquetasImprimir() {
           </span>
         </div>
         <div className="acoes">
-          <button className="btn btn-primario" type="button" disabled={!etiquetas?.length} onClick={() => window.print()}>Imprimir</button>
+          <button className="btn btn-primario" type="button" disabled={!etiquetas?.length} onClick={() => imprimirNaTela()}>Imprimir</button>
           <Link className="btn btn-secundario" to="/sup/estoque">Voltar ao estoque</Link>
         </div>
       </div>
