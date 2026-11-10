@@ -155,16 +155,19 @@ export function EngVisitaDetalhe() {
     void carregar();
   }, [obraId, visitaId]);
 
-  /** Assinatura do responsável, desenhada na tela: usa o nome já salvo na visita. */
+  /** Assinatura do responsável, desenhada na tela. Se o nome digitado ainda não foi salvo, salva a visita antes. */
   async function assinarResponsavel(imagem: string) {
-    const nome = responsavelSalvo.trim();
+    const nome = responsavel.trim();
     if (nome.length < 3) {
-      setErro('Preencha e salve o responsável pela visita antes de assinar.');
+      setErro('Digite o nome do responsável pela visita antes de assinar.');
       return;
     }
     setErro('');
     setAviso('');
     try {
+      if (nome !== responsavelSalvo.trim()) {
+        await api(`${apiBase(obraId!, visitaId!)}`, { metodo: 'PUT', corpo: { data, responsavel: nome, observacoes: observacoes.trim() || null } });
+      }
       await api(`${apiBase(obraId!, visitaId!)}/assinaturas`, { metodo: 'POST', corpo: { nome, imagem } });
       setAviso('Assinatura do responsável registrada.');
       await carregar();
@@ -316,8 +319,8 @@ export function EngVisitaDetalhe() {
               })()
             ) : (
               <>
-                <p className="small muted">{responsavelSalvo.trim() ? `${responsavelSalvo.trim()} ainda não assinou.` : 'Preencha e salve o responsável pela visita para assinar.'}</p>
-                {responsavelSalvo.trim().length >= 3 && <AssinaturaPad rotulo="Registrar assinatura do responsável" aoConfirmar={(img) => void assinarResponsavel(img)} />}
+                <p className="small muted">{responsavel.trim() ? `${responsavel.trim()} ainda não assinou.` : 'Digite o nome do responsável pela visita, no campo acima, para assinar.'}</p>
+                {responsavel.trim().length >= 3 && <AssinaturaPad rotulo="Registrar assinatura do responsável" aoConfirmar={(img) => void assinarResponsavel(img)} />}
               </>
             )}
           </div>

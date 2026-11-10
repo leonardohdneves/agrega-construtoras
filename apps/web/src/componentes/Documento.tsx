@@ -37,7 +37,8 @@ export function imprimirPagina(p: Impressao) {
   }
   el.textContent = `@page { size: ${TAMANHO[p.papel]} ${p.orientacao === 'retrato' ? 'portrait' : 'landscape'}; }`;
   document.documentElement.dataset.orientacao = p.orientacao;
-  setTimeout(() => imprimirNaTela(), 60);
+  // Chamada direta, dentro do toque: o iOS bloqueia abrir aba ou imprimir depois de um timer.
+  imprimirNaTela();
 }
 
 /**
