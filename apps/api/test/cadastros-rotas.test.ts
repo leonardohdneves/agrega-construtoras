@@ -43,3 +43,24 @@ test('P02: quem não é dono nem gestor não cadastra colaborador', { skip: semB
   const r = await ctx.pedir('comprador', 'POST', '/api/adm/colaboradores', { corpo: { nome: 'X', funcao: 'outro' } });
   assert.equal(r.status, 403);
 });
+
+test('P03: PUT da permuta recusa obra e fornecedor de outra empresa', { skip: semBanco }, async () => {
+  const obra = async (empresa: 'a' | 'b', codigo: string) =>
+    (await ctx.pedir('dono', 'POST', '/api/eng/obras', { empresa, corpo: { codigo, nome: `Obra ${codigo}` } })).corpo.obra.id as string;
+  const fornecedor = async (empresa: 'a' | 'b', nome: string) =>
+    (await ctx.pedir('dono', 'POST', '/api/adm/fornecedores', { empresa, corpo: { razaoSocial: nome } })).corpo.fornecedor.id as string;
+  const obraA = await obra('a', 'PM-A');
+  const obraB = await obra('b', 'PM-B');
+  const fornA = await fornecedor('a', 'Fornecedor A');
+  const fornB = await fornecedor('b', 'Fornecedor B');
+  const item = { descricao: 'Cimento', unidade: 'sc', quantidade: 10, precoUnitario: 30 };
+  const corpo = (obraId: string, fornecedorId: string) => ({ obraId, fornecedorId, data: '2026-11-18', materiais: [item], servicos: [{ ...item, descricao: 'Reboco' }] });
+
+  const nova = await ctx.pedir('dono', 'POST', '/api/sup/permutas', { corpo: corpo(obraA, fornA) });
+  assert.equal(nova.status, 201, JSON.stringify(nova.corpo));
+  const id = nova.corpo.permuta.id;
+  assert.equal((await ctx.pedir('dono', 'POST', '/api/sup/permutas', { corpo: corpo(obraB, fornA) })).status, 400, 'POST com obra da B');
+  assert.equal((await ctx.pedir('dono', 'PUT', `/api/sup/permutas/${id}`, { corpo: corpo(obraB, fornA) })).status, 400, 'PUT com obra da B');
+  assert.equal((await ctx.pedir('dono', 'PUT', `/api/sup/permutas/${id}`, { corpo: corpo(obraA, fornB) })).status, 400, 'PUT com fornecedor da B');
+  assert.equal((await ctx.pedir('dono', 'PUT', `/api/sup/permutas/${id}`, { corpo: corpo(obraA, fornA) })).status, 200, 'PUT válido');
+});

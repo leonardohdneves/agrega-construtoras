@@ -76,7 +76,8 @@ export async function prepararAppTeste(esquema: string): Promise<ContextoTeste> 
   );
   const admin = { id: adminId, token: criarTokenSessao({ id: adminId, empresaId: null, perfil: 'admin_sistema' }) };
 
-  const app = await criarApp(banco, { log: false });
+  // TEST_LOG=1 mostra o log do app (útil para ver o erro por trás de um 500).
+  const app = await criarApp(banco, { log: process.env.TEST_LOG === '1' });
   await app.ready();
 
   const pedir: ContextoTeste['pedir'] = async (perfil, metodo, url, opcoes = {}) => {

@@ -16,7 +16,8 @@ const banco = {
     };
   },
 };
-const req = (method: string, url: string) => ({ method, url, sessao: { sub: 'u1' } }) as never;
+// Como o Fastify entrega: o padrão registrado da rota vem em routeOptions.url (a guarda decide por ele, P04).
+const req = (method: string, url: string) => ({ method, url, routeOptions: { url: url.split('?')[0] }, params: {}, sessao: { sub: 'u1' } }) as never;
 
 test('senha provisória: rotas fora da troca de senha respondem 403', async () => {
   await assert.rejects(exigir(banco as never)(req('GET', '/api/obras')), (e: { status?: number; dados?: unknown }) => {
