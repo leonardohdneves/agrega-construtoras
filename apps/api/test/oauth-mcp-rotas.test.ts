@@ -51,3 +51,35 @@ test('P38: o código só vale para o endereço de retorno usado no login', { ski
   // Código apresentado com o endereço errado é queimado: nem o endereço certo o aproveita depois.
   assert.equal((await trocar(code)).status, 400);
 });
+
+test('P39: reusar um token de renovação já trocado derruba a cadeia inteira e fica na auditoria', { skip: semBanco }, async () => {
+  const primeiro = (await trocar(await login())).corpo.refreshToken as string;
+  const segundo = (await renovar(primeiro)).corpo.refreshToken as string;
+  const terceiro = (await renovar(segundo)).corpo.refreshToken as string;
+  assert.ok(terceiro);
+  // Um token trocado há mais de um minuto reaparece: alguém guardou uma cópia.
+  await ctx.banco.query(`UPDATE oauth_refresh SET revogado_em = now() - interval '5 minutes' WHERE revogado_em IS NOT NULL`);
+  assert.equal((await renovar(primeiro)).status, 401);
+  // O token atual, que era válido, cai junto.
+  assert.equal((await renovar(terceiro)).status, 401, 'o descendente válido precisa ser revogado');
+  const aud = await ctx.banco.query(`SELECT usuario_id, depois FROM auditoria WHERE entidade = 'oauth_refresh' AND acao = 'revogar'`);
+  assert.equal(aud.rowCount, 1);
+  assert.equal(aud.rows[0].usuario_id, ctx.usuarios.a.gestor.id);
+});
+
+test('P39: outra conexão do mesmo usuário não é afetada pelo reuso', { skip: semBanco }, async () => {
+  const conexaoA = (await trocar(await login())).corpo.refreshToken as string;
+  const conexaoB = (await trocar(await login())).corpo.refreshToken as string;
+  const novoA = (await renovar(conexaoA)).corpo.refreshToken as string;
+  await ctx.banco.query(`UPDATE oauth_refresh SET revogado_em = now() - interval '5 minutes' WHERE revogado_em IS NOT NULL`);
+  assert.equal((await renovar(conexaoA)).status, 401);
+  assert.equal((await renovar(novoA)).status, 401);
+  assert.equal((await renovar(conexaoB)).status, 200, 'a conexão B é de outra cadeia');
+});
+
+test('P39: repetição imediata do mesmo token (duas requisições simultâneas) não derruba a cadeia', { skip: semBanco }, async () => {
+  const primeiro = (await trocar(await login())).corpo.refreshToken as string;
+  const segundo = (await renovar(primeiro)).corpo.refreshToken as string;
+  assert.equal((await renovar(primeiro)).status, 401, 'o token já trocado não renova de novo');
+  assert.equal((await renovar(segundo)).status, 200, 'mas o novo continua valendo');
+});

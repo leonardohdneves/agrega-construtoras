@@ -6,10 +6,13 @@
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
 import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
+import { auditar } from '../auditoria.ts';
 import type { Perfil } from './token.ts';
 
 const VALIDADE_CODIGO_S = 60;
 const VALIDADE_REFRESH_DIAS = 30;
+/** Repetição do mesmo token logo após a troca (duas requisições simultâneas, nova tentativa de rede) não é tratada como roubo. */
+const TOLERANCIA_REUSO_S = 60;
 
 const hash = (valor: string) => createHash('sha256').update(valor).digest('hex');
 const novoSegredo = () => randomBytes(32).toString('hex');
@@ -55,9 +58,13 @@ async function usuarioApto(c: Cliente, usuarioId: string): Promise<UsuarioOAuth 
   return u ? { id: u.id, empresaId: u.empresa_id, perfil: u.perfil } : null;
 }
 
-async function emitirRefresh(c: Cliente, usuarioId: string, ip: string | null): Promise<string> {
+/** Sem `familiaId` começa uma conexão nova (família nova); com ele, o token continua a cadeia do anterior. */
+async function emitirRefresh(c: Cliente, usuarioId: string, ip: string | null, familiaId: string | null = null): Promise<string> {
   const refresh = novoSegredo();
-  await c.query(`INSERT INTO oauth_refresh (token_hash, usuario_id, expira_em, ip) VALUES ($1, $2, now() + make_interval(days => $3), $4)`, [hash(refresh), usuarioId, VALIDADE_REFRESH_DIAS, ip]);
+  await c.query(
+    `INSERT INTO oauth_refresh (token_hash, usuario_id, expira_em, ip, familia_id) VALUES ($1, $2, now() + make_interval(days => $3), $4, COALESCE($5::uuid, gen_random_uuid()))`,
+    [hash(refresh), usuarioId, VALIDADE_REFRESH_DIAS, ip, familiaId],
+  );
   return refresh;
 }
 
@@ -77,17 +84,39 @@ export async function trocarCodigo(banco: Banco, code: string, redirectUri: stri
   });
 }
 
-/** Rotação: o token usado morre e nasce outro. Reuso de um token já rotacionado devolve null. */
+/**
+ * Rotação: o token usado morre e nasce outro, na mesma família. Devolve null quando o token não vale.
+ * Se o token apresentado já tinha sido trocado (reuso), alguém ficou com uma cópia: a família inteira é revogada,
+ * inclusive o token atual, e o caso vai para a auditoria. O usuário precisa autorizar o assistente de novo.
+ */
 export async function renovar(banco: Banco, refreshToken: string, ip: string | null): Promise<{ usuario: UsuarioOAuth; refreshToken: string } | null> {
   return emTransacao(banco, async (c) => {
-    const atual = (await c.query(`UPDATE oauth_refresh SET revogado_em = now() WHERE token_hash = $1 AND revogado_em IS NULL AND expira_em > now() RETURNING usuario_id`, [hash(refreshToken)])).rows[0];
+    const atual = (
+      await c.query(
+        `SELECT id, usuario_id, familia_id, revogado_em IS NOT NULL AS revogado, expira_em > now() AS vigente,
+                COALESCE(revogado_em < now() - make_interval(secs => $2), false) AS reuso
+           FROM oauth_refresh WHERE token_hash = $1 FOR UPDATE`,
+        [hash(refreshToken), TOLERANCIA_REUSO_S],
+      )
+    ).rows[0];
     await c.query(`DELETE FROM oauth_refresh WHERE expira_em < now() - interval '7 days'`);
-    if (!atual) return null;
+    if (!atual || !atual.vigente) return null;
+    if (atual.revogado) {
+      if (atual.reuso) await derrubarFamilia(c, atual.familia_id, atual.usuario_id, ip);
+      return null;
+    }
+    await c.query(`UPDATE oauth_refresh SET revogado_em = now() WHERE id = $1`, [atual.id]);
     // O acesso pode ter mudado desde a última renovação: usuário desativado ou empresa suspensa encerram a cadeia.
     const usuario = await usuarioApto(c, atual.usuario_id);
     if (!usuario) return null;
-    return { usuario, refreshToken: await emitirRefresh(c, usuario.id, ip) };
+    return { usuario, refreshToken: await emitirRefresh(c, usuario.id, ip, atual.familia_id) };
   });
+}
+
+async function derrubarFamilia(c: Cliente, familiaId: string, usuarioId: string, ip: string | null): Promise<void> {
+  const r = await c.query(`UPDATE oauth_refresh SET revogado_em = now() WHERE familia_id = $1 AND revogado_em IS NULL`, [familiaId]);
+  const empresaId = (await c.query('SELECT empresa_id FROM usuarios WHERE id = $1', [usuarioId])).rows[0]?.empresa_id ?? null;
+  await auditar(c, { empresaId, usuarioId, acao: 'revogar', entidade: 'oauth_refresh', entidadeId: familiaId, depois: { motivo: 'reuso de token de renovação já trocado', tokensRevogados: r.rowCount, ip } });
 }
 
 /** Encerra todas as conexões de assistentes do usuário (troca de senha). */
