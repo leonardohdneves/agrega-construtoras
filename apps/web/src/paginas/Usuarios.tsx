@@ -45,7 +45,7 @@ function EditorAcesso({ valor, aoMudar, eu }: { valor: Acesso; aoMudar: (a: Aces
             value={valor.perfil}
             onChange={(e) => {
               const p = e.target.value as PerfilEmpresa;
-              aoMudar({ ...valor, perfil: p, padrao: true, modulos: MODULOS_PADRAO[p], administrador: p === 'dono' ? true : valor.administrador });
+              aoMudar({ ...valor, perfil: p, padrao: true, modulos: padraoDe(p), administrador: p === 'dono' ? true : valor.administrador });
             }}
           >
             {perfis.map((p) => (
@@ -65,7 +65,7 @@ function EditorAcesso({ valor, aoMudar, eu }: { valor: Acesso; aoMudar: (a: Aces
         ) : (
           <>
             <label className="marcar" style={{ marginTop: 0 }}>
-              <input type="checkbox" checked={valor.padrao} onChange={(e) => aoMudar({ ...valor, padrao: e.target.checked, modulos: e.target.checked ? MODULOS_PADRAO[valor.perfil] : valor.modulos })} />
+              <input type="checkbox" checked={valor.padrao} onChange={(e) => aoMudar({ ...valor, padrao: e.target.checked, modulos: e.target.checked ? padraoDe(valor.perfil) : valor.modulos })} />
               Usar o padrão do perfil {NOMES_PERFIL[valor.perfil]}
             </label>
             <div className="grupo-marcar" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(220px, 1fr))', gap: 6 }}>
@@ -73,7 +73,7 @@ function EditorAcesso({ valor, aoMudar, eu }: { valor: Acesso; aoMudar: (a: Aces
                 // Financeiro (saldos e contas) é só do dono e do perfil Financeiro.
                 const bloqueado = m === 'financeiro' && valor.perfil !== 'financeiro';
                 const marcado = !bloqueado && (valor.modulos.includes(m) || (m === 'configuracoes' && valor.administrador));
-                const extra = !MODULOS_PADRAO[valor.perfil].includes(m);
+                const extra = !padraoDe(valor.perfil).includes(m);
                 return (
                   <label key={m} className="marcar" style={{ alignItems: 'flex-start', margin: 0 }}>
                     <input
@@ -101,9 +101,16 @@ function EditorAcesso({ valor, aoMudar, eu }: { valor: Acesso; aoMudar: (a: Aces
   );
 }
 
+/**
+ * Módulos padrão de cada perfil: os que o servidor manda em GET /api/usuarios (P14). A cópia de acesso.ts só vale
+ * até a lista carregar.
+ */
+let padraoServidor: Record<Perfil, Modulo[]> | null = null;
+const padraoDe = (p: Perfil): Modulo[] => padraoServidor?.[p] ?? MODULOS_PADRAO[p];
+
 function deUsuario(u: Usuario): Acesso {
   const perfil = u.perfil as PerfilEmpresa;
-  return { perfil, administrador: u.administrador, padrao: u.modulos === null, modulos: u.modulos ?? MODULOS_PADRAO[perfil] };
+  return { perfil, administrador: u.administrador, padrao: u.modulos === null, modulos: u.modulos ?? padraoDe(perfil) };
 }
 
 const corpoAcesso = (a: Acesso) => ({ perfil: a.perfil, administrador: a.perfil === 'dono' || a.administrador, modulos: a.padrao || a.perfil === 'dono' ? null : a.modulos });
@@ -120,7 +127,8 @@ export function Usuarios() {
 
   const carregar = useCallback(async () => {
     try {
-      const r = await api<{ usuarios: Usuario[] }>('/usuarios');
+      const r = await api<{ usuarios: Usuario[]; padrao?: Record<Perfil, Modulo[]> }>('/usuarios');
+      if (r.padrao) padraoServidor = r.padrao;
       setLista(r.usuarios);
     } catch (e) {
       setErro((e as Error).message);

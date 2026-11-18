@@ -14,7 +14,16 @@ const esquemaAceite = z.object({
   concordo: z.literal(true, { errorMap: () => ({ message: 'Confirme que leu as condições.' }) }),
 });
 
-const data = (d: Date | string | null) => (d ? new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' }) : null);
+/**
+ * Data em DD/MM/AAAA. Coluna `date` chega como texto AAAA-MM-DD e é formatada pelo texto: passar por `new Date`
+ * daria meia-noite UTC, que em São Paulo cai no dia anterior (P13). Horários (timestamptz) usam o fuso de São Paulo.
+ */
+function data(d: Date | string | null): string | null {
+  if (!d) return null;
+  const dia = typeof d === 'string' ? /^(\d{4})-(\d{2})-(\d{2})$/.exec(d) : null;
+  if (dia) return `${dia[3]}/${dia[2]}/${dia[1]}`;
+  return new Date(d).toLocaleDateString('pt-BR', { timeZone: 'America/Sao_Paulo' });
+}
 
 export function rotasAceite(banco: Banco) {
   return async function (app: FastifyInstance) {

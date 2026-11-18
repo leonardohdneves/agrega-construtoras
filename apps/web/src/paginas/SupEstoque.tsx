@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
+import { api, lerNumero } from '../api';
 import { LeitorCodigo } from '../componentes/LeitorCodigo';
 import { qrSvg } from '../qr';
 
@@ -191,7 +191,7 @@ export function SupEstoque() {
           colaboradorId: saida.colaboradorId,
           data: saida.data,
           observacao: saida.observacao || null,
-          itens: itensSaida.map((i) => ({ etiquetaId: i.etiqueta.id, quantidade: i.quantidade })),
+          itens: itensSaida.map((i) => ({ etiquetaId: i.etiqueta.id, quantidade: lerNumero(i.quantidade) ?? i.quantidade })),
         },
       });
       setAviso(`Saída ${r.numero} registrada.`);
@@ -212,7 +212,7 @@ export function SupEstoque() {
     try {
       await api('/sup/estoque/transferencias', {
         metodo: 'POST',
-        corpo: { obraId, obraItemId: transf.obraItemId, eapNoId: transf.eapNoId, origemId: transf.origemId, destinoId: transf.destinoId, data: transf.data, quantidade: transf.quantidade, observacao: transf.observacao || null },
+        corpo: { obraId, obraItemId: transf.obraItemId, eapNoId: transf.eapNoId, origemId: transf.origemId, destinoId: transf.destinoId, data: transf.data, quantidade: lerNumero(transf.quantidade) ?? transf.quantidade, observacao: transf.observacao || null },
       });
       setAviso('Transferência registrada.');
       setTransf({ obraItemId: '', eapNoId: '', origemId: '', destinoId: '', quantidade: '', data: hoje(), observacao: '' });

@@ -38,7 +38,8 @@ export type ContextoTeste = {
   fechar: () => Promise<void>;
 };
 
-const CNPJ: Record<Letra, string> = { a: '11222333000181', b: '45723174000110' };
+// Diferentes dos CNPJs das cargas (demonstração 11222333000181 e Construtora Modelo 24680135000100).
+const CNPJ: Record<Letra, string> = { a: '12345678000195', b: '45723174000110' };
 
 /** Recria o esquema `esquema` do zero e sobe o app. Cada arquivo de teste usa um esquema diferente. */
 export async function prepararAppTeste(esquema: string): Promise<ContextoTeste> {

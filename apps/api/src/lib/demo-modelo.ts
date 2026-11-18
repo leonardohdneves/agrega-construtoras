@@ -169,19 +169,49 @@ const SERV_BOM: ServicoOs[] = [
 
 // ---------------------------------------------------------------- limpeza
 
-/** Apaga todos os dados de uma empresa, mantendo a empresa e os usuários. */
+/** Tabelas com `empresa_id` que a limpeza preserva: a própria conta da empresa, não os dados dela. */
+const PRESERVAR_NA_LIMPEZA = new Set(['usuarios', 'backups', 'avisos_sistema']);
+
+/**
+ * Apaga todos os dados de uma empresa, mantendo a empresa e os usuários.
+ * As tabelas vêm do próprio banco (toda tabela com `empresa_id`), e não de uma lista fixa: a lista antiga ficou
+ * para trás do esquema e derrubava as cargas em banco novo (P27). As tabelas filhas sem `empresa_id` (itens da obra,
+ * EAP, RDO, canteiro…) saem em cascata. A ordem é descoberta tentando: o que esbarra em chave estrangeira volta
+ * para a fila e é tentado de novo depois que as tabelas que apontam para ele forem esvaziadas.
+ */
 export async function limparEmpresa(c: C, empresaId: string): Promise<void> {
+  // Ciclos entre tabelas (nota ↔ lançamento) e referências de fora (usuário → motorista) são soltos antes.
   await c.query('UPDATE usuarios SET motorista_id = NULL WHERE empresa_id = $1', [empresaId]);
   await c.query('UPDATE notas_fiscais SET lancamento_id = NULL, pedido_id = NULL WHERE empresa_id = $1', [empresaId]);
   await c.query('UPDATE lancamentos SET nota_id = NULL, recorrencia_pai_id = NULL WHERE empresa_id = $1', [empresaId]);
-  for (const t of [
-    'autorizacoes_pagamento', 'medicoes_itens', 'medicoes', 'contratos_itens', 'contratos', 'pedidos_itens', 'pedidos_compra', 'cotacoes_precos', 'cotacoes_itens', 'cotacoes_fornecedores', 'cotacoes', 'solicitacoes_itens', 'solicitacoes_compra',
-    'extrato_linhas', 'extratos_ofx', 'escalas', 'corpos_prova', 'amostras', 'ensaios_insumos', 'equipamentos', 'qualidade_config', 'estoque_movimentos', 'inventarios_itens', 'inventarios', 'cargas_consumo', 'cargas', 'propostas', 'vendas_adicionais', 'vendas', 'regras_producao', 'avisos', 'insumos_produtos',
-    'tracos_itens', 'tracos', 'valores_producao', 'anexos', 'abastecimentos', 'os_itens', 'apropriacoes', 'revisoes_veiculo', 'ordens_servico', 'parcelas',
-    'transferencias', 'notas_duplicatas', 'notas_itens', 'insumos', 'regras_apropriacao', 'notas_fiscais', 'lancamentos', 'documentos_veiculo',
-    'planos_manutencao', 'contas_financeiras', 'clientes', 'fornecedores', 'plano_contas', 'orcamento_itens', 'eap_nos', 'obra_composicao_insumos', 'obra_itens', 'obras', 'ref_composicao_insumos', 'ref_itens', 'ref_tabelas', 'centros_custo', 'motoristas', 'veiculos', 'auditoria',
-  ]) {
-    await c.query(`DELETE FROM ${t} WHERE empresa_id = $1`, [empresaId]);
+  const tabelas = (
+    await c.query<{ t: string }>(
+      `SELECT c.table_name AS t FROM information_schema.columns c
+         JOIN information_schema.tables x ON x.table_schema = c.table_schema AND x.table_name = c.table_name AND x.table_type = 'BASE TABLE'
+        WHERE c.table_schema = current_schema() AND c.column_name = 'empresa_id'
+        ORDER BY 1`,
+    )
+  ).rows.map((r) => r.t).filter((t) => !PRESERVAR_NA_LIMPEZA.has(t));
+  let fila = tabelas;
+  while (fila.length) {
+    const bloqueadas: string[] = [];
+    let ultimoErro: unknown = null;
+    for (const t of fila) {
+      await c.query('SAVEPOINT limpar_tabela');
+      try {
+        await c.query(`DELETE FROM "${t}" WHERE empresa_id = $1`, [empresaId]);
+        await c.query('RELEASE SAVEPOINT limpar_tabela');
+      } catch (e) {
+        await c.query('ROLLBACK TO SAVEPOINT limpar_tabela');
+        if ((e as { code?: string }).code !== '23503') throw e;
+        bloqueadas.push(t);
+        ultimoErro = e;
+      }
+    }
+    if (bloqueadas.length === fila.length) {
+      throw new Error(`Não deu para limpar a empresa: ${bloqueadas.join(', ')} seguem presas por chave estrangeira (${(ultimoErro as Error).message}).`);
+    }
+    fila = bloqueadas;
   }
 }
 

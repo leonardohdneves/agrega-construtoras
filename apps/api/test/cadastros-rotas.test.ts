@@ -2,6 +2,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
+import { criarTokenSessao } from '../src/sessao.ts';
 
 let ctx: ContextoTeste;
 before(async () => {
@@ -63,4 +64,29 @@ test('P03: PUT da permuta recusa obra e fornecedor de outra empresa', { skip: se
   assert.equal((await ctx.pedir('dono', 'PUT', `/api/sup/permutas/${id}`, { corpo: corpo(obraB, fornA) })).status, 400, 'PUT com obra da B');
   assert.equal((await ctx.pedir('dono', 'PUT', `/api/sup/permutas/${id}`, { corpo: corpo(obraA, fornB) })).status, 400, 'PUT com fornecedor da B');
   assert.equal((await ctx.pedir('dono', 'PUT', `/api/sup/permutas/${id}`, { corpo: corpo(obraA, fornA) })).status, 200, 'PUT válido');
+});
+
+test('P35: empresa criada pelo administrador já lança despesa, sem passar pela tela do plano de contas', { skip: semBanco }, async () => {
+  const nova = await ctx.pedir('admin_sistema', 'POST', '/api/admin/empresas', {
+    corpo: { razaoSocial: 'Construtora Nova Ltda', cnpj: '11444777000161', regimeTributario: 'simples', aliquotasDre: {}, dono: { nome: 'Dona Nova', email: 'dona@nova.teste', senha: 'SenhaForte#2026' } },
+  });
+  assert.equal(nova.status, 201, JSON.stringify(nova.corpo));
+  const empresaId = nova.corpo.empresa.id;
+  // O dono nasce com senha provisória; para o teste, ela já foi trocada.
+  const dono = (await ctx.banco.query("UPDATE usuarios SET senha_provisoria = false WHERE email = 'dona@nova.teste' RETURNING id")).rows[0].id;
+  // O pacote inicial (Obra) não tem o Financeiro; o administrador amplia o contrato. O plano de contas já existe.
+  await ctx.banco.query("UPDATE empresas SET modulos_contratados = array_append(modulos_contratados, 'financeiro') WHERE id = $1", [empresaId]);
+  const token = criarTokenSessao({ id: dono, empresaId, perfil: 'dono' });
+  const pedir = async (metodo: 'GET' | 'POST', url: string, corpo?: unknown) => {
+    const r = await ctx.app.inject({ method: metodo, url, headers: { authorization: `Bearer ${token}` }, ...(corpo ? { payload: corpo as object } : {}) });
+    return { status: r.statusCode, corpo: r.json() };
+  };
+  const plano = await pedir('GET', '/api/fin/plano-contas');
+  const conta = plano.corpo.contas.find((x: { tipo: string; aceitaLancamento: boolean }) => x.tipo === 'despesa' && x.aceitaLancamento);
+  assert.ok(conta, 'o plano padrão tem categoria de despesa que aceita lançamento');
+  const lanc = await pedir('POST', '/api/fin/lancamentos', {
+    tipo: 'despesa', competencia: '2026-11-18', descricao: 'Primeira despesa', valorTotal: 100,
+    apropriacoes: [{ planoContaId: conta.id }], parcelas: [{ vencimento: '2026-11-30', valor: 100 }],
+  });
+  assert.equal(lanc.status, 201, JSON.stringify(lanc.corpo));
 });

@@ -16,6 +16,8 @@ type Linha = {
 };
 
 const numero = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
+/** Só nota ainda não confirmada aceita mudar o fator (a confirmada já movimentou o estoque). */
+const editavel = (l: Linha) => l.notaStatus === 'rascunho' || l.notaStatus === 'aguardando_conferencia';
 
 export function SupConferenciaUnidades() {
   const [linhas, setLinhas] = useState<Linha[] | null>(null);
@@ -48,7 +50,7 @@ export function SupConferenciaUnidades() {
     }
     setSalvando(l.id);
     try {
-      await api(`/fin/notas/itens/${l.id}`, { metodo: 'PATCH', corpo: { fatorEstoque: fator } });
+      await api(`/sup/conferencia-unidades/${l.id}`, { metodo: 'PATCH', corpo: { fatorEstoque: fator } });
       setAviso(`Fator de ${l.insumoNome} salvo na nota ${l.notaNumero ?? ''}.`);
       await carregar();
     } catch (e) {
@@ -104,13 +106,20 @@ export function SupConferenciaUnidades() {
                       inputMode="decimal"
                       style={{ width: 110 }}
                       value={fatores[l.id] ?? ''}
+                      disabled={!editavel(l)}
                       onChange={(e) => setFatores({ ...fatores, [l.id]: e.target.value })}
                     />
                   </td>
                   <td>
-                    <button className="btn btn-primario" type="button" disabled={salvando === l.id} onClick={() => salvar(l)}>
-                      Salvar
-                    </button>
+                    {editavel(l) ? (
+                      <button className="btn btn-primario" type="button" disabled={salvando === l.id} onClick={() => salvar(l)}>
+                        Salvar
+                      </button>
+                    ) : (
+                      <span className="small muted" title="O estoque desta nota já foi movimentado. Para corrigir, reabra a nota no Financeiro.">
+                        Nota {l.notaStatus === 'confirmada' ? 'confirmada' : l.notaStatus}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}

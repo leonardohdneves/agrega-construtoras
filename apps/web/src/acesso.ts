@@ -1,13 +1,15 @@
 // Acesso às telas: o mesmo critério do servidor (perfil da tela + módulos liberados para o usuário).
 import type { Modulo, Perfil, Usuario } from './api';
 
+// Cópia do padrão do servidor (lib/modulos.ts), usada antes de a lista de usuários carregar e para abrir as telas.
+// Ao mudar o padrão no servidor, mude aqui também (P14); a tela de usuários já usa o do servidor.
 export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   admin_sistema: [],
-  dono: ['engenharia', 'comercial', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
+  dono: ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
   // Almoxarife: só Suprimentos › Estoque (entradas, etiquetas, saídas e funcionários).
   almoxarife: ['suprimentos'],
   // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
-  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'laudos', 'administrativo'],
+  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'incorporacao', 'laudos', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
   // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
   engenheiro_obra: ['engenharia'],

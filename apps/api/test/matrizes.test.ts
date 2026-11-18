@@ -16,7 +16,8 @@ after(async () => {
 
 /** Uma rota de leitura de cada módulo, que não é consulta de cadastro liberada a todos. */
 const ROTA: Record<string, string> = {
-  engenharia: '/api/eng/obras',
+  // O panorama, e não a lista de obras: a lista é consulta liberada a quem apropria (almoxarife, Financeiro).
+  engenharia: '/api/eng/panorama',
   comercial: '/api/com/propostas',
   incorporacao: '/api/com/incorporacao/empreendimentos',
   laudos: '/api/laudos',
@@ -38,8 +39,8 @@ const ESPERADO: Record<PerfilEmpresa, string[]> = {
   financeiro: ['financeiro', 'gerencial'],
   administrativo: ['suprimentos', 'administrativo'],
   vendedor: ['comercial'],
-  // Almoxarife: só o estoque em Suprimentos (não as solicitações) e a lista das obras atribuídas a ele.
-  almoxarife: ['engenharia'],
+  // Almoxarife: só o estoque em Suprimentos (não as solicitações).
+  almoxarife: [],
 };
 
 test('P07: matriz perfil × módulo', { skip: semBanco }, async () => {

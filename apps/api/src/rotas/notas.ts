@@ -16,7 +16,7 @@ import { chaveAceita } from '../lib/code128.ts';
 import { ErroIa, iaDisponivel, lerNotaComIa } from '../lib/ia-nota.ts';
 import { cnpjValido } from '../lib/cnpj.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
-import { atualizarStatusRecebimento } from './suprimentos.ts';
+import { atualizarStatusRecebimento, esquemaLigarNotaPedido, ligarNotaAoPedido } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { fatorPadrao, registrarEntradasNota, registrarEntradasObra, removerEntradasNota, validarApropriacaoObra } from '../lib/estoque.ts';
 import { cadastrosParaIa, vinculoDoItem } from '../lib/vinculos.ts';
@@ -693,6 +693,16 @@ export function rotasNotas(banco: Banco) {
     });
 
     app.get<{ Params: { id: string } }>('/notas/:id', async (req) => ({ nota: await detalharNota(banco, empresaDo(req), req.params.id) }));
+
+    // Liga a nota a um pedido de compra, pela tela da nota (D2: o Financeiro faz esse fluxo; antes só havia a rota
+    // de Suprimentos, que devolvia 403 para o perfil Financeiro).
+    const corpoPutNotasPedido = esquemaLigarNotaPedido.omit({ notaId: true }).extend({ pedidoId: z.string().uuid('Escolha o pedido.') });
+    app.put<{ Params: { id: string } }>('/notas/:id/pedido', { schema: { body: corpoPutNotasPedido } }, async (req) => {
+      const d = corpoPutNotasPedido.parse(req.body);
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, (c) => ligarNotaAoPedido(c, empresaId, req.usuario!.id, d.pedidoId, { notaId: req.params.id, itens: d.itens }));
+      return { ok: true };
+    });
 
     // Pedidos de compra do mesmo fornecedor que podem receber esta nota, com o cruzamento sugerido dos itens.
     app.get<{ Params: { id: string } }>('/notas/:id/pedidos-candidatos', async (req) => {

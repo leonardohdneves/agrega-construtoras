@@ -609,7 +609,7 @@ export function rotasContratos(banco: Banco) {
     // ----- Contratos
     app.get<{ Querystring: Record<string, string | undefined> }>('/contratos', async (req) => {
       const empresaId = empresaDo(req);
-      const status = ['rascunho', 'vigente', 'encerrado', 'cancelado'].includes(req.query.status ?? '') ? req.query.status! : null;
+      const status = ['rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente', 'encerrado', 'cancelado'].includes(req.query.status ?? '') ? req.query.status! : null;
       const ids = (
         await banco.query(
           `SELECT id FROM contratos WHERE empresa_id = $1 AND ($2::text IS NULL OR status = $2) AND ($2::text IS NOT NULL OR status IN ('rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente'))
