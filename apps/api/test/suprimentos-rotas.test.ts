@@ -46,3 +46,25 @@ test('P08: filtro de solicitações por status "finalizada"', { skip: semBanco }
   assert.deepEqual(await ids('finalizada'), [finalizada]);
   assert.deepEqual(await ids('aberta'), [aberta]);
 });
+
+test('P09: transferência entre estoques aceita "1.000" (mil) e "2,5"', { skip: semBanco }, async () => {
+  const { obraId, obraItemId } = await obraComInsumo('TRANSF', 'etapa');
+  const um = async (sql: string, p: unknown[]) => (await ctx.banco.query(sql, p)).rows[0].id as string;
+  const etapa = await um(`INSERT INTO eap_nos (obra_id, nivel, codigo, descricao) VALUES ($1, 'etapa', '1', 'Estrutura') RETURNING id`, [obraId]);
+  const estoque = (nome: string, codigo: string) =>
+    um('INSERT INTO obra_estoques (empresa_id, obra_id, nome, codigo) VALUES ($1, $2, $3, $4) RETURNING id', [ctx.empresas.a, obraId, nome, codigo]);
+  const origem = await estoque('Almoxarifado central', 'EST-9001');
+  const destino = await estoque('Frente de serviço', 'EST-9002');
+  await ctx.banco.query(
+    `INSERT INTO estoque_movimentos (empresa_id, obra_id, obra_estoque_id, obra_item_id, eap_no_id, data, tipo, quantidade) VALUES ($1, $2, $3, $4, $5, '2026-11-01', 'entrada', 2000)`,
+    [ctx.empresas.a, obraId, origem, obraItemId, etapa],
+  );
+  const transferir = (quantidade: string) =>
+    ctx.pedir('dono', 'POST', '/api/sup/estoque/transferencias', { corpo: { obraId, obraItemId, eapNoId: etapa, origemId: origem, destinoId: destino, data: '2026-11-18', quantidade } });
+  assert.equal((await transferir('1.000')).status, 201);
+  assert.equal((await transferir('2,5')).status, 201);
+  const saldo = async (estoqueId: string) =>
+    Number((await ctx.banco.query(`SELECT sum(CASE WHEN tipo = 'saida' THEN -quantidade ELSE quantidade END) AS s FROM estoque_movimentos WHERE obra_estoque_id = $1`, [estoqueId])).rows[0].s);
+  assert.equal(await saldo(destino), 1002.5);
+  assert.equal(await saldo(origem), 997.5);
+});

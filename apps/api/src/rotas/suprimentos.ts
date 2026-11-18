@@ -808,7 +808,7 @@ export function rotasSuprimentos(banco: Banco) {
       origemId: z.string().uuid('Escolha o estoque de origem.'),
       destinoId: z.string().uuid('Escolha o estoque de destino.'),
       data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
-      quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
+      quantidade: positivo('Quantidade inválida.').refine((n) => n <= 10_000_000, 'Quantidade inválida.'), // aceita "2,5" e "1.000" (P09)
       observacao: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
     });
     app.post('/estoque/transferencias', { schema: { body: corpoPostEstoqueTransferencias } }, async (req, reply) => {
@@ -1008,7 +1008,7 @@ export function rotasSuprimentos(banco: Banco) {
         .array(
           z.object({
             etiquetaId: z.string().uuid('Leia a etiqueta de cada insumo.'),
-            quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
+            quantidade: positivo('Quantidade inválida.').refine((n) => n <= 10_000_000, 'Quantidade inválida.'), // aceita "2,5" e "1.000" (P09)
           }),
         )
         .min(1, 'Leia ao menos um insumo.')
