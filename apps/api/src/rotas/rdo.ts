@@ -6,8 +6,8 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
-import { ehEngenheiroDeObra, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
-import { empresaDo, exigir } from '../sessao.ts';
+import { ehRestritoAObras, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
+import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 const CLIMAS = ['bom', 'nublado', 'chuva', 'impraticavel'] as const;
@@ -93,8 +93,8 @@ export function rotasRdo(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
     app.addHook('preHandler', async (req) => {
-      if (!ehEngenheiroDeObra(req.usuario)) return;
-      const regra = regraEngenheiroEngenharia(req.method, req.url.split('?')[0].replace(/^\/api\/eng/, ''));
+      if (!ehRestritoAObras(req.usuario)) return;
+      const regra = regraEngenheiroEngenharia(req.method, caminhoDaRota(req).replace(/^\/api\/eng/, ''));
       if (regra.tipo === 'negado') throw semPermissao();
       if (regra.tipo === 'obra') {
         const ok = await banco.query(

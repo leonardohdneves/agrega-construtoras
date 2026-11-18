@@ -83,6 +83,14 @@ function montarDetalhe(p: Linha, itens: Linha[]) {
   };
 }
 
+/** Obra e fornecedor da permuta precisam ser desta empresa (obra ativa, fornecedor da categoria fornecedor). */
+async function conferirReferencias(c: Cliente, empresaId: string, d: { obraId: string; fornecedorId: string }) {
+  const obra = (await c.query('SELECT id FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo', [d.obraId, empresaId])).rows[0];
+  if (!obra) throw new ErroHttp(400, 'Obra não encontrada.');
+  const forn = (await c.query("SELECT id FROM fornecedores WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL AND categoria = 'fornecedor'", [d.fornecedorId, empresaId])).rows[0];
+  if (!forn) throw new ErroHttp(400, 'Fornecedor não encontrado.');
+}
+
 export function rotasPermutas(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
@@ -119,10 +127,7 @@ export function rotasPermutas(banco: Banco) {
       const empresaId = empresaDo(req);
       const u = req.usuario!;
       const id = await emTransacao(banco, async (c) => {
-        const obra = (await c.query('SELECT id FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo', [d.obraId, empresaId])).rows[0];
-        if (!obra) throw new ErroHttp(400, 'Obra não encontrada.');
-        const forn = (await c.query("SELECT id FROM fornecedores WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL AND categoria = 'fornecedor'", [d.fornecedorId, empresaId])).rows[0];
-        if (!forn) throw new ErroHttp(400, 'Fornecedor não encontrado.');
+        await conferirReferencias(c, empresaId, d);
         const numero = Number((await c.query('SELECT coalesce(max(numero), 0) + 1 AS n FROM permutas WHERE empresa_id = $1', [empresaId])).rows[0].n);
         const p = (
           await c.query(
@@ -154,6 +159,8 @@ export function rotasPermutas(banco: Banco) {
       await emTransacao(banco, async (c) => {
         const { p } = await carregarPermuta(c, empresaId, req.params.id);
         if (p.status !== 'aberta') throw new ErroHttp(409, 'Só dá para alterar permuta aberta.');
+        // P03: as mesmas checagens do POST (antes o PUT aceitava obra e fornecedor de outra empresa).
+        await conferirReferencias(c, empresaId, d);
         await c.query('UPDATE permutas SET obra_id = $2, fornecedor_id = $3, data = $4, observacao = $5, atualizado_em = now() WHERE id = $1', [p.id, d.obraId, d.fornecedorId, d.data, d.observacao]);
         await c.query('DELETE FROM permuta_itens WHERE permuta_id = $1', [p.id]);
         const gravar = async (lado: 'material' | 'servico', lista: z.infer<typeof esquemaItem>[]) => {

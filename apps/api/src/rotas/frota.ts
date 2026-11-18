@@ -265,64 +265,7 @@ export function rotasFrota(banco: Banco) {
       return { ok: true };
     });
 
-    // ---------- Motoristas ----------
-    // Motoristas e operadores; com ?todos=1, todos os colaboradores (módulo Administrativo).
-    app.get<{ Querystring: { todos?: string } }>('/motoristas', { preHandler: gestao }, async (req) => {
-      const hoje = hojeBrasil();
-      const filtro = req.query.todos === '1' ? '' : ` AND m.funcao IN ('motorista', 'operador_bomba', 'motorista_operador')`;
-      const r = await banco.query(`${SQL_MOTORISTAS}${filtro} ORDER BY m.ativo DESC, m.nome`, [empresaDo(req)]);
-      return { motoristas: r.rows.map((m) => motoristaPublico(m, hoje)) };
-    });
-
-    app.post('/motoristas', { preHandler: gestao, schema: { body: esquemaMotorista } }, async (req, reply) => {
-      const d = esquemaMotorista.parse(req.body);
-      const empresaId = empresaDo(req);
-      const m = await emTransacao(banco, async (c) => {
-        const novo = (
-          await c.query(
-            `INSERT INTO motoristas (empresa_id, nome, telefone, cpf, funcao, cnh_numero, cnh_categoria, cnh_vencimento, cursos, ativo, cargo, email, data_admissao, observacoes, data_nascimento)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-            [empresaId, d.nome, d.telefone, d.cpf, d.funcao, d.cnhNumero, d.cnhCategoria, d.cnhVencimento, JSON.stringify(d.cursos), d.ativo, d.cargo, d.email ?? null, d.dataAdmissao, d.observacoes, d.dataNascimento ?? null],
-          )
-        ).rows[0];
-        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'motoristas', entidadeId: novo.id, depois: novo });
-        return novo;
-      });
-      reply.code(201);
-      return { motorista: motoristaPublico(m, hojeBrasil()) };
-    });
-
-    app.patch<{ Params: { id: string } }>('/motoristas/:id', { preHandler: gestao, schema: { body: esquemaAlterarMotorista } }, async (req) => {
-      const d = esquemaAlterarMotorista.parse(req.body);
-      const empresaId = empresaDo(req);
-      await emTransacao(banco, async (c) => {
-        const antes = (await c.query('SELECT * FROM motoristas WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])).rows[0];
-        if (!antes) throw naoEncontrado('Motorista');
-        const { sql, valores } = montarSet(d, COLUNAS_MOTORISTA, 3);
-        let depois = antes;
-        if (sql) {
-          depois = (await c.query(`UPDATE motoristas SET ${sql}, atualizado_em = now() WHERE id = $1 AND empresa_id = $2 RETURNING *`, [antes.id, empresaId, ...valores])).rows[0];
-        }
-        // Liga (ou desliga) o login de motorista a este cadastro.
-        if (d.usuarioId !== undefined) {
-          await c.query('UPDATE usuarios SET motorista_id = NULL WHERE motorista_id = $1 AND empresa_id = $2', [antes.id, empresaId]);
-          if (d.usuarioId) {
-            const u = (
-              await c.query(`UPDATE usuarios SET motorista_id = $1 WHERE id = $2 AND empresa_id = $3 AND perfil = 'motorista' AND excluido_em IS NULL RETURNING id`, [
-                antes.id,
-                d.usuarioId,
-                empresaId,
-              ])
-            ).rows[0];
-            if (!u) throw new ErroHttp(400, 'Escolha um usuário com perfil Motorista desta empresa.');
-          }
-        }
-        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'motoristas', entidadeId: antes.id, antes, depois: { ...depois, usuario_id: d.usuarioId } });
-      });
-      const hoje = hojeBrasil();
-      const r = await banco.query(`${SQL_MOTORISTAS} AND m.id = $2`, [empresaId, req.params.id]);
-      return { motorista: motoristaPublico(r.rows[0], hoje) };
-    });
+    registrarColaboradores(app, banco, gestao, '/motoristas', false);
 
     // ---------- Alertas de vencimento ----------
     app.get('/alertas', { preHandler: gestao }, async (req) => {
@@ -367,4 +310,69 @@ export function rotasFrota(banco: Banco) {
       return { alertas, consumoAlto, manutencao, osAbertas, frota: { disponivel: resumo.disponivel ?? 0, manutencao: resumo.manutencao ?? 0, parado: resumo.parado ?? 0, inativo: resumo.inativo ?? 0 } };
     });
   };
+}
+
+/**
+ * Cadastro de motoristas e demais colaboradores. Fica na Frota (/api/frota/motoristas, só motoristas e operadores)
+ * e no Administrativo (/api/adm/colaboradores, todos), para dono e gestor cadastrarem sem o módulo Frota (P02).
+ */
+export function registrarColaboradores(app: FastifyInstance, banco: Banco, gestao: ReturnType<typeof exigir>, base: string, todos: boolean) {
+  // ---------- Motoristas ----------
+  // Motoristas e operadores; com ?todos=1, todos os colaboradores (módulo Administrativo).
+  app.get<{ Querystring: { todos?: string } }>(base, { preHandler: gestao }, async (req) => {
+    const hoje = hojeBrasil();
+    const filtro = todos || req.query.todos === '1' ? '' : ` AND m.funcao IN ('motorista', 'operador_bomba', 'motorista_operador')`;
+    const r = await banco.query(`${SQL_MOTORISTAS}${filtro} ORDER BY m.ativo DESC, m.nome`, [empresaDo(req)]);
+    return { motoristas: r.rows.map((m) => motoristaPublico(m, hoje)) };
+  });
+
+  app.post(base, { preHandler: gestao, schema: { body: esquemaMotorista } }, async (req, reply) => {
+    const d = esquemaMotorista.parse(req.body);
+    const empresaId = empresaDo(req);
+    const m = await emTransacao(banco, async (c) => {
+      const novo = (
+        await c.query(
+          `INSERT INTO motoristas (empresa_id, nome, telefone, cpf, funcao, cnh_numero, cnh_categoria, cnh_vencimento, cursos, ativo, cargo, email, data_admissao, observacoes, data_nascimento)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+          [empresaId, d.nome, d.telefone, d.cpf, d.funcao, d.cnhNumero, d.cnhCategoria, d.cnhVencimento, JSON.stringify(d.cursos), d.ativo, d.cargo, d.email ?? null, d.dataAdmissao, d.observacoes, d.dataNascimento ?? null],
+        )
+      ).rows[0];
+      await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'motoristas', entidadeId: novo.id, depois: novo });
+      return novo;
+    });
+    reply.code(201);
+    return { motorista: motoristaPublico(m, hojeBrasil()) };
+  });
+
+  app.patch<{ Params: { id: string } }>(`${base}/:id`, { preHandler: gestao, schema: { body: esquemaAlterarMotorista } }, async (req) => {
+    const d = esquemaAlterarMotorista.parse(req.body);
+    const empresaId = empresaDo(req);
+    await emTransacao(banco, async (c) => {
+      const antes = (await c.query('SELECT * FROM motoristas WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])).rows[0];
+      if (!antes) throw naoEncontrado('Motorista');
+      const { sql, valores } = montarSet(d, COLUNAS_MOTORISTA, 3);
+      let depois = antes;
+      if (sql) {
+        depois = (await c.query(`UPDATE motoristas SET ${sql}, atualizado_em = now() WHERE id = $1 AND empresa_id = $2 RETURNING *`, [antes.id, empresaId, ...valores])).rows[0];
+      }
+      // Liga (ou desliga) o login de motorista a este cadastro.
+      if (d.usuarioId !== undefined) {
+        await c.query('UPDATE usuarios SET motorista_id = NULL WHERE motorista_id = $1 AND empresa_id = $2', [antes.id, empresaId]);
+        if (d.usuarioId) {
+          const u = (
+            await c.query(`UPDATE usuarios SET motorista_id = $1 WHERE id = $2 AND empresa_id = $3 AND perfil = 'motorista' AND excluido_em IS NULL RETURNING id`, [
+              antes.id,
+              d.usuarioId,
+              empresaId,
+            ])
+          ).rows[0];
+          if (!u) throw new ErroHttp(400, 'Escolha um usuário com perfil Motorista desta empresa.');
+        }
+      }
+      await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'motoristas', entidadeId: antes.id, antes, depois: { ...depois, usuario_id: d.usuarioId } });
+    });
+    const hoje = hojeBrasil();
+    const r = await banco.query(`${SQL_MOTORISTAS} AND m.id = $2`, [empresaId, req.params.id]);
+    return { motorista: motoristaPublico(r.rows[0], hoje) };
+  });
 }

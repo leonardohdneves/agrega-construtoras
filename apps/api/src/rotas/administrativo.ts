@@ -11,6 +11,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { lerCadastroComIa, type EntidadeCadastro } from '../lib/ia-cadastro.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { registrarColaboradores } from './frota.ts';
 
 const texto = z.string().trim().max(200).optional().nullable().transform((v) => v || null);
 
@@ -61,6 +62,9 @@ const COLUNAS: Record<string, string> = {
   ativo: 'ativo',
 };
 
+/** Clientes não têm categoria nem área de atuação (colunas só de fornecedores). */
+const COLUNAS_CLIENTE: Record<string, string> = Object.fromEntries(Object.entries(COLUNAS).filter(([k]) => k !== 'categoria' && k !== 'atuacao'));
+
 export function fornecedorPublico(r: Record<string, any>) {
   return {
     id: r.id,
@@ -91,6 +95,9 @@ export function clientePublico(r: Record<string, any>) {
 export function rotasAdministrativo(banco: Banco) {
   return async function (app: FastifyInstance) {
     const gestao = exigir(banco, 'dono', 'gestor');
+
+    // Colaboradores (o mesmo cadastro dos motoristas da Frota), para dono e gestor sem o módulo Frota (P02).
+    registrarColaboradores(app, banco, gestao, '/colaboradores', true);
 
     // ----- Leitura de cadastros por IA (foto ou PDF do documento) -----
     // A IA só sugere os campos; quem salva é o formulário, depois de conferido pelo usuário.
@@ -131,9 +138,9 @@ export function rotasAdministrativo(banco: Banco) {
       const n = await emTransacao(banco, async (c) => {
         const novo = (
           await c.query(
-            `INSERT INTO clientes (empresa_id, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, telefone, email, cidade, uf, chave_pix, observacoes, ativo)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *`,
-            [empresaId, d.tipoPessoa, d.cnpjCpf, d.razaoSocial, d.nomeFantasia, d.ramo, d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.chavePix, d.observacoes, d.ativo],
+            `INSERT INTO clientes (empresa_id, tipo_pessoa, cnpj_cpf, razao_social, nome_fantasia, ramo, telefone, email, cidade, uf, chave_pix, observacoes, ativo, endereco)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+            [empresaId, d.tipoPessoa, d.cnpjCpf, d.razaoSocial, d.nomeFantasia, d.ramo, d.telefone, d.email ?? null, d.cidade, d.uf ?? null, d.chavePix, d.observacoes, d.ativo, d.endereco],
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'clientes', entidadeId: novo.id, depois: novo });
@@ -153,9 +160,9 @@ export function rotasAdministrativo(banco: Banco) {
         const partes: string[] = [];
         const valores: unknown[] = [];
         for (const [k, v] of Object.entries(d)) {
-          if (!COLUNAS[k] || v === undefined) continue;
+          if (!COLUNAS_CLIENTE[k] || v === undefined) continue;
           valores.push(v);
-          partes.push(`${COLUNAS[k]} = $${valores.length + 2}`);
+          partes.push(`${COLUNAS_CLIENTE[k]} = $${valores.length + 2}`);
         }
         if (!partes.length) return antes;
         const depois = (await c.query(`UPDATE clientes SET ${partes.join(', ')}, atualizado_em = now() WHERE id = $1 AND empresa_id = $2 RETURNING *`, [antes.id, empresaId, ...valores])).rows[0];

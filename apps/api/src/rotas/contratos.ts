@@ -9,7 +9,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { dispensaAprovacao, lerRegras, podeAprovar, proximoNumero, textoRegras } from '../lib/aprovacao.ts';
-import { empresaDo, exigir } from '../sessao.ts';
+import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { centrosPermitidos, ehEngenheiroDeObra } from '../lib/obras-acesso.ts';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -581,7 +581,7 @@ export function rotasContratos(banco: Banco) {
       if (!ehEngenheiroDeObra(req.usuario)) return;
       const empresaId = empresaDo(req);
       const centros = await centrosPermitidos(banco, empresaId, req.usuario);
-      const caminho = req.url.split('?')[0].replace(/^\/api\/sup/, '');
+      const caminho = caminhoDaRota(req).replace(/^\/api\/sup/, '');
       const corpo = (req.body ?? {}) as { centroCustoId?: string | null; contratoId?: string };
       const centroDoContrato = async (id: string) =>
         (await banco.query('SELECT centro_custo_id FROM contratos WHERE id::text = $1 AND empresa_id = $2', [id, empresaId])).rows[0]?.centro_custo_id as string | null | undefined;

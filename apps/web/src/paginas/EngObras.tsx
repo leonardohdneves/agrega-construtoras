@@ -166,13 +166,16 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const [empresasGrupo, setEmpresasGrupo] = useState<EmpresaGrupo[]>([]);
+  // Só dono e gestor atribuem responsáveis (a API recusa os demais).
+  const { usuario: quem } = useSessao();
+  const atribui = quem?.perfil === 'dono' || quem?.perfil === 'gestor';
   // Engenheiros de obra da empresa; null = este usuário não atribui responsáveis.
   const [engenheiros, setEngenheiros] = useState<Engenheiro[] | null>(null);
   const [responsaveis, setResponsaveis] = useState<string[]>(() => (inicial?.responsaveis ?? []).map((r) => r.id));
   useEffect(() => {
     api<{ empresas: EmpresaGrupo[] }>('/empresa/grupo').then((r) => setEmpresasGrupo(r.empresas.filter((x) => x.ativo))).catch(() => setEmpresasGrupo([]));
-    api<{ engenheiros: Engenheiro[] }>('/eng/engenheiros').then((r) => setEngenheiros(r.engenheiros)).catch(() => setEngenheiros(null));
-  }, []);
+    if (atribui) api<{ engenheiros: Engenheiro[] }>('/eng/engenheiros').then((r) => setEngenheiros(r.engenheiros)).catch(() => setEngenheiros(null));
+  }, [atribui]);
 
   async function salvar(e: FormEvent) {
     e.preventDefault();

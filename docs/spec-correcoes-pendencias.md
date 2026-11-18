@@ -83,7 +83,7 @@ Risco: algum erro de tipo pode esconder bug. Correção que muda comportamento v
 | P01 | Separar as colunas de cliente e de fornecedor. Migração `endereco` em `clientes` (D1). | PATCH de cliente → 200. Endereço volta ao reabrir. |
 | P02 | Colaboradores em `/api/adm/colaboradores`. | Dono e gestor cadastram, editam e desativam. |
 | P16 | `22P02` → 404 no handler global. | `GET /api/fin/lancamentos/abc` → 404. |
-| P07 (matrizes) | Matriz perfil × módulo e matriz entre empresas, com P01 a P04 e P29 como regressão. | As matrizes rodam no `check`. |
+| P07 (matrizes) | Matriz perfil × módulo e matriz entre empresas, com P01 a P04 e P29 como regressão. | Rodam no `npm run check:completo` (Postgres embutido), obrigatório antes de pedir o merge. No build do Railway pulam: o Postgres embutido não roda como root. |
 
 Deploy ao fim do sprint, com P04 e P29 primeiro.
 

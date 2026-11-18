@@ -49,3 +49,9 @@ test('uma empresa não vê a obra da outra', { skip: semBanco }, async () => {
   const detalheB = await ctx.pedir('dono', 'GET', `/api/eng/obras/${id}`, { empresa: 'b' });
   assert.equal(detalheB.status, 404);
 });
+
+test('P16: id em formato inválido responde 404, não 500', { skip: semBanco }, async () => {
+  const r = await ctx.pedir('dono', 'GET', '/api/fin/lancamentos/abc');
+  assert.equal(r.status, 404, JSON.stringify(r.corpo));
+  assert.equal((await ctx.pedir('dono', 'GET', '/api/eng/obras/nao-e-uuid')).status, 404);
+});

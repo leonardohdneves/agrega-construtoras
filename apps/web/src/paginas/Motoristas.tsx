@@ -62,6 +62,8 @@ function mesclarLeitura(f: Dados, d: DadosLidos): Dados {
 
 export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores' }) {
   const colab = modo === 'colaboradores';
+  // Colaboradores ficam no Administrativo; motoristas, na Frota (mesmo cadastro).
+  const base = colab ? '/adm/colaboradores' : '/frota/motoristas';
   const funcoes = (colab ? Object.keys(NOMES_FUNCAO) : FUNCOES_FROTA) as Funcao[];
   const [lista, setLista] = useState<Motorista[] | null>(null);
   const [logins, setLogins] = useState<Usuario[]>([]);
@@ -73,7 +75,7 @@ export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores
 
   const carregar = useCallback(async () => {
     try {
-      const [m, u] = await Promise.all([api<{ motoristas: Motorista[] }>(colab ? '/frota/motoristas?todos=1' : '/frota/motoristas'), api<{ usuarios: Usuario[] }>('/usuarios')]);
+      const [m, u] = await Promise.all([api<{ motoristas: Motorista[] }>(base), api<{ usuarios: Usuario[] }>('/usuarios')]);
       setLista(m.motoristas);
       setLogins(u.usuarios.filter((x) => x.perfil === 'motorista' && x.ativo));
     } catch (e) {
@@ -106,11 +108,11 @@ export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores
         dataNascimento: form.dataNascimento || null,
       };
       let id = form.id;
-      if (id) await api(`/frota/motoristas/${id}`, { metodo: 'PATCH', corpo });
-      else id = (await api<{ motorista: Motorista }>('/frota/motoristas', { corpo })).motorista.id;
+      if (id) await api(`${base}/${id}`, { metodo: 'PATCH', corpo });
+      else id = (await api<{ motorista: Motorista }>(base, { corpo })).motorista.id;
       const atual = lista?.find((m) => m.id === id)?.usuarioId ?? '';
       if (form.usuarioId !== atual) {
-        await api(`/frota/motoristas/${id}`, { metodo: 'PATCH', corpo: { usuarioId: form.usuarioId || null } });
+        await api(`${base}/${id}`, { metodo: 'PATCH', corpo: { usuarioId: form.usuarioId || null } });
       }
       setAviso(form.id ? `${form.nome} atualizado.` : `${form.nome} cadastrado.`);
       setForm(null);
@@ -127,7 +129,7 @@ export function Motoristas({ modo = 'frota' }: { modo?: 'frota' | 'colaboradores
     setAviso('');
     setOcupado(true);
     try {
-      await api(`/frota/motoristas/${m.id}`, { metodo: 'PATCH', corpo: { ativo: !m.ativo } });
+      await api(`${base}/${m.id}`, { metodo: 'PATCH', corpo: { ativo: !m.ativo } });
       setAviso(m.ativo ? `${m.nome} foi desativado.` : `${m.nome} voltou a ficar ativo.`);
       await carregar();
     } catch (err) {

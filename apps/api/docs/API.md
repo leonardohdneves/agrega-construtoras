@@ -13,7 +13,7 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 480 rotas, 12 públicas, 91 do legado da concreteira.
+Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 
 ## Engenharia
 
@@ -388,7 +388,7 @@ Total: 480 rotas, 12 públicas, 91 do legado da concreteira.
 
 ## Administrativo
 
-25 rotas.
+28 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -408,6 +408,9 @@ Total: 480 rotas, 12 públicas, 91 do legado da concreteira.
 | `POST /api/admin/backups` |  | Administrador do sistema, Administrativo |  |  |
 | `GET /api/admin/backups/{id}/download` |  | Administrador do sistema, Administrativo |  |  |
 | `DELETE /api/admin/backups/{id}` |  | Administrador do sistema, Administrativo |  |  |
+| `GET /api/adm/colaboradores` |  | Dono, Gestor, Administrativo |  |  |
+| `POST /api/adm/colaboradores` |  | Dono, Gestor, Administrativo |  | `nome`*, `telefone`, `cpf`, `funcao`, `cnhNumero`, `cnhCategoria`, `cnhVencimento`, `cursos`, `ativo`, `cargo`, `email`, `dataAdmissao`, `dataNascimento`, `observacoes` |
+| `PATCH /api/adm/colaboradores/{id}` |  | Dono, Gestor, Administrativo |  | `nome`, `telefone`, `cpf`, `funcao`, `cnhNumero`, `cnhCategoria`, `cnhVencimento`, `cursos`, `ativo`, `cargo`, `email`, `dataAdmissao`, `dataNascimento`, `observacoes`, `usuarioId` |
 | `GET /api/adm/cadastros/leitura` | A IA só sugere os campos; quem salva é o formulário, depois de conferido pelo usuário. | Dono, Gestor, Administrativo |  |  |
 | `POST /api/adm/cadastros/leitura` |  | Dono, Gestor, Administrativo |  | `arquivo`*, `tipo`*, `entidade`* |
 | `GET /api/adm/clientes` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
@@ -515,7 +518,7 @@ Total: 480 rotas, 12 públicas, 91 do legado da concreteira.
 | `POST /api/frota/veiculos/{id}/documentos` |  | Ninguém |  | `tipo`*, `descricao`, `numero`, `vencimento`, `valor` |
 | `PATCH /api/frota/documentos/{id}` |  | Ninguém |  | `tipo`, `descricao`, `numero`, `vencimento`, `valor` |
 | `DELETE /api/frota/documentos/{id}` |  | Ninguém |  |  |
-| `GET /api/frota/motoristas` | Motoristas e operadores; com ?todos=1, todos os colaboradores (módulo Administrativo). | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial | `todos` |  |
+| `GET /api/frota/motoristas` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
 | `POST /api/frota/motoristas` |  | Ninguém |  | `nome`*, `telefone`, `cpf`, `funcao`, `cnhNumero`, `cnhCategoria`, `cnhVencimento`, `cursos`, `ativo`, `cargo`, `email`, `dataAdmissao`, `dataNascimento`, `observacoes` |
 | `PATCH /api/frota/motoristas/{id}` |  | Ninguém |  | `nome`, `telefone`, `cpf`, `funcao`, `cnhNumero`, `cnhCategoria`, `cnhVencimento`, `cursos`, `ativo`, `cargo`, `email`, `dataAdmissao`, `dataNascimento`, `observacoes`, `usuarioId` |
 | `GET /api/frota/alertas` |  | Ninguém |  |  |
