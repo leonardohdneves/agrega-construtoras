@@ -19,7 +19,7 @@ export function Conta() {
     setOk('');
     setSalvando(true);
     try {
-      const eraProvisoria = !!usuario.senhaProvisoria;
+      const eraProvisoria = !!usuario?.senhaProvisoria;
       await api('/auth/senha', { metodo: 'PUT', corpo: { senhaAtual: atual, novaSenha: nova } });
       setAtual('');
       setNova('');

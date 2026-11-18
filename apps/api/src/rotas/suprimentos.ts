@@ -551,6 +551,7 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
     return {
       id: i.id as string,
       obraItemId: i.obra_item_id as string | null,
+      insumoId: (i.insumo_id ?? null) as string | null,
       necessidadeId: i.necessidade_id as string | null,
       eapNoId: i.eap_no_id as string | null,
       eapCodigo: i.eap_codigo as string | null,
@@ -781,7 +782,7 @@ export function rotasSuprimentos(banco: Banco) {
       const mapa = new Map<string, { obraItemId: string; codigo: string; descricao: string; unidade: string; saldo: number; apropriacoes: { obraId: string; obraCodigo: string; estoqueId: string | null; estoqueNome: string | null; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number }[] }>();
       for (const x of r.rows) {
         const q = Math.round(Number(x.qtd) * 1000) / 1000;
-        const it = mapa.get(x.obra_item_id) ?? { obraItemId: x.obra_item_id, codigo: x.codigo, descricao: x.descricao, unidade: x.unidade, saldo: 0, apropriacoes: [] };
+        const it: NonNullable<ReturnType<typeof mapa.get>> = mapa.get(x.obra_item_id) ?? { obraItemId: x.obra_item_id, codigo: x.codigo, descricao: x.descricao, unidade: x.unidade, saldo: 0, apropriacoes: [] };
         it.saldo = Math.round((it.saldo + q) * 1000) / 1000;
         it.apropriacoes.push({ obraId: x.obra_id, obraCodigo: x.obra_codigo, estoqueId: x.obra_estoque_id ?? null, estoqueNome: x.estoque_nome ?? null, eapNoId: x.eap_no_id, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, quantidade: q });
         mapa.set(x.obra_item_id, it);

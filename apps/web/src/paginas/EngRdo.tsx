@@ -147,7 +147,7 @@ export function EngRdoObra() {
 
 const vazio = (): Rdo => ({
   id: '', numero: 0, data: hojeIso(), climaManha: '', climaTarde: '', climaNoite: '', responsavel: '', observacoes: '',
-  maoDeObra: [], equipamentos: [], atividades: [], ocorrencias: [],
+  maoDeObra: [], equipamentos: [], atividades: [], ocorrencias: [], fotos: [],
 });
 
 /** Um RDO: edição dos campos e visão para impressão (a tabela da impressão é a mesma informação, sem campos). */

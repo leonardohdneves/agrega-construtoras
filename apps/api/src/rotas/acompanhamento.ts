@@ -30,7 +30,7 @@ const esquemaFoto = z.object({
   legenda: texto(200),
 });
 
-async function obraDeVisita(c: Cliente | Banco, empresaId: string, obraId: string, usuario: { id: string; perfil: string } | undefined) {
+async function obraDeVisita(c: Cliente | Banco, empresaId: string, obraId: string, usuario: { id: string; perfil: string } | null | undefined) {
   const r = await c.query(
     `SELECT id, codigo, nome, endereco, cidade, uf, responsavel, tipo FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo`,
     [obraId, empresaId],

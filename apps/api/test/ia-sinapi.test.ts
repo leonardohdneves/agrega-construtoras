@@ -7,7 +7,7 @@ import { lerCsvReferencia } from '../src/lib/engenharia.ts';
 const mapa: MapaColunas = {
   separador: '|',
   linhaInicial: 2,
-  colunas: { tipo: 0, codigo: 1, descricao: 2, unidade: 3, preco: 4, grupo: null, insumo: 5, coeficiente: 6 },
+  colunas: { tipo: 0, codigo: 1, descricao: 2, unidade: 3, preco: 4, grupo: null, insumo: 5, coeficiente: 6, tipoItem: null, descricaoItem: null, unidadeItem: null, precoItem: null },
   tipoUnico: null,
   valoresTipo: { insumo: 'INSUMO', composicao: 'COMPOSICAO', componenteInsumo: 'COMPONENTE', componenteComposicao: null },
 };
@@ -44,7 +44,7 @@ test('planilha da Caixa só de insumos: sem coluna de tipo, preço da coluna da 
   const r = aplicarMapa(texto, {
     separador: ';',
     linhaInicial: 3,
-    colunas: { tipo: null, codigo: 1, descricao: 2, unidade: 3, preco: 6, grupo: 0, insumo: null, coeficiente: null },
+    colunas: { tipo: null, codigo: 1, descricao: 2, unidade: 3, preco: 6, grupo: 0, insumo: null, coeficiente: null, tipoItem: null, descricaoItem: null, unidadeItem: null, precoItem: null },
     tipoUnico: 'insumo',
     valoresTipo: null,
   });
@@ -61,7 +61,7 @@ test('planilha da Caixa só de insumos: sem coluna de tipo, preço da coluna da 
 const analitico: MapaColunas = {
   separador: ';',
   linhaInicial: 1,
-  colunas: { tipo: 2, codigo: 1, descricao: 4, unidade: 5, preco: null, grupo: 0, insumo: 3, coeficiente: 6 },
+  colunas: { tipo: 2, codigo: 1, descricao: 4, unidade: 5, preco: null, grupo: 0, insumo: 3, coeficiente: 6, tipoItem: null, descricaoItem: null, unidadeItem: null, precoItem: null },
   tipoUnico: null,
   valoresTipo: { insumo: null, composicao: '', componenteInsumo: 'INSUMO', componenteComposicao: ['COMPOSICAO', 'COMPOSIÇÃO'] },
 };

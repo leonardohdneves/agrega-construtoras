@@ -13,11 +13,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 479 rotas, 12 públicas, 91 do legado da concreteira.
+Total: 480 rotas, 12 públicas, 91 do legado da concreteira.
 
 ## Engenharia
 
-106 rotas.
+107 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -67,6 +67,7 @@ Total: 479 rotas, 12 públicas, 91 do legado da concreteira.
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `periodicidadeDias`, `servicos` |
 | `POST /api/eng/obras/{id}/canteiro/centrais/{tipo}/boletins` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `inicio`, `fim` |
 | `GET /api/eng/obras/{id}/canteiro/boletins/{bId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
+| `DELETE /api/eng/obras/{id}/canteiro/boletins/{bId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `GET /api/eng/obras/{id}/planejamento` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `POST /api/eng/obras/{id}/planejamento` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`*, `eapNoId`, `inicio`*, `duracaoDias`*, `predecessoraId` |
 | `PUT /api/eng/obras/{id}/planejamento/{atId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `eapNoId`, `inicio`, `duracaoDias`, `predecessoraId` |

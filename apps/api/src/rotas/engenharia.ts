@@ -215,7 +215,7 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Engenheiro de obra logado: limita listas às obras atribuídas a ele. Outros perfis: null (todas). */
-    const engenheiroDe = (req: { usuario?: { id: string; perfil: string } }) => (ehRestritoAObras(req.usuario) ? req.usuario!.id : null);
+    const engenheiroDe = (req: { usuario?: { id: string; perfil: string } | null }) => (ehRestritoAObras(req.usuario) ? req.usuario!.id : null);
 
     /** Grava os engenheiros responsáveis pela obra (substitui a lista). Só usuários engenheiros de obra desta empresa. */
     async function gravarResponsaveis(c: Cliente, empresaId: string, obraId: string, ids: string[]) {

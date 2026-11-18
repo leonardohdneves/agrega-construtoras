@@ -31,7 +31,7 @@ export function rotasAuth(banco: Banco) {
         if (!u || !ok || !u.ativo) throw new ErroHttp(401, MSG_LOGIN);
         if (u.empresa_id && !u.empresa_ativa) throw new ErroHttp(403, 'O acesso desta empresa está suspenso.');
         await banco.query('UPDATE usuarios SET ultimo_acesso = now() WHERE id = $1', [u.id]);
-        gravarSessao(reply, { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id });
+        gravarSessao(reply, { id: u.id, perfil: u.perfil, empresaId: u.empresa_id });
         return { usuario: usuarioPublico(u, u.empresa_id ? u.modulos_contratados : undefined) };
       },
     );

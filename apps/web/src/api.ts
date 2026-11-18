@@ -363,6 +363,7 @@ export type Fornecedor = {
   atuacao: AtuacaoFornecedor[];
   telefone: string | null;
   email: string | null;
+  endereco: string | null;
   cidade: string | null;
   uf: string | null;
   chavePix: string | null;

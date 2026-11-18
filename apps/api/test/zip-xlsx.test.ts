@@ -3,11 +3,16 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, writeFileSync, readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import { criarZip } from '../src/lib/zip.ts';
 import { criarXlsx, nomesDeAbas } from '../src/lib/xlsx.ts';
 
-test('zip: arquivos são extraídos com o mesmo conteúdo (validado por unzip)', () => {
+// Os leitores externos (unzip e Python com openpyxl) podem faltar na máquina (ex.: Windows): aí o teste pula.
+const roda = (cmd: string, args: string[]) => { try { return spawnSync(cmd, args, { stdio: 'ignore' }).status === 0; } catch { return false; } };
+const semUnzip = roda('unzip', ['-v']) ? false : 'sem unzip nesta máquina';
+const semOpenpyxl = roda('python3', ['-c', 'import openpyxl']) ? false : 'sem python3 com openpyxl nesta máquina';
+
+test('zip: arquivos são extraídos com o mesmo conteúdo (validado por unzip)', { skip: semUnzip }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'zip-'));
   const z = path.join(dir, 'a.zip');
   const conteudo = Buffer.from('ação ✓ '.repeat(500));
@@ -19,7 +24,7 @@ test('zip: arquivos são extraídos com o mesmo conteúdo (validado por unzip)',
   assert.equal(readFileSync(path.join(saida, 'b.txt'), 'utf8'), 'oi');
 });
 
-test('xlsx: abre no leitor de planilhas com cabeçalho, texto, número e células vazias', () => {
+test('xlsx: abre no leitor de planilhas com cabeçalho, texto, número e células vazias', { skip: semOpenpyxl }, () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'xlsx-'));
   const f = path.join(dir, 'p.xlsx');
   writeFileSync(f, criarXlsx([{ nome: 'obra_itens', colunas: ['id', 'codigo', 'preco', 'ativo', 'nota'], linhas: [['x', '1.10', '12.5', true, null], ['y', 'a<b & "c"', 3, false, { k: 1 }]], numericas: [false, false, true, false, false] }]));
