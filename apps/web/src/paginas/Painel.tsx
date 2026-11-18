@@ -1,7 +1,6 @@
 import { InicioVendedor } from './Comercial';
 import { CardMural } from './Mural';
 import { MinhasCargas } from './MinhasCargas';
-import { lerEscolha } from '../componentes/EscolhaTipo';
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import {

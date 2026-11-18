@@ -265,6 +265,7 @@ function FormResposta({ cotacao, f, aoSalvar, aoFechar }: { cotacao: Cotacao; f:
             prazo: r.prazoEntregaDias === null ? atual.prazo : String(r.prazoEntregaDias),
             condicao: r.condicaoPagamento ?? atual.condicao,
             frete: r.frete === null ? atual.frete : moedaCampo(r.frete),
+            desconto: atual.desconto,
             validade: r.validade ?? atual.validade,
             observacao: r.observacao ?? atual.observacao,
           }));

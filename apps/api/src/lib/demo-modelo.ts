@@ -1004,10 +1004,10 @@ export async function popularDemo(c: C, e: string, hoje: string): Promise<void> 
   }
 
   // ----- suprimentos: pedidos das compras de insumos recentes (recebidos pela nota), uma cotação concluída, pendências de aprovação e solicitações
-  await popularSuprimentos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, forn, insumo, cnpjDe, centro });
-  await popularContratos(c, e, hoje, { dono: usuario('dono@') ?? gestor, gestor, cnpjDe, centro, banco });
-  await popularComercial(c, e, hoje, { vendedor: usuario('vendedor@') ?? gestor, gestor, dono: usuario('dono@') ?? gestor });
-  await popularCampo(c, e, hoje, { lab: usuario('laboratorio@') ?? gestor, operador: usuario('operador@') ?? gestor, dono: usuario('dono@') ?? gestor, gestor });
+  await popularSuprimentos(c, e, hoje, { dono: (usuario('dono@') ?? gestor)!, gestor: gestor!, forn, insumo, cnpjDe, centro });
+  await popularContratos(c, e, hoje, { dono: (usuario('dono@') ?? gestor)!, gestor: gestor!, cnpjDe, centro, banco });
+  await popularComercial(c, e, hoje, { vendedor: (usuario('vendedor@') ?? gestor)!, gestor: gestor!, dono: (usuario('dono@') ?? gestor)! });
+  await popularCampo(c, e, hoje, { lab: (usuario('laboratorio@') ?? gestor)!, operador: (usuario('operador@') ?? gestor)!, dono: (usuario('dono@') ?? gestor)!, gestor: gestor! });
   await popularNotaPdf(c, e, hoje, usuario('financeiro@') ?? usuario('dono@') ?? gestor);
   await q("UPDATE contratos SET enviado_aprovacao_em = criado_em, aprovado_por_id = $2, aprovado_em = criado_em + interval '3 hours' WHERE empresa_id = $1 AND status = 'vigente'", [e, usuario('dono@') ?? gestor]);
 

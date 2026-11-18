@@ -3,7 +3,7 @@
 // com a logo e as cores da empresa, para enviar ao cliente.
 import { useEffect, useState, type CSSProperties, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { api, formatarData, formatarDataHora, formatarCnpj, type TEmpresa } from '../api';
+import { api, formatarData, formatarDataHora, formatarCnpj, type Empresa } from '../api';
 import { AssinaturaPad } from '../componentes/AssinaturaPad';
 import { OpcoesPagina, imprimirPagina, usePaginaImpressao } from '../componentes/Documento';
 import { comprimirImagem } from '../lib/comprimirFoto';
@@ -383,13 +383,13 @@ export function EngVisitaDetalhe() {
 export function EngVisitaRelatorio() {
   const { obraId, visitaId } = useParams();
   const [dados, setDados] = useState<VisitaCompleta | null>(null);
-  const [empresa, setEmpresa] = useState<TEmpresa | null>(null);
+  const [empresa, setEmpresa] = useState<Empresa | null>(null);
   const [erro, setErro] = useState('');
   const [pagina, setPagina] = usePaginaImpressao();
 
   useEffect(() => {
     api<VisitaCompleta>(`${apiBase(obraId!, visitaId!)}`).then(setDados).catch((e) => setErro((e as Error).message));
-    api<{ empresa: TEmpresa }>('/empresa').then((r) => setEmpresa(r.empresa)).catch(() => setEmpresa(null));
+    api<{ empresa: Empresa }>('/empresa').then((r) => setEmpresa(r.empresa)).catch(() => setEmpresa(null));
   }, [obraId, visitaId]);
 
   if (!dados) return erro ? <div className="alerta alerta-erro" role="alert">{erro}</div> : <p className="muted">Carregando…</p>;

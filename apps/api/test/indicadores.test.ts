@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { BRUTO_ZERO, calcularIndicadores, INDICADORES } from '../src/lib/indicadores.ts';
 
-const retrato = { disponiveis: 9, ativos: 12, revisoesEmDia: 30, revisoesComRegistro: 40, receberAberto: 100_000_00, receberVencido: 15_000_00, saldoCaixa: 60_000_00, saidasDia: 2_000_00, notasPendentes: 3 };
+const retrato = { disponiveis: 9, ativos: 12, revisoesEmDia: 30, revisoesComRegistro: 40, receberAberto: 100_000_00, receberVencido: 15_000_00, saldoCaixa: 60_000_00, saidasDia: 2_000_00, notasPendentes: 3, perdaInventario: 0, consumoInventario: 0, calibracoesVencidas: 0 };
 
 test('indicadores do período somam os meses antes de dividir', () => {
   const brutos = {

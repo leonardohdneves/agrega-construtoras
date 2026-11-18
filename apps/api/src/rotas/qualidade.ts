@@ -87,7 +87,7 @@ async function carregarAmostras(c: Cliente, empresaId: string, filtros: { de: st
       const slump = num(r.slump_cm);
       const porIdade = new Map<number, LinhaAmostra['idades'][number]>();
       for (const cp of r.cps ?? []) {
-        const g = porIdade.get(cp.idade) ?? { idade: cp.idade, previsto: cp.previsto, cps: [], exemplar: null };
+        const g: LinhaAmostra['idades'][number] = porIdade.get(cp.idade) ?? { idade: cp.idade, previsto: cp.previsto, cps: [], exemplar: null };
         g.cps.push({ id: cp.id, numero: cp.numero, resistencia: num(cp.resistencia), situacao: cp.situacao, dataRuptura: cp.ruptura });
         if (cp.situacao === 'rompido' && cp.resistencia !== null) g.exemplar = Math.max(g.exemplar ?? 0, Number(cp.resistencia));
         porIdade.set(cp.idade, g);
@@ -395,7 +395,7 @@ export function rotasQualidade(banco: Banco) {
         [empresaId, de, ate],
       );
       const itens = r.rows.map((x) => ({
-        amostraId: x.id, status: x.status as 'pendente' | 'ativa' | 'nao_amostrada' | 'cancelada', cargaId: x.carga_id, numero: x.numero,
+        amostraId: x.id, status: x.status as 'pendente' | 'moldada' | 'ativa' | 'nao_amostrada' | 'cancelada', cargaId: x.carga_id, numero: x.numero,
         dataHora: x.data_hora instanceof Date ? x.data_hora.toISOString() : x.data_hora, volume: Number(x.volume_m3), tracoCodigo: x.traco_codigo, fck: num(x.fck),
         slumpTraco: x.slump_traco, clienteNome: x.cliente_nome, obra: x.obra, betoneiraCodigo: x.betoneira_codigo, motoristaNome: x.motorista_nome,
         slump: num(x.slump_cm), slumpEntrega: num(x.slump_entrega_cm), temperatura: num(x.temperatura_c), moldadoPor: x.moldado_por, observacao: x.observacao,

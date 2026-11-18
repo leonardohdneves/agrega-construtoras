@@ -1038,7 +1038,7 @@ export function PropostaImprimir() {
       )}
       {p.itens.length > 0 && (
         <section style={{ marginBottom: 14 }}>
-          <h3>{p.tipo === 'laudo' ? 'Laudos' : 'Serviços'}</h3>
+          <h3>Serviços</h3>
           <table className="tabela">
             <thead><tr><th>Descrição</th><th>Unid.</th><th className="num">Qtd.</th><th className="num">Preço unit.</th><th className="num">Total</th></tr></thead>
             <tbody>

@@ -17,6 +17,9 @@ function podeGerenciar(eu: Usuario, alvo: Perfil) {
 }
 
 const DESCRICAO_MODULO: Record<Modulo, string> = {
+  engenharia: 'Obras, orçamento, planejamento, RDO, visitas e canteiro',
+  incorporacao: 'Empreendimentos, unidades e vendas',
+  laudos: 'Laudos técnicos e propostas de laudo',
   comercial: 'Vendas, programação de entregas e clientes',
   frota: 'Veículos, abastecimento, manutenção e OS',
   producao: 'Cargas, traços, estoque, produção e escala',

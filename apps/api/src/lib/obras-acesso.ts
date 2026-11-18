@@ -2,7 +2,7 @@
 // lançados no centro de custo dessas obras. Os demais perfis não têm essa restrição (retorno null = todas).
 import type { Banco, Cliente } from '../db.ts';
 
-type Quem = { id: string; perfil: string } | undefined;
+type Quem = { id: string; perfil: string } | null | undefined;
 
 export function ehEngenheiroDeObra(u: Quem): boolean {
   return u?.perfil === 'engenheiro_obra';

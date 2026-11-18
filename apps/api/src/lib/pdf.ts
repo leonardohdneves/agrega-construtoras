@@ -433,7 +433,7 @@ class Documento {
           let ini = l.p + 6;
           if (this.b[ini] === 13) ini++;
           if (this.b[ini] === 10) ini++;
-          let tam = this.res(v.Length);
+          let tam = this.res((v as Dic).Length);
           let fim = typeof tam === 'number' ? ini + tam : -1;
           if (fim < 0 || fim > this.b.length || this.s.slice(fim, fim + 20).indexOf('endstream') < 0) {
             fim = this.s.indexOf('endstream', ini);
@@ -466,7 +466,7 @@ class Documento {
     const lp = Array.isArray(parms) ? parms.map((x) => this.dic(x)) : [this.dic(parms ?? undefined)];
     filtros = null;
     parms = null;
-    let d = Buffer.from(f.bruto);
+    let d: Buffer = Buffer.from(f.bruto);
     for (const [i, fx] of lf.entries()) {
       const nome = ehNome(fx) ? fx.nome : '';
       if (nome === 'FlateDecode' || nome === 'Fl') d = preditor(inflar(d), lp[i]);
@@ -518,7 +518,7 @@ class Documento {
     const dif = new Map<number, string>();
     const enc = this.res(d.Encoding);
     if (ehDic(enc)) {
-      const lista = this.res(enc.Differences);
+      const lista = this.res((enc as Dic).Differences);
       if (Array.isArray(lista)) {
         let c = 0;
         for (const x of lista) {

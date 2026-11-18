@@ -8,7 +8,8 @@ import { rotuloEmpresaGrupo, type EmpresaGrupo } from './EmpresasGrupo';
 import { useSessao } from '../sessao';
 import { SeletorBusca } from '../componentes/SeletorBusca';
 
-export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
+import type { Nivel, No } from './arvorePlanejamento';
+export type { Nivel, No };
 export type Obra = {
   id: string; tipo?: 'execucao' | 'acompanhamento'; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null; referenciaEntrega?: string | null;
   status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number; horasDia?: number;
@@ -24,7 +25,6 @@ export type ItemObra = { id: string; tipo: 'insumo' | 'composicao'; codigo: stri
 type ClasseComponente = 'insumo' | 'servico' | 'equipamento';
 const ROTULO_CLASSE: Record<ClasseComponente, string> = { insumo: 'Insumo', servico: 'Serviço', equipamento: 'Equipamento' };
 const classeDoItem = (tipo: 'insumo' | 'composicao', grupo?: string | null): ClasseComponente => (tipo === 'composicao' ? 'servico' : /EQUIPAMENT/i.test(grupo ?? '') ? 'equipamento' : 'insumo');
-export type No = { id: string; paiId: string | null; nivel: Nivel; codigo: string; descricao: string; itens: number; subtotal: number | null };
 type LinhaOrc = { id: string; eapNoId: string | null; eapCodigo: string | null; eapDescricao: string | null; itemId: string; tipo: string; codigo: string; descricao: string; unidade: string; editado: boolean; quantidade: number; precoUnitario: number | null; total: number };
 export type Orcamento = { nivelApropriacao: Nivel; bdiPercentual: number; subtotal: number; bdi: number; total: number; linhas: LinhaOrc[] };
 type ItemCatalogo = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; preco: number | null };

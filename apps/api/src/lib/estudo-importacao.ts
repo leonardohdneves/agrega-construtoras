@@ -71,7 +71,7 @@ export function planejarImportacao(existentes: UnidadeExistente[], recebidas: Un
     if (vendida(atual.situacao)) {
       // Venda em andamento: o preço e a permuta ficam travados. Só o nome pode acompanhar o estudo.
       if (Math.abs(atual.preco - r.preco) > 0.005) plano.divergencias.push({ codigoExterno: r.codigoExterno, motivo: 'preco', precoContrato: atual.preco, precoEstudo: r.preco });
-      if (situacaoEstudo === 'permuta' && atual.situacao !== 'permuta') plano.divergencias.push({ codigoExterno: r.codigoExterno, motivo: 'permuta', precoContrato: atual.preco, precoEstudo: r.preco });
+      if (situacaoEstudo === 'permuta') plano.divergencias.push({ codigoExterno: r.codigoExterno, motivo: 'permuta', precoContrato: atual.preco, precoEstudo: r.preco });
       if (atual.nome !== r.nome) plano.atualizar.push({ codigoExterno: r.codigoExterno, nome: r.nome, preco: atual.preco, situacao: atual.situacao });
       continue;
     }

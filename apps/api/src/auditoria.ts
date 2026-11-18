@@ -3,7 +3,10 @@ import type { Cliente } from './db.ts';
 export type RegistroAuditoria = {
   empresaId: string | null;
   usuarioId: string | null;
-  acao: 'criar' | 'alterar' | 'excluir' | 'confirmar' | 'entrar';
+  acao:
+    | 'criar' | 'alterar' | 'excluir' | 'confirmar' | 'entrar'
+    | 'enviar' | 'aprovar' | 'reprovar' | 'cancelar' | 'encerrar' | 'receber' | 'importar'
+    | 'finalizar_entrega' | 'nao_amostrar';
   entidade: string;
   entidadeId: string;
   antes?: unknown;

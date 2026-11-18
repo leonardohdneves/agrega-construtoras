@@ -1,6 +1,8 @@
 // Planejamento · funções puras da árvore da EAP (sem React), para as abas e para os testes.
 // Etapas e subetapas são resumos: o início e o fim vêm das tarefas abaixo delas.
-import type { No } from './EngObras';
+/** Nível de um nó da EAP. Fica aqui (e não em EngObras.tsx) para a API importar este arquivo nos testes sem JSX. */
+export type Nivel = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
+export type No = { id: string; paiId: string | null; nivel: Nivel; codigo: string; descricao: string; itens: number; subtotal: number | null };
 
 export type Atividade = {
   id: string; numero: number; ordem: number; descricao: string; descricaoResumida: string; predecessoraNumero: number | null;
