@@ -17,6 +17,7 @@ import { preencherApresentacao } from '../lib/apresentacao-teste.ts';
 import { exigir } from '../sessao.ts';
 import { limitesVigentes, SQL_EM_TESTE } from '../lib/teste.ts';
 import { criarAceite } from '../lib/aceite.ts';
+import { aplicarPlanoPadrao } from './financeiro.ts';
 
 export function rotasAdmin(banco: Banco) {
   return async function (app: FastifyInstance) {
@@ -250,6 +251,8 @@ export function rotasAdmin(banco: Banco) {
             [e.id, d.dono.nome, d.dono.email, hash],
           )
         ).rows[0];
+        // Plano de contas e centros de custo padrão já na criação: sem eles, nenhum lançamento nem contrato sai (P35).
+        await aplicarPlanoPadrao(c, e.id);
         await auditar(c, { empresaId: e.id, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'empresas', entidadeId: e.id, depois: e });
         await auditar(c, { empresaId: e.id, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'usuarios', entidadeId: dono.id, depois: { nome: d.dono.nome, email: d.dono.email, perfil: 'dono' } });
         return e;
