@@ -68,3 +68,21 @@ test('P09: transferência entre estoques aceita "1.000" (mil) e "2,5"', { skip: 
   assert.equal(await saldo(destino), 1002.5);
   assert.equal(await saldo(origem), 997.5);
 });
+
+test('P10: gestor e comprador salvam o fator na nota em rascunho; nota confirmada fica bloqueada', { skip: semBanco }, async () => {
+  const um = async (sql: string, p: unknown[]) => (await ctx.banco.query(sql, p)).rows[0].id as string;
+  const nota = (status: string) =>
+    um(`INSERT INTO notas_fiscais (empresa_id, data_emissao, competencia, status) VALUES ($1, '2026-11-10', '2026-11-10', $2) RETURNING id`, [ctx.empresas.a, status]);
+  const item = (notaId: string) =>
+    um(`INSERT INTO notas_itens (empresa_id, nota_id, numero_item, descricao, unidade, quantidade) VALUES ($1, $2, 1, 'Cimento', 'sc', 10) RETURNING id`, [ctx.empresas.a, notaId]);
+  const rascunho = await item(await nota('rascunho'));
+  const confirmada = await item(await nota('confirmada'));
+  for (const perfil of ['gestor', 'comprador'] as const) {
+    const r = await ctx.pedir(perfil, 'PATCH', `/api/sup/conferencia-unidades/${rascunho}`, { corpo: { fatorEstoque: '2,5' } });
+    assert.equal(r.status, 200, `${perfil}: ${JSON.stringify(r.corpo)}`);
+  }
+  assert.equal(Number((await ctx.banco.query('SELECT fator_estoque FROM notas_itens WHERE id = $1', [rascunho])).rows[0].fator_estoque), 2.5);
+  const bloqueada = await ctx.pedir('gestor', 'PATCH', `/api/sup/conferencia-unidades/${confirmada}`, { corpo: { fatorEstoque: 3 } });
+  assert.equal(bloqueada.status, 409);
+  assert.equal((await ctx.pedir('gestor', 'PATCH', `/api/sup/conferencia-unidades/${rascunho}`, { empresa: 'b', corpo: { fatorEstoque: 3 } })).status, 404, 'outra empresa');
+});

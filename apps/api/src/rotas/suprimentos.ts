@@ -1267,6 +1267,32 @@ export function rotasSuprimentos(banco: Banco) {
       };
     });
 
+    // Fator do item da nota, salvo pela própria conferência de unidades (P10). Antes a tela gravava por uma rota do
+    // Financeiro, e gestor e comprador recebiam 403. Só nota em rascunho muda (D3): a confirmada já movimentou o estoque.
+    const corpoPatchConferenciaUnidades = z.object({ fatorEstoque: positivo('Informe o fator.').refine((n) => n <= 1_000_000, 'Fator grande demais.') });
+    app.patch<{ Params: { id: string } }>('/conferencia-unidades/:id', { schema: { body: corpoPatchConferenciaUnidades } }, async (req) => {
+      const d = corpoPatchConferenciaUnidades.parse(req.body);
+      const empresaId = empresaDo(req);
+      const u = usuarioDe(req);
+      await emTransacao(banco, async (c) => {
+        const i = (
+          await c.query(
+            `SELECT ni.id, ni.fator_estoque, nf.status FROM notas_itens ni JOIN notas_fiscais nf ON nf.id = ni.nota_id
+              WHERE ni.id = $1 AND ni.empresa_id = $2 AND nf.excluido_em IS NULL FOR UPDATE OF ni`,
+            [req.params.id, empresaId],
+          )
+        ).rows[0];
+        if (!i) throw naoEncontrado('Item da nota');
+        if (i.status !== 'rascunho' && i.status !== 'aguardando_conferencia') {
+          throw new ErroHttp(409, i.status === 'confirmada' ? 'A nota já foi confirmada e o estoque já foi movimentado: o fator não muda mais.' : 'Esta nota foi cancelada.');
+        }
+        const fator = Math.round(d.fatorEstoque * 1_000_000) / 1_000_000;
+        await c.query('UPDATE notas_itens SET fator_estoque = $2 WHERE id = $1', [i.id, fator]);
+        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'notas_itens', entidadeId: i.id, antes: { fatorEstoque: i.fator_estoque === null ? null : Number(i.fator_estoque) }, depois: { fatorEstoque: fator } });
+      });
+      return { ok: true };
+    });
+
     app.get<{ Querystring: Record<string, string | undefined> }>('/cotacoes', async (req) => {
       const empresaId = empresaDo(req);
       const status = ['aberta', 'concluida', 'cancelada'].includes(req.query.status ?? '') ? req.query.status! : null;
