@@ -24,6 +24,15 @@ export function AssinaturaPad({ rotulo = 'Confirmar assinatura', aoConfirmar }: 
 
   useEffect(() => {
     fundoBranco();
+    // No iPhone, o arraste sobre o canvas rola a página, e o desenho some. Bloqueia o toque no próprio canvas.
+    const c = canvas.current!;
+    const bloquear = (e: TouchEvent) => e.preventDefault();
+    c.addEventListener('touchstart', bloquear, { passive: false });
+    c.addEventListener('touchmove', bloquear, { passive: false });
+    return () => {
+      c.removeEventListener('touchstart', bloquear);
+      c.removeEventListener('touchmove', bloquear);
+    };
   }, []);
 
   function posicao(e: PointerEvent<HTMLCanvasElement>) {
