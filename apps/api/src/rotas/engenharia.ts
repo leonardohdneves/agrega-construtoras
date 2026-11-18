@@ -1730,7 +1730,10 @@ export function rotasEngenharia(banco: Banco) {
 
     app.get<{ Params: { id: string; bId: string } }>('/obras/:id/canteiro/boletins/:bId', async (req) => {
       const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
-      const b = (await banco.query('SELECT * FROM canteiro_boletins WHERE id = $1 AND obra_id = $2', [req.params.bId, obra.id])).rows[0];
+      const b = (await banco.query(
+        'SELECT b.*, u.nome AS criado_por_nome FROM canteiro_boletins b LEFT JOIN usuarios u ON u.id = b.criado_por WHERE b.id = $1 AND b.obra_id = $2',
+        [req.params.bId, obra.id],
+      )).rows[0];
       if (!b) throw naoEncontrado('Boletim');
       const r = await banco.query(
         `SELECT i.eap_no_id, i.previsto_pct, i.realizado_pct, n.codigo, n.descricao
@@ -1745,9 +1748,28 @@ export function rotasEngenharia(banco: Banco) {
         })
         .sort((x, y) => compararCodigo(x.codigo, y.codigo));
       return {
-        boletim: { id: b.id as string, tipo: b.tipo as string, nome: NOMES_CENTRAL[centralDe(b.tipo as string)], numero: Number(b.numero), inicio: dataIso(b.inicio), fim: dataIso(b.fim), criadoEm: new Date(b.criado_em).toISOString() },
+        boletim: {
+          id: b.id as string, tipo: b.tipo as string, nome: NOMES_CENTRAL[centralDe(b.tipo as string)], numero: Number(b.numero), inicio: dataIso(b.inicio), fim: dataIso(b.fim),
+          criadoEm: new Date(b.criado_em).toISOString(), criadoPor: (b.criado_por_nome ?? null) as string | null,
+        },
+        obra: { id: obra.id as string, codigo: obra.codigo as string, nome: obra.nome as string },
         itens,
       };
+    });
+
+    /** Exclui o boletim. Só o último de cada central, para a numeração e os períodos seguirem em sequência. */
+    app.delete<{ Params: { id: string; bId: string } }>('/obras/:id/canteiro/boletins/:bId', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const b = (await c.query('SELECT id, tipo, numero, inicio, fim FROM canteiro_boletins WHERE id = $1 AND obra_id = $2 FOR UPDATE', [req.params.bId, obra.id])).rows[0];
+        if (!b) throw naoEncontrado('Boletim');
+        const ultimo = (await c.query('SELECT max(numero) AS n FROM canteiro_boletins WHERE obra_id = $1 AND tipo = $2', [obra.id, b.tipo])).rows[0];
+        if (Number(ultimo.n) !== Number(b.numero)) throw new ErroHttp(400, `Só o último boletim da central pode ser excluído (hoje o nº ${ultimo.n}).`);
+        await c.query('DELETE FROM canteiro_boletins WHERE id = $1', [b.id]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'canteiro_boletim', entidadeId: b.id, antes: { tipo: b.tipo, numero: Number(b.numero), inicio: dataIso(b.inicio), fim: dataIso(b.fim) } });
+      });
+      return { ok: true };
     });
 
     app.get<{ Params: { id: string } }>('/obras/:id/planejamento', async (req) => {

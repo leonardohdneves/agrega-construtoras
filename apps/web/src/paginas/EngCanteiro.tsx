@@ -5,6 +5,8 @@ import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api, formatarData } from '../api';
 import { useSessao } from '../sessao';
+import { CabecalhoDocumento } from '../componentes/Documento';
+import { Assinatura } from '../componentes/Suprimentos';
 
 type Periodo = { inicio: string; fim: string };
 type CentralResumo = {
@@ -21,7 +23,11 @@ type CanteiroObra = { obra: { id: string; codigo: string; nome: string; inicio: 
 type BoletimResumo = { id: string; tipo: string; numero: number; inicio: string; fim: string; criadoEm: string };
 type CentralDetalhe = { tipo: string; nome: string; periodicidadeDias: number; servicos: Folha[]; boletins: BoletimResumo[] };
 type ItemBoletim = { eapNoId: string; codigo: string; descricao: string; previstoPct: number; realizadoPct: number; diferencaPct: number };
-type BoletimDetalhe = { boletim: BoletimResumo & { nome: string }; itens: ItemBoletim[] };
+type BoletimDetalhe = {
+  boletim: BoletimResumo & { nome: string; criadoPor: string | null };
+  obra: { id: string; codigo: string; nome: string };
+  itens: ItemBoletim[];
+};
 
 const pct = (n: number) => `${n.toFixed(2).replace('.', ',')}%`;
 const periodo = (p: Periodo) => `${formatarData(p.inicio)} a ${formatarData(p.fim)}`;
@@ -184,6 +190,23 @@ export function EngCanteiroCentral() {
     }
   }
 
+  async function excluirBoletim(b: BoletimResumo) {
+    if (!window.confirm(`Excluir o boletim nº ${b.numero} (${periodo(b)})? Esta ação não pode ser desfeita.`)) return;
+    setErro('');
+    setAviso('');
+    setOcupado(true);
+    try {
+      await api(`/eng/obras/${obraId}/canteiro/boletins/${b.id}`, { metodo: 'DELETE' });
+      if (boletim?.boletim.id === b.id) setBoletim(null);
+      await carregar();
+      setAviso(`Boletim nº ${b.numero} excluído.`);
+    } catch (err) {
+      setErro((err as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
   if (!central || !canteiro) {
     return erro ? <div className="alerta alerta-erro" role="alert">{erro}</div> : <p className="muted">Carregando…</p>;
   }
@@ -271,13 +294,20 @@ export function EngCanteiroCentral() {
                 </tr>
               </thead>
               <tbody>
-                {[...central.boletins].reverse().map((b) => (
+                {[...central.boletins].reverse().map((b, n) => (
                   <tr key={b.id}>
                     <td>{b.numero}</td>
                     <td>{periodo(b)}</td>
                     <td>{formatarData(b.criadoEm)}</td>
                     <td>
-                      <button className="btn" onClick={() => abrirBoletim(b.id).catch((e) => setErro((e as Error).message))}>Ver</button>
+                      <div className="acoes" style={{ justifyContent: 'flex-end', flexWrap: 'nowrap' }}>
+                        <button className="btn" onClick={() => abrirBoletim(b.id).catch((e) => setErro((e as Error).message))}>Ver</button>
+                        <Link className="btn" to={`/eng/canteiro/${obraId}/${tipo}/boletins/${b.id}`}>Imprimir</Link>
+                        {/* Só o último boletim da central pode ser excluído (o servidor confere). */}
+                        {podeEditar && n === 0 && (
+                          <button className="btn btn-perigo" onClick={() => excluirBoletim(b)} disabled={ocupado}>Excluir</button>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -289,37 +319,92 @@ export function EngCanteiroCentral() {
 
       {boletim && (
         <div className="card">
-          <h2>Boletim nº {boletim.boletim.numero} · {periodo(boletim.boletim)}</h2>
-          {boletim.itens.length === 0 ? (
-            <p className="muted">Sem serviços neste boletim.</p>
-          ) : (
-            <div className="tabela-caixa">
-              <table className="tabela">
-                <thead>
-                  <tr>
-                    <th>Código</th>
-                    <th>Serviço</th>
-                    <th>Previsto</th>
-                    <th>Realizado</th>
-                    <th>Diferença</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {boletim.itens.map((i) => (
-                    <tr key={i.eapNoId}>
-                      <td>{i.codigo}</td>
-                      <td>{i.descricao}</td>
-                      <td>{pct(i.previstoPct)}</td>
-                      <td>{pct(i.realizadoPct)}</td>
-                      <td style={{ color: i.diferencaPct < 0 ? 'var(--status-danger-ink)' : undefined }}>{pct(i.diferencaPct)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="acoes" style={{ justifyContent: 'space-between', alignItems: 'center' }}>
+            <h2 style={{ margin: 0 }}>Boletim nº {boletim.boletim.numero} · {periodo(boletim.boletim)}</h2>
+            <Link className="btn" to={`/eng/canteiro/${obraId}/${tipo}/boletins/${boletim.boletim.id}`}>Imprimir</Link>
+          </div>
+          <TabelaBoletim itens={boletim.itens} />
         </div>
       )}
+    </>
+  );
+}
+
+function TabelaBoletim({ itens }: { itens: ItemBoletim[] }) {
+  if (itens.length === 0) return <p className="muted">Sem serviços neste boletim.</p>;
+  return (
+    <div className="tabela-caixa">
+      <table className="tabela tabela-compacta boletim">
+        <thead>
+          <tr>
+            <th>Código</th>
+            <th>Serviço</th>
+            <th style={{ textAlign: 'right' }}>Previsto</th>
+            <th style={{ textAlign: 'right' }}>Realizado</th>
+            <th style={{ textAlign: 'right' }}>Diferença</th>
+          </tr>
+        </thead>
+        <tbody>
+          {itens.map((i) => (
+            <tr key={i.eapNoId}>
+              <td>{i.codigo}</td>
+              <td>{i.descricao}</td>
+              <td className="mono" style={{ textAlign: 'right' }}>{pct(i.previstoPct)}</td>
+              <td className="mono" style={{ textAlign: 'right' }}>{pct(i.realizadoPct)}</td>
+              <td className="mono" style={{ textAlign: 'right', color: i.diferencaPct < 0 ? 'var(--status-danger-ink)' : undefined }}>{pct(i.diferencaPct)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+/** Boletim de produção em formato de documento, para imprimir ou salvar em PDF. */
+export function EngCanteiroBoletimImprimir() {
+  const { obraId = '', tipo = '', boletimId = '' } = useParams();
+  const [dados, setDados] = useState<BoletimDetalhe | null>(null);
+  const [erro, setErro] = useState('');
+  useEffect(() => {
+    setDados(null);
+    setErro('');
+    api<BoletimDetalhe>(`/eng/obras/${obraId}/canteiro/boletins/${boletimId}`).then(setDados).catch((e) => setErro((e as Error).message));
+  }, [obraId, boletimId]);
+
+  if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
+  if (!dados) return <p className="muted">Carregando…</p>;
+  const { boletim: b, obra, itens } = dados;
+  const previsto = itens.reduce((s, i) => s + i.previstoPct, 0) / (itens.length || 1);
+  const realizado = itens.reduce((s, i) => s + i.realizadoPct, 0) / (itens.length || 1);
+  const atrasados = itens.filter((i) => i.diferencaPct < 0).length;
+  return (
+    <>
+      <div className="nao-imprimir">
+        <Link to={`/eng/canteiro/${obraId}/${tipo}`} className="small">← {b.nome}</Link>
+      </div>
+      <CabecalhoDocumento
+        modulo="Engenharia · Canteiro de obra"
+        titulo={`Boletim de produção nº ${b.numero} · ${b.nome}`}
+        descricao={`Obra ${obra.codigo} · ${obra.nome}`}
+        periodo={periodo(b)}
+        filtros={[`Gerado em ${formatarData(b.criadoEm)}${b.criadoPor ? ` por ${b.criadoPor}` : ''}`]}
+      />
+      <div className="card">
+        <TabelaBoletim itens={itens} />
+        {itens.length > 0 && (
+          <p className="small" style={{ marginBottom: 0 }}>
+            Média dos serviços: previsto <b className="mono">{pct(previsto)}</b> · realizado <b className="mono">{pct(realizado)}</b> · {atrasados} serviço(s) abaixo do previsto.
+          </p>
+        )}
+        <p className="small muted" style={{ marginBottom: 0 }}>
+          Previsto: avanço planejado no período (planejamento). Realizado: avanço medido no período (medições físicas do acompanhamento).
+        </p>
+      </div>
+      <div className="assinaturas">
+        <Assinatura nome={b.criadoPor ?? ''} papel="Engenharia · emitido por" />
+        <Assinatura nome="" papel="Mestre de obra · ciente" />
+        <Assinatura nome="" papel={`Encarregado · ${b.nome.toLowerCase()}`} />
+      </div>
     </>
   );
 }
