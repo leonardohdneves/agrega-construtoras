@@ -15,6 +15,7 @@ test('mestre de obra: consulta a Engenharia e o canteiro, sem alterar nada', () 
   assert.equal(pode('/api/eng/obras/1/canteiro/boletins/2'), true);
   assert.equal(pode('/api/eng/obras/1/canteiro/centrais/argamassa', 'PUT'), false);
   assert.equal(pode('/api/eng/obras/1/canteiro/centrais/argamassa/boletins', 'POST'), false);
+  assert.equal(pode('/api/eng/obras/1/canteiro/boletins/2', 'DELETE'), false);
   assert.equal(pode('/api/eng/obras/1/planejamento', 'PUT'), false);
 });
 
