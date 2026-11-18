@@ -188,12 +188,12 @@ export async function montarDocumentacao(): Promise<{ especificacao: Especificac
   const cobertura = { rotas: 0, comResumo: 0, comCorpo: 0, comConsulta: 0, publicas: 0, legado: 0 };
   const semCorpo: string[] = [];
   let ip = 0;
-  const pedir = async (metodo: string, url: string, perfil: Perfil | null) => {
+  const pedir = async (metodo: string, url: string, perfil: Perfil | null, comoServidorMcp = false) => {
     const resposta = await app.inject({
       method: metodo.toUpperCase() as 'GET',
       url: url.replace(/\{\w+\}/g, ID_EXEMPLO),
       remoteAddress: `10.${(ip >> 16) & 255}.${(ip >> 8) & 255}.${ip++ & 255}`, // um endereço por pedido: o limite de tentativas não interfere
-      headers: metodo === 'get' || metodo === 'delete' ? {} : { 'content-type': 'application/json' },
+      headers: { ...(metodo === 'get' || metodo === 'delete' ? {} : { 'content-type': 'application/json' }), ...(comoServidorMcp ? { 'x-mcp-secret': config.mcpApiSecret } : {}) },
       payload: metodo === 'get' || metodo === 'delete' ? undefined : '{}',
       cookies: perfil ? { [COOKIE_SESSAO]: criarToken({ sub: perfil, emp: perfil === 'admin_sistema' ? null : 'empresa', per: perfil }, config.jwtSecret, 600) } : {},
     });
@@ -211,15 +211,17 @@ export async function montarDocumentacao(): Promise<{ especificacao: Especificac
       cobertura.rotas++;
 
       const publica = (await pedir(metodo, caminho, null)) !== 401;
+      // Sem sessão responde 401, mas com o segredo do servidor MCP passa: é rota de servidor para servidor (OAuth).
+      const servidorMcp = !publica && (await pedir(metodo, caminho, null, true)) !== 401;
       const perfis: Perfil[] = [];
-      if (!publica) for (const perfil of PERFIS_DOCUMENTADOS) if (![401, 403].includes(await pedir(metodo, caminho, perfil))) perfis.push(perfil);
+      if (!publica && !servidorMcp) for (const perfil of PERFIS_DOCUMENTADOS) if (![401, 403].includes(await pedir(metodo, caminho, perfil))) perfis.push(perfil);
 
       op.tags = [grupo];
       op.operationId = `${metodo}_${caminho.replace(/^\/api\//, '').replace(/[{}]/g, '').replace(/[^A-Za-z0-9]+/g, '_')}`;
       if (fonte?.resumo) { op.summary = fonte.resumo.length > 120 ? `${fonte.resumo.slice(0, 117)}...` : fonte.resumo; if (fonte.resumo.length > 120) op.description = fonte.resumo; cobertura.comResumo++; }
       if (legado) { op.deprecated = true; cobertura.legado++; }
-      if (publica) { op.security = []; cobertura.publicas++; } else op.security = [{ sessao: [] }];
-      op['x-acesso'] = { publica, modulo, perfis };
+      if (publica) { op.security = []; cobertura.publicas++; } else op.security = servidorMcp ? [{ servidorMcp: [] }] : [{ sessao: [] }];
+      op['x-acesso'] = { publica, modulo, perfis, ...(servidorMcp ? { servidorMcp: true } : {}) };
       if (fonte) op['x-fonte'] = `${fonte.arquivo}:${fonte.linha}`;
       if (fonte?.consulta.length) {
         op.parameters = [...(op.parameters ?? []), ...fonte.consulta.map((c) => ({ name: c.nome, in: 'query', required: c.obrigatorio, schema: { type: 'string' } }))];
@@ -271,6 +273,7 @@ function paraMarkdown(e: Especificacao, grupos: string[], cobertura: Record<stri
     '- **Erros:** sempre `{ "erro": "mensagem" }`. Validação (400) traz também `campos: [{ campo, mensagem }]`. Sem login: 401. Sem permissão: 403. Conflito de estado: 409.',
     '- **Respostas:** JSON em envelope nomeado (`{ obras: [...] }`). Os formatos de resposta ainda não estão descritos neste documento.',
     '- **Valores:** dinheiro em reais (número), datas `AAAA-MM-DD`, identificadores UUID.',
+    '- **Servidor MCP:** rotas que só o servidor MCP chama, identificando-se com o segredo compartilhado no cabeçalho `X-MCP-Secret` (`MCP_API_SECRET`).',
     '- **Acesso:** a coluna mostra os perfis que passam pelo guarda no padrão de cada perfil. Engenheiro e mestre de obra só alcançam as obras atribuídas a eles.',
     '- **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.',
     '- **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.',
@@ -280,8 +283,9 @@ function paraMarkdown(e: Especificacao, grupos: string[], cobertura: Record<stri
   ];
   const todos = PERFIS_DOCUMENTADOS.filter((p) => p !== 'admin_sistema');
   const acesso = (op: Operacao) => {
-    const a = op['x-acesso'] as { publica: boolean; perfis: Perfil[] };
+    const a = op['x-acesso'] as { publica: boolean; perfis: Perfil[]; servidorMcp?: boolean };
     if (a.publica) return 'Pública';
+    if (a.servidorMcp) return 'Servidor MCP';
     if (!a.perfis.length) return 'Ninguém';
     if (todos.every((p) => a.perfis.includes(p))) return a.perfis.includes('admin_sistema') ? 'Todos' : 'Todos da empresa';
     return a.perfis.map((p) => NOMES_PERFIL[p]).join(', ');

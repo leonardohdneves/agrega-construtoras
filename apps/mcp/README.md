@@ -18,7 +18,7 @@ src/ferramentas/         o catálogo, um arquivo por área
 2. Ele se registra sozinho (`/oauth/register`) e manda o usuário para `/oauth/authorize`.
 3. O servidor MCP redireciona para a tela do Agrega (`/oauth/authorize` em `apps/web`), que mostra quem está pedindo acesso e pede e-mail e senha.
 4. A API confere o login e devolve um **código de uso único de 60 segundos**; a tela volta para o `/oauth/callback` do MCP com esse código.
-5. O MCP troca o código na API, de servidor para servidor (`POST /api/auth/oauth-exchange`), e recebe o token de sessão e um token de renovação.
+5. O MCP troca o código na API, de servidor para servidor (`POST /api/auth/oauth-exchange`), e recebe o token de sessão e um token de renovação. Nessa chamada ele se identifica com um segredo compartilhado (`MCP_API_SECRET`, cabeçalho `X-MCP-Secret`), e o código só vale para o mesmo `/oauth/callback` usado no login.
 6. O assistente recebe um token **próprio do MCP** (`at2_…`, 1 hora), que só vale aqui e leva o token de sessão cifrado por dentro. Quando vence, a renovação é automática (`rt2_…` → `POST /api/auth/oauth-refresh`, rotativo, 30 dias sem uso).
 
 O token da API nunca passa pela URL nem chega ao assistente. Trocar a senha no Agrega encerra todas as conexões do usuário.
@@ -53,14 +53,16 @@ Variáveis do serviço do MCP:
 | `AGREGA_AUTHORIZE_URL` | `https://SEU-DOMINIO/oauth/authorize` |
 | `PUBLIC_BASE_URL` | Endereço público do MCP, ex.: `https://mcp.SEU-DOMINIO` |
 | `OAUTH_SIGNING_SECRET` | `openssl rand -hex 32`. Tem que ser o mesmo entre deploys |
+| `MCP_API_SECRET` | `openssl rand -hex 32`. O mesmo valor nos dois serviços |
 | `TRUST_PROXY` | `true` |
 | `NODE_ENV` | `production` |
 
-Variável nova no serviço da API:
+Variáveis no serviço da API:
 
 | Variável | Valor |
 |---|---|
 | `MCP_CALLBACK_URLS` | `https://mcp.SEU-DOMINIO/oauth/callback` |
+| `MCP_API_SECRET` | O mesmo valor do serviço do MCP |
 
 No Claude: Configurações → Conectores → Adicionar conector personalizado → `https://mcp.SEU-DOMINIO/mcp`.
 

@@ -13,6 +13,13 @@ function segredoJwt(): string {
   return randomBytes(48).toString('hex');
 }
 
+/** Fora de produção há um valor fixo, igual ao do servidor MCP, para os dois se entenderem sem configuração. */
+function segredoMcp(): string {
+  const s = process.env.MCP_API_SECRET?.trim() ?? '';
+  if (s.length >= 32) return s;
+  return producao ? '' : 'segredo-local-do-mcp-apenas-para-desenvolvimento';
+}
+
 export const config = {
   producao,
   porta: Number(process.env.PORT ?? 3000),
@@ -26,5 +33,8 @@ export const config = {
   cursoSenha: process.env.CURSO_SENHA || '',
   cookieSeguro: producao,
   // Endereços /oauth/callback dos servidores MCP autorizados a receber o código de login (separados por vírgula).
+  // Segredo compartilhado com o servidor MCP: só quem o apresenta troca o código de login e renova o token (P38).
+  // Em produção, sem ele (mínimo de 32 caracteres) essas duas rotas recusam tudo.
+  mcpApiSecret: segredoMcp(),
   mcpCallbacks: (process.env.MCP_CALLBACK_URLS ?? (producao ? '' : 'http://localhost:3001/oauth/callback')).split(',').map((s) => s.trim()).filter(Boolean),
 };

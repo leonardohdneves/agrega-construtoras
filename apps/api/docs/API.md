@@ -9,11 +9,12 @@
 - **Erros:** sempre `{ "erro": "mensagem" }`. Validação (400) traz também `campos: [{ campo, mensagem }]`. Sem login: 401. Sem permissão: 403. Conflito de estado: 409.
 - **Respostas:** JSON em envelope nomeado (`{ obras: [...] }`). Os formatos de resposta ainda não estão descritos neste documento.
 - **Valores:** dinheiro em reais (número), datas `AAAA-MM-DD`, identificadores UUID.
+- **Servidor MCP:** rotas que só o servidor MCP chama, identificando-se com o segredo compartilhado no cabeçalho `X-MCP-Secret` (`MCP_API_SECRET`).
 - **Acesso:** a coluna mostra os perfis que passam pelo guarda no padrão de cada perfil. Engenheiro e mestre de obra só alcançam as obras atribuídas a eles.
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 485 rotas, 12 públicas, 91 do legado da concreteira.
+Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 
 ## Engenharia
 
@@ -446,8 +447,8 @@ Total: 485 rotas, 12 públicas, 91 do legado da concreteira.
 | `PUT /api/auth/senha` |  | Todos |  | `senhaAtual`*, `novaSenha`* |
 | `GET /api/auth/oauth-destino` | Os nomes dos campos (code, token, refreshToken) seguem o contrato do AIRO, que o servidor MCP espera. A tela /oauth/authorize confere o endereço de retorno antes de mostrar o login e antes de voltar com "cancelado". | Pública | `redirect_uri` |  |
 | `POST /api/auth/oauth-login` |  | Pública |  | `email`*, `senha`*, `redirectUri`* |
-| `POST /api/auth/oauth-exchange` |  | Pública |  | `code`* |
-| `POST /api/auth/oauth-refresh` |  | Pública |  | `refreshToken`* |
+| `POST /api/auth/oauth-exchange` |  | Servidor MCP |  | `code`*, `redirectUri`* |
+| `POST /api/auth/oauth-refresh` |  | Servidor MCP |  | `refreshToken`* |
 
 ## Empresa
 

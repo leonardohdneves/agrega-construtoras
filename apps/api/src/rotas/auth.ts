@@ -7,7 +7,7 @@ import { esquemaEmail, esquemaSenha } from '../esquemas.ts';
 import { empresaPublica, usuarioPublico } from '../formatos.ts';
 import { apagarSessao, criarTokenSessao, exigir, gravarSessao } from '../sessao.ts';
 import { config } from '../config.ts';
-import { destinoPermitido, emitirCodigo, renovar, revogarConexoes, trocarCodigo } from '../lib/oauth-mcp.ts';
+import { destinoPermitido, emitirCodigo, renovar, revogarConexoes, segredoConfere, trocarCodigo } from '../lib/oauth-mcp.ts';
 
 const MSG_LOGIN = 'E-mail ou senha incorretos.';
 
@@ -102,14 +102,21 @@ export function rotasAuth(banco: Banco) {
         if (!u.empresa_id) throw new ErroHttp(403, 'A conexão com assistentes é para usuários de uma construtora.');
         if (!u.empresa_ativa) throw new ErroHttp(403, 'O acesso desta empresa está suspenso.');
         if (u.senha_provisoria) throw new ErroHttp(403, 'Entre no Agrega e troque a senha inicial antes de conectar um assistente.');
-        return emitirCodigo(banco, u.id);
+        return emitirCodigo(banco, u.id, dados.redirectUri);
       },
     );
 
     // Servidor MCP → API: troca o código de uso único pelo token de sessão e pelo token de renovação.
-    const corpoOauthTroca = z.object({ code: z.string().min(32).max(128) });
+    // As duas rotas abaixo são só do servidor MCP, que se identifica com o segredo compartilhado (MCP_API_SECRET).
+    const exigirServidorMcp = (req: { headers: Record<string, unknown> }) => {
+      if (!segredoConfere(req.headers['x-mcp-secret'], config.mcpApiSecret)) throw new ErroHttp(401, 'Servidor MCP não autorizado.');
+    };
+
+    const corpoOauthTroca = z.object({ code: z.string().min(32).max(128), redirectUri: z.string().max(500) });
     app.post('/oauth-exchange', { config: { rateLimit: { max: 30, timeWindow: '15 minutes' } }, schema: { body: corpoOauthTroca } }, async (req) => {
-      const r = await trocarCodigo(banco, corpoOauthTroca.parse(req.body).code, req.ip);
+      exigirServidorMcp(req);
+      const dados = corpoOauthTroca.parse(req.body);
+      const r = await trocarCodigo(banco, dados.code, dados.redirectUri, req.ip);
       if (!r) throw new ErroHttp(400, 'Código inválido, vencido ou já usado. Refaça o login.');
       await banco.query('UPDATE usuarios SET ultimo_acesso = now() WHERE id = $1', [r.usuario.id]);
       return { token: criarTokenSessao(r.usuario), refreshToken: r.refreshToken };
@@ -118,6 +125,7 @@ export function rotasAuth(banco: Banco) {
     // Servidor MCP → API: renova o token de sessão sem envolver o usuário. O token de renovação usado deixa de valer.
     const corpoOauthRenova = z.object({ refreshToken: z.string().min(32).max(128) });
     app.post('/oauth-refresh', { config: { rateLimit: { max: 60, timeWindow: '15 minutes' } }, schema: { body: corpoOauthRenova } }, async (req) => {
+      exigirServidorMcp(req);
       const r = await renovar(banco, corpoOauthRenova.parse(req.body).refreshToken, req.ip);
       if (!r) throw new ErroHttp(401, 'Conexão encerrada. Faça o login de novo.');
       return { token: criarTokenSessao(r.usuario), refreshToken: r.refreshToken };

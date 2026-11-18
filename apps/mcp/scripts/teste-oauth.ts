@@ -67,7 +67,7 @@ conferir('login devolve código de uso único, sem cookie e sem token', login.st
 const volta = await fetch(`${callback}?code=${login.corpo.code}&state=${chave}`, { redirect: 'manual' });
 const final = new URL(volta.headers.get('location') ?? 'http://invalido');
 conferir('callback devolve ao cliente o código do MCP e o state dele', volta.status === 302 && final.origin + final.pathname === REDIRECT && final.searchParams.get('state') === 'estado-do-cliente' && !!final.searchParams.get('code'), volta.headers.get('location'));
-conferir('código da API não pode ser trocado duas vezes', (await post(`${API}/api/auth/oauth-exchange`, { code: login.corpo.code })).status === 400);
+conferir('quem não é o servidor MCP não troca código na API (sem o segredo: 401)', (await post(`${API}/api/auth/oauth-exchange`, { code: login.corpo.code, redirectUri: callback })).status === 401);
 
 // 6. Token
 const tok = await post(meta.corpo.token_endpoint, { grant_type: 'authorization_code', code: final.searchParams.get('code'), client_id: clientId, code_verifier: verifier, redirect_uri: REDIRECT });

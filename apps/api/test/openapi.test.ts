@@ -24,12 +24,16 @@ test('documentação da API: só estas rotas respondem sem login', () => {
     'POST /api/aceite/{codigo}',
     'POST /api/assinatura/{token}',
     'POST /api/auth/entrar',
-    'POST /api/auth/oauth-exchange',
     'POST /api/auth/oauth-login',
-    'POST /api/auth/oauth-refresh',
     'POST /api/auth/sair',
     'POST /api/interesse',
   ]);
+});
+
+test('documentação da API: só a troca e a renovação do OAuth são rotas do servidor MCP', () => {
+  const doMcp = operacoes.filter((o) => (o.op['x-acesso'] as { servidorMcp?: boolean }).servidorMcp).map((o) => o.rota).sort();
+  // Estas rotas não têm sessão de usuário: quem as protege é o segredo compartilhado (P38).
+  assert.deepEqual(doMcp, ['POST /api/auth/oauth-exchange', 'POST /api/auth/oauth-refresh']);
 });
 
 test('documentação da API: toda rota tem grupo e identificador único', () => {

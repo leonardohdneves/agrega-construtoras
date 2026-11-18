@@ -7,6 +7,12 @@
   },
   "components": {
     "securitySchemes": {
+      "servidorMcp": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-MCP-Secret",
+        "description": "Segredo compartilhado entre o servidor MCP e a API (MCP_API_SECRET). Só para as rotas de troca e renovação do OAuth."
+      },
       "sessao": {
         "type": "apiKey",
         "in": "cookie",
@@ -392,10 +398,15 @@
                     "type": "string",
                     "minLength": 32,
                     "maxLength": 128
+                  },
+                  "redirectUri": {
+                    "type": "string",
+                    "maxLength": 500
                   }
                 },
                 "required": [
-                  "code"
+                  "code",
+                  "redirectUri"
                 ],
                 "additionalProperties": false
               }
@@ -421,13 +432,18 @@
           "Autenticação"
         ],
         "operationId": "post_auth_oauth_exchange",
-        "security": [],
+        "security": [
+          {
+            "servidorMcp": []
+          }
+        ],
         "x-acesso": {
-          "publica": true,
+          "publica": false,
           "modulo": null,
-          "perfis": []
+          "perfis": [],
+          "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:111"
+        "x-fonte": "src/rotas/auth.ts:116"
       }
     },
     "/api/auth/oauth-refresh": {
@@ -472,13 +488,18 @@
           "Autenticação"
         ],
         "operationId": "post_auth_oauth_refresh",
-        "security": [],
+        "security": [
+          {
+            "servidorMcp": []
+          }
+        ],
         "x-acesso": {
-          "publica": true,
+          "publica": false,
           "modulo": null,
-          "perfis": []
+          "perfis": [],
+          "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:120"
+        "x-fonte": "src/rotas/auth.ts:127"
       }
     },
     "/api/empresa": {
