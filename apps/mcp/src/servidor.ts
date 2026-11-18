@@ -87,7 +87,8 @@ const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || '')
 const MCP_API_SECRET = (() => {
   const s = process.env.MCP_API_SECRET?.trim() ?? '';
   if (s.length >= 32) return s;
-  if (process.env.NODE_ENV === 'production') throw new Error('MCP_API_SECRET e obrigatorio em producao (minimo 32 caracteres, o mesmo valor configurado na API; gere com: openssl rand -hex 32)');
+  // Mesmo critério de produção da API (apps/api/src/config.ts): no Railway vale mesmo sem NODE_ENV.
+  if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT_NAME) throw new Error('MCP_API_SECRET e obrigatorio em producao (minimo 32 caracteres, o mesmo valor configurado na API; gere com: openssl rand -hex 32)');
   return 'segredo-local-do-mcp-apenas-para-desenvolvimento';
 })();
 
@@ -711,6 +712,8 @@ app.get('/oauth/callback', asyncHandler(async (req: Request, res: Response) => {
         const dados = (await resposta.json()) as { token?: string; refreshToken?: string };
         token = dados.token;
         backendRefreshToken = dados.refreshToken;
+      } else if (await recusaDeConfiguracao(resposta)) {
+        console.error('❌ A API recusou este servidor MCP: confira MCP_API_SECRET (o mesmo valor nos dois servicos).', { status: resposta.status });
       } else {
         console.warn('⚠️ oauth-exchange recusou o codigo', { status: resposta.status });
       }
@@ -961,7 +964,15 @@ app.post('/oauth/token', asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-/** Renovação server-to-server no API do Agrega (rotaciona o refresh lá). */
+/** A API respondeu que o problema é o segredo compartilhado (503 = ela não tem; 401 com `codigo` = o nosso não confere)? */
+async function recusaDeConfiguracao(resposta: globalThis.Response): Promise<boolean> {
+  if (resposta.status === 503) return true;
+  if (resposta.status !== 401) return false;
+  const corpo = (await resposta.clone().json().catch(() => ({}))) as { codigo?: string };
+  return corpo.codigo === 'servidor_mcp_nao_autorizado';
+}
+
+/** Renovação server-to-server na API do Agrega (rotaciona o refresh lá). */
 async function renovarNoBackend(brt: string): Promise<
   { ok: true; token: string; refreshToken: string } | { ok: false; status: number | null }
 > {
@@ -979,6 +990,12 @@ async function renovarNoBackend(brt: string): Promise<
         return { ok: true, token: novo.token, refreshToken: novo.refreshToken };
       }
       return { ok: false, status: 500 };
+    }
+    // Segredo ausente ou divergente é problema de configuração, não sessão encerrada: tratar como API fora do ar
+    // (status null) faz o token endpoint reaproveitar o JWT atual em vez de mandar todo mundo logar de novo.
+    if (await recusaDeConfiguracao(resposta)) {
+      console.error('❌ A API recusou este servidor MCP na renovacao: confira MCP_API_SECRET (o mesmo valor nos dois servicos).', { status: resposta.status });
+      return { ok: false, status: null };
     }
     console.warn('⚠️ API recusou a renovacao do refresh', { status: resposta.status });
     return { ok: false, status: resposta.status };

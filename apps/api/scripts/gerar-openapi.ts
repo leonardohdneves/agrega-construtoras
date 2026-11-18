@@ -151,7 +151,24 @@ function grupoDe(url: string): { grupo: string; modulo: string | null; legado: b
   return { grupo: ROTULO_FORA_DE_MODULO.find(([rx]) => rx.test(url))?.[1] ?? 'Outros', modulo: null, legado: false };
 }
 
-export async function montarDocumentacao(): Promise<{ especificacao: Especificacao; markdown: string; cobertura: Record<string, number>; semCorpo: string[] }> {
+type Documentacao = { especificacao: Especificacao; markdown: string; cobertura: Record<string, number>; semCorpo: string[] };
+
+/**
+ * A sonda reconhece as rotas do servidor MCP apresentando o segredo compartilhado. Para o resultado não depender do
+ * ambiente (o build de produção roda sem MCP_API_SECRET, e aí as rotas recusariam tudo), ela usa um segredo próprio
+ * só enquanto monta a documentação.
+ */
+export async function montarDocumentacao(): Promise<Documentacao> {
+  const original = config.mcpApiSecret;
+  config.mcpApiSecret = 'segredo-so-da-sonda-da-documentacao-0123456789';
+  try {
+    return await montar();
+  } finally {
+    config.mcpApiSecret = original;
+  }
+}
+
+async function montar(): Promise<Documentacao> {
   const app = await criarApp(bancoDaSonda(), { log: false, documentar: true });
   await app.ready();
   const bruto = (app as unknown as { swagger: () => Especificacao }).swagger();

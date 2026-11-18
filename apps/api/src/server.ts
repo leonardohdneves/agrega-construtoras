@@ -15,6 +15,11 @@ if (config.seedDemo) {
 }
 await garantirConstrutoraModelo(banco, config.cursoSenha);
 
+// OAuth do servidor MCP pela metade: há endereço de retorno autorizado, mas falta o segredo que o servidor MCP apresenta.
+if (config.mcpCallbacks.length && !config.mcpApiSecret) {
+  console.log('Conexão com assistentes desligada: defina MCP_API_SECRET (32 caracteres ou mais), com o mesmo valor do servidor MCP.');
+}
+
 const app = await criarApp(banco);
 
 async function encerrar() {

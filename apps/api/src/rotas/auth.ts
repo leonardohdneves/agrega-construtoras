@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { Banco } from '../db.ts';
+import { emTransacao } from '../db.ts';
 import { ErroHttp } from '../lib/erros.ts';
 import { conferirSenha, gerarHashSenha } from '../lib/senha.ts';
 import { esquemaEmail, esquemaSenha } from '../esquemas.ts';
@@ -60,14 +61,13 @@ export function rotasAuth(banco: Banco) {
       const u = (await banco.query('SELECT senha_hash FROM usuarios WHERE id = $1', [req.usuario!.id])).rows[0];
       if (!(await conferirSenha(dados.senhaAtual, u.senha_hash))) throw new ErroHttp(400, 'A senha atual não confere.');
       // Senha nova soma um na versão da sessão: todo token emitido antes (cookie de outro aparelho, Bearer do servidor MCP) deixa de valer.
-      const versao = (
-        await banco.query('UPDATE usuarios SET senha_hash = $1, senha_provisoria = false, sessao_versao = sessao_versao + 1, atualizado_em = now() WHERE id = $2 RETURNING sessao_versao', [
-          await gerarHashSenha(dados.novaSenha),
-          req.usuario!.id,
-        ])
-      ).rows[0].sessao_versao as number;
-      // E encerra as conexões de assistentes (Claude, ChatGPT): cada um pede o login de novo.
-      await revogarConexoes(banco, req.usuario!.id);
+      // E encerra as conexões de assistentes (Claude, ChatGPT): cada um pede o login de novo. As duas coisas na mesma transação.
+      const novoHash = await gerarHashSenha(dados.novaSenha);
+      const versao = await emTransacao(banco, async (c) => {
+        const v = (await c.query('UPDATE usuarios SET senha_hash = $1, senha_provisoria = false, sessao_versao = sessao_versao + 1, atualizado_em = now() WHERE id = $2 RETURNING sessao_versao', [novoHash, req.usuario!.id])).rows[0].sessao_versao as number;
+        await revogarConexoes(c, req.usuario!.id);
+        return v;
+      });
       // Quem trocou continua logado neste navegador, com um token da versão nova.
       if (req.sessaoPorCookie) gravarSessao(reply, { id: req.usuario!.id, empresaId: req.usuario!.empresaId, perfil: req.usuario!.perfil, sessaoVersao: versao });
       return { ok: true };
@@ -114,7 +114,10 @@ export function rotasAuth(banco: Banco) {
     // Servidor MCP → API: troca o código de uso único pelo token de sessão e pelo token de renovação.
     // As duas rotas abaixo são só do servidor MCP, que se identifica com o segredo compartilhado (MCP_API_SECRET).
     const exigirServidorMcp = (req: { headers: Record<string, unknown> }) => {
-      if (!segredoConfere(req.headers['x-mcp-secret'], config.mcpApiSecret)) throw new ErroHttp(401, 'Servidor MCP não autorizado.');
+      // 503 = este servidor não tem o segredo configurado; 401 com `codigo` = o segredo apresentado não confere.
+      // O servidor MCP trata os dois como falha de configuração, não como sessão encerrada: ninguém é desconectado por isso.
+      if (!config.mcpApiSecret) throw new ErroHttp(503, 'A conexão com assistentes não está configurada neste servidor.');
+      if (!segredoConfere(req.headers['x-mcp-secret'], config.mcpApiSecret)) throw new ErroHttp(401, 'Servidor MCP não autorizado.', { codigo: 'servidor_mcp_nao_autorizado' });
     };
 
     const corpoOauthTroca = z.object({ code: z.string().min(32).max(128), redirectUri: z.string().max(500) });

@@ -132,7 +132,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:17"
+        "x-fonte": "src/rotas/auth.ts:18"
       }
     },
     "/api/auth/sair": {
@@ -162,7 +162,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:39"
+        "x-fonte": "src/rotas/auth.ts:40"
       }
     },
     "/api/auth/eu": {
@@ -208,7 +208,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/auth.ts:44"
+        "x-fonte": "src/rotas/auth.ts:45"
       }
     },
     "/api/auth/senha": {
@@ -280,7 +280,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/auth.ts:57"
+        "x-fonte": "src/rotas/auth.ts:58"
       }
     },
     "/api/auth/oauth-destino": {
@@ -443,7 +443,7 @@
           "perfis": [],
           "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:121"
+        "x-fonte": "src/rotas/auth.ts:124"
       }
     },
     "/api/auth/oauth-refresh": {
@@ -499,7 +499,7 @@
           "perfis": [],
           "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:132"
+        "x-fonte": "src/rotas/auth.ts:135"
       }
     },
     "/api/empresa": {

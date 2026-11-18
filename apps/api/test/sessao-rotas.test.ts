@@ -103,3 +103,29 @@ test('P20: a renovação tem teto: sessão aberta há mais de 30 dias pede o log
   assert.equal(velha.status, 200, 'o token ainda vale até vencer');
   assert.equal(velha.novoCookie, undefined, 'mas não é renovado');
 });
+
+test('revisão: depois da troca de senha, o login e a troca do OAuth emitem token na versão nova', { skip: semBanco }, async () => {
+  // O financeiro trocou a senha num teste acima (versão 1): um login novo precisa sair válido.
+  const entrar = await chamar('/api/auth/entrar', { metodo: 'POST', corpo: { email: 'financeiro@a.teste', senha: 'Outra-senha-456' } });
+  assert.equal(entrar.status, 200, JSON.stringify(entrar.corpo));
+  assert.equal(lerToken(entrar.novoCookie, config.jwtSecret)!.ver, 1);
+  assert.equal((await chamar(EU, { cookie: entrar.novoCookie })).status, 200);
+  const callback = 'http://localhost:3001/oauth/callback';
+  const login = await chamar('/api/auth/oauth-login', { metodo: 'POST', corpo: { email: 'financeiro@a.teste', senha: 'Outra-senha-456', redirectUri: callback } });
+  const troca = await chamar('/api/auth/oauth-exchange', { metodo: 'POST', segredoMcp: true, corpo: { code: login.corpo.code, redirectUri: callback } });
+  assert.equal(lerToken(troca.corpo.token, config.jwtSecret)!.ver, 1);
+  assert.equal((await chamar(EU, { bearer: troca.corpo.token })).status, 200);
+  assert.equal((await chamar('/api/auth/oauth-refresh', { metodo: 'POST', segredoMcp: true, corpo: { refreshToken: troca.corpo.refreshToken } })).status, 200);
+});
+
+test('revisão: trocar a senha com o cookie na metade final grava um único cookie, já na versão nova', { skip: semBanco }, async () => {
+  const u = ctx.usuarios.a.almoxarife;
+  await ctx.banco.query('UPDATE usuarios SET senha_hash = $1 WHERE id = $2', [await gerarHashSenha(SENHA), u.id]);
+  const quaseVencido = criarToken({ sub: u.id, emp: ctx.empresas.a, per: 'almoxarife' as const }, config.jwtSecret, HORA);
+  const r = await ctx.app.inject({ method: 'PUT', url: '/api/auth/senha', headers: { cookie: `${COOKIE_SESSAO}=${quaseVencido}` }, payload: { senhaAtual: SENHA, novaSenha: 'Outra-senha-456' } });
+  assert.equal(r.statusCode, 200, r.body);
+  const cookies = r.cookies.filter((c) => c.name === COOKIE_SESSAO);
+  assert.equal(cookies.length, 1, 'um cookie só');
+  assert.equal(lerToken(cookies[0].value, config.jwtSecret)!.ver, 1);
+  assert.equal((await chamar(EU, { cookie: cookies[0].value })).status, 200);
+});
