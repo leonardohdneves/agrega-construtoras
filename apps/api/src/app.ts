@@ -95,6 +95,8 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean; documentar
       };
       return reply.code(409).send({ erro: MSG[restricao] ?? 'Já existe um cadastro com esses dados.' });
     }
+    // Id em formato inválido (ex.: /lancamentos/abc num campo uuid): para quem chama, o registro não existe (P16).
+    if (e.code === '22P02') return reply.code(404).send({ erro: 'Registro não encontrado.' });
     // Regras garantidas por gatilho no banco (ex.: orçamento só com serviços da obra): a mensagem já é a do usuário.
     if (e.code === '23514' && /^orcamento_/.test(String((e as { constraint?: string }).constraint ?? ''))) return reply.code(400).send({ erro: e.message });
     if (e.statusCode === 429) return reply.code(429).send({ erro: 'Muitas tentativas. Aguarde um minuto e tente de novo.' });
