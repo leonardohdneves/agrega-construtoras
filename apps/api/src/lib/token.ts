@@ -22,6 +22,10 @@ export type DadosSessao = {
   sub: string; // id do usuário
   emp: string | null; // id da empresa (nulo para o administrador do sistema)
   per: Perfil;
+  /** Versão da sessão do usuário na emissão (usuarios.sessao_versao). Ausente em tokens antigos: vale 0. */
+  ver?: number;
+  /** Quando a sessão começou (login), em segundos. Não muda nas renovações. Ausente em tokens antigos: vale o iat. */
+  ini?: number;
   iat: number;
   exp: number;
 };

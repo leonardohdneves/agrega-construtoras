@@ -341,7 +341,7 @@ export async function garantirConstrutoraModelo(banco: Banco, senha: string, log
       );
       log('Conta do professor da Construtora Modelo criada.');
     } else if (!(await conferirSenha(senha, conta.senha_hash))) {
-      await banco.query('UPDATE usuarios SET senha_hash = $2 WHERE id = $1', [conta.id, await gerarHashSenha(senha)]);
+      await banco.query('UPDATE usuarios SET senha_hash = $2, sessao_versao = sessao_versao + 1 WHERE id = $1', [conta.id, await gerarHashSenha(senha)]);
       log('Senha da conta do professor da Construtora Modelo atualizada.');
     }
     const dono = (await banco.query('SELECT id FROM usuarios WHERE lower(email) = lower($1)', [EMAIL_PROFESSOR])).rows[0].id as string;

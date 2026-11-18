@@ -14,7 +14,7 @@ export async function garantirAdmin(banco: Banco, email: string, senha: string, 
     // As variáveis ADMIN_EMAIL/ADMIN_SENHA são a fonte da verdade do administrador: se a senha
     // configurada mudou, o próximo deploy passa a aceitar a nova.
     if (await conferirSenha(senha, existe.senha_hash)) return;
-    await banco.query('UPDATE usuarios SET senha_hash = $2, perfil = $3, empresa_id = NULL WHERE id = $1', [
+    await banco.query('UPDATE usuarios SET senha_hash = $2, perfil = $3, empresa_id = NULL, sessao_versao = sessao_versao + 1 WHERE id = $1', [
       existe.id,
       await gerarHashSenha(senha),
       'admin_sistema',

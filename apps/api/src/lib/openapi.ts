@@ -19,7 +19,10 @@ export async function instalarDocumentacao(app: FastifyInstance): Promise<void> 
       openapi: '3.0.3',
       info: { title: 'Agrega Construtoras — API', version: '0' },
       components: {
-        securitySchemes: { sessao: { type: 'apiKey', in: 'cookie', name: 'agrega_sessao', description: 'Cookie de sessão devolvido por POST /api/auth/entrar (validade de 12 horas).' } },
+        securitySchemes: {
+          servidorMcp: { type: 'apiKey', in: 'header', name: 'X-MCP-Secret', description: 'Segredo compartilhado entre o servidor MCP e a API (MCP_API_SECRET). Só para as rotas de troca e renovação do OAuth.' },
+          sessao: { type: 'apiKey', in: 'cookie', name: 'agrega_sessao', description: 'Cookie de sessão devolvido por POST /api/auth/entrar (validade de 12 horas).' },
+        },
       },
     },
     transform: ({ schema, url }) => {

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { destinoPermitido } from '../src/lib/oauth-mcp.ts';
+import { destinoPermitido, segredoConfere } from '../src/lib/oauth-mcp.ts';
 
 const PERMITIDOS = ['https://mcp.exemplo.com.br/oauth/callback'];
 
@@ -21,4 +21,17 @@ test('OAuth do MCP: só o callback cadastrado recebe o código de login', () => 
   assert.equal(destinoPermitido('https://mcp.exemplo.com.br.malicioso.example/oauth/callback', PERMITIDOS), false);
   // sem lista configurada, ninguém passa
   assert.equal(destinoPermitido('https://mcp.exemplo.com.br/oauth/callback', []), false);
+});
+
+test('OAuth do MCP: segredo do servidor MCP confere só quando é exatamente o configurado', () => {
+  const S = 'segredo-com-mais-de-trinta-e-dois-caracteres';
+  assert.equal(segredoConfere(S, S), true);
+  assert.equal(segredoConfere(`${S}x`, S), false);
+  assert.equal(segredoConfere(S.slice(0, -1), S), false);
+  assert.equal(segredoConfere('', S), false);
+  assert.equal(segredoConfere(undefined, S), false);
+  assert.equal(segredoConfere([S], S), false, 'cabeçalho repetido chega como lista');
+  // Sem segredo configurado ninguém passa, nem com valor vazio.
+  assert.equal(segredoConfere('', ''), false);
+  assert.equal(segredoConfere(S, ''), false);
 });

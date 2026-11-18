@@ -7,6 +7,12 @@
   },
   "components": {
     "securitySchemes": {
+      "servidorMcp": {
+        "type": "apiKey",
+        "in": "header",
+        "name": "X-MCP-Secret",
+        "description": "Segredo compartilhado entre o servidor MCP e a API (MCP_API_SECRET). Só para as rotas de troca e renovação do OAuth."
+      },
       "sessao": {
         "type": "apiKey",
         "in": "cookie",
@@ -126,7 +132,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:17"
+        "x-fonte": "src/rotas/auth.ts:18"
       }
     },
     "/api/auth/sair": {
@@ -156,7 +162,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:39"
+        "x-fonte": "src/rotas/auth.ts:40"
       }
     },
     "/api/auth/eu": {
@@ -202,7 +208,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/auth.ts:44"
+        "x-fonte": "src/rotas/auth.ts:45"
       }
     },
     "/api/auth/senha": {
@@ -274,7 +280,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/auth.ts:57"
+        "x-fonte": "src/rotas/auth.ts:58"
       }
     },
     "/api/auth/oauth-destino": {
@@ -306,7 +312,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:75",
+        "x-fonte": "src/rotas/auth.ts:80",
         "parameters": [
           {
             "name": "redirect_uri",
@@ -376,7 +382,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:81"
+        "x-fonte": "src/rotas/auth.ts:86"
       }
     },
     "/api/auth/oauth-exchange": {
@@ -392,10 +398,15 @@
                     "type": "string",
                     "minLength": 32,
                     "maxLength": 128
+                  },
+                  "redirectUri": {
+                    "type": "string",
+                    "maxLength": 500
                   }
                 },
                 "required": [
-                  "code"
+                  "code",
+                  "redirectUri"
                 ],
                 "additionalProperties": false
               }
@@ -421,13 +432,18 @@
           "Autenticação"
         ],
         "operationId": "post_auth_oauth_exchange",
-        "security": [],
+        "security": [
+          {
+            "servidorMcp": []
+          }
+        ],
         "x-acesso": {
-          "publica": true,
+          "publica": false,
           "modulo": null,
-          "perfis": []
+          "perfis": [],
+          "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:111"
+        "x-fonte": "src/rotas/auth.ts:124"
       }
     },
     "/api/auth/oauth-refresh": {
@@ -472,13 +488,18 @@
           "Autenticação"
         ],
         "operationId": "post_auth_oauth_refresh",
-        "security": [],
+        "security": [
+          {
+            "servidorMcp": []
+          }
+        ],
         "x-acesso": {
-          "publica": true,
+          "publica": false,
           "modulo": null,
-          "perfis": []
+          "perfis": [],
+          "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:120"
+        "x-fonte": "src/rotas/auth.ts:135"
       }
     },
     "/api/empresa": {
@@ -1316,7 +1337,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/usuarios.ts:58"
+        "x-fonte": "src/rotas/usuarios.ts:59"
       },
       "post": {
         "requestBody": {
@@ -1425,7 +1446,7 @@
             "dono"
           ]
         },
-        "x-fonte": "src/rotas/usuarios.ts:69"
+        "x-fonte": "src/rotas/usuarios.ts:70"
       }
     },
     "/api/usuarios/{id}": {
@@ -1538,7 +1559,7 @@
             "dono"
           ]
         },
-        "x-fonte": "src/rotas/usuarios.ts:92"
+        "x-fonte": "src/rotas/usuarios.ts:93"
       }
     },
     "/api/admin/material/{arquivo}": {

@@ -10,7 +10,8 @@ import { limitesVigentes, SQL_EM_TESTE } from '../lib/teste.ts';
 import { PERFIS_EMPRESA, podeGerenciarPerfil } from '../lib/perfis.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import type { Perfil } from '../lib/token.ts';
-import { empresaDo, exigir } from '../sessao.ts';
+import { empresaDo, exigir, gravarSessao } from '../sessao.ts';
+import { revogarConexoes } from '../lib/oauth-mcp.ts';
 
 /** Só administradores (o dono sempre é) cadastram usuários e definem os acessos. */
 function exigirAdministrador(req: FastifyRequest) {
@@ -89,7 +90,7 @@ export function rotasUsuarios(banco: Banco) {
       return { usuario: usuarioPublico(novo, await modulosDaEmpresa(banco, empresaId)) };
     });
 
-    app.patch<{ Params: { id: string } }>('/:id', { preHandler: exigir(banco, ...PERFIS_EMPRESA), schema: { body: esquemaAlterarUsuario } }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/:id', { preHandler: exigir(banco, ...PERFIS_EMPRESA), schema: { body: esquemaAlterarUsuario } }, async (req, reply) => {
       exigirAdministrador(req);
       const d = esquemaAlterarUsuario.parse(req.body);
       const empresaId = empresaDo(req);
@@ -130,6 +131,7 @@ export function rotasUsuarios(banco: Banco) {
                ativo = COALESCE($5, ativo),
                telefone_whatsapp = CASE WHEN $6::boolean THEN $7 ELSE telefone_whatsapp END,
                senha_hash = COALESCE($8, senha_hash),
+               sessao_versao = sessao_versao + CASE WHEN $8::text IS NOT NULL THEN 1 ELSE 0 END,
                senha_provisoria = CASE WHEN $12::boolean THEN true ELSE senha_provisoria END,
                administrador = COALESCE($9, administrador),
                modulos = CASE WHEN $10::boolean THEN $11::text[] ELSE modulos END,
@@ -139,9 +141,13 @@ export function rotasUsuarios(banco: Banco) {
               administrador ?? null, modulos !== undefined, modulos ?? null, !!hash && antes.id !== eu.id],
           )
         ).rows[0];
+        // Senha redefinida: os tokens de sessão do usuário deixam de valer (sessao_versao) e as conexões de assistentes são encerradas (P20).
+        if (hash) await revogarConexoes(c, antes.id);
         await auditar(c, { empresaId, usuarioId: eu.id, acao: 'alterar', entidade: 'usuarios', entidadeId: antes.id, antes, depois });
         return depois;
       });
+      // Quem redefiniu a própria senha por aqui continua logado neste navegador.
+      if (d.senha && atualizado.id === eu.id && req.sessaoPorCookie) gravarSessao(reply, { id: eu.id, empresaId, perfil: atualizado.perfil, sessaoVersao: atualizado.sessao_versao });
       return { usuario: usuarioPublico(atualizado, await modulosDaEmpresa(banco, empresaId)) };
     });
   };

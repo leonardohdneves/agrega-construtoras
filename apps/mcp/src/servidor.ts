@@ -82,6 +82,16 @@ const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS || '')
   })
   .filter(Boolean);
 
+// Segredo compartilhado com a API do Agrega: é com ele que este servidor se identifica ao trocar o código de login
+// e ao renovar o token (cabeçalho X-MCP-Secret). Em produção é obrigatório; fora dela, o valor fixo é o mesmo da API.
+const MCP_API_SECRET = (() => {
+  const s = process.env.MCP_API_SECRET?.trim() ?? '';
+  if (s.length >= 32) return s;
+  // Mesmo critério de produção da API (apps/api/src/config.ts): no Railway vale mesmo sem NODE_ENV.
+  if (process.env.NODE_ENV === 'production' || process.env.RAILWAY_ENVIRONMENT_NAME) throw new Error('MCP_API_SECRET e obrigatorio em producao (minimo 32 caracteres, o mesmo valor configurado na API; gere com: openssl rand -hex 32)');
+  return 'segredo-local-do-mcp-apenas-para-desenvolvimento';
+})();
+
 const TRUST_PROXY = process.env.TRUST_PROXY === 'true';
 
 // URL pública fixa (issuer OAuth, metadata, WWW-Authenticate). Sem ela o
@@ -278,6 +288,8 @@ const pendingAuthorizations: Map<string, {
   code_challenge_method?: 'S256';
   client_id: string;
   redirect_uri: string;
+  /** O /oauth/callback deste servidor informado à tela de login: a API só troca o código para o mesmo endereço. */
+  callback_uri: string;
   client_state?: string;
   resource?: string;
   expiresAt: Date;
@@ -591,7 +603,9 @@ app.get('/oauth/authorize', (req: Request, res: Response) => {
 
   // Contexto do fluxo, com chave interna aleatória (ver pendingAuthorizations).
   const stateKey = crypto.randomUUID();
+  const callbackUri = `${getBaseUrl(req)}/oauth/callback`;
   pendingAuthorizations.set(stateKey, {
+    callback_uri: callbackUri,
     code_challenge,
     code_challenge_method: code_challenge ? 'S256' : undefined,
     client_id,
@@ -606,8 +620,7 @@ app.get('/oauth/authorize', (req: Request, res: Response) => {
   // o destino vem do contexto salvo. Fica na URL só por compatibilidade com o
   // front atual, que exige o parâmetro.
   const telaDeLogin = new URL(AGREGA_AUTHORIZE_URL);
-  const baseUrl = getBaseUrl(req);
-  telaDeLogin.searchParams.set('redirect_uri', `${baseUrl}/oauth/callback`);
+  telaDeLogin.searchParams.set('redirect_uri', callbackUri);
   telaDeLogin.searchParams.set('state', stateKey);
   telaDeLogin.searchParams.set('original_redirect_uri', requestedRedirect);
   telaDeLogin.searchParams.set('client_name', nomeDoCliente(client_id));
@@ -691,14 +704,16 @@ app.get('/oauth/callback', asyncHandler(async (req: Request, res: Response) => {
       const apiBase = API_BASE_URL;
       const resposta = await fetch(`${apiBase}/api/auth/oauth-exchange`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code: codigoDoFront }),
+        headers: { 'Content-Type': 'application/json', 'X-MCP-Secret': MCP_API_SECRET },
+        body: JSON.stringify({ code: codigoDoFront, redirectUri: pending.callback_uri }),
         signal: AbortSignal.timeout(10000),
       });
       if (resposta.ok) {
         const dados = (await resposta.json()) as { token?: string; refreshToken?: string };
         token = dados.token;
         backendRefreshToken = dados.refreshToken;
+      } else if (await recusaDeConfiguracao(resposta)) {
+        console.error('❌ A API recusou este servidor MCP: confira MCP_API_SECRET (o mesmo valor nos dois servicos).', { status: resposta.status });
       } else {
         console.warn('⚠️ oauth-exchange recusou o codigo', { status: resposta.status });
       }
@@ -949,7 +964,15 @@ app.post('/oauth/token', asyncHandler(async (req: Request, res: Response) => {
   });
 }));
 
-/** Renovação server-to-server no API do Agrega (rotaciona o refresh lá). */
+/** A API respondeu que o problema é o segredo compartilhado (503 = ela não tem; 401 com `codigo` = o nosso não confere)? */
+async function recusaDeConfiguracao(resposta: globalThis.Response): Promise<boolean> {
+  if (resposta.status === 503) return true;
+  if (resposta.status !== 401) return false;
+  const corpo = (await resposta.clone().json().catch(() => ({}))) as { codigo?: string };
+  return corpo.codigo === 'servidor_mcp_nao_autorizado';
+}
+
+/** Renovação server-to-server na API do Agrega (rotaciona o refresh lá). */
 async function renovarNoBackend(brt: string): Promise<
   { ok: true; token: string; refreshToken: string } | { ok: false; status: number | null }
 > {
@@ -957,7 +980,7 @@ async function renovarNoBackend(brt: string): Promise<
     const apiBase = API_BASE_URL;
     const resposta = await fetch(`${apiBase}/api/auth/oauth-refresh`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'X-MCP-Secret': MCP_API_SECRET },
       body: JSON.stringify({ refreshToken: brt }),
       signal: AbortSignal.timeout(10000),
     });
@@ -967,6 +990,12 @@ async function renovarNoBackend(brt: string): Promise<
         return { ok: true, token: novo.token, refreshToken: novo.refreshToken };
       }
       return { ok: false, status: 500 };
+    }
+    // Segredo ausente ou divergente é problema de configuração, não sessão encerrada: tratar como API fora do ar
+    // (status null) faz o token endpoint reaproveitar o JWT atual em vez de mandar todo mundo logar de novo.
+    if (await recusaDeConfiguracao(resposta)) {
+      console.error('❌ A API recusou este servidor MCP na renovacao: confira MCP_API_SECRET (o mesmo valor nos dois servicos).', { status: resposta.status });
+      return { ok: false, status: null };
     }
     console.warn('⚠️ API recusou a renovacao do refresh', { status: resposta.status });
     return { ok: false, status: resposta.status };

@@ -6,7 +6,7 @@ export type RegistroAuditoria = {
   acao:
     | 'criar' | 'alterar' | 'excluir' | 'confirmar' | 'entrar'
     | 'enviar' | 'aprovar' | 'reprovar' | 'cancelar' | 'encerrar' | 'receber' | 'importar'
-    | 'finalizar_entrega' | 'nao_amostrar';
+    | 'finalizar_entrega' | 'nao_amostrar' | 'revogar';
   entidade: string;
   entidadeId: string;
   antes?: unknown;
