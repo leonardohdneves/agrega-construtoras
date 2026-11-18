@@ -159,7 +159,7 @@ async function resolverNecessidades(c: Cliente, empresaId: string, obraId: strin
   if (!itens.length) throw new ErroHttp(400, 'Inclua pelo menos um item.');
   if (new Set(itens.map((i) => i.necessidadeId)).size !== itens.length) throw new ErroHttp(400, 'Um mesmo insumo não pode aparecer duas vezes.');
   const r = await c.query(
-    `SELECT n.id, n.obra_id, n.status, n.quantidade, n.unidade_compra, n.quantidade_compra, n.eap_no_id, oi.id AS obra_item_id, oi.codigo, oi.descricao, oi.unidade
+    `SELECT n.id, n.obra_id, n.status, n.quantidade, n.unidade_compra, n.quantidade_compra, n.eap_no_id, o.nivel_apropriacao, oi.id AS obra_item_id, oi.codigo, oi.descricao, oi.unidade
        FROM obra_necessidades n JOIN obra_itens oi ON oi.id = n.obra_item_id JOIN obras o ON o.id = n.obra_id
       WHERE n.id = ANY($1::uuid[]) AND o.empresa_id = $2
       FOR UPDATE OF n`,
@@ -171,11 +171,12 @@ async function resolverNecessidades(c: Cliente, empresaId: string, obraId: strin
     if (!x) throw new ErroHttp(400, `Item ${n + 1}: insumo não encontrado.`);
     if (x.obra_id !== obraId) throw new ErroHttp(400, `Item ${n + 1}: o insumo não pertence a esta obra.`);
     if (x.status !== 'pendente') throw new ErroHttp(409, `Item ${n + 1} (${x.descricao}): já está em outra solicitação ou foi comprado.`);
-    if (!x.eap_no_id) throw new ErroHttp(400, `Item ${n + 1} (${x.descricao}): o insumo não está apropriado a um nó da EAP.`);
+    // Obra apropriada no nível da obra não tem nó da EAP (P30).
+    if (!x.eap_no_id && x.nivel_apropriacao !== 'obra') throw new ErroHttp(400, `Item ${n + 1} (${x.descricao}): o insumo não está apropriado a um nó da EAP.`);
     return {
       necessidadeId: x.id as string,
       obraItemId: x.obra_item_id as string,
-      eapNoId: x.eap_no_id as string,
+      eapNoId: (x.eap_no_id ?? null) as string | null,
       codigo: x.codigo as string,
       descricao: x.descricao as string,
       // Solicitação e pedido seguem a unidade em que o material foi pedido (de compra, quando houver).
@@ -1539,6 +1540,9 @@ export function rotasSuprimentos(banco: Banco) {
         const criados: { id: string; numero: number }[] = [];
         const solServico = mapa.solicitacaoId ? (await c.query('SELECT tipo, numero, plano_conta_id, obra_id, centro_custo_id FROM solicitacoes_compra WHERE id = $1', [mapa.solicitacaoId])).rows[0] : null;
         const ehServicoCotacao = solServico?.tipo === 'servico';
+        const obraNoNivelObra = solServico?.obra_id
+          ? (await c.query('SELECT nivel_apropriacao FROM obras WHERE id = $1', [solServico.obra_id])).rows[0]?.nivel_apropriacao === 'obra'
+          : false;
         for (const f of ehServicoCotacao ? [] : mapa.fornecedores.filter((x) => escolhidos.some((i) => i.vencedorId === x.id))) {
           const numero = await proximoNumero(c, 'pedidos_compra', empresaId);
           const hoje = hojeBrasil();
@@ -1553,7 +1557,8 @@ export function rotasSuprimentos(banco: Banco) {
           const itens = escolhidos
             .filter((i) => i.vencedorId === f.id)
             .map((i) => {
-              if (!i.necessidadeId || !i.obraItemId || !i.eapNoId) throw new ErroHttp(400, `${i.descricao}: item sem insumo da obra apropriado à EAP. Refaça a solicitação.`);
+              // Sem nó da EAP só em obra apropriada no nível da obra (P30).
+              if (!i.necessidadeId || !i.obraItemId || (!i.eapNoId && !obraNoNivelObra)) throw new ErroHttp(400, `${i.descricao}: item sem insumo da obra apropriado à EAP. Refaça a solicitação.`);
               return {
                 necessidadeId: i.necessidadeId,
                 obraItemId: i.obraItemId,
