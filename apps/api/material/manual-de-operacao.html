@@ -6,7 +6,7 @@
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"></noscript>
 <style>
-@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega construtoras · Manual de operação · versão 1.9"; font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } @bottom-right { content: counter(page); font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } }
+@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega construtoras · Manual de operação · versão 1.10"; font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } @bottom-right { content: counter(page); font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } }
 :root { --ink:#1f2328; --muted:#4a4f57; --cinza:#6b7078; --line:#dedbd5; --accent:#1f5fad; --accent-escuro:#174a8a; --soft:#e7eff9; --warn:#78350f; --warnbg:#fdf0d5; --capa:#1f2328; }
 * { box-sizing: border-box; }
 html, body { margin:0; padding:0; }
@@ -64,7 +64,7 @@ th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: 
     <p class="sub">Engenharia, suprimentos, estoque e patrimônio, medições, financeiro e gerencial para construtoras e incorporadoras.</p>
   </div>
   <div class="rod">
-    <p>Versão 1.9 · novembro de 2026</p>
+    <p>Versão 1.10 · novembro de 2026</p>
     <p>Para dono, gestor, engenharia, orçamento, compras, almoxarife, financeiro, administrativo e vendas.</p>
   </div>
 </section>
@@ -103,7 +103,8 @@ th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: 
   <div class="grade">
     <div><b>Dono</b>Acesso a tudo. Aprova todos os valores e define as regras de aprovação.</div>
     <div><b>Gestor</b>Acompanha a gestão da empresa. Pode ser administrador e aprovar até o limite definido.</div>
-    <div><b>Engenheiro de obra</b>Trabalha nas obras atribuídas a ele: EAP, medições, RDO, contratos das obras e retirada e devolução de ferramentas.</div>
+    <div><b>Engenheiro de obra</b>Trabalha nas obras atribuídas a ele: EAP, medições, RDO, contratos das obras, canteiro de obra (centrais e boletins) e retirada e devolução de ferramentas.</div>
+<div><b>Mestre de obra</b>Consulta, nas obras atribuídas a ele, a EAP, o planejamento e o canteiro de obra com os boletins. Não lança nada: os boletins são gerados pela engenharia.</div>
     <div><b>Orçamentista</b>Monta a EAP, o orçamento e o planejamento das obras.</div>
     <div><b>Comprador</b>Solicitações, cotações, pedidos e contratos de suprimentos.</div>
     <div><b>Financeiro</b>Lançamentos, contas, bancos, conciliação e relatórios financeiros.</div>
@@ -175,6 +176,21 @@ th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: 
     <li><b>Equipamentos.</b> Só os insumos da classe Equipamento, com a quantidade total e a data em que devem estar na obra.</li>
   </ul>
   <p>Cada aba tem o botão Imprimir. No celular instalado na tela inicial, o botão abre a mesma tela numa aba do Safari; lá, toque em Compartilhar e escolha Imprimir ou Salvar em PDF. Os botões de edição não aparecem na impressão. As datas seguem a cadeia de predecessoras. O custo de cada linha é distribuído ao longo das datas da atividade: essa distribuição é o previsto da Curva S.</p>
+  <h2>Canteiro de obra <span class="novo">novo</span></h2>
+  <p>Em Engenharia › Canteiro de obra, cada obra tem um fluxograma: o quadro <b>Engenharia</b> ligado a quatro centrais: <b>Central de argamassa</b>, <b>Central de carpintaria</b>, <b>Central de armação</b> e <b>Almoxarifado</b>. Clique em uma central para configurá-la e ver os seus boletins.</p>
+  <h3>Associar os serviços às centrais</h3>
+  <p>Na central, marque os serviços da EAP que ela atende (as linhas folha da EAP). Cada serviço fica em uma só central: se marcar um serviço que estava em outra central, ele sai dela. A lista mostra, ao lado de cada serviço, em qual central ele está hoje.</p>
+  <h3>Periodicidade</h3>
+  <p>Escolha a periodicidade do boletim de cada central, em dias (de 1 a 90). O padrão é 7 dias. A tela mostra o próximo período a ser gerado, a partir do dia seguinte ao último boletim.</p>
+  <h3>Boletim de produção</h3>
+  <p>Clique em <b>Gerar boletim</b> para criar o boletim do próximo período. Ele é planejado pela engenharia a partir do planejamento da obra, e tem, para cada serviço da central:</p>
+  <ul>
+    <li><b>Previsto</b>: o avanço que o planejamento previa para o período.</li>
+    <li><b>Realizado</b>: o avanço medido no período, vindo das medições físicas do acompanhamento de obra.</li>
+    <li><b>Diferença</b>: realizado menos previsto. Valor negativo indica atraso no período.</li>
+  </ul>
+  <p>O operacional não lança produção no canteiro. Para o realizado aparecer, faça as medições em Engenharia › Acompanhamento de obra. Um boletim gerado não muda depois, mesmo que o planejamento ou as medições mudem; para outro retrato, gere o boletim do período seguinte.</p>
+  <div class="tela"><div class="rot">Engenharia › Canteiro de obra › Central de argamassa</div>Boletim nº 3 · 10/11/2026 a 16/11/2026<br>1.2.1 · Chapisco &nbsp; Previsto 12,00% &nbsp; Realizado 10,00% &nbsp; Diferença -2,00%</div>
   <h2>Grupos de insumos e de serviços <span class="novo">novo</span></h2>
   <p>Em Engenharia › Grupos de insumos e Engenharia › Grupos de serviços, cadastre as famílias usadas para organizar a obra. Crie, renomeie ou exclua grupos. Não é possível ter dois grupos com o mesmo nome, mesmo que mudem as maiúsculas.</p>
   <ul>

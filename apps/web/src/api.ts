@@ -46,6 +46,7 @@ export type Perfil =
   | 'gestor'
   | 'orcamentista'
   | 'engenheiro_obra'
+  | 'mestre_obra'
   | 'comprador'
   | 'administrativo'
   | 'vendedor'
@@ -115,6 +116,7 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   gestor: 'Gestor',
   orcamentista: 'Orçamentista',
   engenheiro_obra: 'Engenheiro de obra',
+  mestre_obra: 'Mestre de obra',
   comprador: 'Comprador',
   financeiro: 'Financeiro',
   almoxarife: 'Almoxarife',

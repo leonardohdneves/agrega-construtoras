@@ -35,6 +35,8 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   orcamentista: ['engenharia', 'comercial'],
   // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
   engenheiro_obra: ['engenharia'],
+  // Só as obras atribuídas a ele, em consulta: acompanha o canteiro e os boletins, sem lançar nada.
+  mestre_obra: ['engenharia'],
   comprador: ['suprimentos'],
   financeiro: ['financeiro', 'gerencial'],
   vendedor: ['comercial'],
@@ -120,6 +122,10 @@ export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; p
     return ALMOXARIFADO.some((rx) => rx.test(path)) || (o.metodo === 'GET' && ALMOXARIFADO_CONSULTAS.some((rx) => rx.test(path)));
   }
   const consulta = o.metodo === 'GET' && CONSULTAS.some((rx) => rx.test(path));
+  if (o.perfil === 'mestre_obra') {
+    // Consulta da Engenharia das obras atribuídas (a rota confere a obra). Nada de alterar.
+    if (o.metodo === 'GET' && modulo === 'engenharia' && efetivos.includes('engenharia')) return true;
+  }
   if (o.perfil === 'engenheiro_obra') {
     // Contratos e medições das obras dele (a rota confere a obra); listas de cadastro para preenchê-los.
     if (CONTRATOS_DA_OBRA.some((rx) => rx.test(path))) return true;

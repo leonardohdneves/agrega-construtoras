@@ -885,3 +885,22 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .rel-visita { page: relatorio-cliente; margin: 0; padding: 0; max-width: none; border-radius: 0; box-shadow: none; }
   .rel-visita .rel-bloco, .rel-fotos figure { break-inside: avoid; }
 }
+
+/* Canteiro de obra: fluxograma da Engenharia ligada às quatro centrais */
+.canteiro-lista { display: grid; gap: 10px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 260px), 1fr)); }
+.canteiro-obra-link { text-decoration: none; color: inherit; }
+.canteiro-fluxo { display: grid; justify-items: center; }
+.canteiro-no { position: relative; display: grid; gap: 4px; justify-items: center; text-align: center; min-width: 0; color: var(--ink); text-decoration: none; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--surface-card); padding: 12px 14px; }
+.canteiro-raiz { background: var(--action); color: var(--on-action); border-color: var(--action); min-width: min(100%, 240px); margin-bottom: 22px; }
+.canteiro-raiz small { opacity: 0.85; }
+.canteiro-raiz::after { content: ''; position: absolute; left: 50%; top: 100%; height: 22px; border-left: 2px solid var(--border); }
+.canteiro-ramos { position: relative; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; width: 100%; padding-top: 22px; }
+.canteiro-ramos::before { content: ''; position: absolute; top: 0; left: 12.5%; right: 12.5%; border-top: 2px solid var(--border); }
+.canteiro-central::before { content: ''; position: absolute; top: 0; left: 50%; height: 22px; border-left: 2px solid var(--border); transform: translateY(-100%); }
+.canteiro-servicos { display: grid; gap: 6px; max-height: 420px; overflow-y: auto; border: 1px solid var(--divider); border-radius: var(--radius-md); padding: 10px; }
+.canteiro-servico { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+@media (max-width: 640px) {
+  .canteiro-ramos { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-top: 0; }
+  .canteiro-ramos::before, .canteiro-central::before, .canteiro-raiz::after { display: none; }
+  .canteiro-raiz { margin-bottom: 12px; }
+}

@@ -366,7 +366,7 @@ export function EngObraDetalhe() {
   const { id } = useParams();
   const { usuario } = useSessao();
   // O cadastro da obra (nome, BDI, responsáveis) é do dono, do gestor e do orçamentista.
-  const editaCadastro = usuario?.perfil !== 'engenheiro_obra';
+  const editaCadastro = usuario?.perfil !== 'engenheiro_obra' && usuario?.perfil !== 'mestre_obra';
   const [obra, setObra] = useState<Obra | null>(null);
   const [itens, setItens] = useState<ItemObra[]>([]);
   const [nos, setNos] = useState<No[]>([]);
