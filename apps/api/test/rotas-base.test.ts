@@ -4,6 +4,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
+import { criarAceite } from '../src/lib/aceite.ts';
+import { CONDICOES_PADRAO } from '../src/lib/proposta-interessado.ts';
 
 let ctx: ContextoTeste;
 
@@ -54,4 +56,15 @@ test('P16: id em formato inválido responde 404, não 500', { skip: semBanco }, 
   const r = await ctx.pedir('dono', 'GET', '/api/fin/lancamentos/abc');
   assert.equal(r.status, 404, JSON.stringify(r.corpo));
   assert.equal((await ctx.pedir('dono', 'GET', '/api/eng/obras/nao-e-uuid')).status, 404);
+});
+
+test('P13: período de teste do aceite sai no dia certo (sem voltar um dia pelo fuso)', { skip: semBanco }, async () => {
+  const codigo = await criarAceite(ctx.banco, { empresaId: ctx.empresas.a, interessadoId: null, nomeCliente: 'Cliente Teste', condicoes: CONDICOES_PADRAO, criadoPor: ctx.admin.id });
+  await ctx.banco.query("UPDATE propostas_aceite SET aceito_em = now(), teste_inicio = '2026-12-10', teste_fim = '2027-01-08' WHERE codigo = $1", [codigo]);
+  const r = await ctx.pedir(null, 'GET', `/api/aceite/${codigo}`);
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.equal(r.corpo.testeInicio, '10/12/2026');
+  assert.equal(r.corpo.testeFim, '08/01/2027');
+  const lista = await ctx.pedir('admin_sistema', 'GET', '/api/aceite/admin/aceites');
+  assert.equal(lista.corpo.aceites.find((a: { cliente: string }) => a.cliente === 'Cliente Teste').testeInicio, '10/12/2026');
 });

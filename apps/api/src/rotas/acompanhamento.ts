@@ -85,7 +85,13 @@ export function rotasAcompanhamento(banco: Banco) {
           ORDER BY o.codigo`,
         [empresaId, permitidas],
       );
-      return { obras: r.rows };
+      // Nomes em camelCase, como no resto da API (a tela lia ultimaVisita e recebia ultima_visita, P12).
+      return {
+        obras: r.rows.map((o) => ({
+          id: o.id as string, codigo: o.codigo as string, nome: o.nome as string, cidade: o.cidade as string | null, uf: o.uf as string | null,
+          status: o.status as string, visitas: Number(o.visitas), ultimaVisita: (o.ultima_visita ?? null) as string | null,
+        })),
+      };
     });
 
     app.get<{ Params: { obraId: string } }>('/obras/:obraId/visitas', async (req) => {
