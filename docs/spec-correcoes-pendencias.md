@@ -67,7 +67,7 @@ Base: `docs/pendencias.md` (37 itens), que entrou na `main` com o [PR #1](https:
 | Id | Entrega | Critério de aceite |
 | --- | --- | --- |
 | — | `npm run docs` e commit: a documentação gerada ficou para trás no merge do PR #1 (ver §6). | `npm test -w apps/api` sem a falha de `openapi`. |
-| P05 | `npm ci --include=dev` no `railway.json` (o lockfile já está versionado). | O log do build mostra `npm ci`. |
+| P05 | `npm install --include=dev` com o lockfile versionado. **`npm ci` não serve no Railway:** o Railpack monta cache em `apps/web/node_modules/.vite` e o `npm ci` falha com EBUSY ao apagar a pasta (build de 18/11/2026). | O build usa o lockfile e passa. |
 | P06 | `npm run check` na raiz: typecheck da API, do front e do MCP, mais os testes. Corrigir os erros de `tsc`, começando pelos dois bugs reais. Chamar `check` no `buildCommand`. | `npm run check` limpo. Um erro de tipo proposital numa branch faz o build falhar. |
 | P07 (base) | Helper de teste com `criarApp`, banco com migrações, duas empresas e um usuário de cada perfil. `zip-xlsx` pula sem `unzip` ou `python3`. | `npm test` com `TEST_DATABASE_URL` roda os testes de rota. Sem a variável, pula. |
 
