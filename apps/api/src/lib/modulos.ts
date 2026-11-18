@@ -100,6 +100,9 @@ const CONTRATOS_DA_OBRA = [/^\/api\/sup\/(contratos|medicoes|patrimonio)(\/|$)/]
 /** Listas que o engenheiro de obra usa para preencher contratos e medições. */
 const CONSULTAS_ENGENHEIRO = [/^\/api\/fin\/(plano-contas|centros-custo)\/?$/];
 
+/** Listas da apropriação de notas e lançamentos (obra, insumo da obra, EAP, estoques), para quem tem o Financeiro. */
+const CONSULTAS_FINANCEIRO = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/, /^\/api\/sup\/estoques\/?$/];
+
 /** Do Financeiro, liberado sem o módulo (para o painel e listas); a resposta esconde saldos e contas de quem não pode ver. */
 const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|plano-contas|centros-custo)\/?$/];
 
@@ -122,6 +125,8 @@ export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; p
     return ALMOXARIFADO.some((rx) => rx.test(path)) || (o.metodo === 'GET' && ALMOXARIFADO_CONSULTAS.some((rx) => rx.test(path)));
   }
   const consulta = o.metodo === 'GET' && CONSULTAS.some((rx) => rx.test(path));
+  // Quem tem o Financeiro apropria notas e lançamentos a obra, insumo, etapa e estoque: precisa dessas listas (P11).
+  if (o.metodo === 'GET' && efetivos.includes('financeiro') && CONSULTAS_FINANCEIRO.some((rx) => rx.test(path))) return true;
   if (o.perfil === 'mestre_obra') {
     // Consulta da Engenharia das obras atribuídas (a rota confere a obra). Nada de alterar.
     if (o.metodo === 'GET' && modulo === 'engenharia' && efetivos.includes('engenharia')) return true;

@@ -458,15 +458,19 @@ function ApropriacaoEstoque({ item, editavel, salvar }: { item: ItemNota; editav
   const [insumos, setInsumos] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
   const [etapas, setEtapas] = useState<{ id: string; codigo: string; descricao: string }[]>([]);
   const [estoques, setEstoques] = useState<{ id: string; codigo: string; nome: string; obraId: string | null }[]>([]);
+  // Falha ao carregar as listas aparece na tela (antes o erro era engolido e o seletor ficava vazio, P11).
+  const [falha, setFalha] = useState('');
+  const avisar = (e: unknown) => setFalha((e as Error).message);
   useEffect(() => {
     if (!editavel) return;
-    api<{ obras: { id: string; codigo: string; nome: string }[] }>('/eng/obras').then((r) => setObras(r.obras)).catch(() => setObras([]));
+    api<{ obras: { id: string; codigo: string; nome: string }[] }>('/eng/obras').then((r) => setObras(r.obras)).catch((e) => { setObras([]); avisar(e); });
   }, [editavel]);
   useEffect(() => {
+    setFalha('');
     if (!item.obraId) { setInsumos([]); setEtapas([]); setEstoques([]); return; }
-    api<{ itens: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/itens?tipo=insumo`).then((r) => setInsumos(r.itens ?? [])).catch(() => setInsumos([]));
-    api<{ nos: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/eap`).then((r) => setEtapas(r.nos ?? [])).catch(() => setEtapas([]));
-    api<{ estoques: { id: string; codigo: string; nome: string; obraId: string | null }[] }>(`/sup/estoques?obraId=${item.obraId}`).then((r) => setEstoques(r.estoques ?? [])).catch(() => setEstoques([]));
+    api<{ itens: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/itens?tipo=insumo`).then((r) => setInsumos(r.itens ?? [])).catch((e) => { setInsumos([]); avisar(e); });
+    api<{ nos: { id: string; codigo: string; descricao: string }[] }>(`/eng/obras/${item.obraId}/eap`).then((r) => setEtapas(r.nos ?? [])).catch((e) => { setEtapas([]); avisar(e); });
+    api<{ estoques: { id: string; codigo: string; nome: string; obraId: string | null }[] }>(`/sup/estoques?obraId=${item.obraId}`).then((r) => setEstoques(r.estoques ?? [])).catch((e) => { setEstoques([]); avisar(e); });
   }, [item.obraId]);
   if (!editavel) {
     return <span className="small">{item.obraItemDescricao ?? '—'}{item.eapCodigo ? ` · etapa ${item.eapCodigo}` : ''}</span>;
@@ -489,6 +493,7 @@ function ApropriacaoEstoque({ item, editavel, salvar }: { item: ItemNota; editav
         <option value="">Recebimento da obra</option>
         {estoques.map((x) => <option key={x.id} value={x.id}>{x.codigo} · {x.nome}{x.obraId ? '' : ' (geral)'}</option>)}
       </select>
+      {falha && <span className="small" role="alert" style={{ color: "var(--status-danger-ink)" }}>Não deu para carregar as listas: {falha}</span>}
     </div>
   );
 }
@@ -1440,7 +1445,7 @@ function PedidosParaNota({ nota, aoLigado }: { nota: NotaFiscal; aoLigado: () =>
         const s = p.sugestoes.find((x) => x.notaItemId === i.id);
         return { notaItemId: i.id, pedidoItemId: s?.pedidoItemId ?? null, quantidade: s?.quantidade ?? null };
       });
-      await api(`/sup/pedidos/${p.id}/recebimento`, { metodo: 'PUT', corpo: { notaId: nota.id, itens } });
+      await api(`/fin/notas/${nota.id}/pedido`, { metodo: 'PUT', corpo: { pedidoId: p.id, itens } });
       aoLigado();
     } catch (e) {
       setErro((e as Error).message);

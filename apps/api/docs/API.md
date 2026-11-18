@@ -13,7 +13,7 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
+Total: 485 rotas, 12 públicas, 91 do legado da concreteira.
 
 ## Engenharia
 
@@ -35,7 +35,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 | `PUT /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista |  | `descricao`, `unidade`, `grupo`, `preco`, `precoOrigem`, `unidadesCompra`, `componentes` |
 | `DELETE /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista |  |  |
 | `POST /api/eng/tabelas/{id}/itens/{itemId}/preco-ultima-compra` |  | Dono, Gestor, Orçamentista |  |  |
-| `GET /api/eng/obras` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Almoxarife | `tipo` |  |
+| `GET /api/eng/obras` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife | `tipo` |  |
 | `POST /api/eng/obras` |  | Dono, Gestor, Orçamentista |  | `codigo`, `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipo`, `eapPadrao`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
 | `GET /api/eng/panorama` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/insumo-grupos` |  | Dono, Gestor, Orçamentista |  |  |
@@ -53,7 +53,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 | `POST /api/eng/obras/{id}/adotar-datas-planejamento` | Adota as datas do planejamento: início = primeira atividade; previsão = fim da última atividade. | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `GET /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista |  | `codigo`, `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipo`, `eapPadrao`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
-| `GET /api/eng/obras/{id}/itens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Almoxarife | `tipo`, `busca` |  |
+| `GET /api/eng/obras/{id}/itens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife | `tipo`, `busca` |  |
 | `GET /api/eng/obras/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PATCH /api/eng/obras/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `unidade`, `preco`, `unidadesCompra` |
 | `DELETE /api/eng/obras/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
@@ -61,7 +61,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 | `POST /api/eng/obras/{id}/importar` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `tabelaId`*, `composicaoIds`, `insumoIds` |
 | `PUT /api/eng/obras/{id}/itens/{itemId}/composicao` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `componentes`* |
 | `POST /api/eng/obras/{id}/servicos/salvar` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `modo`*, `itemId`*, `tabelaId`*, `codigo`, `descricao`*, `unidade`*, `componentes`* |
-| `GET /api/eng/obras/{id}/eap` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Almoxarife |  |  |
+| `GET /api/eng/obras/{id}/eap` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife |  |  |
 | `GET /api/eng/obras/{id}/canteiro` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `periodicidadeDias`, `servicos` |
@@ -198,7 +198,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 
 ## Suprimentos
 
-86 rotas.
+87 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -207,7 +207,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 | `GET /api/sup/obras/{obraId}/estoques` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `POST /api/sup/obras/{obraId}/estoques` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `nome`* |
 | `PUT /api/sup/estoques/{id}` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `nome`, `ativo` |
-| `GET /api/sup/estoques` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife | `obraId` |  |
+| `GET /api/sup/estoques` |  | Dono, Gestor, Comprador, Financeiro, Administrativo, Almoxarife | `obraId` |  |
 | `POST /api/sup/estoques` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `nome`*, `obraId` |
 | `GET /api/sup/etiquetas` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife | `obraId`, `estoqueId`, `saldo` |  |
 | `GET /api/sup/etiquetas/{id}` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
@@ -222,6 +222,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 | `POST /api/sup/solicitacoes/{id}/reabrir` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/solicitacoes/{id}/cancelar` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `GET /api/sup/conferencia-unidades` | Linhas de nota ligadas a um item de pedido cuja unidade do insumo é diferente da unidade do pedido. | Dono, Gestor, Comprador, Administrativo |  |  |
+| `PATCH /api/sup/conferencia-unidades/{id}` |  | Dono, Gestor, Comprador, Administrativo |  | `fatorEstoque`* |
 | `GET /api/sup/cotacoes` |  | Dono, Gestor, Comprador, Administrativo | `status` |  |
 | `POST /api/sup/cotacoes` |  | Dono, Gestor, Comprador, Administrativo |  | `solicitacaoId`*, `data`, `prazoResposta`, `observacao`, `fornecedorIds` |
 | `GET /api/sup/cotacoes/{id}` |  | Dono, Gestor, Comprador, Administrativo |  |  |
@@ -291,7 +292,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 
 ## Financeiro
 
-70 rotas.
+71 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -330,6 +331,7 @@ Total: 483 rotas, 12 públicas, 91 do legado da concreteira.
 | `GET /api/fin/notas/{id}` |  | Dono, Financeiro |  |  |
 | `PATCH /api/fin/notas/{id}` |  | Dono, Financeiro |  | `competencia`, `observacoes`, `fornecedorId`, `clienteId`, `formaPagamento`, `duplicatas`, `modelo`, `numero`, `serie`, `dataEmissao`, `frete`, `desconto`, `outras` |
 | `DELETE /api/fin/notas/{id}` | Exclusão do rascunho (importou errado): libera a chave para importar de novo. | Dono, Financeiro |  |  |
+| `PUT /api/fin/notas/{id}/pedido` |  | Dono, Financeiro |  | `itens`*, `pedidoId`* |
 | `GET /api/fin/notas/{id}/pedidos-candidatos` | Pedidos de compra do mesmo fornecedor que podem receber esta nota, com o cruzamento sugerido dos itens. | Dono, Financeiro |  |  |
 | `GET /api/fin/notas/{id}/xml` |  | Dono, Financeiro |  |  |
 | `POST /api/fin/notas/xml` |  | Dono, Financeiro |  | `xml`* |

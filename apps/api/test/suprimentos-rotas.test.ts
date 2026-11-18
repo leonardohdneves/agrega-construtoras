@@ -86,3 +86,27 @@ test('P10: gestor e comprador salvam o fator na nota em rascunho; nota confirmad
   assert.equal(bloqueada.status, 409);
   assert.equal((await ctx.pedir('gestor', 'PATCH', `/api/sup/conferencia-unidades/${rascunho}`, { empresa: 'b', corpo: { fatorEstoque: 3 } })).status, 404, 'outra empresa');
 });
+
+test('P11: o perfil Financeiro liga a nota ao pedido e vê as listas da apropriação', { skip: semBanco }, async () => {
+  const um = async (sql: string, p: unknown[]) => (await ctx.banco.query(sql, p)).rows[0].id as string;
+  const e = ctx.empresas.a;
+  const forn = (await ctx.pedir('dono', 'POST', '/api/adm/fornecedores', { corpo: { razaoSocial: 'Cimenteira P11' } })).corpo.fornecedor.id as string;
+  const pedido = await um(`INSERT INTO pedidos_compra (empresa_id, numero, data, fornecedor_id, status) VALUES ($1, 9011, '2026-11-01', $2, 'aprovado') RETURNING id`, [e, forn]);
+  const itemPedido = await um(`INSERT INTO pedidos_itens (empresa_id, pedido_id, descricao, unidade, quantidade, preco_unitario_centavos) VALUES ($1, $2, 'Cimento', 'sc', 10, 3500) RETURNING id`, [e, pedido]);
+  const nota = await um(`INSERT INTO notas_fiscais (empresa_id, data_emissao, competencia, status, fornecedor_id, direcao) VALUES ($1, '2026-11-05', '2026-11-05', 'rascunho', $2, 'entrada') RETURNING id`, [e, forn]);
+  const itemNota = await um(`INSERT INTO notas_itens (empresa_id, nota_id, numero_item, descricao, unidade, quantidade) VALUES ($1, $2, 1, 'Cimento CP II', 'sc', 10) RETURNING id`, [e, nota]);
+
+  const candidatos = await ctx.pedir('financeiro', 'GET', `/api/fin/notas/${nota}/pedidos-candidatos`);
+  assert.equal(candidatos.status, 200, JSON.stringify(candidatos.corpo));
+  const r = await ctx.pedir('financeiro', 'PUT', `/api/fin/notas/${nota}/pedido`, { corpo: { pedidoId: pedido, itens: [{ notaItemId: itemNota, pedidoItemId: itemPedido, quantidade: 10 }] } });
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  assert.equal((await ctx.banco.query('SELECT pedido_id FROM notas_fiscais WHERE id = $1', [nota])).rows[0].pedido_id, pedido);
+
+  const obra = (await ctx.pedir('dono', 'POST', '/api/eng/obras', { corpo: { codigo: 'P11', nome: 'Obra P11' } })).corpo.obra.id;
+  for (const rota of ['/api/eng/obras', `/api/eng/obras/${obra}/itens?tipo=insumo`, `/api/eng/obras/${obra}/eap`, `/api/sup/estoques?obraId=${obra}`]) {
+    assert.equal((await ctx.pedir('financeiro', 'GET', rota)).status, 200, rota);
+  }
+  // Só as listas: o resto de Suprimentos e da Engenharia continua fechado para o Financeiro.
+  assert.equal((await ctx.pedir('financeiro', 'GET', '/api/sup/solicitacoes')).status, 403);
+  assert.equal((await ctx.pedir('financeiro', 'PUT', `/api/sup/pedidos/${pedido}/recebimento`, { corpo: { notaId: nota, itens: [] } })).status, 403);
+});

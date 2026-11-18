@@ -759,6 +759,51 @@ function sugerirPares(notaItens: { id: string; descricao: string; insumo_id: str
 
 // ---------------------------------------------------------------- rotas
 
+/** Corpo da ligação nota × pedido: cada item da nota com o item do pedido e a quantidade na unidade do pedido. */
+export const esquemaLigarNotaPedido = z.object({
+  notaId: z.string().regex(UUID),
+  itens: z
+    .array(z.object({ notaItemId: z.string().regex(UUID), pedidoItemId: z.union([z.string().regex(UUID), z.null()]), quantidade: z.union([positivo('Quantidade inválida.'), z.null()]) }))
+    .max(300),
+});
+
+/**
+ * Liga a nota de entrada ao pedido de compra (recebimento). Usada por Suprimentos (PUT /pedidos/:id/recebimento) e
+ * pelo Financeiro (PUT /api/fin/notas/:id/pedido, D2). Quem chama abre a transação.
+ */
+export async function ligarNotaAoPedido(c: Cliente, empresaId: string, usuarioId: string, pedidoId: string, d: z.infer<typeof esquemaLigarNotaPedido>) {
+  if (!UUID.test(pedidoId)) throw naoEncontrado('Pedido');
+  const p = (await c.query('SELECT * FROM pedidos_compra WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [pedidoId, empresaId])).rows[0];
+  if (!p) throw naoEncontrado('Pedido');
+  if (!['aprovado', 'enviado', 'parcial', 'recebido'].includes(p.status)) throw new ErroHttp(409, 'O pedido precisa estar aprovado para receber.');
+  const n = (await c.query("SELECT id, fornecedor_id, pedido_id, direcao, status FROM notas_fiscais WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE", [d.notaId, empresaId])).rows[0];
+  if (!n || n.direcao !== 'entrada' || n.status === 'cancelada') throw new ErroHttp(400, 'Nota não encontrada.');
+  if (n.fornecedor_id !== p.fornecedor_id) throw new ErroHttp(400, 'A nota é de outro fornecedor.');
+  if (n.pedido_id && n.pedido_id !== p.id) throw new ErroHttp(409, 'Esta nota já está ligada a outro pedido.');
+  const itensPedido = new Set((await c.query('SELECT id FROM pedidos_itens WHERE pedido_id = $1', [p.id])).rows.map((x) => x.id as string));
+  const itensNota = new Set((await c.query('SELECT id FROM notas_itens WHERE nota_id = $1', [n.id])).rows.map((x) => x.id as string));
+  let ligados = 0;
+  for (const i of d.itens) {
+    if (!itensNota.has(i.notaItemId)) throw new ErroHttp(400, 'Item não pertence à nota.');
+    if (i.pedidoItemId && !itensPedido.has(i.pedidoItemId)) throw new ErroHttp(400, 'Item não pertence ao pedido.');
+    if (i.pedidoItemId && i.quantidade === null) throw new ErroHttp(400, 'Informe a quantidade recebida na unidade do pedido.');
+    await c.query('UPDATE notas_itens SET pedido_item_id = $2, quantidade_pedido = $3 WHERE id = $1', [i.notaItemId, i.pedidoItemId, i.pedidoItemId ? r3(i.quantidade!) : null]);
+    if (i.pedidoItemId) ligados++;
+  }
+  if (!ligados) throw new ErroHttp(400, 'Ligue pelo menos um item da nota a um item do pedido.');
+  await c.query('UPDATE notas_fiscais SET pedido_id = $2, atualizado_em = now() WHERE id = $1', [n.id, p.id]);
+  // A nota herda a obra, o insumo da obra e a etapa do item do pedido (só onde ainda não estão preenchidos).
+  await c.query(
+    `UPDATE notas_itens ni SET obra_item_id = coalesce(ni.obra_item_id, pi.obra_item_id), eap_no_id = coalesce(ni.eap_no_id, pi.eap_no_id),
+            obra_id = coalesce(ni.obra_id, oi.obra_id)
+       FROM pedidos_itens pi LEFT JOIN obra_itens oi ON oi.id = pi.obra_item_id
+      WHERE pi.id = ni.pedido_item_id AND ni.nota_id = $1`,
+    [n.id],
+  );
+  await atualizarStatusRecebimento(c, p.id);
+  await auditar(c, { empresaId, usuarioId, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { recebimento: n.id, itens: ligados } });
+}
+
 export function rotasSuprimentos(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
@@ -1934,48 +1979,15 @@ export function rotasSuprimentos(banco: Banco) {
       return { notas: saida };
     });
 
-    const corpoPutPedidosRecebimento = z
-    .object({
-      notaId: z.string().regex(UUID),
-      itens: z.array(z.object({ notaItemId: z.string().regex(UUID), pedidoItemId: z.union([z.string().regex(UUID), z.null()]), quantidade: z.union([positivo('Quantidade inválida.'), z.null()]) })).max(300),
-    });
+    const corpoPutPedidosRecebimento = esquemaLigarNotaPedido;
     app.put<{ Params: { id: string } }>('/pedidos/:id/recebimento', { schema: { body: corpoPutPedidosRecebimento } }, async (req) => {
-      const d = corpoPutPedidosRecebimento
-        .parse(req.body);
+      const d = corpoPutPedidosRecebimento.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
-      await emTransacao(banco, async (c) => {
-        const p = await pedidoPara(c, empresaId, req.params.id);
-        if (!['aprovado', 'enviado', 'parcial', 'recebido'].includes(p.status)) throw new ErroHttp(409, 'O pedido precisa estar aprovado para receber.');
-        const n = (await c.query("SELECT id, fornecedor_id, pedido_id, direcao, status FROM notas_fiscais WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE", [d.notaId, empresaId])).rows[0];
-        if (!n || n.direcao !== 'entrada' || n.status === 'cancelada') throw new ErroHttp(400, 'Nota não encontrada.');
-        if (n.fornecedor_id !== p.fornecedor_id) throw new ErroHttp(400, 'A nota é de outro fornecedor.');
-        if (n.pedido_id && n.pedido_id !== p.id) throw new ErroHttp(409, 'Esta nota já está ligada a outro pedido.');
-        const itensPedido = new Set((await c.query('SELECT id FROM pedidos_itens WHERE pedido_id = $1', [p.id])).rows.map((x) => x.id as string));
-        const itensNota = new Set((await c.query('SELECT id FROM notas_itens WHERE nota_id = $1', [n.id])).rows.map((x) => x.id as string));
-        let ligados = 0;
-        for (const i of d.itens) {
-          if (!itensNota.has(i.notaItemId)) throw new ErroHttp(400, 'Item não pertence à nota.');
-          if (i.pedidoItemId && !itensPedido.has(i.pedidoItemId)) throw new ErroHttp(400, 'Item não pertence ao pedido.');
-          if (i.pedidoItemId && i.quantidade === null) throw new ErroHttp(400, 'Informe a quantidade recebida na unidade do pedido.');
-          await c.query('UPDATE notas_itens SET pedido_item_id = $2, quantidade_pedido = $3 WHERE id = $1', [i.notaItemId, i.pedidoItemId, i.pedidoItemId ? r3(i.quantidade!) : null]);
-          if (i.pedidoItemId) ligados++;
-        }
-        if (!ligados) throw new ErroHttp(400, 'Ligue pelo menos um item da nota a um item do pedido.');
-        await c.query('UPDATE notas_fiscais SET pedido_id = $2, atualizado_em = now() WHERE id = $1', [n.id, p.id]);
-        // A nota herda a obra, o insumo da obra e a etapa do item do pedido (só onde ainda não estão preenchidos).
-        await c.query(
-          `UPDATE notas_itens ni SET obra_item_id = coalesce(ni.obra_item_id, pi.obra_item_id), eap_no_id = coalesce(ni.eap_no_id, pi.eap_no_id),
-                  obra_id = coalesce(ni.obra_id, oi.obra_id)
-             FROM pedidos_itens pi LEFT JOIN obra_itens oi ON oi.id = pi.obra_item_id
-            WHERE pi.id = ni.pedido_item_id AND ni.nota_id = $1`,
-          [n.id],
-        );
-        await atualizarStatusRecebimento(c, p.id);
-        await auditar(c, { empresaId, usuarioId: u.id, acao: 'alterar', entidade: 'pedidos_compra', entidadeId: p.id, depois: { recebimento: n.id, itens: ligados } });
-      });
+      await emTransacao(banco, (c) => ligarNotaAoPedido(c, empresaId, u.id, req.params.id, d));
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
     });
+    // A mesma ligação responde também em PUT /api/fin/notas/:id/pedido, para o perfil Financeiro (D2).
 
     app.delete<{ Params: { id: string; nota: string } }>('/pedidos/:id/recebimento/:nota', async (req) => {
       const empresaId = empresaDo(req);
