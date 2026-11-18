@@ -21,6 +21,7 @@
     "start:mcp": "npm run start -w apps/mcp",
     "docs": "npm run docs -w apps/api",
     "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web && npm run typecheck -w apps/mcp",
-    "check": "npm run typecheck && npm run test -w apps/api && npm run test -w apps/mcp"
+    "check": "npm run typecheck && npm run test -w apps/api && npm run test -w apps/mcp",
+    "check:completo": "npm run typecheck && npm run test:banco -w apps/api && npm run test -w apps/mcp"
   }
 }
