@@ -767,8 +767,9 @@ export function rotasNotas(banco: Banco) {
     });
 
     // ----- Importação do XML -----
-    app.post('/notas/xml', { bodyLimit: 5 * 1024 * 1024 }, async (req, reply) => {
-      const { xml } = z.object({ xml: z.string({ required_error: 'Envie o conteúdo do XML.' }).min(1).max(4_000_000, 'Arquivo grande demais.') }).parse(req.body);
+    const corpoPostNotasXml = z.object({ xml: z.string({ required_error: 'Envie o conteúdo do XML.' }).min(1).max(4_000_000, 'Arquivo grande demais.') });
+    app.post('/notas/xml', { bodyLimit: 5 * 1024 * 1024, schema: { body: corpoPostNotasXml } }, async (req, reply) => {
+      const { xml } = corpoPostNotasXml.parse(req.body);
       const empresaId = empresaDo(req);
       let nfe: NotaNfe;
       try {
@@ -860,15 +861,16 @@ export function rotasNotas(banco: Banco) {
     // ----- Importação do PDF (ou foto): leitor próprio, código de barras e IA -----
     app.get('/notas/leitura', async () => ({ ia: iaDisponivel() }));
 
-    app.post('/notas/pdf', { bodyLimit: 16 * 1024 * 1024 }, async (req, reply) => {
-      const d = z
-        .object({
-          arquivo: z.string({ required_error: 'Envie o arquivo.' }).min(20, 'Arquivo vazio.'),
-          nome: z.string().trim().max(200).optional().default('nota.pdf'),
-          tipo: z.enum(TIPOS_ARQUIVO, { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG ou PNG) da nota.' }) }).optional().default('application/pdf'),
-          chave: z.string().max(80).optional().nullable(),
-          usarIa: z.boolean().optional().default(true),
-        })
+    const corpoPostNotasPdf = z
+    .object({
+      arquivo: z.string({ required_error: 'Envie o arquivo.' }).min(20, 'Arquivo vazio.'),
+      nome: z.string().trim().max(200).optional().default('nota.pdf'),
+      tipo: z.enum(TIPOS_ARQUIVO, { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG ou PNG) da nota.' }) }).optional().default('application/pdf'),
+      chave: z.string().max(80).optional().nullable(),
+      usarIa: z.boolean().optional().default(true),
+    });
+    app.post('/notas/pdf', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostNotasPdf } }, async (req, reply) => {
+      const d = corpoPostNotasPdf
         .parse(req.body);
       const bytes = Buffer.from(d.arquivo, 'base64');
       if (bytes.length > MAX_ARQUIVO) throw new ErroHttp(400, 'Arquivo grande demais (máximo 10 MB).');
@@ -984,8 +986,9 @@ export function rotasNotas(banco: Banco) {
     });
 
     // ----- Nota pela chave lida no código de barras (câmera ou leitor USB) -----
-    app.post('/notas/chave', async (req, reply) => {
-      const { chave } = z.object({ chave: z.string({ required_error: 'Informe a chave de acesso.' }) }).parse(req.body);
+    const corpoPostNotasChave = z.object({ chave: z.string({ required_error: 'Informe a chave de acesso.' }) });
+    app.post('/notas/chave', { schema: { body: corpoPostNotasChave } }, async (req, reply) => {
+      const { chave } = corpoPostNotasChave.parse(req.body);
       const limpa = chave.replace(/\D/g, '');
       if (limpa.length !== 44 && limpa.length !== 50) throw new ErroHttp(400, `A chave de acesso tem 44 números (NF-e) ou 50 (NFS-e nacional); veio com ${limpa.length}.`);
       if (!chaveAceita(limpa)) throw new ErroHttp(400, 'Chave de acesso inválida: confira os números (o último é o dígito verificador).');
@@ -1004,7 +1007,7 @@ export function rotasNotas(banco: Banco) {
     });
 
     // ----- Nota lançada à mão -----
-    app.post('/notas', async (req, reply) => {
+    app.post('/notas', { schema: { body: esquemaNotaManual } }, async (req, reply) => {
       const d = esquemaNotaManual.parse(req.body);
       const empresaId = empresaDo(req);
       const usuarioId = req.usuario!.id;
@@ -1054,7 +1057,7 @@ export function rotasNotas(banco: Banco) {
       return { nota: await detalharNota(banco, empresaId, id) };
     });
 
-    app.patch<{ Params: { id: string } }>('/notas/:id', async (req) => {
+    app.patch<{ Params: { id: string } }>('/notas/:id', { schema: { body: esquemaAlterarNota } }, async (req) => {
       const d = esquemaAlterarNota.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1100,7 +1103,7 @@ export function rotasNotas(banco: Banco) {
     });
 
     // ----- Itens -----
-    app.post<{ Params: { id: string } }>('/notas/:id/itens', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/notas/:id/itens', { schema: { body: esquemaItemManual } }, async (req, reply) => {
       const d = esquemaItemManual.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1121,10 +1124,11 @@ export function rotasNotas(banco: Banco) {
 
     // Divide uma linha de nota de compra em duas, para ligar cada parte a um item diferente do pedido.
     // A parte que sai (quantidade informada) vira uma linha nova, com valor proporcional.
-    app.post<{ Params: { id: string } }>('/notas/itens/:id/dividir', async (req) => {
-      const d = z
-        .object({ quantidade: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.')) })
-        .strict()
+    const corpoPostNotasItensDividir = z
+    .object({ quantidade: z.preprocess(numeroBr, z.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.')) })
+    .strict();
+    app.post<{ Params: { id: string } }>('/notas/itens/:id/dividir', { schema: { body: corpoPostNotasItensDividir } }, async (req) => {
+      const d = corpoPostNotasItensDividir
         .parse(req.body);
       const empresaId = empresaDo(req);
       const notaId = await emTransacao(banco, async (c) => {
@@ -1160,7 +1164,7 @@ export function rotasNotas(banco: Banco) {
       return { nota: await detalharNota(banco, empresaId, notaId) };
     });
 
-    app.patch<{ Params: { id: string } }>('/notas/itens/:id', async (req) => {
+    app.patch<{ Params: { id: string } }>('/notas/itens/:id', { schema: { body: esquemaAlterarItem } }, async (req) => {
       const d = esquemaAlterarItem.parse(req.body);
       const empresaId = empresaDo(req);
       const notaId = await emTransacao(banco, async (c) => {
@@ -1244,9 +1248,10 @@ export function rotasNotas(banco: Banco) {
     });
 
     // Aplica a mesma apropriação a vários itens (ex.: todos os itens sem categoria).
-    app.post<{ Params: { id: string } }>('/notas/:id/apropriar', async (req) => {
-      const d = z
-        .object({ planoContaId: z.string().uuid('Escolha a categoria.'), centroCustoId: uuidOpc, veiculoId: uuidOpc, somenteSemCategoria: z.boolean().optional().default(true) })
+    const corpoPostNotasApropriar = z
+    .object({ planoContaId: z.string().uuid('Escolha a categoria.'), centroCustoId: uuidOpc, veiculoId: uuidOpc, somenteSemCategoria: z.boolean().optional().default(true) });
+    app.post<{ Params: { id: string } }>('/notas/:id/apropriar', { schema: { body: corpoPostNotasApropriar } }, async (req) => {
+      const d = corpoPostNotasApropriar
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1345,9 +1350,10 @@ export function rotasNotas(banco: Banco) {
       };
     });
 
-    app.put<{ Params: { id: string } }>('/notas/itens/:id/vinculos', async (req) => {
-      const d = z
-        .object({ abastecimentoIds: z.array(z.string().uuid()).max(500).optional().default([]), osItemIds: z.array(z.string().uuid()).max(500).optional().default([]) })
+    const corpoPutNotasItensVinculos = z
+    .object({ abastecimentoIds: z.array(z.string().uuid()).max(500).optional().default([]), osItemIds: z.array(z.string().uuid()).max(500).optional().default([]) });
+    app.put<{ Params: { id: string } }>('/notas/itens/:id/vinculos', { schema: { body: corpoPutNotasItensVinculos } }, async (req) => {
+      const d = corpoPutNotasItensVinculos
         .parse(req.body);
       const empresaId = empresaDo(req);
       const notaId = await emTransacao(banco, async (c) => {
@@ -1395,7 +1401,7 @@ export function rotasNotas(banco: Banco) {
     });
 
     // ----- Confirmação: gera o lançamento com apropriações e parcelas -----
-    app.post<{ Params: { id: string } }>('/notas/:id/confirmar', async (req) => {
+    app.post<{ Params: { id: string } }>('/notas/:id/confirmar', { schema: { body: esquemaConfirmar } }, async (req) => {
       const d = esquemaConfirmar.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       const usuarioId = req.usuario!.id;
@@ -1581,17 +1587,18 @@ export function rotasNotas(banco: Banco) {
       };
     });
 
-    app.post('/regras-apropriacao', async (req, reply) => {
-      const d = z
-        .object({
-          fornecedorId: uuidOpc,
-          textoContem: z.string().trim().max(80).optional().nullable().transform((v) => (v ? normalizar(v) || null : null)),
-          ncm: z.string().optional().nullable().transform((v) => (v ?? '').replace(/\D/g, '') || null),
-          planoContaId: z.string({ required_error: 'Escolha a categoria.' }).uuid('Escolha a categoria.'),
-          centroCustoId: uuidOpc,
-          veiculoId: uuidOpc,
-        })
-        .refine((x) => x.fornecedorId || x.textoContem || x.ncm, 'Informe o fornecedor, um texto da descrição ou o NCM.')
+    const corpoPostRegrasApropriacao = z
+    .object({
+      fornecedorId: uuidOpc,
+      textoContem: z.string().trim().max(80).optional().nullable().transform((v) => (v ? normalizar(v) || null : null)),
+      ncm: z.string().optional().nullable().transform((v) => (v ?? '').replace(/\D/g, '') || null),
+      planoContaId: z.string({ required_error: 'Escolha a categoria.' }).uuid('Escolha a categoria.'),
+      centroCustoId: uuidOpc,
+      veiculoId: uuidOpc,
+    })
+    .refine((x) => x.fornecedorId || x.textoContem || x.ncm, 'Informe o fornecedor, um texto da descrição ou o NCM.');
+    app.post('/regras-apropriacao', { schema: { body: corpoPostRegrasApropriacao } }, async (req, reply) => {
+      const d = corpoPostRegrasApropriacao
         .parse(req.body);
       const empresaId = empresaDo(req);
       await validarApropriacao(banco, empresaId, 'despesa', d);
@@ -1609,8 +1616,9 @@ export function rotasNotas(banco: Banco) {
       return { id: r.rows[0].id };
     });
 
-    app.patch<{ Params: { id: string } }>('/regras-apropriacao/:id', async (req) => {
-      const d = z.object({ ativo: z.boolean() }).parse(req.body);
+    const corpoPatchRegrasApropriacao = z.object({ ativo: z.boolean() });
+    app.patch<{ Params: { id: string } }>('/regras-apropriacao/:id', { schema: { body: corpoPatchRegrasApropriacao } }, async (req) => {
+      const d = corpoPatchRegrasApropriacao.parse(req.body);
       const r = await banco.query('UPDATE regras_apropriacao SET ativo = $3, atualizado_em = now() WHERE id = $1 AND empresa_id = $2', [
         UUID.test(req.params.id) ? req.params.id : null,
         empresaDo(req),

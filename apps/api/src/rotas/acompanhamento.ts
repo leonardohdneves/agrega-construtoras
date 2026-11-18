@@ -100,7 +100,7 @@ export function rotasAcompanhamento(banco: Banco) {
       return { visitas: r.rows };
     });
 
-    app.post<{ Params: { obraId: string } }>('/obras/:obraId/visitas', async (req, reply) => {
+    app.post<{ Params: { obraId: string } }>('/obras/:obraId/visitas', { schema: { body: esquemaVisita } }, async (req, reply) => {
       const empresaId = empresaDo(req);
       const d = esquemaVisita.parse(req.body ?? {});
       const id = await emTransacao(banco, async (c) => {
@@ -134,7 +134,7 @@ export function rotasAcompanhamento(banco: Banco) {
       };
     });
 
-    app.put<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id', async (req) => {
+    app.put<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id', { schema: { body: esquemaVisita } }, async (req) => {
       const empresaId = empresaDo(req);
       const d = esquemaVisita.parse(req.body ?? {});
       await emTransacao(banco, async (c) => {
@@ -162,7 +162,7 @@ export function rotasAcompanhamento(banco: Banco) {
     });
 
     // Assinatura do responsável pela visita, desenhada na tela do celular (quem está logado).
-    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id/assinaturas', async (req) => {
+    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id/assinaturas', { schema: { body: esquemaAssinatura } }, async (req) => {
       const empresaId = empresaDo(req);
       const d = esquemaAssinatura.parse(req.body ?? {});
       const imagem = validarImagemAssinatura(d.imagem);
@@ -198,7 +198,7 @@ export function rotasAcompanhamento(banco: Banco) {
       return { caminho: `/assinar/${token}`, validoAte: 30 };
     });
 
-    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id/fotos', { bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id/fotos', { bodyLimit: 4 * 1024 * 1024, schema: { body: esquemaFoto } }, async (req, reply) => {
       const empresaId = empresaDo(req);
       const d = esquemaFoto.parse(req.body);
       const bytes = Buffer.from(d.imagem, 'base64');
@@ -231,9 +231,10 @@ export function rotasAcompanhamento(banco: Banco) {
       return reply.send(r.rows[0].conteudo);
     });
 
-    app.put<{ Params: { obraId: string; id: string; fotoId: string } }>('/obras/:obraId/visitas/:id/fotos/:fotoId', async (req) => {
+    const corpoPutObrasVisitasFotos = z.object({ legenda: texto(200) });
+    app.put<{ Params: { obraId: string; id: string; fotoId: string } }>('/obras/:obraId/visitas/:id/fotos/:fotoId', { schema: { body: corpoPutObrasVisitasFotos } }, async (req) => {
       const empresaId = empresaDo(req);
-      const d = z.object({ legenda: texto(200) }).parse(req.body ?? {});
+      const d = corpoPutObrasVisitasFotos.parse(req.body ?? {});
       await emTransacao(banco, async (c) => {
         const obra = await obraDeVisita(c, empresaId, req.params.obraId, req.usuario);
         const v = await visitaDaObra(c, empresaId, obra.id, req.params.id);

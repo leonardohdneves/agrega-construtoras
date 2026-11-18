@@ -266,9 +266,10 @@ export function rotasConciliacao(banco: Banco) {
       };
     });
 
-    app.post('/conciliacao/ofx', { bodyLimit: 10 * 1024 * 1024 }, async (req, reply) => {
-      const d = z
-        .object({ contaId: z.string().uuid('Escolha a conta do extrato.'), conteudo: z.string().min(10).max(8_000_000, 'Arquivo grande demais.'), arquivo: z.string().max(200).optional().nullable() })
+    const corpoPostConciliacaoOfx = z
+    .object({ contaId: z.string().uuid('Escolha a conta do extrato.'), conteudo: z.string().min(10).max(8_000_000, 'Arquivo grande demais.'), arquivo: z.string().max(200).optional().nullable() });
+    app.post('/conciliacao/ofx', { bodyLimit: 10 * 1024 * 1024, schema: { body: corpoPostConciliacaoOfx } }, async (req, reply) => {
+      const d = corpoPostConciliacaoOfx
         .parse(req.body);
       const empresaId = empresaDo(req);
       let ofx;
@@ -374,8 +375,9 @@ export function rotasConciliacao(banco: Banco) {
       return { parcelas, transferencias };
     });
 
-    app.post<{ Params: { id: string } }>('/conciliacao/linhas/:id/conciliar', async (req) => {
-      const d = z.object({ parcelaId: uuidOpc, transferenciaId: uuidOpc }).parse(req.body ?? {});
+    const corpoPostConciliacaoLinhasConciliar = z.object({ parcelaId: uuidOpc, transferenciaId: uuidOpc });
+    app.post<{ Params: { id: string } }>('/conciliacao/linhas/:id/conciliar', { schema: { body: corpoPostConciliacaoLinhasConciliar } }, async (req) => {
+      const d = corpoPostConciliacaoLinhasConciliar.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const l = await carregarLinha(c, empresaId, req.params.id);
@@ -391,8 +393,9 @@ export function rotasConciliacao(banco: Banco) {
     });
 
     // Aceita de uma vez as sugestões da conta (ou só as linhas escolhidas).
-    app.post('/conciliacao/aceitar-sugestoes', async (req) => {
-      const d = z.object({ contaId: z.string().uuid(), ids: z.array(z.string().uuid()).max(1000).optional() }).parse(req.body);
+    const corpoPostConciliacaoAceitarSugestoes = z.object({ contaId: z.string().uuid(), ids: z.array(z.string().uuid()).max(1000).optional() });
+    app.post('/conciliacao/aceitar-sugestoes', { schema: { body: corpoPostConciliacaoAceitarSugestoes } }, async (req) => {
+      const d = corpoPostConciliacaoAceitarSugestoes.parse(req.body);
       const empresaId = empresaDo(req);
       const linhas = (
         await banco.query(
@@ -420,16 +423,17 @@ export function rotasConciliacao(banco: Banco) {
     });
 
     // Lançamento novo a partir da linha (tarifa, rendimento, pagamento sem conta a pagar…), já baixado.
-    app.post<{ Params: { id: string } }>('/conciliacao/linhas/:id/lancamento', async (req) => {
-      const d = z
-        .object({
-          planoContaId: z.string({ required_error: 'Escolha a categoria.' }).uuid('Escolha a categoria.'),
-          centroCustoId: uuidOpc,
-          veiculoId: uuidOpc,
-          fornecedorId: uuidOpc,
-          clienteId: uuidOpc,
-          descricao: z.string().trim().max(200).optional().nullable(),
-        })
+    const corpoPostConciliacaoLinhasLancamento = z
+    .object({
+      planoContaId: z.string({ required_error: 'Escolha a categoria.' }).uuid('Escolha a categoria.'),
+      centroCustoId: uuidOpc,
+      veiculoId: uuidOpc,
+      fornecedorId: uuidOpc,
+      clienteId: uuidOpc,
+      descricao: z.string().trim().max(200).optional().nullable(),
+    });
+    app.post<{ Params: { id: string } }>('/conciliacao/linhas/:id/lancamento', { schema: { body: corpoPostConciliacaoLinhasLancamento } }, async (req) => {
+      const d = corpoPostConciliacaoLinhasLancamento
         .parse(req.body);
       const empresaId = empresaDo(req);
       const usuarioId = req.usuario!.id;
@@ -467,8 +471,9 @@ export function rotasConciliacao(banco: Banco) {
     });
 
     // A linha é uma transferência entre contas da empresa: registra a transferência.
-    app.post<{ Params: { id: string } }>('/conciliacao/linhas/:id/transferencia', async (req) => {
-      const d = z.object({ outraContaId: z.string({ required_error: 'Escolha a outra conta.' }).uuid('Escolha a outra conta.') }).parse(req.body);
+    const corpoPostConciliacaoLinhasTransferencia = z.object({ outraContaId: z.string({ required_error: 'Escolha a outra conta.' }).uuid('Escolha a outra conta.') });
+    app.post<{ Params: { id: string } }>('/conciliacao/linhas/:id/transferencia', { schema: { body: corpoPostConciliacaoLinhasTransferencia } }, async (req) => {
+      const d = corpoPostConciliacaoLinhasTransferencia.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const l = await carregarLinha(c, empresaId, req.params.id);
@@ -545,8 +550,9 @@ export function rotasConciliacao(banco: Banco) {
     });
 
     // Procura sugestões de novo (depois de lançar contas que faltavam, por exemplo).
-    app.post('/conciliacao/sugerir', async (req) => {
-      const d = z.object({ contaId: z.string().uuid() }).parse(req.body);
+    const corpoPostConciliacaoSugerir = z.object({ contaId: z.string().uuid() });
+    app.post('/conciliacao/sugerir', { schema: { body: corpoPostConciliacaoSugerir } }, async (req) => {
+      const d = corpoPostConciliacaoSugerir.parse(req.body);
       const empresaId = empresaDo(req);
       const n = await emTransacao(banco, async (c) => {
         await conta(c, empresaId, d.contaId);

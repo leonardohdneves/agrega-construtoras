@@ -62,7 +62,7 @@ export function rotasAceite(banco: Banco) {
     });
 
     // Aceite: grava quem aceitou, quando e de qual IP, e abre o período de testes a partir de hoje.
-    app.post<{ Params: { codigo: string } }>('/:codigo', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    app.post<{ Params: { codigo: string } }>('/:codigo', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } }, schema: { body: esquemaAceite } }, async (req, reply) => {
       if (!CODIGO.test(req.params.codigo)) throw naoEncontrado('Proposta');
       const d = esquemaAceite.parse(req.body);
       const documento = d.documento.replace(/\D/g, '');

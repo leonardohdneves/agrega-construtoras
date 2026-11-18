@@ -36,7 +36,7 @@ const PASTA_MATERIAL = path.join(path.dirname(fileURLToPath(import.meta.url)), '
 
 export function rotasInteresse(banco: Banco) {
   return async function (app: FastifyInstance) {
-    app.post('/', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    app.post('/', { config: { rateLimit: { max: 5, timeWindow: '10 minutes' } }, schema: { body: esquemaInteresse } }, async (req, reply) => {
       const d = esquemaInteresse.parse(req.body);
       const uf = d.uf ? d.uf.toUpperCase() : null;
       if (uf && !/^[A-Z]{2}$/.test(uf)) throw new ErroHttp(400, 'Use a sigla do estado com 2 letras.');

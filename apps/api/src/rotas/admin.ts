@@ -198,7 +198,7 @@ export function rotasAdmin(banco: Banco) {
     });
 
     // Contrato da construtora: pacote vendido, módulos liberados e limites de obras e usuários.
-    app.put<{ Params: { id: string } }>('/empresas/:id/contrato', { preHandler: exigir(banco, 'admin_sistema') }, async (req) => {
+    app.put<{ Params: { id: string } }>('/empresas/:id/contrato', { preHandler: exigir(banco, 'admin_sistema'), schema: { body: esquemaContrato } }, async (req) => {
       const d = esquemaContrato.parse(req.body);
       const modulos: string[] = d.pacote === 'personalizado' ? (d.modulos ?? []) : PACOTES[d.pacote].modulos;
       const empresa = await emTransacao(banco, async (c) => {
@@ -231,7 +231,7 @@ export function rotasAdmin(banco: Banco) {
       return { empresa: empresaPublica(empresa) };
     });
 
-    app.post('/empresas', { preHandler: exigir(banco, 'admin_sistema') }, async (req, reply) => {
+    app.post('/empresas', { preHandler: exigir(banco, 'admin_sistema'), schema: { body: esquemaNovaEmpresa } }, async (req, reply) => {
       const d = esquemaNovaEmpresa.parse(req.body);
       const hash = await gerarHashSenha(d.dono.senha);
       const empresa = await emTransacao(banco, async (c) => {

@@ -110,7 +110,7 @@ export function rotasPropostas(banco: Banco) {
       return { proposta: publico(await carregar(banco, empresaDo(req), req.params.id)) };
     });
 
-    app.post('/propostas', async (req, reply) => {
+    app.post('/propostas', { schema: { body: esquema } }, async (req, reply) => {
       const d = esquema.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -130,7 +130,7 @@ export function rotasPropostas(banco: Banco) {
       return { proposta: publico(await carregar(banco, empresaId, id)) };
     });
 
-    app.put<{ Params: { id: string } }>('/propostas/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/propostas/:id', { schema: { body: esquema } }, async (req) => {
       const d = esquema.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -184,8 +184,9 @@ export function rotasPropostas(banco: Banco) {
       return { proposta: publico(await carregar(banco, empresaId, req.params.id)), aviso };
     });
 
-    app.post<{ Params: { id: string } }>('/propostas/:id/status', async (req) => {
-      const { status } = z.object({ status: z.enum(['enviada', 'aceita', 'recusada']) }).parse(req.body);
+    const corpoPostPropostasStatus = z.object({ status: z.enum(['enviada', 'aceita', 'recusada']) });
+    app.post<{ Params: { id: string } }>('/propostas/:id/status', { schema: { body: corpoPostPropostasStatus } }, async (req) => {
+      const { status } = corpoPostPropostasStatus.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const atual = await carregar(c, empresaId, req.params.id);
@@ -199,8 +200,9 @@ export function rotasPropostas(banco: Banco) {
     });
 
     // Depois de lançar a venda a partir da proposta aceita, guarda o vínculo.
-    app.post<{ Params: { id: string } }>('/propostas/:id/vincular', async (req) => {
-      const { vendaId } = z.object({ vendaId: z.string().regex(UUID) }).parse(req.body);
+    const corpoPostPropostasVincular = z.object({ vendaId: z.string().regex(UUID) });
+    app.post<{ Params: { id: string } }>('/propostas/:id/vincular', { schema: { body: corpoPostPropostasVincular } }, async (req) => {
+      const { vendaId } = corpoPostPropostasVincular.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const atual = await carregar(c, empresaId, req.params.id);

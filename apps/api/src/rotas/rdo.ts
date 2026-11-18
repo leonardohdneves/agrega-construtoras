@@ -132,9 +132,10 @@ export function rotasRdo(banco: Banco) {
       };
     });
 
-    app.post<{ Params: { obraId: string } }>('/obras/:obraId/rdos', async (req, reply) => {
+    const corpoPostObrasRdos = z.object({ data: z.string().regex(DATA, 'Data inválida.') });
+    app.post<{ Params: { obraId: string } }>('/obras/:obraId/rdos', { schema: { body: corpoPostObrasRdos } }, async (req, reply) => {
       const empresaId = empresaDo(req);
-      const { data } = z.object({ data: z.string().regex(DATA, 'Data inválida.') }).parse(req.body);
+      const { data } = corpoPostObrasRdos.parse(req.body);
       const id = await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.obraId);
         if ((await c.query('SELECT 1 FROM rdos WHERE obra_id = $1 AND data = $2', [obra.id, data])).rowCount)
@@ -157,7 +158,7 @@ export function rotasRdo(banco: Banco) {
       return { obra, rdo: await carregarRdo(banco, empresaId, obra.id, req.params.id) };
     });
 
-    app.put<{ Params: { obraId: string; id: string } }>('/obras/:obraId/rdos/:id', async (req) => {
+    app.put<{ Params: { obraId: string; id: string } }>('/obras/:obraId/rdos/:id', { schema: { body: esquemaRdo } }, async (req) => {
       const empresaId = empresaDo(req);
       const d = esquemaRdo.parse(req.body);
       await emTransacao(banco, async (c) => {
@@ -186,7 +187,7 @@ export function rotasRdo(banco: Banco) {
     const LIMITE_FOTO = 2 * 1024 * 1024;
     const LIMITE_FOTOS_RDO = 60;
 
-    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/rdos/:id/fotos', { bodyLimit: 4 * 1024 * 1024 }, async (req, reply) => {
+    app.post<{ Params: { obraId: string; id: string } }>('/obras/:obraId/rdos/:id/fotos', { bodyLimit: 4 * 1024 * 1024, schema: { body: esquemaFoto } }, async (req, reply) => {
       const empresaId = empresaDo(req);
       const d = esquemaFoto.parse(req.body);
       const bytes = Buffer.from(d.imagem, 'base64');
@@ -218,9 +219,10 @@ export function rotasRdo(banco: Banco) {
       return reply.type(r.rows[0].tipo as string).send(r.rows[0].conteudo as Buffer);
     });
 
-    app.put<{ Params: { obraId: string; id: string; fotoId: string } }>('/obras/:obraId/rdos/:id/fotos/:fotoId', async (req) => {
+    const corpoPutObrasRdosFotos = z.object({ legenda: texto(200) });
+    app.put<{ Params: { obraId: string; id: string; fotoId: string } }>('/obras/:obraId/rdos/:id/fotos/:fotoId', { schema: { body: corpoPutObrasRdosFotos } }, async (req) => {
       const empresaId = empresaDo(req);
-      const { legenda } = z.object({ legenda: texto(200) }).parse(req.body);
+      const { legenda } = corpoPutObrasRdosFotos.parse(req.body);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.obraId);
       await carregarRdo(banco, empresaId, obra.id, req.params.id);
       const r = await banco.query('UPDATE rdo_fotos SET legenda = $1 WHERE id = $2 AND rdo_id = $3 RETURNING id', [legenda, req.params.fotoId, req.params.id]);

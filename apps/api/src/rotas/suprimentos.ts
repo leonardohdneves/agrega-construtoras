@@ -798,18 +798,19 @@ export function rotasSuprimentos(banco: Banco) {
     });
 
     // ----- Transferência entre estoques da mesma obra: saída na origem e entrada no destino, com a mesma referência.
-    app.post('/estoque/transferencias', async (req, reply) => {
-      const d = z
-        .object({
-          obraId: z.string().uuid('Escolha a obra.'),
-          obraItemId: z.string().uuid('Escolha o insumo.'),
-          eapNoId: z.string().uuid('Escolha a etapa.'),
-          origemId: z.string().uuid('Escolha o estoque de origem.'),
-          destinoId: z.string().uuid('Escolha o estoque de destino.'),
-          data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
-          quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
-          observacao: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
-        })
+    const corpoPostEstoqueTransferencias = z
+    .object({
+      obraId: z.string().uuid('Escolha a obra.'),
+      obraItemId: z.string().uuid('Escolha o insumo.'),
+      eapNoId: z.string().uuid('Escolha a etapa.'),
+      origemId: z.string().uuid('Escolha o estoque de origem.'),
+      destinoId: z.string().uuid('Escolha o estoque de destino.'),
+      data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
+      quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
+      observacao: z.string().trim().max(300).optional().nullable().transform((v) => v || null),
+    });
+    app.post('/estoque/transferencias', { schema: { body: corpoPostEstoqueTransferencias } }, async (req, reply) => {
+      const d = corpoPostEstoqueTransferencias
         .parse(req.body);
       if (d.origemId === d.destinoId) throw new ErroHttp(400, 'Origem e destino são o mesmo estoque.');
       const empresaId = empresaDo(req);
@@ -854,8 +855,9 @@ export function rotasSuprimentos(banco: Banco) {
       return { estoques: r.rows.map((x) => ({ id: x.id, nome: x.nome, recebimento: x.recebimento, ativo: x.ativo, movimentos: x.movimentos })) };
     });
 
-    app.post<{ Params: { obraId: string } }>('/obras/:obraId/estoques', async (req, reply) => {
-      const d = z.object({ nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60) }).parse(req.body);
+    const corpoPostObrasEstoques = z.object({ nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60) });
+    app.post<{ Params: { obraId: string } }>('/obras/:obraId/estoques', { schema: { body: corpoPostObrasEstoques } }, async (req, reply) => {
+      const d = corpoPostObrasEstoques.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       if (!UUID.test(req.params.obraId)) throw new ErroHttp(404, 'Obra não encontrada.');
@@ -871,11 +873,12 @@ export function rotasSuprimentos(banco: Banco) {
       return { ok: true, id };
     });
 
-    app.put<{ Params: { id: string } }>('/estoques/:id', async (req) => {
-      const d = z.object({
-        nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60).optional(),
-        ativo: z.boolean().optional(),
-      }).parse(req.body);
+    const corpoPutEstoques = z.object({
+      nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60).optional(),
+      ativo: z.boolean().optional(),
+    });
+    app.put<{ Params: { id: string } }>('/estoques/:id', { schema: { body: corpoPutEstoques } }, async (req) => {
+      const d = corpoPutEstoques.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       if (!UUID.test(req.params.id)) throw new ErroHttp(404, 'Estoque não encontrado.');
@@ -907,12 +910,13 @@ export function rotasSuprimentos(banco: Banco) {
       return { estoques: r.rows.map((x) => ({ id: x.id, codigo: x.codigo, nome: x.nome, recebimento: x.recebimento, ativo: x.ativo, obraId: x.obra_id ?? null, obraCodigo: x.obra_codigo ?? null, obraNome: x.obra_nome ?? null })) };
     });
 
-    app.post('/estoques', async (req, reply) => {
-      const d = z
-        .object({
-          nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60),
-          obraId: z.string().uuid().optional().nullable().transform((v) => v || null),
-        })
+    const corpoPostEstoques = z
+    .object({
+      nome: z.string().trim().min(2, 'Informe o nome do estoque.').max(60),
+      obraId: z.string().uuid().optional().nullable().transform((v) => v || null),
+    });
+    app.post('/estoques', { schema: { body: corpoPostEstoques } }, async (req, reply) => {
+      const d = corpoPostEstoques
         .parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -991,24 +995,25 @@ export function rotasSuprimentos(banco: Banco) {
     });
 
     // ----- Saída de material por etiqueta: cadastro com obra, etapa, funcionário e o almoxarife que entregou.
-    app.post('/saidas-material', async (req, reply) => {
-      const d = z
-        .object({
-          obraId: z.string().uuid('Escolha a obra.'),
-          eapNoId: z.string().uuid('Escolha a etapa.'),
-          colaboradorId: z.string().uuid('Escolha o colaborador.'),
-          data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
-          observacao: z.string().trim().max(500).optional().nullable().transform((v) => v || null),
-          itens: z
-            .array(
-              z.object({
-                etiquetaId: z.string().uuid('Leia a etiqueta de cada insumo.'),
-                quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
-              }),
-            )
-            .min(1, 'Leia ao menos um insumo.')
-            .max(200),
-        })
+    const corpoPostSaidasMaterial = z
+    .object({
+      obraId: z.string().uuid('Escolha a obra.'),
+      eapNoId: z.string().uuid('Escolha a etapa.'),
+      colaboradorId: z.string().uuid('Escolha o colaborador.'),
+      data: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data inválida.'),
+      observacao: z.string().trim().max(500).optional().nullable().transform((v) => v || null),
+      itens: z
+        .array(
+          z.object({
+            etiquetaId: z.string().uuid('Leia a etiqueta de cada insumo.'),
+            quantidade: z.coerce.number({ invalid_type_error: 'Quantidade inválida.' }).positive('Quantidade inválida.').max(10_000_000),
+          }),
+        )
+        .min(1, 'Leia ao menos um insumo.')
+        .max(200),
+    });
+    app.post('/saidas-material', { schema: { body: corpoPostSaidasMaterial } }, async (req, reply) => {
+      const d = corpoPostSaidasMaterial
         .parse(req.body);
       if (new Set(d.itens.map((i) => i.etiquetaId)).size !== d.itens.length) throw new ErroHttp(400, 'A mesma etiqueta aparece mais de uma vez.');
       const empresaId = empresaDo(req);
@@ -1111,7 +1116,9 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.get<{ Params: { id: string } }>('/solicitacoes/:id', async (req) => ({ solicitacao: await detalharSolicitacao(banco, empresaDo(req), req.params.id) }));
 
-    app.post('/solicitacoes', async (req, reply) => {
+    // O corpo é de material ou de serviço (tipo: 'servico'); o manipulador escolhe o esquema.
+    const corpoSolicitacao = z.union([esquemaSolicitacao, esquemaServico]);
+    app.post('/solicitacoes', { schema: { body: corpoSolicitacao } }, async (req, reply) => {
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       if (ehServico(req.body)) {
@@ -1157,7 +1164,7 @@ export function rotasSuprimentos(banco: Banco) {
       return { solicitacao: await detalharSolicitacao(banco, empresaId, id) };
     });
 
-    app.put<{ Params: { id: string } }>('/solicitacoes/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/solicitacoes/:id', { schema: { body: corpoSolicitacao } }, async (req) => {
       const empresaId = empresaDo(req);
       const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
       const servico = atual.tipo === 'servico';
@@ -1294,15 +1301,16 @@ export function rotasSuprimentos(banco: Banco) {
     app.get<{ Params: { id: string } }>('/cotacoes/:id', async (req) => ({ cotacao: await detalharCotacao(banco, empresaDo(req), req.params.id) }));
 
     /** Cotação sempre parte de uma solicitação finalizada; os itens são os da solicitação (obra, EAP e necessidade). */
-    app.post('/cotacoes', async (req, reply) => {
-      const d = z
-        .object({
-          solicitacaoId: z.string().regex(UUID, 'Escolha a solicitação finalizada.'),
-          data: dataOpc,
-          prazoResposta: dataOpc,
-          observacao: texto(500),
-          fornecedorIds: z.array(z.string().regex(UUID)).max(10, 'Até 10 fornecedores por cotação.').default([]),
-        })
+    const corpoPostCotacoes = z
+    .object({
+      solicitacaoId: z.string().regex(UUID, 'Escolha a solicitação finalizada.'),
+      data: dataOpc,
+      prazoResposta: dataOpc,
+      observacao: texto(500),
+      fornecedorIds: z.array(z.string().regex(UUID)).max(10, 'Até 10 fornecedores por cotação.').default([]),
+    });
+    app.post('/cotacoes', { schema: { body: corpoPostCotacoes } }, async (req, reply) => {
+      const d = corpoPostCotacoes
         .parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -1354,8 +1362,9 @@ export function rotasSuprimentos(banco: Banco) {
       if (ct.status !== 'aberta') throw new ErroHttp(409, 'Esta cotação já foi concluída ou cancelada.');
     };
 
-    app.put<{ Params: { id: string } }>('/cotacoes/:id/fornecedores', async (req) => {
-      const d = z.object({ fornecedorIds: z.array(z.string().regex(UUID)).max(10, 'Até 10 fornecedores por cotação.') }).parse(req.body);
+    const corpoPutCotacoesFornecedores = z.object({ fornecedorIds: z.array(z.string().regex(UUID)).max(10, 'Até 10 fornecedores por cotação.') });
+    app.put<{ Params: { id: string } }>('/cotacoes/:id/fornecedores', { schema: { body: corpoPutCotacoesFornecedores } }, async (req) => {
+      const d = corpoPutCotacoesFornecedores.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         await cotacaoAberta(c, empresaId, req.params.id);
@@ -1370,17 +1379,18 @@ export function rotasSuprimentos(banco: Banco) {
       return { cotacao: await detalharCotacao(banco, empresaId, req.params.id) };
     });
 
-    app.put<{ Params: { id: string; cf: string } }>('/cotacoes/:id/respostas/:cf', async (req) => {
-      const d = z
-        .object({
-          prazoEntregaDias: z.union([z.number().int().min(0).max(365), z.null()]).optional().default(null),
-          condicaoPagamento: texto(120),
-          frete: naoNegativo('Frete inválido.').optional().default(0),
-          desconto: naoNegativo('Desconto inválido.').optional().default(0),
-          validade: dataOpc,
-          observacao: texto(300),
-          precos: z.array(z.object({ itemId: z.string().regex(UUID), precoUnitario: z.union([naoNegativo('Preço inválido.'), z.null()]) })).max(100),
-        })
+    const corpoPutCotacoesRespostas = z
+    .object({
+      prazoEntregaDias: z.union([z.number().int().min(0).max(365), z.null()]).optional().default(null),
+      condicaoPagamento: texto(120),
+      frete: naoNegativo('Frete inválido.').optional().default(0),
+      desconto: naoNegativo('Desconto inválido.').optional().default(0),
+      validade: dataOpc,
+      observacao: texto(300),
+      precos: z.array(z.object({ itemId: z.string().regex(UUID), precoUnitario: z.union([naoNegativo('Preço inválido.'), z.null()]) })).max(100),
+    });
+    app.put<{ Params: { id: string; cf: string } }>('/cotacoes/:id/respostas/:cf', { schema: { body: corpoPutCotacoesRespostas } }, async (req) => {
+      const d = corpoPutCotacoesRespostas
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1447,12 +1457,13 @@ export function rotasSuprimentos(banco: Banco) {
     // Só sugere preços e condições: nada é gravado aqui. O usuário confere na tela e salva pela resposta do fornecedor.
     app.get('/cotacoes/leitura-ia', async () => ({ ia: iaDisponivel() }));
 
-    app.post<{ Params: { id: string } }>('/cotacoes/:id/leitura-ia', { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
-      const d = z
-        .object({
-          arquivo: z.string({ required_error: 'Envie a foto ou o PDF da proposta.' }).min(20, 'Arquivo vazio.'),
-          tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
-        })
+    const corpoPostCotacoesLeituraIa = z
+    .object({
+      arquivo: z.string({ required_error: 'Envie a foto ou o PDF da proposta.' }).min(20, 'Arquivo vazio.'),
+      tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
+    });
+    app.post<{ Params: { id: string } }>('/cotacoes/:id/leitura-ia', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCotacoesLeituraIa } }, async (req) => {
+      const d = corpoPostCotacoesLeituraIa
         .parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Cotação');
@@ -1480,13 +1491,14 @@ export function rotasSuprimentos(banco: Banco) {
     });
 
     // Escolha do vencedor de cada item. Sem `vencedorId` em nenhum item = aplicar o menor preço em todos.
-    app.put<{ Params: { id: string } }>('/cotacoes/:id/vencedores', async (req) => {
-      const d = z
-        .object({
-          menorPreco: z.boolean().optional().default(false),
-          itens: z.array(z.object({ itemId: z.string().regex(UUID), vencedorId: z.union([z.string().regex(UUID), z.null()]), justificativa: texto(300) })).max(100).default([]),
-          justificativa: texto(1000),
-        })
+    const corpoPutCotacoesVencedores = z
+    .object({
+      menorPreco: z.boolean().optional().default(false),
+      itens: z.array(z.object({ itemId: z.string().regex(UUID), vencedorId: z.union([z.string().regex(UUID), z.null()]), justificativa: texto(300) })).max(100).default([]),
+      justificativa: texto(1000),
+    });
+    app.put<{ Params: { id: string } }>('/cotacoes/:id/vencedores', { schema: { body: corpoPutCotacoesVencedores } }, async (req) => {
+      const d = corpoPutCotacoesVencedores
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1666,7 +1678,7 @@ export function rotasSuprimentos(banco: Banco) {
     };
 
     // Pedidos nascem da cotação concluída (um por fornecedor vencedor). Aqui só o cabeçalho é editado; os itens são os da cotação.
-    app.put<{ Params: { id: string } }>('/pedidos/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/pedidos/:id', { schema: { body: esquemaPedido } }, async (req) => {
       const d = esquemaPedido.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -1731,8 +1743,9 @@ export function rotasSuprimentos(banco: Banco) {
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
     });
 
-    app.post<{ Params: { id: string } }>('/pedidos/:id/reprovar', async (req) => {
-      const d = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) }).parse(req.body);
+    const corpoPostPedidosReprovar = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) });
+    app.post<{ Params: { id: string } }>('/pedidos/:id/reprovar', { schema: { body: corpoPostPedidosReprovar } }, async (req) => {
+      const d = corpoPostPedidosReprovar.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       await emTransacao(banco, async (c) => {
@@ -1757,8 +1770,9 @@ export function rotasSuprimentos(banco: Banco) {
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
     });
 
-    app.post<{ Params: { id: string } }>('/pedidos/:id/cancelar', async (req) => {
-      const d = z.object({ motivo: texto(500) }).parse(req.body ?? {});
+    const corpoPostPedidosCancelar = z.object({ motivo: texto(500) });
+    app.post<{ Params: { id: string } }>('/pedidos/:id/cancelar', { schema: { body: corpoPostPedidosCancelar } }, async (req) => {
+      const d = corpoPostPedidosCancelar.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       await emTransacao(banco, async (c) => {
@@ -1823,8 +1837,9 @@ export function rotasSuprimentos(banco: Banco) {
       return { pedido: await detalharPedido(banco, empresaId, req.params.id, u) };
     });
 
-    app.post<{ Params: { id: string } }>('/pedidos/:id/encerrar', async (req) => {
-      const d = z.object({ motivo: z.string().trim().min(3, 'Escreva por que o saldo não será entregue.').max(500) }).parse(req.body);
+    const corpoPostPedidosEncerrar = z.object({ motivo: z.string().trim().min(3, 'Escreva por que o saldo não será entregue.').max(500) });
+    app.post<{ Params: { id: string } }>('/pedidos/:id/encerrar', { schema: { body: corpoPostPedidosEncerrar } }, async (req) => {
+      const d = corpoPostPedidosEncerrar.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       await emTransacao(banco, async (c) => {
@@ -1887,12 +1902,13 @@ export function rotasSuprimentos(banco: Banco) {
       return { notas: saida };
     });
 
-    app.put<{ Params: { id: string } }>('/pedidos/:id/recebimento', async (req) => {
-      const d = z
-        .object({
-          notaId: z.string().regex(UUID),
-          itens: z.array(z.object({ notaItemId: z.string().regex(UUID), pedidoItemId: z.union([z.string().regex(UUID), z.null()]), quantidade: z.union([positivo('Quantidade inválida.'), z.null()]) })).max(300),
-        })
+    const corpoPutPedidosRecebimento = z
+    .object({
+      notaId: z.string().regex(UUID),
+      itens: z.array(z.object({ notaItemId: z.string().regex(UUID), pedidoItemId: z.union([z.string().regex(UUID), z.null()]), quantidade: z.union([positivo('Quantidade inválida.'), z.null()]) })).max(300),
+    });
+    app.put<{ Params: { id: string } }>('/pedidos/:id/recebimento', { schema: { body: corpoPutPedidosRecebimento } }, async (req) => {
+      const d = corpoPutPedidosRecebimento
         .parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -2200,11 +2216,12 @@ export function rotasAprovacoes(banco: Banco) {
       return { regras: { adminAte: reais(regras.adminAte), dispensaAte: reais(regras.dispensaAte), texto: textoRegras(regras) } };
     });
 
-    app.put('/config', async (req) => {
+    const corpoPutConfig = z
+    .object({ adminAte: z.union([naoNegativo('Valor inválido.'), z.null()]), dispensaAte: z.union([naoNegativo('Valor inválido.'), z.null()]) });
+    app.put('/config', { schema: { body: corpoPutConfig } }, async (req) => {
       const u = usuarioDe(req);
       if (u.perfil !== 'dono') throw new ErroHttp(403, 'Só o dono muda as regras de aprovação.');
-      const d = z
-        .object({ adminAte: z.union([naoNegativo('Valor inválido.'), z.null()]), dispensaAte: z.union([naoNegativo('Valor inválido.'), z.null()]) })
+      const d = corpoPutConfig
         .parse(req.body);
       const empresaId = empresaDo(req);
       const regras: RegrasAprovacao = lerRegrasDe({ adminAte: d.adminAte === null ? null : cent(d.adminAte), dispensaAte: d.dispensaAte === null ? null : cent(d.dispensaAte) });

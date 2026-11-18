@@ -337,7 +337,7 @@ export function rotasPropostasObra(banco: Banco) {
       };
     });
 
-    app.post('/obra-propostas/calcular', async (req) => {
+    app.post('/obra-propostas/calcular', { schema: { body: esquemaCalculo } }, async (req) => {
       const d = esquemaCalculo.parse(req.body);
       const empresaId = empresaDo(req);
       const res = await calcular(banco, empresaId, d);
@@ -443,13 +443,13 @@ export function rotasPropostasObra(banco: Banco) {
       });
     }
 
-    app.post('/obra-propostas', async (req, reply) => {
+    app.post('/obra-propostas', { schema: { body: esquemaProposta } }, async (req, reply) => {
       const id = await gravar(req as never, empresaDo(req), null);
       reply.code(201);
       return { id };
     });
 
-    app.put<{ Params: { id: string } }>('/obra-propostas/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/obra-propostas/:id', { schema: { body: esquemaProposta } }, async (req) => {
       if (!UUID.test(req.params.id)) throw naoEncontrado('Proposta');
       const id = await gravar(req as never, empresaDo(req), req.params.id);
       return { id };

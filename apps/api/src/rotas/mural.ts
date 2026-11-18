@@ -127,7 +127,7 @@ export function rotasMural(banco: Banco) {
       };
     });
 
-    app.post('/avisos', async (req, reply) => {
+    app.post('/avisos', { schema: { body: esquemaAviso } }, async (req, reply) => {
       if (!podePublicar(req)) throw new ErroHttp(403, 'Só o dono, o gestor e os administradores publicam avisos.');
       const d = esquemaAviso.parse(req.body);
       const empresaId = empresaDo(req);
@@ -145,7 +145,7 @@ export function rotasMural(banco: Banco) {
       return { aviso: avisoPublico({ ...r, autor: req.usuario!.nome }) };
     });
 
-    app.put<{ Params: { id: string } }>('/avisos/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/avisos/:id', { schema: { body: esquemaAviso } }, async (req) => {
       if (!podePublicar(req)) throw new ErroHttp(403, 'Só o dono, o gestor e os administradores alteram avisos.');
       const d = esquemaAviso.parse(req.body);
       const empresaId = empresaDo(req);
@@ -172,15 +172,16 @@ export function rotasMural(banco: Banco) {
       return { ok: true };
     });
 
-    app.put('/config', async (req) => {
+    const corpoPutConfig = z
+    .object({
+      aniversariantes: z.boolean(),
+      ranking: z.boolean(),
+      rankings: z.array(z.enum(RANKINGS)).max(RANKINGS.length),
+      posicoes: z.number().int().min(3, 'De 3 a 10 posições.').max(10, 'De 3 a 10 posições.'),
+    });
+    app.put('/config', { schema: { body: corpoPutConfig } }, async (req) => {
       if (req.usuario!.perfil !== 'dono') throw new ErroHttp(403, 'Só o dono configura o mural.');
-      const d = z
-        .object({
-          aniversariantes: z.boolean(),
-          ranking: z.boolean(),
-          rankings: z.array(z.enum(RANKINGS)).max(RANKINGS.length),
-          posicoes: z.number().int().min(3, 'De 3 a 10 posições.').max(10, 'De 3 a 10 posições.'),
-        })
+      const d = corpoPutConfig
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {

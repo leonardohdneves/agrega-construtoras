@@ -171,7 +171,7 @@ export function rotasFrota(banco: Banco) {
       };
     });
 
-    app.post('/veiculos', { preHandler: gestao }, async (req, reply) => {
+    app.post('/veiculos', { preHandler: gestao, schema: { body: esquemaVeiculo } }, async (req, reply) => {
       const d = esquemaVeiculo.parse(req.body);
       const empresaId = empresaDo(req);
       const v = await emTransacao(banco, async (c) => {
@@ -201,7 +201,7 @@ export function rotasFrota(banco: Banco) {
       return { veiculo: veiculoPublico(v), documentos: docs.rows.map((d) => documentoPublico(d, hoje)) };
     });
 
-    app.patch<{ Params: { id: string } }>('/veiculos/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/veiculos/:id', { preHandler: gestao, schema: { body: esquemaAlterarVeiculo } }, async (req) => {
       const d = esquemaAlterarVeiculo.parse(req.body);
       const empresaId = empresaDo(req);
       const v = await emTransacao(banco, async (c) => {
@@ -218,7 +218,7 @@ export function rotasFrota(banco: Banco) {
     });
 
     // ---------- Documentos dos veículos ----------
-    app.post<{ Params: { id: string } }>('/veiculos/:id/documentos', { preHandler: gestao }, async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/veiculos/:id/documentos', { preHandler: gestao, schema: { body: esquemaDocumento } }, async (req, reply) => {
       const d = esquemaDocumento.parse(req.body);
       const empresaId = empresaDo(req);
       const doc = await emTransacao(banco, async (c) => {
@@ -237,7 +237,7 @@ export function rotasFrota(banco: Banco) {
       return { documento: documentoPublico(doc, hojeBrasil()) };
     });
 
-    app.patch<{ Params: { id: string } }>('/documentos/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/documentos/:id', { preHandler: gestao, schema: { body: esquemaAlterarDocumento } }, async (req) => {
       const d = esquemaAlterarDocumento.parse(req.body);
       const empresaId = empresaDo(req);
       const doc = await emTransacao(banco, async (c) => {
@@ -274,7 +274,7 @@ export function rotasFrota(banco: Banco) {
       return { motoristas: r.rows.map((m) => motoristaPublico(m, hoje)) };
     });
 
-    app.post('/motoristas', { preHandler: gestao }, async (req, reply) => {
+    app.post('/motoristas', { preHandler: gestao, schema: { body: esquemaMotorista } }, async (req, reply) => {
       const d = esquemaMotorista.parse(req.body);
       const empresaId = empresaDo(req);
       const m = await emTransacao(banco, async (c) => {
@@ -292,7 +292,7 @@ export function rotasFrota(banco: Banco) {
       return { motorista: motoristaPublico(m, hojeBrasil()) };
     });
 
-    app.patch<{ Params: { id: string } }>('/motoristas/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/motoristas/:id', { preHandler: gestao, schema: { body: esquemaAlterarMotorista } }, async (req) => {
       const d = esquemaAlterarMotorista.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {

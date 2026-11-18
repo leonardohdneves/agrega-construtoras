@@ -159,16 +159,17 @@ export function rotasQualidade(banco: Banco) {
     // ======================= Configuração =======================
     app.get('/config', { preHandler: qualidade }, async (req) => ({ config: await lerConfig(banco, empresaDo(req)) }));
 
-    app.put('/config', { preHandler: gestao }, async (req) => {
-      const d = z
-        .object({
-          idades: z.array(z.number().int().min(1).max(120)).min(1, 'Informe pelo menos uma idade.').max(5),
-          cpsPorIdade: z.number().int().min(1).max(4),
-          idadeControle: z.number().int().min(1).max(120),
-          diametroMm: z.number().int().min(50).max(200),
-          responsavelNome: texto(120),
-          responsavelRegistro: texto(60),
-        })
+    const corpoPutConfig = z
+    .object({
+      idades: z.array(z.number().int().min(1).max(120)).min(1, 'Informe pelo menos uma idade.').max(5),
+      cpsPorIdade: z.number().int().min(1).max(4),
+      idadeControle: z.number().int().min(1).max(120),
+      diametroMm: z.number().int().min(50).max(200),
+      responsavelNome: texto(120),
+      responsavelRegistro: texto(60),
+    });
+    app.put('/config', { preHandler: gestao, schema: { body: corpoPutConfig } }, async (req) => {
+      const d = corpoPutConfig
         .parse(req.body);
       if (!d.idades.includes(d.idadeControle)) throw new ErroHttp(400, 'A idade de controle precisa estar entre as idades de rompimento.');
       const empresaId = empresaDo(req);
@@ -264,24 +265,25 @@ export function rotasQualidade(banco: Banco) {
       };
     });
 
-    app.post('/cps/resultados', { preHandler: qualidade }, async (req) => {
-      const d = z
-        .object({
-          data: z.string().regex(DATA).optional(),
-          itens: z
-            .array(
-              z.object({
-                cpId: z.string().uuid(),
-                resistencia: decimal('Resistência inválida.').nullable().optional(),
-                cargaKn: decimal('Carga inválida.').nullable().optional(),
-                tipoRuptura: texto(30),
-                descartar: z.boolean().optional(),
-                observacao: texto(200),
-              }),
-            )
-            .min(1)
-            .max(400),
-        })
+    const corpoPostCpsResultados = z
+    .object({
+      data: z.string().regex(DATA).optional(),
+      itens: z
+        .array(
+          z.object({
+            cpId: z.string().uuid(),
+            resistencia: decimal('Resistência inválida.').nullable().optional(),
+            cargaKn: decimal('Carga inválida.').nullable().optional(),
+            tipoRuptura: texto(30),
+            descartar: z.boolean().optional(),
+            observacao: texto(200),
+          }),
+        )
+        .min(1)
+        .max(400),
+    });
+    app.post('/cps/resultados', { preHandler: qualidade, schema: { body: corpoPostCpsResultados } }, async (req) => {
+      const d = corpoPostCpsResultados
         .parse(req.body);
       const empresaId = empresaDo(req);
       const hoje = hojeBrasil();
@@ -314,8 +316,9 @@ export function rotasQualidade(banco: Banco) {
     });
 
     /** Correção de um resultado já lançado (volta a "aguardando" se vier sem resistência). */
-    app.patch<{ Params: { id: string } }>('/cps/:id', { preHandler: qualidade }, async (req) => {
-      const d = z.object({ resistencia: decimal('Resistência inválida.').nullable(), dataRuptura: z.string().regex(DATA).optional(), observacao: texto(200) }).parse(req.body);
+    const corpoPatchCps = z.object({ resistencia: decimal('Resistência inválida.').nullable(), dataRuptura: z.string().regex(DATA).optional(), observacao: texto(200) });
+    app.patch<{ Params: { id: string } }>('/cps/:id', { preHandler: qualidade, schema: { body: corpoPatchCps } }, async (req) => {
+      const d = corpoPatchCps.parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Corpo de prova');
       await emTransacao(banco, async (c) => {
@@ -344,15 +347,16 @@ export function rotasQualidade(banco: Banco) {
       return { de, ate, idades: cfg.idades, idadeControle: cfg.idadeControle, amostras, resumo: resumirGrupo(amostras) };
     });
 
-    app.patch<{ Params: { id: string } }>('/amostras/:id', { preHandler: qualidade }, async (req) => {
-      const d = z
-        .object({
-          slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
-          temperatura: decimal('Temperatura inválida.').nullable().optional(),
-          moldadoPor: texto(80),
-          observacao: texto(300),
-        })
-        .partial()
+    const corpoPatchAmostras = z
+    .object({
+      slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
+      temperatura: decimal('Temperatura inválida.').nullable().optional(),
+      moldadoPor: texto(80),
+      observacao: texto(300),
+    })
+    .partial();
+    app.patch<{ Params: { id: string } }>('/amostras/:id', { preHandler: qualidade, schema: { body: corpoPatchAmostras } }, async (req) => {
+      const d = corpoPatchAmostras
         .parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Amostra');
@@ -433,8 +437,9 @@ export function rotasQualidade(banco: Banco) {
       return { ok: true, cps };
     });
 
-    app.post<{ Params: { id: string } }>('/amostras/:id/nao-amostrar', { preHandler: qualidade }, async (req) => {
-      const { motivo } = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo.').max(300) }).parse(req.body ?? {});
+    const corpoPostAmostrasNaoAmostrar = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo.').max(300) });
+    app.post<{ Params: { id: string } }>('/amostras/:id/nao-amostrar', { preHandler: qualidade, schema: { body: corpoPostAmostrasNaoAmostrar } }, async (req) => {
+      const { motivo } = corpoPostAmostrasNaoAmostrar.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Amostra');
       await emTransacao(banco, async (c) => {
@@ -449,12 +454,13 @@ export function rotasQualidade(banco: Banco) {
     });
 
     /** Recebimento no laboratório dos CPs moldados na obra: cada CP recebido, danificado ou faltando. */
-    app.post<{ Params: { id: string } }>('/amostras/:id/receber', { preHandler: qualidade }, async (req) => {
-      const d = z
-        .object({
-          itens: z.array(z.object({ cpId: z.string().uuid(), situacao: z.enum(['recebido', 'danificado', 'faltando']) })).min(1).max(40),
-          observacao: texto(300),
-        })
+    const corpoPostAmostrasReceber = z
+    .object({
+      itens: z.array(z.object({ cpId: z.string().uuid(), situacao: z.enum(['recebido', 'danificado', 'faltando']) })).min(1).max(40),
+      observacao: texto(300),
+    });
+    app.post<{ Params: { id: string } }>('/amostras/:id/receber', { preHandler: qualidade, schema: { body: corpoPostAmostrasReceber } }, async (req) => {
+      const d = corpoPostAmostrasReceber
         .parse(req.body ?? {});
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Amostra');
@@ -591,7 +597,7 @@ export function rotasQualidade(banco: Banco) {
       const hoje = hojeBrasil();
       return { equipamentos: r.rows.map((e) => equipPublico(e, hoje)) };
     });
-    app.post('/equipamentos', { preHandler: qualidade }, async (req, reply) => {
+    app.post('/equipamentos', { preHandler: qualidade, schema: { body: esquemaEquip } }, async (req, reply) => {
       const d = esquemaEquip.parse(req.body);
       const empresaId = empresaDo(req);
       const e = await emTransacao(banco, async (c) => {
@@ -607,7 +613,7 @@ export function rotasQualidade(banco: Banco) {
       });
       return reply.code(201).send({ equipamento: equipPublico(e, hojeBrasil()) });
     });
-    app.patch<{ Params: { id: string } }>('/equipamentos/:id', { preHandler: qualidade }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/equipamentos/:id', { preHandler: qualidade, schema: { body: esquemaEquip.partial().strict() } }, async (req) => {
       const d = esquemaEquip.partial().strict().parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Equipamento');
@@ -686,18 +692,19 @@ export function rotasQualidade(banco: Banco) {
         correcoes,
       };
     });
-    app.post('/ensaios', { preHandler: qualidade }, async (req, reply) => {
-      const d = z
-        .object({
-          insumoId: z.string().uuid('Escolha o insumo.'),
-          data: z.string().regex(DATA, 'Informe a data.'),
-          tipo: z.enum(['umidade', 'granulometria']),
-          umidade: decimal('Umidade inválida.').nullable().optional(),
-          moduloFinura: decimal('Módulo de finura inválido.').nullable().optional(),
-          dimensaoMaxima: decimal('Dimensão máxima inválida.').nullable().optional(),
-          pulverulento: decimal('Material pulverulento inválido.').nullable().optional(),
-          observacao: texto(300),
-        })
+    const corpoPostEnsaios = z
+    .object({
+      insumoId: z.string().uuid('Escolha o insumo.'),
+      data: z.string().regex(DATA, 'Informe a data.'),
+      tipo: z.enum(['umidade', 'granulometria']),
+      umidade: decimal('Umidade inválida.').nullable().optional(),
+      moduloFinura: decimal('Módulo de finura inválido.').nullable().optional(),
+      dimensaoMaxima: decimal('Dimensão máxima inválida.').nullable().optional(),
+      pulverulento: decimal('Material pulverulento inválido.').nullable().optional(),
+      observacao: texto(300),
+    });
+    app.post('/ensaios', { preHandler: qualidade, schema: { body: corpoPostEnsaios } }, async (req, reply) => {
+      const d = corpoPostEnsaios
         .parse(req.body);
       if (d.tipo === 'umidade' && (d.umidade === null || d.umidade === undefined || d.umidade < 0 || d.umidade > 40)) throw new ErroHttp(400, 'Informe a umidade em % (0 a 40).');
       if (d.tipo === 'granulometria' && d.moduloFinura == null && d.dimensaoMaxima == null && d.pulverulento == null) throw new ErroHttp(400, 'Informe pelo menos um resultado da granulometria.');

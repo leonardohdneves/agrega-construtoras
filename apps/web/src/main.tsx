@@ -22,6 +22,7 @@ import { ContratosSistema, PropostasSistema } from './paginas/ComercialSistema';
 import { ComercialInteressados } from './paginas/ComercialInteressados';
 import { Interesse } from './paginas/Interesse';
 import { Aceite } from './paginas/Aceite';
+import { OAuthAutorizar } from './paginas/OAuthAutorizar';
 import { Motoristas } from './paginas/Motoristas';
 import { Fornecedores } from './paginas/Fornecedores';
 import { ContasPagarReceber } from './paginas/ContasPagarReceber';
@@ -130,6 +131,7 @@ createRoot(document.getElementById('raiz')!).render(
           <Route path="/entrar" element={<Entrar />} />
           <Route path="/interesse" element={<Interesse />} />
           <Route path="/aceite/:codigo" element={<Aceite />} />
+          <Route path="/oauth/authorize" element={<OAuthAutorizar />} />
           <Route path="/assinar/:token" element={<AssinarVisita />} />
           <Route
             element={

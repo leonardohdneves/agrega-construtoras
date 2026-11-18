@@ -218,7 +218,7 @@ export function rotasComercial(banco: Banco) {
       };
     });
 
-    app.post('/clientes', async (req, reply) => {
+    app.post('/clientes', { schema: { body: esquemaClienteRapido } }, async (req, reply) => {
       const d = esquemaClienteRapido.parse(req.body);
       if (d.cnpjCpf && !(d.cnpjCpf.length === 14 ? cnpjValido(d.cnpjCpf) : d.cnpjCpf.length === 11 ? cpfValido(d.cnpjCpf) : false)) {
         throw new ErroHttp(400, 'CPF ou CNPJ inválido.');
@@ -308,7 +308,7 @@ export function rotasComercial(banco: Banco) {
       };
     });
 
-    app.post('/vendas', async (req, reply) => {
+    app.post('/vendas', { schema: { body: esquemaVenda } }, async (req, reply) => {
       const d = esquemaVenda.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -332,7 +332,7 @@ export function rotasComercial(banco: Banco) {
       return { venda: vendaPublica(await carregarVenda(banco, empresaId, id)) };
     });
 
-    app.put<{ Params: { id: string } }>('/vendas/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/vendas/:id', { schema: { body: esquemaVenda } }, async (req) => {
       const d = esquemaVenda.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -376,9 +376,10 @@ export function rotasComercial(banco: Banco) {
       return { venda: vendaPublica(await carregarVenda(banco, empresaId, req.params.id)) };
     });
 
-    app.post<{ Params: { id: string } }>('/vendas/:id/reprovar', async (req) => {
+    const corpoPostVendasReprovar = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo.').max(500) });
+    app.post<{ Params: { id: string } }>('/vendas/:id/reprovar', { schema: { body: corpoPostVendasReprovar } }, async (req) => {
       if (!gestaoComercial(req)) throw new ErroHttp(403, 'Só o dono ou o gestor reprova vendas.');
-      const { motivo } = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo.').max(500) }).parse(req.body ?? {});
+      const { motivo } = corpoPostVendasReprovar.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const v = await carregarVenda(c, empresaId, req.params.id);
@@ -389,8 +390,9 @@ export function rotasComercial(banco: Banco) {
       return { venda: vendaPublica(await carregarVenda(banco, empresaId, req.params.id)) };
     });
 
-    app.post<{ Params: { id: string } }>('/vendas/:id/cancelar', async (req) => {
-      const { motivo } = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo do cancelamento.').max(500) }).parse(req.body ?? {});
+    const corpoPostVendasCancelar = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo do cancelamento.').max(500) });
+    app.post<{ Params: { id: string } }>('/vendas/:id/cancelar', { schema: { body: corpoPostVendasCancelar } }, async (req) => {
+      const { motivo } = corpoPostVendasCancelar.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const v = await vendaDoUsuario(c, req, req.params.id);
@@ -406,24 +408,25 @@ export function rotasComercial(banco: Banco) {
      * Entrega finalizada pelo vendedor (depois da carga final do operador): o valor entregue, a taxa da bomba e os adicionais
      * contratuais viram receita em Contas a receber, nas parcelas da condição de pagamento.
      */
-    app.post<{ Params: { id: string } }>('/vendas/:id/finalizar-entrega', async (req) => {
-      const d = z
-        .object({
-          adicionais: z
-            .array(
-              z.object({
-                tipo: z.enum(TIPOS_ADICIONAL).optional().default('outro'),
-                descricao: z.string({ required_error: 'Descreva o adicional.' }).trim().min(2, 'Descreva o adicional.').max(200),
-                valor: decimal('Valor do adicional inválido.').refine((n) => n > 0, 'O valor do adicional precisa ser maior que zero.'),
-              }),
-            )
-            .max(20)
-            .optional()
-            .default([]),
-          formaPagamento: z.enum(FORMAS).optional().nullable(),
-          prazosDias: z.array(z.number().int().min(0).max(365)).max(12).optional().nullable(),
-          observacao: texto(300),
-        })
+    const corpoPostVendasFinalizarEntrega = z
+    .object({
+      adicionais: z
+        .array(
+          z.object({
+            tipo: z.enum(TIPOS_ADICIONAL).optional().default('outro'),
+            descricao: z.string({ required_error: 'Descreva o adicional.' }).trim().min(2, 'Descreva o adicional.').max(200),
+            valor: decimal('Valor do adicional inválido.').refine((n) => n > 0, 'O valor do adicional precisa ser maior que zero.'),
+          }),
+        )
+        .max(20)
+        .optional()
+        .default([]),
+      formaPagamento: z.enum(FORMAS).optional().nullable(),
+      prazosDias: z.array(z.number().int().min(0).max(365)).max(12).optional().nullable(),
+      observacao: texto(300),
+    });
+    app.post<{ Params: { id: string } }>('/vendas/:id/finalizar-entrega', { schema: { body: corpoPostVendasFinalizarEntrega } }, async (req) => {
+      const d = corpoPostVendasFinalizarEntrega
         .parse(req.body ?? {});
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {

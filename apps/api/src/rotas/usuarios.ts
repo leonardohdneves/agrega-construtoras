@@ -66,7 +66,7 @@ export function rotasUsuarios(banco: Banco) {
       return { usuarios: r.rows.map((u) => usuarioPublico(u, contratados)), padrao: MODULOS_PADRAO };
     });
 
-    app.post('/', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req, reply) => {
+    app.post('/', { preHandler: exigir(banco, ...PERFIS_EMPRESA), schema: { body: esquemaNovoUsuario } }, async (req, reply) => {
       exigirAdministrador(req);
       const d = esquemaNovoUsuario.parse(req.body);
       if (!podeGerenciarPerfil(req.usuario!.perfil, d.perfil)) throw semPermissao();
@@ -89,7 +89,7 @@ export function rotasUsuarios(banco: Banco) {
       return { usuario: usuarioPublico(novo, await modulosDaEmpresa(banco, empresaId)) };
     });
 
-    app.patch<{ Params: { id: string } }>('/:id', { preHandler: exigir(banco, ...PERFIS_EMPRESA) }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/:id', { preHandler: exigir(banco, ...PERFIS_EMPRESA), schema: { body: esquemaAlterarUsuario } }, async (req) => {
       exigirAdministrador(req);
       const d = esquemaAlterarUsuario.parse(req.body);
       const empresaId = empresaDo(req);
