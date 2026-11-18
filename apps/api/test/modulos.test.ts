@@ -54,7 +54,13 @@ test('regras de acesso', () => {
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), true);
   assert.equal(g('gestor', ['suprimentos'], ['dono', 'gestor'], '/api/eng/obras'), false);
   assert.equal(g('vendedor', null, ['dono', 'gestor'], '/api/eng/obras'), false);
-  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras'), false);
+  // Financeiro: só as listas que a apropriação de notas e lançamentos usa (P11); nada além disso na Engenharia.
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras'), true);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras/1/itens'), true);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/sup/estoques'), true);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), false);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras/1/planilha'), false);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/sup/pedidos'), false);
   // orçamentista: engenharia e comercial; nada de compras nem caixa
   assert.equal(g('orcamentista', null, ['dono', 'gestor'], '/api/eng/obras/1/planilha', 'POST'), true);
   assert.equal(g('orcamentista', null, ['dono', 'gestor', 'vendedor'], '/api/com/propostas', 'POST'), true);
