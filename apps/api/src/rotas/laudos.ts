@@ -213,9 +213,10 @@ export function rotasLaudos(banco: Banco) {
       }));
     });
 
-    app.post('/laudos', async (req, reply) => {
+    const corpoPostLaudos = z.object({ tipo: z.enum(TIPOS) });
+    app.post('/laudos', { schema: { body: corpoPostLaudos } }, async (req, reply) => {
       const empresaId = empresaDo(req);
-      const { tipo } = z.object({ tipo: z.enum(TIPOS) }).parse(req.body);
+      const { tipo } = corpoPostLaudos.parse(req.body);
       const dados = ESQUEMA_POR_TIPO[tipo].parse({});
       const id = await banco.query(
         `INSERT INTO laudos (empresa_id, tipo, numero, titulo, dados, criado_por)
@@ -235,7 +236,7 @@ export function rotasLaudos(banco: Banco) {
       return { id: x.id, tipo: x.tipo, numero: x.numero, titulo: x.titulo, dados: x.dados, atualizadoEm: x.atualizado_em };
     });
 
-    app.put<{ Params: { id: string } }>('/laudos/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/laudos/:id', { schema: { body: esquemaSalvar } }, async (req) => {
       const empresaId = empresaDo(req);
       const { titulo, dados } = esquemaSalvar.parse(req.body);
       const atual = await banco.query('SELECT tipo FROM laudos WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId]);
@@ -259,8 +260,9 @@ export function rotasLaudos(banco: Banco) {
     });
 
     /** Lê um PDF (laudo de patologia ou avaliação) pela IA e devolve a identificação para conferência. Não grava nada. */
-    app.post('/laudos/ler-identificacao', { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
-      const { arquivo, nome } = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() }).parse(req.body);
+    const corpoPostLaudosLerIdentificacao = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    app.post('/laudos/ler-identificacao', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLaudosLerIdentificacao } }, async (req) => {
+      const { arquivo, nome } = corpoPostLaudosLerIdentificacao.parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
       const bytes = Buffer.from(arquivo, 'base64');
       if (bytes.length > 12 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo grande demais (máximo 12 MB).');
@@ -301,8 +303,9 @@ export function rotasLaudos(banco: Banco) {
     });
 
     /** Lê um PDF de laudo de GLP pela IA e devolve os campos para conferência (não grava nada). */
-    app.post('/laudos/ler-glp', { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
-      const { arquivo, nome } = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() }).parse(req.body);
+    const corpoPostLaudosLerGlp = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    app.post('/laudos/ler-glp', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLaudosLerGlp } }, async (req) => {
+      const { arquivo, nome } = corpoPostLaudosLerGlp.parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
       const bytes = Buffer.from(arquivo, 'base64');
       if (bytes.length > 12 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo grande demais (máximo 12 MB).');

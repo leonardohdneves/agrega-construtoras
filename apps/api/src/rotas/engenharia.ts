@@ -374,7 +374,7 @@ export function rotasEngenharia(banco: Banco) {
       return { tabelas: r.rows.map(tabelaPublica) };
     });
 
-    app.post('/tabelas', { bodyLimit: LIMITE_CORPO }, async (req, reply) => {
+    app.post('/tabelas', { bodyLimit: LIMITE_CORPO, schema: { body: esquemaTabela } }, async (req, reply) => {
       const d = esquemaTabela.parse(req.body);
       if (d.csv) recusarBinario(d.csv);
       const empresaId = empresaDo(req);
@@ -398,8 +398,9 @@ export function rotasEngenharia(banco: Banco) {
     // Leitura com IA, em dois passos e sem gravar nada:
     // 1) mapear-ia: a IA vê só as primeiras linhas e diz em que coluna está cada campo;
     // 2) converter: o navegador manda as colunas úteis da planilha inteira e o servidor gera o CSV padrão.
-    app.post('/tabelas/mapear-ia', async (req) => {
-      const d = z.object({ amostra: z.string().min(1).max(200_000), uf, desonerado: z.boolean().default(false) }).parse(req.body);
+    const corpoPostTabelasMapearIa = z.object({ amostra: z.string().min(1).max(200_000), uf, desonerado: z.boolean().default(false) });
+    app.post('/tabelas/mapear-ia', { schema: { body: corpoPostTabelasMapearIa } }, async (req) => {
+      const d = corpoPostTabelasMapearIa.parse(req.body);
       recusarBinario(d.amostra);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
       try {
@@ -412,14 +413,15 @@ export function rotasEngenharia(banco: Banco) {
       }
     });
 
-    app.post('/tabelas/converter', { bodyLimit: LIMITE_CORPO }, async (req) => {
-      const d = z
-        .object({
-          texto: z.string().min(1).max(LIMITE_ARQUIVO),
-          tipoUnico: z.enum(['insumo', 'composicao']).nullable(),
-          valoresTipo: esquemaValoresTipo.nullable(),
-          tabelaId: z.string().uuid().optional().nullable(),
-        })
+    const corpoPostTabelasConverter = z
+    .object({
+      texto: z.string().min(1).max(LIMITE_ARQUIVO),
+      tipoUnico: z.enum(['insumo', 'composicao']).nullable(),
+      valoresTipo: esquemaValoresTipo.nullable(),
+      tabelaId: z.string().uuid().optional().nullable(),
+    });
+    app.post('/tabelas/converter', { bodyLimit: LIMITE_CORPO, schema: { body: corpoPostTabelasConverter } }, async (req) => {
+      const d = corpoPostTabelasConverter
         .parse(req.body);
       recusarBinario(d.texto);
       let externos: Externos | undefined;
@@ -456,8 +458,9 @@ export function rotasEngenharia(banco: Banco) {
 
     // Importa mais itens numa tabela existente (por exemplo, as composições da SINAPI na tabela dos insumos do mesmo mês).
     // Itens com código já existente ficam como estão; as composições podem usar os insumos que já estão na tabela.
-    app.post<{ Params: { id: string } }>('/tabelas/:id/importar', { bodyLimit: LIMITE_CORPO }, async (req) => {
-      const d = z.object({ csv: z.string().min(1).max(LIMITE_ARQUIVO) }).parse(req.body);
+    const corpoPostTabelasImportar = z.object({ csv: z.string().min(1).max(LIMITE_ARQUIVO) });
+    app.post<{ Params: { id: string } }>('/tabelas/:id/importar', { bodyLimit: LIMITE_CORPO, schema: { body: corpoPostTabelasImportar } }, async (req) => {
+      const d = corpoPostTabelasImportar.parse(req.body);
       recusarBinario(d.csv);
       const empresaId = empresaDo(req);
       const contagem = await emTransacao(banco, async (c) => {
@@ -487,8 +490,9 @@ export function rotasEngenharia(banco: Banco) {
       return { tabela: tabelaPublica(await tabelaDetalhe(banco, empresaDo(req), req.params.id)) };
     });
 
-    app.put<{ Params: { id: string } }>('/tabelas/:id', async (req) => {
-      const d = z.object({ nome: z.string().trim().min(2).max(120) }).parse(req.body);
+    const corpoPutTabelas = z.object({ nome: z.string().trim().min(2).max(120) });
+    app.put<{ Params: { id: string } }>('/tabelas/:id', { schema: { body: corpoPutTabelas } }, async (req) => {
+      const d = corpoPutTabelas.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         await tabelaDaEmpresa(c, empresaId, req.params.id);
@@ -546,7 +550,7 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     // Itens de tabela própria são editáveis; SINAPI é imutável (nova versão = nova importação).
-    app.post<{ Params: { id: string } }>('/tabelas/:id/itens', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/tabelas/:id/itens', { schema: { body: esquemaItemRef } }, async (req, reply) => {
       const d = esquemaItemRef.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -583,17 +587,18 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true, id: id.id, codigo: id.codigo };
     });
 
-    app.put<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId', async (req) => {
-      const d = z
-        .object({
-          descricao: z.string().trim().min(2).max(300).optional(),
-          unidade: z.string().trim().min(1).max(20).optional(),
-          grupo: texto(80),
-          preco: z.union([z.number(), z.string()]).optional().nullable(),
-          precoOrigem: z.enum(['nao_informado', 'informado']).optional(),
-          unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
-          componentes: z.array(z.object({ insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
-        })
+    const corpoPutTabelasItens = z
+    .object({
+      descricao: z.string().trim().min(2).max(300).optional(),
+      unidade: z.string().trim().min(1).max(20).optional(),
+      grupo: texto(80),
+      preco: z.union([z.number(), z.string()]).optional().nullable(),
+      precoOrigem: z.enum(['nao_informado', 'informado']).optional(),
+      unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
+      componentes: z.array(z.object({ insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
+    });
+    app.put<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId', { schema: { body: corpoPutTabelasItens } }, async (req) => {
+      const d = corpoPutTabelasItens
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -798,7 +803,7 @@ export function rotasEngenharia(banco: Banco) {
       return { grupos: r.rows.map((g) => ({ id: g.id as string, nome: g.nome as string, ordem: Number(g.ordem), insumos: Number(g.insumos) })) };
     });
 
-    app.post('/insumo-grupos', async (req, reply) => {
+    app.post('/insumo-grupos', { schema: { body: esquemaGrupoInsumo } }, async (req, reply) => {
       const d = esquemaGrupoInsumo.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -847,7 +852,7 @@ export function rotasEngenharia(banco: Banco) {
       });
     });
 
-    app.put<{ Params: { id: string } }>('/insumo-grupos/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/insumo-grupos/:id', { schema: { body: esquemaGrupoInsumo.partial() } }, async (req) => {
       const d = esquemaGrupoInsumo.partial().parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Grupo');
@@ -875,13 +880,14 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     // Define o grupo de vários insumos da obra de uma vez (grupoId nulo remove o grupo).
-    app.put<{ Params: { id: string } }>('/obras/:id/insumos/grupo', async (req) => {
-      const d = z
-        .object({
-          itemIds: z.array(z.string().uuid()).min(1, 'Escolha ao menos um insumo.').max(2000),
-          grupoId: z.string().uuid().nullable(),
-        })
-        .strict()
+    const corpoPutObrasInsumosGrupo = z
+    .object({
+      itemIds: z.array(z.string().uuid()).min(1, 'Escolha ao menos um insumo.').max(2000),
+      grupoId: z.string().uuid().nullable(),
+    })
+    .strict();
+    app.put<{ Params: { id: string } }>('/obras/:id/insumos/grupo', { schema: { body: corpoPutObrasInsumosGrupo } }, async (req) => {
+      const d = corpoPutObrasInsumosGrupo
         .parse(req.body);
       const empresaId = empresaDo(req);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
@@ -922,7 +928,7 @@ export function rotasEngenharia(banco: Banco) {
       return { grupos: r.rows.map((g) => ({ id: g.id as string, nome: g.nome as string, ordem: Number(g.ordem), servicos: Number(g.servicos) })) };
     });
 
-    app.post('/servico-grupos', async (req, reply) => {
+    app.post('/servico-grupos', { schema: { body: esquemaGrupoServico } }, async (req, reply) => {
       const d = esquemaGrupoServico.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -971,7 +977,7 @@ export function rotasEngenharia(banco: Banco) {
       });
     });
 
-    app.put<{ Params: { id: string } }>('/servico-grupos/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/servico-grupos/:id', { schema: { body: esquemaGrupoServico.partial() } }, async (req) => {
       const d = esquemaGrupoServico.partial().parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Grupo');
@@ -999,13 +1005,14 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     // Define o grupo de vários serviços da obra de uma vez (grupoId nulo remove o grupo).
-    app.put<{ Params: { id: string } }>('/obras/:id/servicos/grupo', async (req) => {
-      const d = z
-        .object({
-          itemIds: z.array(z.string().uuid()).min(1, 'Escolha ao menos um serviço.').max(2000),
-          grupoId: z.string().uuid().nullable(),
-        })
-        .strict()
+    const corpoPutObrasServicosGrupo = z
+    .object({
+      itemIds: z.array(z.string().uuid()).min(1, 'Escolha ao menos um serviço.').max(2000),
+      grupoId: z.string().uuid().nullable(),
+    })
+    .strict();
+    app.put<{ Params: { id: string } }>('/obras/:id/servicos/grupo', { schema: { body: corpoPutObrasServicosGrupo } }, async (req) => {
+      const d = corpoPutObrasServicosGrupo
         .parse(req.body);
       const empresaId = empresaDo(req);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
@@ -1047,7 +1054,7 @@ export function rotasEngenharia(banco: Banco) {
       return { dataInicio: inicio, dataPrevisao: previsao };
     });
 
-    app.post('/obras', async (req, reply) => {
+    app.post('/obras', { schema: { body: esquemaObra } }, async (req, reply) => {
       const d0 = esquemaObra.parse(req.body);
       if (!d0.nome) throw new ErroHttp(400, 'Dê um nome à obra.');
       const bdi = resolverBdi(d0, null);
@@ -1098,7 +1105,7 @@ export function rotasEngenharia(banco: Banco) {
       return { obra: obraPublica(await obraDetalhe(banco, empresaDo(req), req.params.id)) };
     });
 
-    app.put<{ Params: { id: string } }>('/obras/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/obras/:id', { schema: { body: esquemaObra } }, async (req) => {
       const d = esquemaObra.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1245,7 +1252,7 @@ export function rotasEngenharia(banco: Banco) {
       })
       .strict();
 
-    app.post<{ Params: { id: string } }>('/obras/:id/orcamento-importacao/previa', async (req) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/orcamento-importacao/previa', { schema: { body: esquemaPreviaPlanilha } }, async (req) => {
       const d = esquemaPreviaPlanilha.parse(req.body);
       const empresaId = empresaDo(req);
       await obraDaEmpresa(banco, empresaId, req.params.id);
@@ -1274,9 +1281,10 @@ export function rotasEngenharia(banco: Banco) {
       };
     });
 
-    app.post<{ Params: { id: string } }>('/obras/:id/importar', async (req) => {
-      const d = z
-        .object({ tabelaId: z.string().regex(UUID), composicaoIds: z.array(z.string().regex(UUID)).default([]), insumoIds: z.array(z.string().regex(UUID)).default([]) })
+    const corpoPostObrasImportar = z
+    .object({ tabelaId: z.string().regex(UUID), composicaoIds: z.array(z.string().regex(UUID)).default([]), insumoIds: z.array(z.string().regex(UUID)).default([]) });
+    app.post<{ Params: { id: string } }>('/obras/:id/importar', { schema: { body: corpoPostObrasImportar } }, async (req) => {
+      const d = corpoPostObrasImportar
         .parse(req.body);
       const empresaId = empresaDo(req);
       return emTransacao(banco, async (c) => {
@@ -1343,14 +1351,15 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Editar na obra não altera a tabela de referência. Guarda o preço original e marca o item como editado. */
-    app.patch<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', async (req) => {
-      const d = z
-        .object({
-          descricao: z.string().trim().min(2).max(300).optional(),
-          unidade: z.string().trim().min(1).max(20).optional(),
-          preco: z.union([z.number(), z.string()]).optional(),
-          unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
-        })
+    const corpoPatchObrasItens = z
+    .object({
+      descricao: z.string().trim().min(2).max(300).optional(),
+      unidade: z.string().trim().min(1).max(20).optional(),
+      preco: z.union([z.number(), z.string()]).optional(),
+      unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
+    });
+    app.patch<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', { schema: { body: corpoPatchObrasItens } }, async (req) => {
+      const d = corpoPatchObrasItens
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1381,8 +1390,9 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Substitui os insumos e coeficientes de uma composição da obra. */
-    app.put<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId/composicao', async (req) => {
-      const d = z.object({ componentes: z.array(z.object({ insumoId: z.string().regex(UUID), coeficiente: z.number().min(0) })) }).parse(req.body);
+    const corpoPutObrasItensComposicao = z.object({ componentes: z.array(z.object({ insumoId: z.string().regex(UUID), coeficiente: z.number().min(0) })) });
+    app.put<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId/composicao', { schema: { body: corpoPutObrasItensComposicao } }, async (req) => {
+      const d = corpoPutObrasItensComposicao.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
@@ -1406,19 +1416,20 @@ export function rotasEngenharia(banco: Banco) {
      * A composição é gravada na tabela própria escolhida pelo operador; tabelas SINAPI nunca são alteradas.
      * Preço informado para um insumo vale para a obra e para a tabela própria.
      */
-    app.post<{ Params: { id: string } }>('/obras/:id/servicos/salvar', async (req) => {
-      const d = z
-        .object({
-          modo: z.enum(['copia', 'edicao']),
-          itemId: z.string().regex(UUID),
-          tabelaId: z.string().regex(UUID, 'Escolha a tabela própria onde o serviço será salvo.'),
-          codigo: z.string().trim().max(40).optional().default(''),
-          descricao: z.string().trim().min(2, 'Dê um nome ao serviço.').max(300),
-          unidade: z.string().trim().min(1, 'Informe a unidade.').max(20),
-          componentes: z
-            .array(z.object({ insumoId: z.string().regex(UUID), coeficiente: z.number().positive('O coeficiente precisa ser maior que zero.'), precoUnitario: z.union([z.number(), z.string()]).nullable().optional() }))
-            .min(1, 'O serviço precisa de pelo menos um insumo.'),
-        })
+    const corpoPostObrasServicosSalvar = z
+    .object({
+      modo: z.enum(['copia', 'edicao']),
+      itemId: z.string().regex(UUID),
+      tabelaId: z.string().regex(UUID, 'Escolha a tabela própria onde o serviço será salvo.'),
+      codigo: z.string().trim().max(40).optional().default(''),
+      descricao: z.string().trim().min(2, 'Dê um nome ao serviço.').max(300),
+      unidade: z.string().trim().min(1, 'Informe a unidade.').max(20),
+      componentes: z
+        .array(z.object({ insumoId: z.string().regex(UUID), coeficiente: z.number().positive('O coeficiente precisa ser maior que zero.'), precoUnitario: z.union([z.number(), z.string()]).nullable().optional() }))
+        .min(1, 'O serviço precisa de pelo menos um insumo.'),
+    });
+    app.post<{ Params: { id: string } }>('/obras/:id/servicos/salvar', { schema: { body: corpoPostObrasServicosSalvar } }, async (req) => {
+      const d = corpoPostObrasServicosSalvar
         .parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -1651,7 +1662,7 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Periodicidade e serviços da central. A lista de serviços substitui a anterior; um serviço sai da central em que estava. */
-    app.put<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo', { bodyLimit: LIMITE_CORPO }, async (req) => {
+    app.put<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo', { bodyLimit: LIMITE_CORPO, schema: { body: esquemaCentral } }, async (req) => {
       const tipo = centralDe(req.params.tipo);
       const d = esquemaCentral.parse(req.body);
       const empresaId = empresaDo(req);
@@ -1684,7 +1695,7 @@ export function rotasEngenharia(banco: Banco) {
      * Gera o boletim da central para o próximo período (ou para o período informado). O previsto vem do planejamento
      * e o realizado das medições físicas do acompanhamento; os dois são gravados no boletim.
      */
-    app.post<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo/boletins', { bodyLimit: LIMITE_CORPO }, async (req) => {
+    app.post<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo/boletins', { bodyLimit: LIMITE_CORPO, schema: { body: esquemaBoletim } }, async (req) => {
       const tipo = centralDe(req.params.tipo);
       const d = esquemaBoletim.parse(req.body ?? {});
       const empresaId = empresaDo(req);
@@ -1786,7 +1797,7 @@ export function rotasEngenharia(banco: Banco) {
       };
     });
 
-    app.post<{ Params: { id: string } }>('/obras/:id/planejamento', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/planejamento', { schema: { body: esquemaAtividade } }, async (req, reply) => {
       const d = esquemaAtividade.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -1807,7 +1818,7 @@ export function rotasEngenharia(banco: Banco) {
       return { id };
     });
 
-    app.put<{ Params: { id: string; atId: string } }>('/obras/:id/planejamento/:atId', async (req) => {
+    app.put<{ Params: { id: string; atId: string } }>('/obras/:id/planejamento/:atId', { schema: { body: esquemaAtividade.partial() } }, async (req) => {
       const d = esquemaAtividade.partial().parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -2107,7 +2118,7 @@ export function rotasEngenharia(banco: Banco) {
       })).min(1, 'Preencha ao menos uma linha.'),
     });
 
-    app.post<{ Params: { id: string } }>('/obras/:id/acompanhamento/medicoes', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/acompanhamento/medicoes', { schema: { body: esquemaMedicao } }, async (req, reply) => {
       const d = esquemaMedicao.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -2306,7 +2317,7 @@ export function rotasEngenharia(banco: Banco) {
       };
     });
 
-    app.put<{ Params: { id: string } }>('/obras/:id/equipes-servicos', async (req) => {
+    app.put<{ Params: { id: string } }>('/obras/:id/equipes-servicos', { schema: { body: esquemaEquipeServico } }, async (req) => {
       const empresaId = empresaDo(req);
       const d = esquemaEquipeServico.parse(req.body);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
@@ -2365,7 +2376,7 @@ export function rotasEngenharia(banco: Banco) {
       };
     });
 
-    app.post<{ Params: { id: string } }>('/obras/:id/necessidades', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/necessidades', { schema: { body: esquemaNecessidade } }, async (req, reply) => {
       const d = esquemaNecessidade.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -2384,8 +2395,9 @@ export function rotasEngenharia(banco: Banco) {
       return { id };
     });
 
-    app.put<{ Params: { id: string; necId: string } }>('/obras/:id/necessidades/:necId', async (req) => {
-      const d = esquemaNecessidade.omit({ itemId: true }).extend({ status: z.enum(['pendente', 'cancelada']).optional() }).partial().parse(req.body);
+    const corpoPutObrasNecessidades = esquemaNecessidade.omit({ itemId: true }).extend({ status: z.enum(['pendente', 'cancelada']).optional() }).partial();
+    app.put<{ Params: { id: string; necId: string } }>('/obras/:id/necessidades/:necId', { schema: { body: corpoPutObrasNecessidades } }, async (req) => {
+      const d = corpoPutObrasNecessidades.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
@@ -2511,8 +2523,9 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */
-    app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { bodyLimit: 24 * 1024 * 1024 }, async (req) => {
-      const { arquivo, nome } = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() }).parse(req.body);
+    const corpoPostObrasLeituraProjeto = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { bodyLimit: 24 * 1024 * 1024, schema: { body: corpoPostObrasLeituraProjeto } }, async (req) => {
+      const { arquivo, nome } = corpoPostObrasLeituraProjeto.parse(req.body);
       const empresaId = empresaDo(req);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Lance os quantitativos manualmente.');
@@ -2558,7 +2571,7 @@ export function rotasEngenharia(banco: Banco) {
       return item.descricao as string;
     }
 
-    app.post<{ Params: { id: string } }>('/obras/:id/planilha', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/planilha', { schema: { body: esquemaLinhaPlanilha } }, async (req, reply) => {
       const d = esquemaLinhaPlanilha.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -2593,15 +2606,16 @@ export function rotasEngenharia(banco: Banco) {
       return { id };
     });
 
-    app.put<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId', async (req) => {
-      const d = z
-        .object({
-          descricao: z.string().trim().min(2, 'Descreva a linha.').max(200).optional(),
-          nivel: z.enum(NIVEIS_PLANILHA).optional(),
-          // null retira o serviço da Tarefa.
-          itemId: z.string().regex(UUID).nullable().optional(),
-          quantidade: z.number().positive('A quantidade precisa ser maior que zero.').optional(),
-        })
+    const corpoPutObrasPlanilha = z
+    .object({
+      descricao: z.string().trim().min(2, 'Descreva a linha.').max(200).optional(),
+      nivel: z.enum(NIVEIS_PLANILHA).optional(),
+      // null retira o serviço da Tarefa.
+      itemId: z.string().regex(UUID).nullable().optional(),
+      quantidade: z.number().positive('A quantidade precisa ser maior que zero.').optional(),
+    });
+    app.put<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId', { schema: { body: corpoPutObrasPlanilha } }, async (req) => {
+      const d = corpoPutObrasPlanilha
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -2654,8 +2668,9 @@ export function rotasEngenharia(banco: Banco) {
     }
 
     // Setas da planilha: a linha troca de lugar com a irmã de cima ou de baixo, levando junto as linhas de baixo dela.
-    app.post<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId/mover', async (req) => {
-      const d = z.object({ direcao: z.enum(['cima', 'baixo']) }).parse(req.body);
+    const corpoPostObrasPlanilhaMover = z.object({ direcao: z.enum(['cima', 'baixo']) });
+    app.post<{ Params: { id: string; noId: string } }>('/obras/:id/planilha/:noId/mover', { schema: { body: corpoPostObrasPlanilhaMover } }, async (req) => {
+      const d = corpoPostObrasPlanilhaMover.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
@@ -2768,7 +2783,7 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Substitui a composição da obra e guarda o BDI resultante no cadastro. */
-    app.put<{ Params: { id: string } }>('/obras/:id/composicao', async (req) => {
+    app.put<{ Params: { id: string } }>('/obras/:id/composicao', { schema: { body: esquemaComposicao } }, async (req) => {
       const d = esquemaComposicao.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -2879,7 +2894,7 @@ export function rotasEngenharia(banco: Banco) {
       observacao: z.string().trim().max(500, 'Observação longa demais.').optional().default(''),
     });
 
-    app.post<{ Params: { id: string } }>('/obras/:id/versoes', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/versoes', { schema: { body: esquemaVersao } }, async (req, reply) => {
       const d = esquemaVersao.parse(req.body);
       const empresaId = empresaDo(req);
       const usuario = req.usuario!;

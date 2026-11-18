@@ -367,7 +367,7 @@ export function rotasProducao(banco: Banco) {
       return { insumos: r.rows.map(insumoPublico) };
     });
 
-    app.post('/insumos', { preHandler: gestao }, async (req, reply) => {
+    app.post('/insumos', { preHandler: gestao, schema: { body: esquemaInsumo } }, async (req, reply) => {
       const d = esquemaInsumo.parse(req.body);
       const empresaId = empresaDo(req);
       const r = await emTransacao(banco, async (c) => {
@@ -387,7 +387,7 @@ export function rotasProducao(banco: Banco) {
       return reply.code(201).send({ insumo: insumoPublico(r) });
     });
 
-    app.patch<{ Params: { id: string } }>('/insumos/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/insumos/:id', { preHandler: gestao, schema: { body: esquemaInsumo.partial().strict() } }, async (req) => {
       const d = esquemaInsumo.partial().strict().parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Insumo');
@@ -446,7 +446,7 @@ export function rotasProducao(banco: Banco) {
       }
     }
 
-    app.post('/tracos', { preHandler: gestao }, async (req, reply) => {
+    app.post('/tracos', { preHandler: gestao, schema: { body: esquemaTraco } }, async (req, reply) => {
       const d = esquemaTraco.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -466,7 +466,7 @@ export function rotasProducao(banco: Banco) {
       return reply.code(201).send({ traco: await carregarTraco(banco, empresaId, id) });
     });
 
-    app.patch<{ Params: { id: string } }>('/tracos/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/tracos/:id', { preHandler: gestao, schema: { body: esquemaTraco.partial().strict() } }, async (req) => {
       const d = esquemaTraco.partial().strict().parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -572,7 +572,7 @@ export function rotasProducao(banco: Banco) {
       };
     });
 
-    app.post('/cargas', { preHandler: usina }, async (req, reply) => {
+    app.post('/cargas', { preHandler: usina, schema: { body: esquemaCarga } }, async (req, reply) => {
       const d = esquemaCarga.parse(req.body);
       const empresaId = empresaDo(req);
       const dataHora = dataHoraDaCarga(d.dataHora);
@@ -610,7 +610,7 @@ export function rotasProducao(banco: Banco) {
       return r;
     }
 
-    app.patch<{ Params: { id: string } }>('/cargas/:id', { preHandler: usina }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/cargas/:id', { preHandler: usina, schema: { body: esquemaCarga.partial().strict() } }, async (req) => {
       const parcial = esquemaCarga.partial().strict().parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -642,8 +642,9 @@ export function rotasProducao(banco: Banco) {
       return { carga: cargaPublica(r.rows[0]) };
     });
 
-    app.post<{ Params: { id: string } }>('/cargas/:id/cancelar', { preHandler: usina }, async (req) => {
-      const { motivo } = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo do cancelamento.').max(300) }).parse(req.body);
+    const corpoPostCargasCancelar = z.object({ motivo: z.string({ required_error: 'Informe o motivo.' }).trim().min(3, 'Informe o motivo do cancelamento.').max(300) });
+    app.post<{ Params: { id: string } }>('/cargas/:id/cancelar', { preHandler: usina, schema: { body: corpoPostCargasCancelar } }, async (req) => {
+      const { motivo } = corpoPostCargasCancelar.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const antes = await cargaEditavel(c, req, req.params.id);
@@ -752,8 +753,9 @@ export function rotasProducao(banco: Banco) {
     });
 
     /** Marca romaneios ou etiquetas como impressos (vai para a rastreabilidade). */
-    app.post('/impressos', { preHandler: impressao }, async (req) => {
-      const d = z.object({ ids: z.array(z.string().uuid()).min(1).max(200), tipo: z.enum(['romaneio', 'etiquetas']) }).parse(req.body);
+    const corpoPostImpressos = z.object({ ids: z.array(z.string().uuid()).min(1).max(200), tipo: z.enum(['romaneio', 'etiquetas']) });
+    app.post('/impressos', { preHandler: impressao, schema: { body: corpoPostImpressos } }, async (req) => {
+      const d = corpoPostImpressos.parse(req.body);
       const col = d.tipo === 'romaneio' ? 'romaneio_impresso_em' : 'etiquetas_impressas_em';
       await banco.query(`UPDATE cargas SET ${col} = coalesce(${col}, now()) WHERE empresa_id = $1 AND id = ANY($2::uuid[])`, [empresaDo(req), d.ids]);
       return { ok: true };
@@ -815,9 +817,10 @@ export function rotasProducao(banco: Banco) {
     });
 
     /** Encerra a entrega com saldo (cliente não quis o restante, por exemplo). */
-    app.post<{ Params: { id: string } }>('/programacao/:id/encerrar', { preHandler: gestao }, async (req) => {
+    const corpoPostProgramacaoEncerrar = z.object({ motivo: texto(300) });
+    app.post<{ Params: { id: string } }>('/programacao/:id/encerrar', { preHandler: gestao, schema: { body: corpoPostProgramacaoEncerrar } }, async (req) => {
       const empresaId = empresaDo(req);
-      const { motivo } = z.object({ motivo: texto(300) }).parse(req.body ?? {});
+      const { motivo } = corpoPostProgramacaoEncerrar.parse(req.body ?? {});
       await emTransacao(banco, async (c) => {
         if (!UUID.test(req.params.id)) throw naoEncontrado('Venda');
         const v = (await c.query('SELECT id, status FROM vendas WHERE id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
@@ -842,13 +845,14 @@ export function rotasProducao(banco: Banco) {
       };
     });
 
-    app.post('/valores', { preHandler: gestao }, async (req, reply) => {
-      const d = z
-        .object({
-          funcao: z.enum(['motorista', 'operador_bomba']),
-          valorM3: decimal('Valor inválido.').refine((n) => n >= 0 && n <= 1000, 'Valor por m³ entre R$ 0 e R$ 1.000.'),
-          vigencia: z.string().regex(DATA, 'Informe a data de início.'),
-        })
+    const corpoPostValores = z
+    .object({
+      funcao: z.enum(['motorista', 'operador_bomba']),
+      valorM3: decimal('Valor inválido.').refine((n) => n >= 0 && n <= 1000, 'Valor por m³ entre R$ 0 e R$ 1.000.'),
+      vigencia: z.string().regex(DATA, 'Informe a data de início.'),
+    });
+    app.post('/valores', { preHandler: gestao, schema: { body: corpoPostValores } }, async (req, reply) => {
+      const d = corpoPostValores
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -938,21 +942,22 @@ export function rotasProducao(banco: Banco) {
       };
     });
 
-    app.put<{ Params: { data: string } }>('/escala/:data', { preHandler: gestao }, async (req) => {
+    const corpoPutEscala = z
+    .object({
+      itens: z
+        .array(
+          z.object({
+            motoristaId: z.string().uuid(),
+            entrada: z.union([z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Horário inválido. Use HH:MM.'), z.literal(''), z.null()]).optional().transform((v) => v || null),
+            folga: z.boolean().optional().default(false),
+            observacao: texto(200),
+          }),
+        )
+        .max(300),
+    });
+    app.put<{ Params: { data: string } }>('/escala/:data', { preHandler: gestao, schema: { body: corpoPutEscala } }, async (req) => {
       if (!DATA.test(req.params.data)) throw new ErroHttp(400, 'Data inválida.');
-      const d = z
-        .object({
-          itens: z
-            .array(
-              z.object({
-                motoristaId: z.string().uuid(),
-                entrada: z.union([z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/, 'Horário inválido. Use HH:MM.'), z.literal(''), z.null()]).optional().transform((v) => v || null),
-                folga: z.boolean().optional().default(false),
-                observacao: texto(200),
-              }),
-            )
-            .max(300),
-        })
+      const d = corpoPutEscala
         .parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1003,16 +1008,17 @@ export function rotasProducao(banco: Banco) {
       };
     });
 
-    app.post<{ Params: { id: string } }>('/minhas-cargas/:id/etapa', { preHandler: motorista }, async (req) => {
-      const d = z
-        .object({
-          etapa: z.enum(['saida', 'chegada', 'descarga'], { errorMap: () => ({ message: 'Etapa inválida.' }) }),
-          slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
-          devolvido: decimal('Volume devolvido inválido.').refine((n) => n >= 0, 'Volume devolvido inválido.').nullable().optional(),
-          observacao: texto(300),
-          cpsMoldados: z.number().int().min(0).max(20).nullable().optional(),
-          motivoSemCps: texto(200),
-        })
+    const corpoPostMinhasCargasEtapa = z
+    .object({
+      etapa: z.enum(['saida', 'chegada', 'descarga'], { errorMap: () => ({ message: 'Etapa inválida.' }) }),
+      slump: decimal('Slump inválido.').refine((n) => n >= 0 && n <= 30, 'Slump entre 0 e 30 cm.').nullable().optional(),
+      devolvido: decimal('Volume devolvido inválido.').refine((n) => n >= 0, 'Volume devolvido inválido.').nullable().optional(),
+      observacao: texto(300),
+      cpsMoldados: z.number().int().min(0).max(20).nullable().optional(),
+      motivoSemCps: texto(200),
+    });
+    app.post<{ Params: { id: string } }>('/minhas-cargas/:id/etapa', { preHandler: motorista, schema: { body: corpoPostMinhasCargasEtapa } }, async (req) => {
+      const d = corpoPostMinhasCargasEtapa
         .parse(req.body ?? {});
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Carga');

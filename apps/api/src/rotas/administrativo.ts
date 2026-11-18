@@ -96,13 +96,14 @@ export function rotasAdministrativo(banco: Banco) {
     // A IA só sugere os campos; quem salva é o formulário, depois de conferido pelo usuário.
     app.get('/cadastros/leitura', { preHandler: gestao }, async () => ({ ia: iaDisponivel() }));
 
-    app.post('/cadastros/leitura', { preHandler: gestao, bodyLimit: 16 * 1024 * 1024 }, async (req) => {
-      const d = z
-        .object({
-          arquivo: z.string({ required_error: 'Envie a foto ou o PDF.' }).min(20, 'Arquivo vazio.'),
-          tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
-          entidade: z.enum(['fornecedor', 'credor', 'cliente', 'colaborador']),
-        })
+    const corpoPostCadastrosLeitura = z
+    .object({
+      arquivo: z.string({ required_error: 'Envie a foto ou o PDF.' }).min(20, 'Arquivo vazio.'),
+      tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
+      entidade: z.enum(['fornecedor', 'credor', 'cliente', 'colaborador']),
+    });
+    app.post('/cadastros/leitura', { preHandler: gestao, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCadastrosLeitura } }, async (req) => {
+      const d = corpoPostCadastrosLeitura
         .parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
       const bytes = Buffer.from(d.arquivo, 'base64');
@@ -124,7 +125,7 @@ export function rotasAdministrativo(banco: Banco) {
       return { clientes: r.rows.map(clientePublico) };
     });
 
-    app.post('/clientes', { preHandler: gestao }, async (req, reply) => {
+    app.post('/clientes', { preHandler: gestao, schema: { body: esquemaFornecedor } }, async (req, reply) => {
       const d = esquemaFornecedor.parse(req.body);
       const empresaId = empresaDo(req);
       const n = await emTransacao(banco, async (c) => {
@@ -142,7 +143,7 @@ export function rotasAdministrativo(banco: Banco) {
       return { cliente: clientePublico(n) };
     });
 
-    app.patch<{ Params: { id: string } }>('/clientes/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/clientes/:id', { preHandler: gestao, schema: { body: esquemaAlterarFornecedor } }, async (req) => {
       const d = esquemaAlterarFornecedor.parse(req.body) as Record<string, unknown>;
       delete d.categoria;
       const empresaId = empresaDo(req);
@@ -174,7 +175,7 @@ export function rotasAdministrativo(banco: Banco) {
       return { fornecedores: r.rows.map(fornecedorPublico) };
     });
 
-    app.post('/fornecedores', { preHandler: gestao }, async (req, reply) => {
+    app.post('/fornecedores', { preHandler: gestao, schema: { body: esquemaFornecedor } }, async (req, reply) => {
       const d = esquemaFornecedor.parse(req.body);
       const empresaId = empresaDo(req);
       const f = await emTransacao(banco, async (c) => {
@@ -192,7 +193,7 @@ export function rotasAdministrativo(banco: Banco) {
       return { fornecedor: fornecedorPublico(f) };
     });
 
-    app.patch<{ Params: { id: string } }>('/fornecedores/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/fornecedores/:id', { preHandler: gestao, schema: { body: esquemaAlterarFornecedor } }, async (req) => {
       const d = esquemaAlterarFornecedor.parse(req.body) as Record<string, unknown>;
       const empresaId = empresaDo(req);
       const f = await emTransacao(banco, async (c) => {

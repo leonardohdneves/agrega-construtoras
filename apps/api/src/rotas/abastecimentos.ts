@@ -180,7 +180,7 @@ export function rotasAbastecimento(banco: Banco) {
       };
     });
 
-    app.post('/abastecimentos', { preHandler: todos }, async (req, reply) => {
+    app.post('/abastecimentos', { preHandler: todos, schema: { body: esquemaAbastecimento } }, async (req, reply) => {
       const d = esquemaAbastecimento.parse(req.body);
       const empresaId = empresaDo(req);
       const motorista = req.usuario!.perfil === 'motorista';
@@ -235,7 +235,7 @@ export function rotasAbastecimento(banco: Banco) {
       return { abastecimento: abastecimentoPublico(r.rows[0]) };
     });
 
-    app.patch<{ Params: { id: string } }>('/abastecimentos/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/abastecimentos/:id', { preHandler: gestao, schema: { body: esquemaAlterarAbastecimento } }, async (req) => {
       const d = esquemaAlterarAbastecimento.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {

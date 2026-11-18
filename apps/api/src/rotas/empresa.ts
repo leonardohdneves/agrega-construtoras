@@ -17,7 +17,7 @@ export function rotasEmpresa(banco: Banco) {
       return { empresa: empresaPublica(r.rows[0]) };
     });
 
-    app.put('/', { preHandler: exigir(banco, 'dono') }, async (req) => {
+    app.put('/', { preHandler: exigir(banco, 'dono'), schema: { body: esquemaEmpresa } }, async (req) => {
       const d = esquemaEmpresa.parse(req.body);
       const id = empresaDo(req);
       const empresa = await emTransacao(banco, async (c) => {
@@ -43,7 +43,7 @@ export function rotasEmpresa(banco: Banco) {
       return { empresas: r.rows.map(empresaGrupoPublica) };
     });
 
-    app.post('/grupo', { preHandler: exigir(banco, 'dono') }, async (req, reply) => {
+    app.post('/grupo', { preHandler: exigir(banco, 'dono'), schema: { body: esquemaEmpresaGrupo } }, async (req, reply) => {
       const d = esquemaEmpresaGrupo.parse(req.body);
       const empresaId = empresaDo(req);
       const criada = await emTransacao(banco, async (c) => {
@@ -62,7 +62,7 @@ export function rotasEmpresa(banco: Banco) {
       return reply.code(201).send({ empresa: empresaGrupoPublica(criada) });
     });
 
-    app.put<{ Params: { id: string } }>('/grupo/:id', { preHandler: exigir(banco, 'dono') }, async (req) => {
+    app.put<{ Params: { id: string } }>('/grupo/:id', { preHandler: exigir(banco, 'dono'), schema: { body: esquemaEmpresaGrupo } }, async (req) => {
       const d = esquemaEmpresaGrupo.parse(req.body);
       const empresaId = empresaDo(req);
       const atualizada = await emTransacao(banco, async (c) => {
@@ -100,9 +100,10 @@ export function rotasEmpresa(banco: Banco) {
         .send(r.logo);
     });
 
-    app.put('/logo', { preHandler: exigir(banco, ...TODOS), bodyLimit: 1024 * 1024 }, async (req) => {
+    const corpoPutLogo = z.object({ imagem: z.string({ required_error: 'Envie a imagem.' }) });
+    app.put('/logo', { preHandler: exigir(banco, ...TODOS), bodyLimit: 1024 * 1024, schema: { body: corpoPutLogo } }, async (req) => {
       administrador(req);
-      const { imagem } = z.object({ imagem: z.string({ required_error: 'Envie a imagem.' }) }).parse(req.body);
+      const { imagem } = corpoPutLogo.parse(req.body);
       const m = imagem.match(/^data:(image\/(?:png|jpeg|svg\+xml|webp));base64,([A-Za-z0-9+/=]+)$/);
       if (!m) throw new ErroHttp(400, 'Use uma imagem PNG, JPG, WEBP ou SVG.');
       const bytes = Buffer.from(m[2], 'base64');
@@ -127,10 +128,11 @@ export function rotasEmpresa(banco: Banco) {
     });
 
     // ----- Identidade visual dos relatórios (cores; a logo é enviada em /logo) -----
-    app.put('/identidade', { preHandler: exigir(banco, ...TODOS) }, async (req) => {
+    const cor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use uma cor no formato #RRGGBB.').nullable();
+    const corpoPutIdentidade = z.object({ corPrimaria: cor, corSecundaria: cor });
+    app.put('/identidade', { preHandler: exigir(banco, ...TODOS), schema: { body: corpoPutIdentidade } }, async (req) => {
       administrador(req);
-      const cor = z.string().regex(/^#[0-9a-fA-F]{6}$/, 'Use uma cor no formato #RRGGBB.').nullable();
-      const d = z.object({ corPrimaria: cor, corSecundaria: cor }).parse(req.body);
+      const d = corpoPutIdentidade.parse(req.body);
       const id = empresaDo(req);
       await emTransacao(banco, async (c) => {
         await c.query('UPDATE empresas SET cor_primaria = $2, cor_secundaria = $3, atualizado_em = now() WHERE id = $1', [id, d.corPrimaria, d.corSecundaria]);
@@ -140,9 +142,10 @@ export function rotasEmpresa(banco: Banco) {
     });
 
     // ----- Padrão de impressão dos relatórios -----
-    app.put('/impressao', { preHandler: exigir(banco, ...TODOS) }, async (req) => {
+    const corpoPutImpressao = z.object({ orientacao: z.enum(['retrato', 'paisagem']), papel: z.enum(['A4', 'Carta', 'Oficio']) });
+    app.put('/impressao', { preHandler: exigir(banco, ...TODOS), schema: { body: corpoPutImpressao } }, async (req) => {
       administrador(req);
-      const d = z.object({ orientacao: z.enum(['retrato', 'paisagem']), papel: z.enum(['A4', 'Carta', 'Oficio']) }).parse(req.body);
+      const d = corpoPutImpressao.parse(req.body);
       const id = empresaDo(req);
       await emTransacao(banco, async (c) => {
         await c.query('UPDATE empresas SET impressao = $2, atualizado_em = now() WHERE id = $1', [id, JSON.stringify(d)]);

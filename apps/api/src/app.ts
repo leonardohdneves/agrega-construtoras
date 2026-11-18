@@ -48,8 +48,13 @@ import { rotasBackups, rotasExportacao } from './rotas/backups.ts';
 const VERSAO = '0.9.0';
 const PASTA_WEB = path.resolve(import.meta.dirname, '..', '..', 'web', 'dist');
 
-export async function criarApp(banco: Banco, opcoes: { log?: boolean } = {}) {
+export async function criarApp(banco: Banco, opcoes: { log?: boolean; documentar?: boolean } = {}) {
   const app = Fastify({ logger: opcoes.log ?? true, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
+
+  // O `schema.body` das rotas é um esquema zod e serve só à documentação (docs/openapi.json).
+  // Quem valida continua sendo o `.parse(req.body)` dentro de cada rota; aqui o Fastify não valida nada.
+  app.setValidatorCompiler(() => () => true);
+  if (opcoes.documentar) await (await import('./lib/openapi.ts')).instalarDocumentacao(app);
 
   await app.register(cookie);
   await app.register(rateLimit, { global: false });

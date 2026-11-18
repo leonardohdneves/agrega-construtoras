@@ -25,4 +25,6 @@ export const config = {
   demoSenha: process.env.DEMO_SENHA || '',
   cursoSenha: process.env.CURSO_SENHA || '',
   cookieSeguro: producao,
+  // Endereços /oauth/callback dos servidores MCP autorizados a receber o código de login (separados por vírgula).
+  mcpCallbacks: (process.env.MCP_CALLBACK_URLS ?? (producao ? '' : 'http://localhost:3001/oauth/callback')).split(',').map((s) => s.trim()).filter(Boolean),
 };

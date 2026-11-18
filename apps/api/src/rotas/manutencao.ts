@@ -217,7 +217,7 @@ export function rotasManutencao(banco: Banco) {
       return { planos: r.rows.map(planoPublico) };
     });
 
-    app.post('/planos', { preHandler: gestao }, async (req, reply) => {
+    app.post('/planos', { preHandler: gestao, schema: { body: esquemaPlano } }, async (req, reply) => {
       const d = esquemaPlano.parse(req.body);
       const empresaId = empresaDo(req);
       const p = (
@@ -231,7 +231,7 @@ export function rotasManutencao(banco: Banco) {
       return { plano: planoPublico(p) };
     });
 
-    app.put<{ Params: { id: string } }>('/planos/:id', { preHandler: gestao }, async (req) => {
+    app.put<{ Params: { id: string } }>('/planos/:id', { preHandler: gestao, schema: { body: esquemaPlano } }, async (req) => {
       const d = esquemaPlano.parse(req.body);
       const empresaId = empresaDo(req);
       const p = await emTransacao(banco, async (c) => {
@@ -275,7 +275,7 @@ export function rotasManutencao(banco: Banco) {
     });
 
     // Registra a última execução de um item (ex.: ao implantar o sistema).
-    app.put('/revisoes', { preHandler: gestao }, async (req) => {
+    app.put('/revisoes', { preHandler: gestao, schema: { body: esquemaRevisao } }, async (req) => {
       const d = esquemaRevisao.parse(req.body);
       const empresaId = empresaDo(req);
       if (d.km === null && d.horas === null && d.data === null) throw new ErroHttp(400, 'Informe o km, o horímetro ou a data da última execução.');
@@ -320,7 +320,7 @@ export function rotasManutencao(banco: Banco) {
       return { ordens: r.rows.map((o) => osPublica(o)) };
     });
 
-    app.post('/os', { preHandler: gestao }, async (req, reply) => {
+    app.post('/os', { preHandler: gestao, schema: { body: esquemaOS } }, async (req, reply) => {
       const d = esquemaOS.parse(req.body);
       const empresaId = empresaDo(req);
       const id = await emTransacao(banco, async (c) => {
@@ -361,7 +361,7 @@ export function rotasManutencao(banco: Banco) {
       return { os: osPublica(os, itens) };
     });
 
-    app.patch<{ Params: { id: string } }>('/os/:id', { preHandler: gestao }, async (req) => {
+    app.patch<{ Params: { id: string } }>('/os/:id', { preHandler: gestao, schema: { body: esquemaAlterarOS } }, async (req) => {
       const d = esquemaAlterarOS.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -384,7 +384,7 @@ export function rotasManutencao(banco: Banco) {
       return { os: osPublica(os, itens) };
     });
 
-    app.post<{ Params: { id: string } }>('/os/:id/itens', { preHandler: gestao }, async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/os/:id/itens', { preHandler: gestao, schema: { body: esquemaItem } }, async (req, reply) => {
       const d = esquemaItem.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -424,7 +424,7 @@ export function rotasManutencao(banco: Banco) {
       return { os: osPublica(os, itens) };
     });
 
-    app.post<{ Params: { id: string } }>('/os/:id/concluir', { preHandler: gestao }, async (req) => {
+    app.post<{ Params: { id: string } }>('/os/:id/concluir', { preHandler: gestao, schema: { body: esquemaConcluir } }, async (req) => {
       const d = esquemaConcluir.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {

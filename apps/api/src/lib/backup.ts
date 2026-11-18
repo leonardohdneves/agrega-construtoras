@@ -4,8 +4,8 @@ import type { Banco, Cliente } from '../db.ts';
 import { criarZip, type ArquivoZip } from './zip.ts';
 import { criarXlsx, type Aba } from './xlsx.ts';
 
-/** Tabelas que não entram no backup: controle de migrações e o próprio registro dos backups. */
-const FORA = new Set(['migracoes', 'backups']);
+/** Tabelas que não entram no backup: controle de migrações, o próprio registro dos backups e as credenciais das conexões de assistentes (OAuth). */
+const FORA = new Set(['migracoes', 'backups', 'oauth_codigos', 'oauth_refresh']);
 /** Colunas que nunca saem numa exportação da empresa (credenciais). */
 const OCULTAS_NA_EXPORTACAO: Record<string, string[]> = { usuarios: ['senha_hash'] };
 const NUMERICOS = new Set(['smallint', 'integer', 'bigint', 'numeric', 'real', 'double precision']);

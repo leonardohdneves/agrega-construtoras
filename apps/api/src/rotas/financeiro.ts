@@ -438,7 +438,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { contas: r.rows.map(contaPublica) };
     });
 
-    app.post('/contas', async (req, reply) => {
+    app.post('/contas', { schema: { body: esquemaConta } }, async (req, reply) => {
       const d = esquemaConta.parse(req.body);
       const empresaId = empresaDo(req);
       const conta = await emTransacao(banco, async (c) => {
@@ -456,7 +456,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { conta: contaPublica(conta) };
     });
 
-    app.patch<{ Params: { id: string } }>('/contas/:id', async (req) => {
+    app.patch<{ Params: { id: string } }>('/contas/:id', { schema: { body: esquemaAlterarConta } }, async (req) => {
       const d = esquemaAlterarConta.parse(req.body);
       const empresaId = empresaDo(req);
       const COL: Record<string, string> = {
@@ -559,15 +559,16 @@ export function rotasFinanceiro(banco: Banco) {
       };
     });
 
-    app.post('/transferencias', async (req, reply) => {
-      const d = z
-        .object({
-          origemId: z.string({ required_error: 'Escolha a conta de origem.' }).uuid('Escolha a conta de origem.'),
-          destinoId: z.string({ required_error: 'Escolha a conta de destino.' }).uuid('Escolha a conta de destino.'),
-          data: dataObrig('Data inválida.'),
-          valor: dinheiro('o valor'),
-          descricao: textoOpc(200),
-        })
+    const corpoPostTransferencias = z
+    .object({
+      origemId: z.string({ required_error: 'Escolha a conta de origem.' }).uuid('Escolha a conta de origem.'),
+      destinoId: z.string({ required_error: 'Escolha a conta de destino.' }).uuid('Escolha a conta de destino.'),
+      data: dataObrig('Data inválida.'),
+      valor: dinheiro('o valor'),
+      descricao: textoOpc(200),
+    });
+    app.post('/transferencias', { schema: { body: corpoPostTransferencias } }, async (req, reply) => {
+      const d = corpoPostTransferencias
         .parse(req.body);
       if (d.origemId === d.destinoId) throw new ErroHttp(400, 'Escolha contas diferentes.');
       const empresaId = empresaDo(req);
@@ -609,7 +610,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { contas: r.rows.sort((a, b) => ordemCodigo(a.codigo, b.codigo)).map(planoPublico) };
     });
 
-    app.post('/plano-contas', async (req, reply) => {
+    app.post('/plano-contas', { schema: { body: esquemaPlano } }, async (req, reply) => {
       const d = esquemaPlano.parse(req.body);
       const empresaId = empresaDo(req);
       const n = await emTransacao(banco, async (c) => {
@@ -639,7 +640,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { conta: planoPublico(n) };
     });
 
-    app.patch<{ Params: { id: string } }>('/plano-contas/:id', async (req) => {
+    app.patch<{ Params: { id: string } }>('/plano-contas/:id', { schema: { body: esquemaAlterarPlano } }, async (req) => {
       const d = esquemaAlterarPlano.parse(req.body);
       const empresaId = empresaDo(req);
       const r = await emTransacao(banco, async (c) => {
@@ -674,7 +675,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { centros: r.rows.map((x) => ({ id: x.id, nome: x.nome, ativo: x.ativo })) };
     });
 
-    app.post('/centros-custo', async (req, reply) => {
+    app.post('/centros-custo', { schema: { body: esquemaCentro } }, async (req, reply) => {
       const d = esquemaCentro.parse(req.body);
       const empresaId = empresaDo(req);
       const r = (await banco.query('INSERT INTO centros_custo (empresa_id, nome) VALUES ($1,$2) RETURNING *', [empresaId, d.nome])).rows[0];
@@ -683,7 +684,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { centro: { id: r.id, nome: r.nome, ativo: r.ativo } };
     });
 
-    app.patch<{ Params: { id: string } }>('/centros-custo/:id', async (req) => {
+    app.patch<{ Params: { id: string } }>('/centros-custo/:id', { schema: { body: esquemaCentro.partial().strict() } }, async (req) => {
       const d = esquemaCentro.partial().strict().parse(req.body);
       const empresaId = empresaDo(req);
       const r = (
@@ -744,13 +745,14 @@ export function rotasFinanceiro(banco: Banco) {
     // A IA só sugere os campos; o lançamento só é salvo depois de conferido no formulário.
     app.get('/lancamentos/leitura', async () => ({ ia: iaDisponivel() }));
 
-    app.post('/lancamentos/leitura', { bodyLimit: 16 * 1024 * 1024 }, async (req) => {
-      const d = z
-        .object({
-          arquivo: z.string({ required_error: 'Envie a foto ou o PDF.' }).min(20, 'Arquivo vazio.'),
-          tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
-          tipoLancamento: z.enum(['receita', 'despesa']),
-        })
+    const corpoPostLancamentosLeitura = z
+    .object({
+      arquivo: z.string({ required_error: 'Envie a foto ou o PDF.' }).min(20, 'Arquivo vazio.'),
+      tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
+      tipoLancamento: z.enum(['receita', 'despesa']),
+    });
+    app.post('/lancamentos/leitura', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLancamentosLeitura } }, async (req) => {
+      const d = corpoPostLancamentosLeitura
         .parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
       const bytes = Buffer.from(d.arquivo, 'base64');
@@ -849,7 +851,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { lancamento: lancamentoPublico(await carregarLancamento(banco, empresaDo(req), req.params.id), hojeBrasil()) };
     });
 
-    app.post('/lancamentos', async (req, reply) => {
+    app.post('/lancamentos', { schema: { body: esquemaLancamento } }, async (req, reply) => {
       const d = esquemaLancamento.parse(req.body);
       conferirSomas(d);
       if (d.estoque.length) {
@@ -921,7 +923,7 @@ export function rotasFinanceiro(banco: Banco) {
     });
 
     // Edição: as parcelas pagas ficam como estão; "parcelas" traz só as parcelas em aberto (substituídas).
-    app.put<{ Params: { id: string } }>('/lancamentos/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/lancamentos/:id', { schema: { body: esquemaEditarLancamento } }, async (req) => {
       const d = esquemaEditarLancamento.parse(req.body);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -957,8 +959,9 @@ export function rotasFinanceiro(banco: Banco) {
       return { lancamento: lancamentoPublico(await carregarLancamento(banco, empresaId, req.params.id), hojeBrasil()) };
     });
 
-    app.post<{ Params: { id: string } }>('/lancamentos/:id/cancelar', async (req) => {
-      const d = z.object({ seguintes: z.boolean().optional().default(false) }).parse(req.body ?? {});
+    const corpoPostLancamentosCancelar = z.object({ seguintes: z.boolean().optional().default(false) });
+    app.post<{ Params: { id: string } }>('/lancamentos/:id/cancelar', { schema: { body: corpoPostLancamentosCancelar } }, async (req) => {
+      const d = corpoPostLancamentosCancelar.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       const n = await emTransacao(banco, async (c) => {
         const l = (await c.query('SELECT * FROM lancamentos WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL FOR UPDATE', [req.params.id, empresaId])).rows[0];
@@ -1032,7 +1035,7 @@ export function rotasFinanceiro(banco: Banco) {
       return { tipo, situacao, de, ate, parcelas, total: Math.round(total * 100) / 100 };
     });
 
-    app.post<{ Params: { id: string } }>('/parcelas/:id/baixar', async (req) => {
+    app.post<{ Params: { id: string } }>('/parcelas/:id/baixar', { schema: { body: esquemaBaixa } }, async (req) => {
       const d = esquemaBaixa.parse(req.body);
       const empresaId = empresaDo(req);
       const p = await emTransacao(banco, (c) => baixarParcela(c, empresaId, req.usuario!.id, req.params.id, d));
@@ -1077,8 +1080,9 @@ export function rotasFinanceiro(banco: Banco) {
       };
     });
 
-    app.post('/parcelas/baixar-lote', async (req) => {
-      const d = esquemaBaixa.omit({ juros: true, desconto: true }).extend({ ids: z.array(z.string().uuid()).min(1).max(200) }).parse(req.body);
+    const corpoPostParcelasBaixarLote = esquemaBaixa.omit({ juros: true, desconto: true }).extend({ ids: z.array(z.string().uuid()).min(1).max(200) });
+    app.post('/parcelas/baixar-lote', { schema: { body: corpoPostParcelasBaixarLote } }, async (req) => {
+      const d = corpoPostParcelasBaixarLote.parse(req.body);
       const empresaId = empresaDo(req);
       const n = await emTransacao(banco, async (c) => {
         for (const id of d.ids) await baixarParcela(c, empresaId, req.usuario!.id, id, { ...d, juros: 0, desconto: 0 });
@@ -1111,8 +1115,9 @@ export function rotasFinanceiro(banco: Banco) {
       return { parcela: parcelaPublica(p, hojeBrasil()) };
     });
 
-    app.patch<{ Params: { id: string } }>('/parcelas/:id', async (req) => {
-      const d = z.object({ vencimento: dataObrig('Vencimento inválido.').optional(), observacoes: textoOpc(300) }).strict().parse(req.body);
+    const corpoPatchParcelas = z.object({ vencimento: dataObrig('Vencimento inválido.').optional(), observacoes: textoOpc(300) }).strict();
+    app.patch<{ Params: { id: string } }>('/parcelas/:id', { schema: { body: corpoPatchParcelas } }, async (req) => {
+      const d = corpoPatchParcelas.parse(req.body);
       const empresaId = empresaDo(req);
       const p = await emTransacao(banco, async (c) => {
         const antes = (await c.query('SELECT * FROM parcelas WHERE id = $1 AND empresa_id = $2 FOR UPDATE', [req.params.id, empresaId])).rows[0];

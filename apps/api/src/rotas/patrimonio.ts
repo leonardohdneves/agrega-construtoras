@@ -140,7 +140,7 @@ export function rotasPatrimonio(banco: Banco) {
       };
     });
 
-    app.post('/patrimonio', async (req, reply) => {
+    app.post('/patrimonio', { schema: { body: esquemaBem } }, async (req, reply) => {
       exigirCadastro(req);
       const d = esquemaBem.parse(req.body);
       if (d.valorResidual >= d.valorAquisicao) throw new ErroHttp(400, 'O valor residual precisa ser menor que o valor de aquisição.');
@@ -164,7 +164,7 @@ export function rotasPatrimonio(banco: Banco) {
       return { bem: bemPublico(r.rows[0], hojeBrasil()) };
     });
 
-    app.put<{ Params: { id: string } }>('/patrimonio/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/patrimonio/:id', { schema: { body: esquemaBem } }, async (req) => {
       exigirCadastro(req);
       const d = esquemaBem.parse(req.body);
       if (d.valorResidual >= d.valorAquisicao) throw new ErroHttp(400, 'O valor residual precisa ser menor que o valor de aquisição.');
@@ -189,9 +189,10 @@ export function rotasPatrimonio(banco: Banco) {
     });
 
     /** Situação do bem fora de uso (disponível, em manutenção ou baixado). Quem está com o bem numa obra precisa devolvê-lo antes. */
-    app.post<{ Params: { id: string } }>('/patrimonio/:id/situacao', async (req) => {
+    const corpoPostPatrimonioSituacao = z.object({ status: z.enum(['disponivel', 'manutencao', 'baixado']) });
+    app.post<{ Params: { id: string } }>('/patrimonio/:id/situacao', { schema: { body: corpoPostPatrimonioSituacao } }, async (req) => {
       exigirCadastro(req);
-      const d = z.object({ status: z.enum(['disponivel', 'manutencao', 'baixado']) }).parse(req.body);
+      const d = corpoPostPatrimonioSituacao.parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Bem');
       await emTransacao(banco, async (c) => {
@@ -204,7 +205,7 @@ export function rotasPatrimonio(banco: Banco) {
       return { ok: true };
     });
 
-    app.post<{ Params: { id: string } }>('/patrimonio/:id/retirar', async (req) => {
+    app.post<{ Params: { id: string } }>('/patrimonio/:id/retirar', { schema: { body: esquemaRetirada } }, async (req) => {
       const d = esquemaRetirada.parse(req.body);
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Bem');
@@ -225,7 +226,7 @@ export function rotasPatrimonio(banco: Banco) {
       return { ok: true };
     });
 
-    app.post<{ Params: { id: string } }>('/patrimonio/:id/devolver', async (req) => {
+    app.post<{ Params: { id: string } }>('/patrimonio/:id/devolver', { schema: { body: esquemaDevolucao } }, async (req) => {
       const d = esquemaDevolucao.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Bem');

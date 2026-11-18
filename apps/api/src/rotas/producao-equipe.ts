@@ -72,7 +72,7 @@ export function rotasProducaoEquipe(banco: Banco) {
       return { regras: r.rows.map(regraPublica) };
     });
 
-    app.post('/regras-producao', async (req, reply) => {
+    app.post('/regras-producao', { schema: { body: esquemaRegra } }, async (req, reply) => {
       const d = esquemaRegra.parse(req.body);
       if (d.base === 'vendas' && d.funcao !== 'vendedor') throw new ErroHttp(400, 'A base "vendas do vendedor" só vale para o vendedor.');
       const faixas: Faixa[] = d.faixas.map((f, i) => ({ ate: i === d.faixas.length - 1 ? null : f.ate, valorM3: Math.round(f.valorM3 * 100) }));

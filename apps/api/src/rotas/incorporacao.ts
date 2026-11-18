@@ -36,7 +36,7 @@ export function rotasIncorporacao(banco: Banco) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
 
     // Lista os estudos aprovados que o usuário do Viabiliza pode importar.
-    app.post('/incorporacao/estudos-disponiveis', async (req) => {
+    app.post('/incorporacao/estudos-disponiveis', { schema: { body: credenciais } }, async (req) => {
       const corpo = lerCorpo(credenciais, req.body);
       const base = baseViabiliza();
       const token = await entrarViabiliza(base, corpo.email, corpo.senha);
@@ -44,7 +44,7 @@ export function rotasIncorporacao(banco: Banco) {
     });
 
     // Importa um estudo aprovado: cria ou atualiza o empreendimento e as unidades, e registra a importação.
-    app.post('/incorporacao/importar', async (req) => {
+    app.post('/incorporacao/importar', { schema: { body: esquemaImportar } }, async (req) => {
       const empresaId = empresaDo(req);
       const usuarioId = req.usuario!.id;
       const corpo = lerCorpo(esquemaImportar, req.body);

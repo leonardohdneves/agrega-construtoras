@@ -632,7 +632,7 @@ export function rotasContratos(banco: Banco) {
 
     app.get<{ Params: { id: string } }>('/contratos/:id', async (req) => ({ contrato: await detalharContrato(banco, empresaDo(req), req.params.id, usuarioDe(req)) }));
 
-    app.post('/contratos', async (req, reply) => {
+    app.post('/contratos', { schema: { body: esquemaContrato } }, async (req, reply) => {
       const d = esquemaContrato.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -658,7 +658,7 @@ export function rotasContratos(banco: Banco) {
       return { contrato: await detalharContrato(banco, empresaId, id, u) };
     });
 
-    app.put<{ Params: { id: string } }>('/contratos/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/contratos/:id', { schema: { body: esquemaContrato } }, async (req) => {
       const d = esquemaContrato.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -689,12 +689,13 @@ export function rotasContratos(banco: Banco) {
     });
 
     // Prazos do termo jurídico, salvos direto da minuta (sem reabrir o formulário completo).
-    app.patch<{ Params: { id: string } }>('/contratos/:id/prazos', async (req) => {
-      const d = z
-        .object({
-          prazoCorrecaoDias: z.union([z.number().int().min(1).max(365), z.null()]),
-          garantiaMeses: z.union([z.number().int().min(1).max(120), z.null()]),
-        })
+    const corpoPatchContratosPrazos = z
+    .object({
+      prazoCorrecaoDias: z.union([z.number().int().min(1).max(365), z.null()]),
+      garantiaMeses: z.union([z.number().int().min(1).max(120), z.null()]),
+    });
+    app.patch<{ Params: { id: string } }>('/contratos/:id/prazos', { schema: { body: corpoPatchContratosPrazos } }, async (req) => {
+      const d = corpoPatchContratosPrazos
         .parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -764,8 +765,9 @@ export function rotasContratos(banco: Banco) {
       return { contrato: await detalharContrato(banco, empresaId, req.params.id, u) };
     });
 
-    app.post<{ Params: { id: string } }>('/contratos/:id/reprovar', async (req) => {
-      const d = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) }).parse(req.body);
+    const corpoPostContratosReprovar = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) });
+    app.post<{ Params: { id: string } }>('/contratos/:id/reprovar', { schema: { body: corpoPostContratosReprovar } }, async (req) => {
+      const d = corpoPostContratosReprovar.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       await emTransacao(banco, async (c) => {
@@ -822,7 +824,7 @@ export function rotasContratos(banco: Banco) {
 
     app.get<{ Params: { id: string } }>('/medicoes/:id', async (req) => ({ medicao: await detalharMedicao(banco, empresaDo(req), req.params.id, usuarioDe(req)) }));
 
-    app.post('/medicoes', async (req, reply) => {
+    app.post('/medicoes', { schema: { body: esquemaMedicao } }, async (req, reply) => {
       const d = esquemaMedicao.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -852,7 +854,7 @@ export function rotasContratos(banco: Banco) {
       return m as Record<string, any>;
     };
 
-    app.put<{ Params: { id: string } }>('/medicoes/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/medicoes/:id', { schema: { body: esquemaMedicao } }, async (req) => {
       const d = esquemaMedicao.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -897,8 +899,9 @@ export function rotasContratos(banco: Banco) {
       return { medicao: await detalharMedicao(banco, empresaId, req.params.id, u) };
     });
 
-    app.post<{ Params: { id: string } }>('/medicoes/:id/reprovar', async (req) => {
-      const d = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) }).parse(req.body);
+    const corpoPostMedicoesReprovar = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) });
+    app.post<{ Params: { id: string } }>('/medicoes/:id/reprovar', { schema: { body: corpoPostMedicoesReprovar } }, async (req) => {
+      const d = corpoPostMedicoesReprovar.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       await emTransacao(banco, async (c) => {
@@ -954,22 +957,23 @@ export function rotasContratos(banco: Banco) {
 
     app.get<{ Params: { id: string } }>('/autorizacoes/:id', async (req) => ({ autorizacao: await detalharAutorizacao(banco, empresaDo(req), req.params.id, usuarioDe(req)) }));
 
-    app.post('/autorizacoes', async (req, reply) => {
-      const d = z
-        .object({
-          medicaoId: uuidOpc,
-          contratoId: uuidOpc,
-          tipo: z.enum(['medicao', 'caucao']).optional().default('medicao'),
-          vencimento: dataOpc,
-          documento: texto(80),
-          formaPagamento: z.enum(FORMAS).optional().nullable().transform((v) => v ?? null),
-          observacao: texto(500),
-          // Ajuste manual das retenções (em R$), quando a nota de serviço trouxer valores diferentes.
-          retencoes: z
-            .object({ caucao: naoNegativo('Caução inválida.'), iss: naoNegativo('ISS inválido.'), inss: naoNegativo('INSS inválido.'), ir: naoNegativo('IR inválido.'), pcc: naoNegativo('PIS/COFINS/CSLL inválido.') })
-            .optional()
-            .nullable(),
-        })
+    const corpoPostAutorizacoes = z
+    .object({
+      medicaoId: uuidOpc,
+      contratoId: uuidOpc,
+      tipo: z.enum(['medicao', 'caucao']).optional().default('medicao'),
+      vencimento: dataOpc,
+      documento: texto(80),
+      formaPagamento: z.enum(FORMAS).optional().nullable().transform((v) => v ?? null),
+      observacao: texto(500),
+      // Ajuste manual das retenções (em R$), quando a nota de serviço trouxer valores diferentes.
+      retencoes: z
+        .object({ caucao: naoNegativo('Caução inválida.'), iss: naoNegativo('ISS inválido.'), inss: naoNegativo('INSS inválido.'), ir: naoNegativo('IR inválido.'), pcc: naoNegativo('PIS/COFINS/CSLL inválido.') })
+        .optional()
+        .nullable(),
+    });
+    app.post('/autorizacoes', { schema: { body: corpoPostAutorizacoes } }, async (req, reply) => {
+      const d = corpoPostAutorizacoes
         .parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
@@ -1051,8 +1055,9 @@ export function rotasContratos(banco: Banco) {
       return { autorizacao: await detalharAutorizacao(banco, empresaId, req.params.id, u) };
     });
 
-    app.post<{ Params: { id: string } }>('/autorizacoes/:id/reprovar', async (req) => {
-      const d = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) }).parse(req.body);
+    const corpoPostAutorizacoesReprovar = z.object({ motivo: z.string().trim().min(3, 'Escreva o motivo da reprovação.').max(500) });
+    app.post<{ Params: { id: string } }>('/autorizacoes/:id/reprovar', { schema: { body: corpoPostAutorizacoesReprovar } }, async (req) => {
+      const d = corpoPostAutorizacoesReprovar.parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       await emTransacao(banco, async (c) => {

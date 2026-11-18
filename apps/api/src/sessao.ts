@@ -34,12 +34,19 @@ export function instalarSessao(app: FastifyInstance): void {
   app.decorateRequest('sessao', null);
   app.decorateRequest('usuario', null);
   app.addHook('onRequest', async (req) => {
-    req.sessao = lerToken(req.cookies?.[COOKIE_SESSAO], config.jwtSecret);
+    // Navegador: cookie. Servidor MCP: o mesmo token no cabeçalho `Authorization: Bearer`.
+    const portador = /^Bearer (\S+)$/.exec(req.headers.authorization ?? '')?.[1];
+    req.sessao = lerToken(req.cookies?.[COOKIE_SESSAO] ?? portador, config.jwtSecret);
   });
 }
 
+/** Token de sessão (12 horas): vai no cookie do navegador ou, para o servidor MCP, no corpo da resposta do OAuth. */
+export function criarTokenSessao(u: Pick<UsuarioSessao, 'id' | 'empresaId' | 'perfil'>): string {
+  return criarToken({ sub: u.id, emp: u.empresaId, per: u.perfil }, config.jwtSecret, VALIDADE);
+}
+
 export function gravarSessao(reply: FastifyReply, u: Pick<UsuarioSessao, 'id' | 'empresaId' | 'perfil'>): void {
-  const token = criarToken({ sub: u.id, emp: u.empresaId, per: u.perfil }, config.jwtSecret, VALIDADE);
+  const token = criarTokenSessao(u);
   reply.setCookie(COOKIE_SESSAO, token, {
     path: '/',
     httpOnly: true,

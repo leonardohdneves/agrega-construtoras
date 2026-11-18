@@ -114,7 +114,7 @@ export function rotasPermutas(banco: Banco) {
       return { permuta: montarDetalhe(p, itens) };
     });
 
-    app.post('/permutas', async (req, reply) => {
+    app.post('/permutas', { schema: { body: esquemaPermuta } }, async (req, reply) => {
       const d = esquemaPermuta.parse(req.body);
       const empresaId = empresaDo(req);
       const u = req.usuario!;
@@ -147,7 +147,7 @@ export function rotasPermutas(banco: Banco) {
       return { permuta: montarDetalhe(p, itens) };
     });
 
-    app.put<{ Params: { id: string } }>('/permutas/:id', async (req) => {
+    app.put<{ Params: { id: string } }>('/permutas/:id', { schema: { body: esquemaPermuta } }, async (req) => {
       const d = esquemaPermuta.parse(req.body);
       const empresaId = empresaDo(req);
       const u = req.usuario!;
@@ -201,8 +201,9 @@ export function rotasPermutas(banco: Banco) {
     });
 
     /** Marca a nota fiscal da permuta como emitida (ou volta a pendente). Só registra; não bloqueia nada. */
-    app.post<{ Params: { id: string } }>('/permutas/:id/nota-emitida', async (req) => {
-      const d = z.object({ emitida: z.boolean() }).parse(req.body);
+    const corpoPostPermutasNotaEmitida = z.object({ emitida: z.boolean() });
+    app.post<{ Params: { id: string } }>('/permutas/:id/nota-emitida', { schema: { body: corpoPostPermutasNotaEmitida } }, async (req) => {
+      const d = corpoPostPermutasNotaEmitida.parse(req.body);
       const empresaId = empresaDo(req);
       const u = req.usuario!;
       await emTransacao(banco, async (c) => {

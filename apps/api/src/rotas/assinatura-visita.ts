@@ -49,7 +49,7 @@ export function rotasAssinaturaVisita(banco: Banco) {
       };
     });
 
-    app.post<{ Params: { token: string } }>('/:token', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } } }, async (req, reply) => {
+    app.post<{ Params: { token: string } }>('/:token', { config: { rateLimit: { max: 10, timeWindow: '10 minutes' } }, schema: { body: esquemaDono } }, async (req, reply) => {
       const d = esquemaDono.parse(req.body ?? {});
       const imagem = validarImagemAssinatura(d.imagem);
       await emTransacao(banco, async (c) => {

@@ -1,0 +1,29 @@
+{
+  "name": "@agrega/mcp",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Servidor MCP do Agrega: conecta assistentes de IA (Claude, ChatGPT) à API, com OAuth",
+  "type": "module",
+  "scripts": {
+    "dev": "node --watch --env-file-if-exists=.env src/servidor.ts",
+    "start": "node src/servidor.ts",
+    "test": "node --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc --noEmit",
+    "teste:oauth": "node scripts/teste-oauth.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.31.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "express-rate-limit": "^8.3.2",
+    "helmet": "^8.1.0",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.2"
+  }
+}
