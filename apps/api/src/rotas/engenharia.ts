@@ -18,7 +18,8 @@ import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao 
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import { producaoDoMes } from '../lib/equipes-servicos.ts';
 import { conciliarLinha, type LinhaPlanilha, type RefComposicao } from '../lib/conciliacao-orcamento.ts';
-import { curvaS, percentualDeQuantidade, previstoXExecutado, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
+import { curvaS, percentualDeQuantidade, previstoXExecutado, somarDias, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
+import { CENTRAIS, NOMES_CENTRAL, PERIODICIDADE_PADRAO, montarItensBoletim, proximoPeriodo, type TipoCentral } from '../lib/canteiro.ts';
 import {
   abcInsumos,
   abcServicos,
@@ -80,6 +81,7 @@ const esquemaNecessidade = z.object({
   observacao: z.string().trim().max(300).optional().nullable(),
 });
 const pct = z.number().min(0, 'Os percentuais do BDI não podem ser negativos.').max(99.99, 'Percentual do BDI fora da faixa.');
+const dataSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Data no formato AAAA-MM-DD.');
 const mes = z.string().regex(/^\d{4}-\d{2}$/, 'Mês de referência no formato AAAA-MM.').optional().nullable().transform((v) => v || null);
 
 /** Preço de um item da obra: insumo tem preço próprio; composição é a soma dos insumos × coeficiente. */
@@ -220,10 +222,10 @@ export function rotasEngenharia(banco: Banco) {
       const unicos = [...new Set(ids)];
       if (unicos.length) {
         const ok = await c.query(
-          `SELECT count(*)::int AS n FROM usuarios WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND perfil IN ('engenheiro_obra', 'almoxarife') AND excluido_em IS NULL`,
+          `SELECT count(*)::int AS n FROM usuarios WHERE id = ANY($1::uuid[]) AND empresa_id = $2 AND perfil IN ('engenheiro_obra', 'mestre_obra', 'almoxarife') AND excluido_em IS NULL`,
           [unicos, empresaId],
         );
-        if (Number(ok.rows[0].n) !== unicos.length) throw new ErroHttp(400, 'Escolha só usuários com o perfil Engenheiro de obra ou Almoxarife desta empresa.');
+        if (Number(ok.rows[0].n) !== unicos.length) throw new ErroHttp(400, 'Escolha só usuários com o perfil Engenheiro de obra, Mestre de obra ou Almoxarife desta empresa.');
       }
       await c.query('DELETE FROM obra_responsaveis WHERE obra_id = $1', [obraId]);
       for (const u of unicos) await c.query('INSERT INTO obra_responsaveis (obra_id, usuario_id) VALUES ($1, $2)', [obraId, u]);
@@ -232,7 +234,7 @@ export function rotasEngenharia(banco: Banco) {
     /** Engenheiros de obra e almoxarifes da empresa, para atribuir às obras. */
     app.get('/engenheiros', async (req) => {
       const r = await banco.query(
-        `SELECT id, nome, email, ativo, perfil FROM usuarios WHERE empresa_id = $1 AND perfil IN ('engenheiro_obra', 'almoxarife') AND excluido_em IS NULL ORDER BY ativo DESC, perfil, nome`,
+        `SELECT id, nome, email, ativo, perfil FROM usuarios WHERE empresa_id = $1 AND perfil IN ('engenheiro_obra', 'mestre_obra', 'almoxarife') AND excluido_em IS NULL ORDER BY ativo DESC, perfil, nome`,
         [empresaDo(req)],
       );
       return { engenheiros: r.rows.map((u) => ({ id: u.id as string, nome: u.nome as string, email: u.email as string, ativo: !!u.ativo, perfil: u.perfil as string })) };
@@ -1572,6 +1574,181 @@ export function rotasEngenharia(banco: Banco) {
     }
 
     const dataIso = (v: unknown) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+
+    // Canteiro de obra: centrais, serviços de cada central e boletins de produção planejados pela engenharia.
+    // O mestre de obra só consulta (acessoPermitido barra as demais operações); o engenheiro da obra associa e gera os boletins.
+    const centralDe = (t: string): TipoCentral => {
+      if (!(CENTRAIS as readonly string[]).includes(t)) throw naoEncontrado('Central');
+      return t as TipoCentral;
+    };
+    const hoje = () => new Date().toISOString().slice(0, 10);
+    const esquemaCentral = z.object({
+      periodicidadeDias: z.number().int().min(1).max(90).optional(),
+      servicos: z.array(z.string().uuid()).max(2000).optional(),
+    });
+    const esquemaBoletim = z.object({ inicio: dataSchema.optional(), fim: dataSchema.optional() });
+
+    /** Cria as quatro centrais da obra, se ainda não existirem. */
+    async function garantirCentrais(c: Cliente, obraId: string) {
+      for (const tipo of CENTRAIS) await c.query('INSERT INTO canteiro_centrais (obra_id, tipo) VALUES ($1, $2) ON CONFLICT DO NOTHING', [obraId, tipo]);
+    }
+
+    /** Serviços da obra (folhas da EAP) com a central em que estão. */
+    async function folhasDoCanteiro(c: Cliente, obraId: string) {
+      const r = await c.query(
+        `SELECT n.id, n.codigo, n.descricao, cs.tipo AS central
+           FROM eap_nos n LEFT JOIN canteiro_servicos cs ON cs.eap_no_id = n.id
+          WHERE n.obra_id = $1 AND NOT EXISTS (SELECT 1 FROM eap_nos f WHERE f.pai_id = n.id)`,
+        [obraId],
+      );
+      return r.rows
+        .map((f) => ({ eapNoId: f.id as string, codigo: f.codigo as string, descricao: f.descricao as string, central: (f.central ?? null) as string | null }))
+        .sort((x, y) => compararCodigo(x.codigo, y.codigo));
+    }
+
+    /** Boletins gerados para cada central da obra, em ordem. */
+    async function boletinsDaObra(c: Cliente, obraId: string, tipo?: string) {
+      const r = await c.query(
+        `SELECT id, tipo, numero, inicio, fim, criado_em FROM canteiro_boletins WHERE obra_id = $1 AND ($2::text IS NULL OR tipo = $2) ORDER BY tipo, numero`,
+        [obraId, tipo ?? null],
+      );
+      return r.rows.map((b) => ({ id: b.id as string, tipo: b.tipo as string, numero: Number(b.numero), inicio: dataIso(b.inicio), fim: dataIso(b.fim), criadoEm: new Date(b.criado_em).toISOString() }));
+    }
+
+    app.get<{ Params: { id: string } }>('/obras/:id/canteiro', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      await garantirCentrais(banco, obra.id);
+      const centrais = (await banco.query('SELECT tipo, periodicidade_dias FROM canteiro_centrais WHERE obra_id = $1', [obra.id])).rows;
+      const folhas = await folhasDoCanteiro(banco, obra.id);
+      const boletins = await boletinsDaObra(banco, obra.id);
+      const inicioObra = obra.data_inicio ? dataIso(obra.data_inicio) : null;
+      return {
+        obra: { id: obra.id as string, codigo: obra.codigo as string, nome: obra.nome as string, inicio: inicioObra },
+        centrais: CENTRAIS.map((tipo) => {
+          const cfg = centrais.find((x) => x.tipo === tipo);
+          const periodicidadeDias = Number(cfg?.periodicidade_dias ?? PERIODICIDADE_PADRAO);
+          const bs = boletins.filter((b) => b.tipo === tipo);
+          const ultimo = bs.at(-1) ?? null;
+          return {
+            tipo, nome: NOMES_CENTRAL[tipo], periodicidadeDias,
+            servicos: folhas.filter((f) => f.central === tipo).length,
+            boletins: bs.length,
+            ultimoBoletim: ultimo ? { numero: ultimo.numero, inicio: ultimo.inicio, fim: ultimo.fim } : null,
+            proximoPeriodo: proximoPeriodo({ ultimoFim: ultimo?.fim ?? null, inicioObra, hoje: hoje(), periodicidadeDias }),
+          };
+        }),
+        folhas,
+      };
+    });
+
+    app.get<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo', async (req) => {
+      const tipo = centralDe(req.params.tipo);
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      await garantirCentrais(banco, obra.id);
+      const cfg = (await banco.query('SELECT periodicidade_dias FROM canteiro_centrais WHERE obra_id = $1 AND tipo = $2', [obra.id, tipo])).rows[0];
+      const servicos = (await folhasDoCanteiro(banco, obra.id)).filter((f) => f.central === tipo);
+      return { tipo, nome: NOMES_CENTRAL[tipo], periodicidadeDias: Number(cfg.periodicidade_dias), servicos, boletins: await boletinsDaObra(banco, obra.id, tipo) };
+    });
+
+    /** Periodicidade e serviços da central. A lista de serviços substitui a anterior; um serviço sai da central em que estava. */
+    app.put<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo', { bodyLimit: LIMITE_CORPO }, async (req) => {
+      const tipo = centralDe(req.params.tipo);
+      const d = esquemaCentral.parse(req.body);
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      await emTransacao(banco, async (c) => {
+        await garantirCentrais(c, obra.id);
+        if (d.periodicidadeDias !== undefined) {
+          await c.query('UPDATE canteiro_centrais SET periodicidade_dias = $3, atualizado_em = now() WHERE obra_id = $1 AND tipo = $2', [obra.id, tipo, d.periodicidadeDias]);
+        }
+        if (d.servicos) {
+          const unicos = [...new Set(d.servicos)];
+          if (unicos.length) {
+            const ok = await c.query('SELECT count(*)::int AS n FROM eap_nos WHERE id = ANY($1::uuid[]) AND obra_id = $2', [unicos, obra.id]);
+            if (Number(ok.rows[0].n) !== unicos.length) throw new ErroHttp(400, 'Escolha só serviços da EAP desta obra.');
+          }
+          await c.query('DELETE FROM canteiro_servicos WHERE obra_id = $1 AND tipo = $2', [obra.id, tipo]);
+          for (const eapNoId of unicos) {
+            await c.query(
+              'INSERT INTO canteiro_servicos (eap_no_id, obra_id, tipo) VALUES ($1, $2, $3) ON CONFLICT (eap_no_id) DO UPDATE SET tipo = EXCLUDED.tipo',
+              [eapNoId, obra.id, tipo],
+            );
+          }
+        }
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_central', entidadeId: obra.id, depois: { tipo, periodicidadeDias: d.periodicidadeDias, servicos: d.servicos?.length } });
+      });
+      return { ok: true };
+    });
+
+    /**
+     * Gera o boletim da central para o próximo período (ou para o período informado). O previsto vem do planejamento
+     * e o realizado das medições físicas do acompanhamento; os dois são gravados no boletim.
+     */
+    app.post<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo/boletins', { bodyLimit: LIMITE_CORPO }, async (req) => {
+      const tipo = centralDe(req.params.tipo);
+      const d = esquemaBoletim.parse(req.body ?? {});
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      await garantirCentrais(banco, obra.id);
+      const cfg = (await banco.query('SELECT periodicidade_dias FROM canteiro_centrais WHERE obra_id = $1 AND tipo = $2', [obra.id, tipo])).rows[0];
+      const servicos = (await folhasDoCanteiro(banco, obra.id)).filter((f) => f.central === tipo).map((f) => f.eapNoId);
+      if (!servicos.length) throw new ErroHttp(400, 'Associe ao menos um serviço a esta central antes de gerar o boletim.');
+      const anteriores = await boletinsDaObra(banco, obra.id, tipo);
+      const ultimoFim = anteriores.at(-1)?.fim ?? null;
+      const padrao = proximoPeriodo({ ultimoFim, inicioObra: obra.data_inicio ? dataIso(obra.data_inicio) : null, hoje: hoje(), periodicidadeDias: Number(cfg.periodicidade_dias) });
+      const inicio = d.inicio ?? padrao.inicio;
+      const fim = d.fim ?? somarDias(inicio, Number(cfg.periodicidade_dias) - 1);
+      if (fim < inicio) throw new ErroHttp(400, 'A data final do período é anterior à inicial.');
+      if (ultimoFim && inicio <= ultimoFim) throw new ErroHttp(400, `O período se sobrepõe ao boletim anterior (até ${ultimoFim}).`);
+
+      const ativs = (await banco.query('SELECT id, eap_no_id, inicio, duracao_dias, predecessora_id FROM obra_atividades WHERE obra_id = $1', [obra.id])).rows;
+      const datas = calcularDatas(ativs.map((a) => ({ id: a.id as string, inicio: dataIso(a.inicio), duracaoDias: Number(a.duracao_dias), predecessoraId: (a.predecessora_id ?? null) as string | null })));
+      const atividades = ativs.map((a) => ({ eapNoId: (a.eap_no_id ?? null) as string | null, inicio: datas.get(a.id)!.inicio, fim: datas.get(a.id)!.fim }));
+      const medicoes = new Map<string, Medicao>();
+      for (const m of (await banco.query('SELECT m.data, i.eap_no_id, i.percentual FROM obra_medicoes m JOIN obra_medicao_itens i ON i.medicao_id = m.id WHERE m.obra_id = $1', [obra.id])).rows) {
+        const data = dataIso(m.data);
+        const med = medicoes.get(data) ?? { data, itens: new Map<string, number>() };
+        med.itens.set(m.eap_no_id as string, Number(m.percentual));
+        medicoes.set(data, med);
+      }
+      const itens = montarItensBoletim({ servicos, atividades, medicoes: [...medicoes.values()], inicio, fim });
+
+      const boletim = await emTransacao(banco, async (c) => {
+        const n = await c.query('SELECT coalesce(max(numero), 0) + 1 AS n FROM canteiro_boletins WHERE obra_id = $1 AND tipo = $2', [obra.id, tipo]);
+        const criado = (await c.query(
+          'INSERT INTO canteiro_boletins (obra_id, tipo, numero, inicio, fim, criado_por) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id, numero',
+          [obra.id, tipo, Number(n.rows[0].n), inicio, fim, req.usuario!.id],
+        )).rows[0];
+        for (const it of itens) {
+          await c.query('INSERT INTO canteiro_boletim_itens (boletim_id, eap_no_id, previsto_pct, realizado_pct) VALUES ($1, $2, $3, $4)', [criado.id, it.eapNoId, it.previstoPct, it.realizadoPct]);
+        }
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_boletim', entidadeId: criado.id, depois: { tipo, numero: criado.numero, inicio, fim, servicos: itens.length } });
+        return { id: criado.id as string, numero: Number(criado.numero) };
+      });
+      return { boletim: { ...boletim, tipo, inicio, fim } };
+    });
+
+    app.get<{ Params: { id: string; bId: string } }>('/obras/:id/canteiro/boletins/:bId', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const b = (await banco.query('SELECT * FROM canteiro_boletins WHERE id = $1 AND obra_id = $2', [req.params.bId, obra.id])).rows[0];
+      if (!b) throw naoEncontrado('Boletim');
+      const r = await banco.query(
+        `SELECT i.eap_no_id, i.previsto_pct, i.realizado_pct, n.codigo, n.descricao
+           FROM canteiro_boletim_itens i JOIN eap_nos n ON n.id = i.eap_no_id WHERE i.boletim_id = $1`,
+        [b.id],
+      );
+      const itens = r.rows
+        .map((i) => {
+          const previsto = Number(i.previsto_pct);
+          const realizado = Number(i.realizado_pct);
+          return { eapNoId: i.eap_no_id as string, codigo: i.codigo as string, descricao: i.descricao as string, previstoPct: previsto, realizadoPct: realizado, diferencaPct: Math.round((realizado - previsto) * 100) / 100 };
+        })
+        .sort((x, y) => compararCodigo(x.codigo, y.codigo));
+      return {
+        boletim: { id: b.id as string, tipo: b.tipo as string, nome: NOMES_CENTRAL[centralDe(b.tipo as string)], numero: Number(b.numero), inicio: dataIso(b.inicio), fim: dataIso(b.fim), criadoEm: new Date(b.criado_em).toISOString() },
+        itens,
+      };
+    });
 
     app.get<{ Params: { id: string } }>('/obras/:id/planejamento', async (req) => {
       const empresaId = empresaDo(req);

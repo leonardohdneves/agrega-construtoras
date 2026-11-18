@@ -11,6 +11,8 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   orcamentista: ['engenharia', 'comercial'],
   // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
   engenheiro_obra: ['engenharia'],
+  // Só as obras atribuídas a ele, em consulta (canteiro e boletins).
+  mestre_obra: ['engenharia'],
   comprador: ['suprimentos'],
   financeiro: ['financeiro', 'gerencial'],
   vendedor: ['comercial'],
@@ -22,7 +24,7 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
 };
 
 /** Perfis que a construtora pode dar aos usuários, na ordem da tela de usuários. */
-export const PERFIS_CONSTRUTORA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor', 'almoxarife'] as const;
+export const PERFIS_CONSTRUTORA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'mestre_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor', 'almoxarife'] as const;
 
 /** Só o dono e o perfil Financeiro veem saldo bancário, contas a pagar e a receber. */
 export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'financeiro'];
@@ -56,6 +58,8 @@ export function podeAcessar(usuario: Usuario | null, perfis: Perfil[] | undefine
   const porPerfil = !perfis || perfis.includes(usuario.perfil);
   const modulo = moduloDaPagina(caminho);
   if (!modulo || usuario.perfil === 'admin_sistema') return porPerfil;
+  // Mestre de obra: só consulta a Engenharia das obras dele (o servidor confere a obra e barra as alterações).
+  if (usuario.perfil === 'mestre_obra') return modulo === 'engenharia' && temModulo(usuario, 'engenharia');
   if (usuario.perfil === 'engenheiro_obra') {
     // Engenharia (as obras dele, conferidas no servidor) e os contratos e medições dessas obras.
     if (/^\/sup\/(contratos|medicoes|patrimonio)(\/|$)/.test(caminho)) return true;

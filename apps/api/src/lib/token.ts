@@ -7,6 +7,7 @@ export type Perfil =
   | 'gestor'
   | 'orcamentista'
   | 'engenheiro_obra'
+  | 'mestre_obra'
   | 'comprador'
   | 'administrativo'
   | 'vendedor'

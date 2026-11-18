@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acessoPermitido, modulosEfetivos, moduloDaRota } from '../src/lib/modulos.ts';
+import { acessoPermitido, modulosEfetivos, moduloDaRota, MODULOS } from '../src/lib/modulos.ts';
 
 test('módulo de cada rota', () => {
   assert.equal(moduloDaRota('/api/frota/veiculos?x=1'), 'frota');
@@ -12,11 +12,11 @@ test('módulo de cada rota', () => {
 });
 
 test('módulos efetivos', () => {
-  assert.equal(modulosEfetivos('dono', ['frota']).length, 8);
+  assert.equal(modulosEfetivos('dono', ['frota']).length, MODULOS.length);
   assert.deepEqual(modulosEfetivos('operador_usina', null), []);
   // módulos da concreteira gravados num usuário antigo não valem mais
   assert.deepEqual(modulosEfetivos('gestor', ['financeiro', 'frota']), ['financeiro']);
-  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'incorporacao', 'suprimentos', 'gerencial', 'administrativo']);
+  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'gerencial', 'administrativo']);
   assert.deepEqual(modulosEfetivos('orcamentista', null), ['engenharia', 'comercial']);
   assert.deepEqual(modulosEfetivos('engenheiro_obra', null), ['engenharia']);
   assert.deepEqual(modulosEfetivos('comprador', null), ['suprimentos']);

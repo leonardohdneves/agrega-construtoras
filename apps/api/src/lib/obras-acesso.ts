@@ -8,9 +8,9 @@ export function ehEngenheiroDeObra(u: Quem): boolean {
   return u?.perfil === 'engenheiro_obra';
 }
 
-/** Perfis que só enxergam as obras atribuídas a eles pelo dono (obra_responsaveis): engenheiro de obra e almoxarife. */
+/** Perfis que só enxergam as obras atribuídas a eles pelo dono (obra_responsaveis): engenheiro, mestre de obra e almoxarife. */
 export function ehRestritoAObras(u: Quem): boolean {
-  return u?.perfil === 'engenheiro_obra' || u?.perfil === 'almoxarife';
+  return u?.perfil === 'engenheiro_obra' || u?.perfil === 'mestre_obra' || u?.perfil === 'almoxarife';
 }
 
 /** Ids das obras atribuídas ao engenheiro de obra; null para quem vê todas. */

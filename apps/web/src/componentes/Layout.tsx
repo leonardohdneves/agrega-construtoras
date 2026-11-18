@@ -120,6 +120,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Grupos de serviços', para: '/eng/grupos-servicos' },
       { rotulo: 'EAP e orçamento', para: '/eng/eap' },
       { rotulo: 'Planejamento', para: '/eng/planejamento' },
+      { rotulo: 'Canteiro de obra', para: '/eng/canteiro' },
       { rotulo: 'Acompanhamento de obra', para: '/eng/acompanhamento' },
       { rotulo: 'Diário de obra (RDO)', para: '/eng/rdo' },
       { rotulo: 'Visitas de acompanhamento', para: '/eng/visitas' },
