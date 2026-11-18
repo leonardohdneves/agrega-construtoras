@@ -7,7 +7,10 @@ ERP para construtoras: obras, engenharia (orçamento, composições, planejament
 ```
 apps/api   Servidor Node.js (TypeScript executado direto pelo Node 22), Fastify e PostgreSQL
 apps/web   Telas em React (PWA instalável), compiladas pelo Vite e servidas pela API
+apps/mcp   Servidor MCP: conecta assistentes de IA (Claude, ChatGPT) à API, com OAuth (serviço à parte)
 ```
+
+A documentação da API é gerada do código: `npm run docs` grava `apps/api/docs/API.md` e `apps/api/docs/openapi.json`. O servidor MCP está descrito em `apps/mcp/README.md`.
 
 A API serve as telas compiladas, então o sistema roda como **um único serviço** no Railway, ao lado do PostgreSQL.
 
