@@ -35,3 +35,14 @@ test('P30: obra apropriada por etapa continua exigindo o nó da EAP', { skip: se
   const r = await ctx.pedir('dono', 'POST', '/api/sup/solicitacoes', { corpo: { obraId, itens: [{ obraItemId, eapNoId: null, quantidade: 10 }] } });
   assert.equal(r.status, 400);
 });
+
+test('P08: filtro de solicitações por status "finalizada"', { skip: semBanco }, async () => {
+  const { obraId, obraItemId } = await obraComInsumo('FILTRO', 'obra');
+  const nova = async () => (await ctx.pedir('dono', 'POST', '/api/sup/solicitacoes', { corpo: { obraId, itens: [{ obraItemId, eapNoId: null, quantidade: 1 }] } })).corpo.solicitacao.id as string;
+  const aberta = await nova();
+  const finalizada = await nova();
+  await ctx.banco.query("UPDATE solicitacoes_compra SET status = 'finalizada', finalizada_em = now() WHERE id = $1", [finalizada]);
+  const ids = async (status: string) => (await ctx.pedir('dono', 'GET', `/api/sup/solicitacoes?status=${status}&obraId=${obraId}`)).corpo.solicitacoes.map((s: { id: string }) => s.id);
+  assert.deepEqual(await ids('finalizada'), [finalizada]);
+  assert.deepEqual(await ids('aberta'), [aberta]);
+});

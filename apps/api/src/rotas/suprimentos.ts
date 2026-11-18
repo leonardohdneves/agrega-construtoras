@@ -40,7 +40,7 @@ const decimal = (msg: string) =>
 const positivo = (msg: string) => decimal(msg).refine((n) => n > 0, msg);
 const naoNegativo = (msg: string) => decimal(msg).refine((n) => n >= 0, msg);
 
-const STATUS_SOLICITACAO = ['aberta', 'em_cotacao', 'atendida', 'cancelada'] as const;
+const STATUS_SOLICITACAO = ['aberta', 'finalizada', 'em_cotacao', 'atendida', 'cancelada'] as const;
 const STATUS_PEDIDO = ['rascunho', 'aguardando_aprovacao', 'aprovado', 'reprovado', 'enviado', 'parcial', 'recebido', 'encerrado', 'cancelado'] as const;
 /** Pedidos que ainda podem receber mercadoria. */
 const PEDIDO_A_RECEBER = ['aprovado', 'enviado', 'parcial'];
