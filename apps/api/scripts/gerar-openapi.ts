@@ -127,7 +127,7 @@ function bancoDaSonda(): Banco {
       if (!/FROM usuarios u LEFT JOIN empresas e/.test(String(sql))) throw new Error('sonda: a rota passou do guarda');
       const perfil = String(valores?.[0]) as Perfil;
       const semEmpresa = perfil === 'admin_sistema';
-      return { rowCount: 1, rows: [{ id: perfil, nome: perfil, email: `${perfil}@sonda`, perfil, empresa_id: semEmpresa ? null : 'empresa', ativo: true, administrador: false, modulos: null, senha_provisoria: false, empresa_ativa: true, modulos_contratados: null }] };
+      return { rowCount: 1, rows: [{ id: perfil, nome: perfil, email: `${perfil}@sonda`, perfil, empresa_id: semEmpresa ? null : 'empresa', ativo: true, administrador: false, modulos: null, senha_provisoria: false, sessao_versao: 0, empresa_ativa: true, modulos_contratados: null }] };
     },
   } as unknown as Banco;
 }

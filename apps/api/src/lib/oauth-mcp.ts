@@ -17,7 +17,7 @@ const TOLERANCIA_REUSO_S = 60;
 const hash = (valor: string) => createHash('sha256').update(valor).digest('hex');
 const novoSegredo = () => randomBytes(32).toString('hex');
 
-export type UsuarioOAuth = { id: string; empresaId: string; perfil: Perfil };
+export type UsuarioOAuth = { id: string; empresaId: string; perfil: Perfil; sessaoVersao: number };
 
 /**
  * O servidor MCP se identifica com o segredo compartilhado (cabeçalho X-MCP-Secret). Sem segredo configurado, ninguém passa.
@@ -50,12 +50,12 @@ export async function emitirCodigo(banco: Cliente, usuarioId: string, redirectUr
 async function usuarioApto(c: Cliente, usuarioId: string): Promise<UsuarioOAuth | null> {
   const u = (
     await c.query(
-      `SELECT u.id, u.perfil, u.empresa_id FROM usuarios u JOIN empresas e ON e.id = u.empresa_id
+      `SELECT u.id, u.perfil, u.empresa_id, u.sessao_versao FROM usuarios u JOIN empresas e ON e.id = u.empresa_id
         WHERE u.id = $1 AND u.ativo AND u.excluido_em IS NULL AND NOT u.senha_provisoria AND e.ativo`,
       [usuarioId],
     )
   ).rows[0];
-  return u ? { id: u.id, empresaId: u.empresa_id, perfil: u.perfil } : null;
+  return u ? { id: u.id, empresaId: u.empresa_id, perfil: u.perfil, sessaoVersao: u.sessao_versao } : null;
 }
 
 /** Sem `familiaId` começa uma conexão nova (família nova); com ele, o token continua a cadeia do anterior. */

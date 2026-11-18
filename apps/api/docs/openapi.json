@@ -312,7 +312,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:75",
+        "x-fonte": "src/rotas/auth.ts:80",
         "parameters": [
           {
             "name": "redirect_uri",
@@ -382,7 +382,7 @@
           "modulo": null,
           "perfis": []
         },
-        "x-fonte": "src/rotas/auth.ts:81"
+        "x-fonte": "src/rotas/auth.ts:86"
       }
     },
     "/api/auth/oauth-exchange": {
@@ -443,7 +443,7 @@
           "perfis": [],
           "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:116"
+        "x-fonte": "src/rotas/auth.ts:121"
       }
     },
     "/api/auth/oauth-refresh": {
@@ -499,7 +499,7 @@
           "perfis": [],
           "servidorMcp": true
         },
-        "x-fonte": "src/rotas/auth.ts:127"
+        "x-fonte": "src/rotas/auth.ts:132"
       }
     },
     "/api/empresa": {
@@ -1337,7 +1337,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/usuarios.ts:58"
+        "x-fonte": "src/rotas/usuarios.ts:59"
       },
       "post": {
         "requestBody": {
@@ -1446,7 +1446,7 @@
             "dono"
           ]
         },
-        "x-fonte": "src/rotas/usuarios.ts:69"
+        "x-fonte": "src/rotas/usuarios.ts:70"
       }
     },
     "/api/usuarios/{id}": {
@@ -1559,7 +1559,7 @@
             "dono"
           ]
         },
-        "x-fonte": "src/rotas/usuarios.ts:92"
+        "x-fonte": "src/rotas/usuarios.ts:93"
       }
     },
     "/api/admin/material/{arquivo}": {

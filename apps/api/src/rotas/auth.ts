@@ -31,7 +31,7 @@ export function rotasAuth(banco: Banco) {
         if (!u || !ok || !u.ativo) throw new ErroHttp(401, MSG_LOGIN);
         if (u.empresa_id && !u.empresa_ativa) throw new ErroHttp(403, 'O acesso desta empresa está suspenso.');
         await banco.query('UPDATE usuarios SET ultimo_acesso = now() WHERE id = $1', [u.id]);
-        gravarSessao(reply, { id: u.id, perfil: u.perfil, empresaId: u.empresa_id });
+        gravarSessao(reply, { id: u.id, perfil: u.perfil, empresaId: u.empresa_id, sessaoVersao: u.sessao_versao });
         return { usuario: usuarioPublico(u, u.empresa_id ? u.modulos_contratados : undefined) };
       },
     );
@@ -54,17 +54,22 @@ export function rotasAuth(banco: Banco) {
     });
 
     const corpoPutSenha = z.object({ senhaAtual: z.string().min(1, 'Informe a senha atual.'), novaSenha: esquemaSenha });
-    app.put('/senha', { preHandler: exigir(banco), schema: { body: corpoPutSenha } }, async (req) => {
+    app.put('/senha', { preHandler: exigir(banco), schema: { body: corpoPutSenha } }, async (req, reply) => {
       const dados = corpoPutSenha.parse(req.body);
       if (dados.novaSenha === dados.senhaAtual) throw new ErroHttp(400, 'A nova senha precisa ser diferente da senha atual.');
       const u = (await banco.query('SELECT senha_hash FROM usuarios WHERE id = $1', [req.usuario!.id])).rows[0];
       if (!(await conferirSenha(dados.senhaAtual, u.senha_hash))) throw new ErroHttp(400, 'A senha atual não confere.');
-      await banco.query('UPDATE usuarios SET senha_hash = $1, senha_provisoria = false, atualizado_em = now() WHERE id = $2', [
-        await gerarHashSenha(dados.novaSenha),
-        req.usuario!.id,
-      ]);
-      // Senha nova encerra as conexões de assistentes (Claude, ChatGPT): cada um pede o login de novo.
+      // Senha nova soma um na versão da sessão: todo token emitido antes (cookie de outro aparelho, Bearer do servidor MCP) deixa de valer.
+      const versao = (
+        await banco.query('UPDATE usuarios SET senha_hash = $1, senha_provisoria = false, sessao_versao = sessao_versao + 1, atualizado_em = now() WHERE id = $2 RETURNING sessao_versao', [
+          await gerarHashSenha(dados.novaSenha),
+          req.usuario!.id,
+        ])
+      ).rows[0].sessao_versao as number;
+      // E encerra as conexões de assistentes (Claude, ChatGPT): cada um pede o login de novo.
       await revogarConexoes(banco, req.usuario!.id);
+      // Quem trocou continua logado neste navegador, com um token da versão nova.
+      if (req.sessaoPorCookie) gravarSessao(reply, { id: req.usuario!.id, empresaId: req.usuario!.empresaId, perfil: req.usuario!.perfil, sessaoVersao: versao });
       return { ok: true };
     });
 
