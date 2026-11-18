@@ -13,7 +13,7 @@ import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas } from '../lib/leitura-projeto.ts';
-import { empresaDo, exigir } from '../sessao.ts';
+import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import { producaoDoMes } from '../lib/equipes-servicos.ts';
@@ -196,13 +196,17 @@ async function limiteObrasAtivas(c: Cliente, empresaId: string) {
   if (n >= lim.obras) throw new ErroHttp(403, lim.emTeste ? `Durante o período de teste, a construtora pode ter até ${lim.obras} obra. Para mais obras, contrate um plano.` : `Seu contrato permite até ${lim.obras} obras ativas. Conclua uma obra ou amplie o contrato.`);
 }
 
+/** D10: só dono e gestor escolhem os responsáveis (engenheiro, mestre de obra, almoxarife) de cada obra. */
+const PERFIS_ATRIBUEM_OBRA: string[] = ['dono', 'gestor'];
+const MSG_ATRIBUIR = 'Só o dono ou o gestor atribuem responsáveis à obra.';
+
 export function rotasEngenharia(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
     // Engenheiro de obra: só as obras atribuídas a ele; tabelas de referência só para consulta.
     app.addHook('preHandler', async (req) => {
       if (!ehRestritoAObras(req.usuario)) return;
-      const regra = regraEngenheiroEngenharia(req.method, req.url.split('?')[0].replace(/^\/api\/eng/, ''));
+      const regra = regraEngenheiroEngenharia(req.method, caminhoDaRota(req).replace(/^\/api\/eng/, ''));
       if (regra.tipo === 'negado') throw semPermissao();
       if (regra.tipo === 'obra') {
         const ok = await banco.query(
@@ -1056,6 +1060,7 @@ export function rotasEngenharia(banco: Banco) {
 
     app.post('/obras', { schema: { body: esquemaObra } }, async (req, reply) => {
       const d0 = esquemaObra.parse(req.body);
+      if (d0.responsaveis !== undefined && !PERFIS_ATRIBUEM_OBRA.includes(req.usuario!.perfil)) throw new ErroHttp(403, MSG_ATRIBUIR);
       if (!d0.nome) throw new ErroHttp(400, 'Dê um nome à obra.');
       const bdi = resolverBdi(d0, null);
       const d = {
@@ -1107,6 +1112,7 @@ export function rotasEngenharia(banco: Banco) {
 
     app.put<{ Params: { id: string } }>('/obras/:id', { schema: { body: esquemaObra } }, async (req) => {
       const d = esquemaObra.parse(req.body);
+      if (d.responsaveis !== undefined && !PERFIS_ATRIBUEM_OBRA.includes(req.usuario!.perfil)) throw new ErroHttp(403, MSG_ATRIBUIR);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
         const atual = await obraDaEmpresa(c, empresaId, req.params.id);

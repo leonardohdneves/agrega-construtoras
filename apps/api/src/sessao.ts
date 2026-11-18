@@ -60,6 +60,19 @@ export function apagarSessao(reply: FastifyReply): void {
   reply.clearCookie(COOKIE_SESSAO, { path: '/' });
 }
 
+/**
+ * Caminho da rota que respondeu, montado a partir do padrão registrado (ex.: /api/eng/obras/:id) e dos parâmetros.
+ * Toda decisão de acesso usa este caminho, nunca o `req.url` cru: o Fastify decodifica %XX para achar a rota
+ * (/api/%66in → /api/fin), mas o req.url continua com %66 e enganaria a comparação por prefixo (P04).
+ * Os parâmetros entram codificados, para um %2F não virar uma barra no meio do caminho.
+ */
+export function caminhoDaRota(req: FastifyRequest): string {
+  const padrao = req.routeOptions?.url;
+  if (!padrao) return '';
+  const params = (req.params ?? {}) as Record<string, string>;
+  return padrao.replace(/:([A-Za-z0-9_]+)/g, (_t, nome: string) => encodeURIComponent(params[nome] ?? ''));
+}
+
 /** Guarda de rota: exige usuário ativo e, se informados, um dos perfis. */
 export function exigir(banco: Banco, ...perfis: Perfil[]) {
   return async function (req: FastifyRequest): Promise<void> {
@@ -79,10 +92,10 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
     const contratados = u.empresa_id ? contratoComBase(u.modulos_contratados) : undefined;
     const senhaProvisoria = !!u.senha_provisoria;
     req.usuario = { id: u.id, nome: u.nome, email: u.email, perfil: u.perfil, empresaId: u.empresa_id, administrador, modulos: modulosEfetivos(u.perfil, lista, contratados), senhaProvisoria };
-    if (senhaProvisoria && !ROTAS_COM_SENHA_PROVISORIA.has(`${req.method} ${req.url.split('?')[0]}`)) {
+    if (senhaProvisoria && !ROTAS_COM_SENHA_PROVISORIA.has(`${req.method} ${caminhoDaRota(req)}`)) {
       throw new ErroHttp(403, 'Troque a senha inicial para continuar.', { senhaProvisoria: true });
     }
-    if (!acessoPermitido({ perfil: u.perfil, modulos: lista, perfisRota: perfis, url: req.url, metodo: req.method, contratados })) throw semPermissao();
+    if (!acessoPermitido({ perfil: u.perfil, modulos: lista, perfisRota: perfis, url: caminhoDaRota(req), metodo: req.method, contratados })) throw semPermissao();
   };
 }
 
