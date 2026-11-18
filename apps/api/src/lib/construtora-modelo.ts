@@ -107,7 +107,7 @@ async function popularConstrutora(c: C, e: string, dono: string, hoje: string): 
     [e, inicio, somarDias(hoje, 150), centro['Canteiro de obras']],
   );
   await q(
-    `INSERT INTO obra_composicao_preco (obra_id, administracao_pct, imprevistos_pct, financeiro_pct, lucro_pct) VALUES ($1, 4, 1, 1.5, 8)`,
+    `INSERT INTO obra_composicao_preco (obra_id, administracao_pct, imprevistos_pct, cdi_pct, lucro_pct) VALUES ($1, 4, 1, 1.5, 8)`,
     [obra],
   );
 
@@ -139,32 +139,40 @@ async function popularConstrutora(c: C, e: string, dono: string, hoje: string): 
   for (const [codigo, descricao] of ETAPAS) {
     eap[codigo] = await idDe(`INSERT INTO eap_nos (obra_id, nivel, codigo, descricao) VALUES ($1, 'etapa', $2, $3) RETURNING id`, [obra, codigo, descricao]);
   }
+  // Cada serviço do orçamento fica numa Tarefa abaixo da etapa (regra da planilha desde a migração 0031).
+  const tarefasDaEtapa: Record<string, number> = {};
   for (const [ordem, [etapa, comp, quantidade]] of ORCAMENTO.entries()) {
+    tarefasDaEtapa[etapa] = (tarefasDaEtapa[etapa] ?? 0) + 1;
+    const descricao = COMPOSICOES.find((k) => k.codigo === comp)?.descricao ?? comp;
+    const tarefa = await idDe(
+      `INSERT INTO eap_nos (obra_id, pai_id, nivel, codigo, descricao) VALUES ($1, $2, 'tarefa', $3, $4) RETURNING id`,
+      [obra, eap[etapa], `${etapa}.${tarefasDaEtapa[etapa]}`, descricao],
+    );
     await q(
       `INSERT INTO orcamento_itens (obra_id, eap_no_id, obra_item_id, quantidade, ordem) VALUES ($1, $2, $3, $4, $5)`,
-      [obra, eap[etapa], itemDo[comp], quantidade, ordem + 1],
+      [obra, tarefa, itemDo[comp], quantidade, ordem + 1],
     );
   }
 
   // ----- cronograma: fundação e estrutura concluídas, alvenaria e instalações em andamento
   const fundacao = await idDe(
-    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem)
-     VALUES ($1, $2, 'Fundação em estacas e blocos', $3, 30, NULL, 1) RETURNING id`,
+    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem, numero, descricao_resumida)
+     VALUES ($1, $2, 'Fundação em estacas e blocos', $3, 30, NULL, 1, 1, 'Fundação em estacas e blocos') RETURNING id`,
     [obra, eap['1'], somarDias(hoje, -120)],
   );
   const estrutura = await idDe(
-    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem)
-     VALUES ($1, $2, 'Estrutura de concreto armado', $3, 75, $4, 2) RETURNING id`,
+    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem, numero, descricao_resumida)
+     VALUES ($1, $2, 'Estrutura de concreto armado', $3, 75, $4, 2, 2, 'Estrutura de concreto armado') RETURNING id`,
     [obra, eap['2'], somarDias(hoje, -90), fundacao],
   );
   await q(
-    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem)
-     VALUES ($1, $2, 'Alvenaria de vedação', $3, 60, $4, 3)`,
+    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem, numero, descricao_resumida)
+     VALUES ($1, $2, 'Alvenaria de vedação', $3, 60, $4, 3, 3, 'Alvenaria de vedação')`,
     [obra, eap['3'], somarDias(hoje, -15), estrutura],
   );
   await q(
-    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem)
-     VALUES ($1, $2, 'Instalações de esgoto e água fria', $3, 70, NULL, 4)`,
+    `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, ordem, numero, descricao_resumida)
+     VALUES ($1, $2, 'Instalações de esgoto e água fria', $3, 70, NULL, 4, 4, 'Instalações de esgoto e água fria')`,
     [obra, eap['4'], somarDias(hoje, -40)],
   );
 
@@ -185,8 +193,8 @@ async function popularConstrutora(c: C, e: string, dono: string, hoje: string): 
     const p = await idDe(
       `INSERT INTO pedidos_compra (empresa_id, numero, data, fornecedor_id, solicitacao_id, previsao_entrega, condicao_pagamento, local_entrega,
                                    total_centavos, centro_custo_id, status, aprovado_por_id, aprovado_em, criado_por_id)
-       VALUES ($1, $2, $3, $4, $5, $6, '30 dias após a entrega', 'Canteiro da obra OBR-001', $7, $8, $9, $10, $3, $10) RETURNING id`,
-      [e, numero, data, fornecedorId, solicitacaoId, previsao, total, centro['Canteiro de obras'], status, dono],
+       VALUES ($1, $2, $3, $4, $5, $6, '30 dias após a entrega', 'Canteiro da obra OBR-001', $7, $8, $9, $10, $11, $10) RETURNING id`,
+      [e, numero, data, fornecedorId, solicitacaoId, previsao, total, centro['Canteiro de obras'], status, dono, `${data}T12:00:00-03:00`],
     );
     for (const [descricao, unidade, qtd, preco] of itens) {
       await q(`INSERT INTO pedidos_itens (empresa_id, pedido_id, descricao, unidade, quantidade, preco_unitario_centavos) VALUES ($1, $2, $3, $4, $5, $6)`, [e, p, descricao, unidade, qtd, preco]);
@@ -240,8 +248,8 @@ async function popularConstrutora(c: C, e: string, dono: string, hoje: string): 
     const m = await idDe(
       `INSERT INTO medicoes (empresa_id, numero, contrato_id, sequencia, periodo_inicio, periodo_fim, data, valor_centavos, status,
                              enviado_aprovacao_em, aprovado_por_id, aprovado_em, criado_por_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'aprovada', $7, $9, $7, $9) RETURNING id`,
-      [e, numero, contratoId, sequencia, periodoIni, periodoFim, data, bruto, dono],
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'aprovada', $10, $9, $10, $9) RETURNING id`,
+      [e, numero, contratoId, sequencia, periodoIni, periodoFim, data, bruto, dono, `${data}T12:00:00-03:00`],
     );
     for (const l of linhas) {
       await q(`INSERT INTO medicoes_itens (empresa_id, medicao_id, contrato_item_id, quantidade, valor_centavos) VALUES ($1, $2, $3, $4, $5)`, [e, m, l.id, l.qtd, l.valor]);
