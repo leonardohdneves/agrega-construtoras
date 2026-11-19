@@ -5,6 +5,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import { Assinatura } from '../componentes/Suprimentos';
+import { useSessao } from '../sessao';
 
 type Instalacao = 'pex' | 'galvanizado';
 type Glp = {
@@ -126,6 +127,42 @@ export function LaudosLista({ tipo, titulo, descricao }: { tipo: 'glp' | 'avalia
 }
 
 /** Laudo de GLP: formulário com os campos do modelo, leitura de PDF pela IA e impressão no formato do laudo. */
+/** Seções do laudo de GLP, na ordem do impresso (o sumário sai daqui). */
+const SECOES_GLP = ['Dados da edificação', 'Notas gerais', 'Materiais utilizados', 'Especificações', 'A central de gás', 'Pontos de consumo', 'Conclusão'];
+
+/** Capa e sumário do laudo impresso, no padrão dos laudos da Neves. Só aparecem na impressão. */
+function CapaLaudo({ titulo, cliente, local, responsavel, registro }: { titulo: string; cliente: string; local: string; responsavel: string; registro: string }) {
+  const { empresa } = useSessao();
+  return (
+    <>
+      <div className="laudo-capa">
+        {empresa?.temLogo && <img className="laudo-capa-logo" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt={empresa.nomeFantasia || empresa.razaoSocial} />}
+        <div className="laudo-capa-rodape">
+          <h1>{titulo}</h1>
+          {cliente && <p>{cliente}{local ? ` /${local}` : ''}</p>}
+          {responsavel && (
+            <p className="laudo-capa-resp">
+              {responsavel}
+              {registro && <><br /><small>{registro}</small></>}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="laudo-sumario">
+        <h2>Sumário</h2>
+        <ol>
+          {SECOES_GLP.map((s, i) => (
+            <li key={s}>
+              <span className="laudo-sumario-num">{i + 1}</span>
+              <span>{s}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </>
+  );
+}
+
 export function LaudoGlp() {
   const { id = '' } = useParams();
   const [dados, setDados] = useState<Glp | null>(null);
@@ -283,7 +320,16 @@ export function LaudoGlp() {
       </form>
 
       <div className="so-imprimir laudo-impresso">
-        <h2 className="laudo-secao">1 Dados da edificação</h2>
+        <div className="laudo-barra" aria-hidden="true" />
+        <div className="laudo-quadrado" aria-hidden="true" />
+        <CapaLaudo
+          titulo="Laudo de rede de GLP"
+          cliente={dados.proprietarioNome.toUpperCase()}
+          local={dados.cidade ? `${dados.cidade.toUpperCase()}${dados.uf ? `-${dados.uf}` : ''}` : ''}
+          responsavel={dados.responsavelNome.toUpperCase()}
+          registro={dados.responsavelRegistro}
+        />
+        <h2 className="laudo-secao laudo-primeira">1 Dados da edificação</h2>
         <p>Proprietário: {dados.proprietarioNome}{dados.proprietarioDocumento ? `; CNPJ/CPF: ${dados.proprietarioDocumento}` : ''}</p>
         <p>Endereço: {dados.enderecoObra}{dados.cep ? `; CEP: ${dados.cep}` : ''}{dados.cidade ? `; ${dados.cidade}${dados.uf ? ` - ${dados.uf}` : ''}` : ''}</p>
 

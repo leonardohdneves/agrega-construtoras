@@ -818,13 +818,42 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 
 /* Laudos (impressão do laudo de GLP) */
 .laudo-impresso { font-size: 11pt; line-height: 1.5; }
-.laudo-impresso .laudo-secao { font-size: 11pt; font-weight: 700; margin: 4mm 0 1.5mm; }
+.laudo-impresso .laudo-secao { font-size: 11pt; font-weight: 700; margin: 4mm 0 1.5mm; text-transform: uppercase; }
 .laudo-impresso p { margin: 0 0 2mm; }
 .laudo-impresso .texto-justificado { text-align: justify; }
 .laudo-impresso .direita { text-align: right; margin-top: 6mm; }
 .laudo-impresso ul { margin: 0 0 2mm; padding-left: 6mm; }
 @media print { .laudo-impresso .assinatura-linha { margin-top: 16mm; } }
 .laudo-impresso .laudo-nota { font-size: 9pt; font-style: italic; }
+
+/* Impressão do laudo no padrão dos laudos da Neves: capa, sumário, barra vermelha na lateral, A4 em retrato.
+   Vale só na impressão; na tela o bloco fica escondido (so-imprimir). */
+@media print {
+  @page laudo {
+    size: A4 portrait;
+    margin: 22mm 20mm 24mm 26mm;
+    @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt Arial, Helvetica, sans-serif; color: #555; }
+  }
+  @page laudo:first { @bottom-right { content: none; } }
+  /* Sem a faixa e o título do sistema: a capa é que identifica o documento. */
+  body:has(.laudo-impresso) .doc-cabecalho { display: none !important; }
+  .laudo-impresso { page: laudo; font-family: Arial, Helvetica, sans-serif; color: #000; }
+  .laudo-barra { position: fixed; left: 0; top: 0; bottom: 6mm; width: 6mm; background: #c00000; }
+  .laudo-quadrado { position: fixed; left: 0; bottom: 0; width: 6mm; height: 6mm; background: #000; }
+  .laudo-capa { display: flex; flex-direction: column; justify-content: space-between; height: 236mm; break-after: page; }
+  .laudo-capa-logo { display: block; width: 120mm; max-width: 100%; margin: 28mm auto 0; object-fit: contain; }
+  .laudo-capa-rodape { text-align: right; }
+  .laudo-capa-rodape h1 { font-size: 20pt; font-weight: 400; margin: 0; }
+  .laudo-capa-rodape p { font-size: 12pt; margin: 2mm 0 0; }
+  .laudo-capa-resp { margin-top: 28mm !important; font-size: 11pt; }
+  .laudo-capa-resp small { font-size: 10pt; }
+  .laudo-sumario { break-after: page; }
+  .laudo-sumario h2 { text-align: center; font-size: 14pt; font-weight: 400; margin: 20mm 0 14mm; }
+  .laudo-sumario ol { list-style: none; margin: 0; padding: 0; }
+  .laudo-sumario li { display: flex; align-items: baseline; gap: 6mm; padding: 3mm 0; border-bottom: 1px dotted #999; font-size: 11pt; }
+  .laudo-sumario-num { width: 8mm; }
+  .laudo-primeira { break-before: auto; }
+}
 
 /* RDO · fotos */
 .rdo-grade { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; margin-top: 10px; }
