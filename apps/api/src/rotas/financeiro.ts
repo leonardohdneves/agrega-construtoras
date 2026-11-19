@@ -19,6 +19,7 @@ import {
   valorPago,
 } from '../lib/financeiro.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { lerLancamentoComIa } from '../lib/ia-lancamento.ts';
 import { conferirPeriodo, diaQuery, flagQuery, idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
@@ -776,7 +777,7 @@ export function rotasFinanceiro(banco: Banco) {
       tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
       tipoLancamento: z.enum(['receita', 'despesa']),
     });
-    app.post('/lancamentos/leitura', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLancamentosLeitura } }, async (req) => {
+    app.post('/lancamentos/leitura', { config: LIMITE_IA, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLancamentosLeitura } }, async (req) => {
       const d = corpoPostLancamentosLeitura
         .parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');

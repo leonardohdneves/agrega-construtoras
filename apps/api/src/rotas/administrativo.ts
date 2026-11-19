@@ -11,6 +11,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { lerCadastroComIa, type EntidadeCadastro } from '../lib/ia-cadastro.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { registrarColaboradores } from './frota.ts';
 
 const texto = z.string().trim().max(200).optional().nullable().transform((v) => v || null);
@@ -109,7 +110,7 @@ export function rotasAdministrativo(banco: Banco) {
       tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
       entidade: z.enum(['fornecedor', 'credor', 'cliente', 'colaborador']),
     });
-    app.post('/cadastros/leitura', { preHandler: gestao, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCadastrosLeitura } }, async (req) => {
+    app.post('/cadastros/leitura', { config: LIMITE_IA, preHandler: gestao, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCadastrosLeitura } }, async (req) => {
       const d = corpoPostCadastrosLeitura
         .parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');

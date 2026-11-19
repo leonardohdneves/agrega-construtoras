@@ -18,6 +18,7 @@ import { cnpjValido } from '../lib/cnpj.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
 import { atualizarStatusRecebimento, esquemaLigarNotaPedido, ligarNotaAoPedido } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { conferirPeriodo, diaQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { fatorPadrao, registrarEntradasNota, registrarEntradasObra, removerEntradasNota, validarApropriacaoObra } from '../lib/estoque.ts';
 import { cadastrosParaIa, vinculoDoItem } from '../lib/vinculos.ts';
@@ -882,7 +883,7 @@ export function rotasNotas(banco: Banco) {
       chave: z.string().max(80).optional().nullable(),
       usarIa: z.boolean().optional().default(true),
     });
-    app.post('/notas/pdf', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostNotasPdf } }, async (req, reply) => {
+    app.post('/notas/pdf', { config: LIMITE_IA, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostNotasPdf } }, async (req, reply) => {
       const d = corpoPostNotasPdf
         .parse(req.body);
       const bytes = Buffer.from(d.arquivo, 'base64');
@@ -966,7 +967,7 @@ export function rotasNotas(banco: Banco) {
     });
 
     // ----- Ler de novo, pela IA, o arquivo anexado a um rascunho -----
-    app.post<{ Params: { id: string } }>('/notas/:id/reler', async (req, reply) => {
+    app.post<{ Params: { id: string } }>('/notas/:id/reler', { config: LIMITE_IA }, async (req, reply) => {
       const empresaId = empresaDo(req);
       const n = await carregarNota(banco, empresaId, req.params.id);
       if (n.status !== 'rascunho' && n.status !== 'aguardando_conferencia') throw new ErroHttp(409, 'Só dá para ler de novo uma nota que ainda está para conferir.');

@@ -15,6 +15,7 @@ import { normalizar } from '../lib/sugestoes.ts';
 import { fornecedorAtende } from '../lib/atuacao.ts';
 import { dispensaAprovacao, lerRegras, lerRegrasDe, podeAprovar, proximoNumero, textoRegras, type RegrasAprovacao } from '../lib/aprovacao.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { lerPropostaComIa } from '../lib/ia-cotacao.ts';
 
@@ -1542,7 +1543,7 @@ export function rotasSuprimentos(banco: Banco) {
       arquivo: z.string({ required_error: 'Envie a foto ou o PDF da proposta.' }).min(20, 'Arquivo vazio.'),
       tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
     });
-    app.post<{ Params: { id: string } }>('/cotacoes/:id/leitura-ia', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCotacoesLeituraIa } }, async (req) => {
+    app.post<{ Params: { id: string } }>('/cotacoes/:id/leitura-ia', { config: LIMITE_IA, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCotacoesLeituraIa } }, async (req) => {
       const d = corpoPostCotacoesLeituraIa
         .parse(req.body);
       const empresaId = empresaDo(req);

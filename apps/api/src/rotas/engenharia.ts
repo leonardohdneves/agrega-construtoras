@@ -15,6 +15,7 @@ import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColu
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas } from '../lib/leitura-projeto.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import { producaoDoMes } from '../lib/equipes-servicos.ts';
@@ -406,7 +407,7 @@ export function rotasEngenharia(banco: Banco) {
     // 1) mapear-ia: a IA vê só as primeiras linhas e diz em que coluna está cada campo;
     // 2) converter: o navegador manda as colunas úteis da planilha inteira e o servidor gera o CSV padrão.
     const corpoPostTabelasMapearIa = z.object({ amostra: z.string().min(1).max(200_000), uf, desonerado: z.boolean().default(false) });
-    app.post('/tabelas/mapear-ia', { schema: { body: corpoPostTabelasMapearIa } }, async (req) => {
+    app.post('/tabelas/mapear-ia', { config: LIMITE_IA, schema: { body: corpoPostTabelasMapearIa } }, async (req) => {
       const d = corpoPostTabelasMapearIa.parse(req.body);
       recusarBinario(d.amostra);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
@@ -2563,7 +2564,7 @@ export function rotasEngenharia(banco: Banco) {
 
     /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */
     const corpoPostObrasLeituraProjeto = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
-    app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { bodyLimit: 24 * 1024 * 1024, schema: { body: corpoPostObrasLeituraProjeto } }, async (req) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { config: LIMITE_IA, bodyLimit: 24 * 1024 * 1024, schema: { body: corpoPostObrasLeituraProjeto } }, async (req) => {
       const { arquivo, nome } = corpoPostObrasLeituraProjeto.parse(req.body);
       const empresaId = empresaDo(req);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);

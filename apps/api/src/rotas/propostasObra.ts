@@ -6,6 +6,7 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { montarEscopoContrato } from '../lib/contrato-escopo.ts';
@@ -374,7 +375,7 @@ export function rotasPropostasObra(banco: Banco) {
       };
     });
 
-    app.post<{ Params: { id: string } }>('/obra-propostas/:id/revisar-ia', async (req) => {
+    app.post<{ Params: { id: string } }>('/obra-propostas/:id/revisar-ia', { config: LIMITE_IA }, async (req) => {
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw naoEncontrado('Proposta');
       if (!iaDisponivel()) throw new ErroHttp(503, 'A revisão por IA não está configurada.');
