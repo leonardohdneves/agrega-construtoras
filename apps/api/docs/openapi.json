@@ -2,7 +2,7 @@
   "openapi": "3.0.3",
   "info": {
     "title": "Agrega Construtoras — API",
-    "version": "0.1.0",
+    "version": "0.9.0",
     "description": "API do Agrega Construtoras. Documento gerado do código por `npm run docs -w apps/api`; não edite à mão.\n\n**Autenticação.** `POST /api/auth/entrar` com e-mail e senha devolve o cookie `agrega_sessao` (12 horas). Todas as rotas exigem esse cookie, menos as marcadas como públicas.\n\n**Acesso.** Cada rota traz em `x-acesso` os perfis que passam pelo guarda no padrão de cada perfil (sem módulos personalizados e com todos os módulos contratados). A rota ainda pode restringir por registro: engenheiro e mestre de obra só veem as obras atribuídas a eles.\n\n**Respostas.** Sucesso devolve JSON em envelope nomeado (`{ obras: [...] }`, `{ obra: {...} }`); os formatos de resposta ainda não estão descritos aqui. Erro devolve sempre `{ erro: string }`; erro de validação (400) traz também `campos: [{ campo, mensagem }]`.\n\n**Valores.** Dinheiro trafega em reais (número). Datas são texto `AAAA-MM-DD`. Identificadores são UUID."
   },
   "components": {

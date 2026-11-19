@@ -34,6 +34,8 @@ export const config = {
   demoSenha: process.env.DEMO_SENHA || '',
   cursoSenha: process.env.CURSO_SENHA || '',
   cookieSeguro: producao,
+  // Saltos de proxy confiáveis para o IP do cliente (P23). No Railway, a borda é um salto.
+  saltosProxy: Math.max(0, Number(process.env.TRUST_PROXY_SALTOS ?? 1) || 0),
   // Endereços /oauth/callback dos servidores MCP autorizados a receber o código de login (separados por vírgula).
   // Segredo compartilhado com o servidor MCP: só quem o apresenta troca o código de login e renova o token (P38).
   // Em produção, sem ele (mínimo de 32 caracteres) essas duas rotas recusam tudo.
