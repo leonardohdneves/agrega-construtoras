@@ -16,8 +16,8 @@ const dataObrig = (msg: string) => z.string({ required_error: msg }).regex(/^\d{
 const esquemaItem = z.object({
   descricao: z.string({ required_error: 'Informe a descrição.' }).trim().min(2, 'Informe a descrição.').max(200),
   unidade: z.string().trim().max(20).optional().nullable().transform((v) => v || null),
-  quantidade: z.number({ required_error: 'Informe a quantidade.' }).positive('A quantidade precisa ser maior que zero.').max(1e9),
-  precoUnitario: z.number({ required_error: 'Informe o preço acordado.' }).nonnegative('O preço não pode ser negativo.').max(1e9),
+  quantidade: z.number({ required_error: 'Informe a quantidade.', invalid_type_error: 'Informe a quantidade.' }).positive('A quantidade precisa ser maior que zero.').max(1e9),
+  precoUnitario: z.number({ required_error: 'Informe o preço acordado.', invalid_type_error: 'Informe o preço acordado.' }).nonnegative('O preço não pode ser negativo.').max(1e9),
 });
 const esquemaPermuta = z
   .object({

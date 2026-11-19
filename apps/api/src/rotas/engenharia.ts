@@ -2100,6 +2100,8 @@ export function rotasEngenharia(banco: Banco) {
     }
 
     const hojeIso = () => new Date().toISOString().slice(0, 10);
+    /** O cálculo do acompanhamento é em centavos (lib/acompanhamento.ts); a resposta sai em reais, como o resto da API (D8, P28). */
+    const emReais = (centavos: number) => Math.round(centavos) / 100;
 
     app.get<{ Params: { id: string } }>('/obras/:id/acompanhamento/planilha', async (req) => {
       const empresaId = empresaDo(req);
@@ -2123,7 +2125,7 @@ export function rotasEngenharia(banco: Banco) {
             id: n.id, paiId: n.paiId, nivel: n.nivel, codigo: n.codigo, descricao: n.descricao, folha,
             unidade: orc?.unidade ?? null,
             quantidadeOrcada: orc?.quantidade ?? null,
-            custoDireto: r ? r.custoPrevisto : 0,
+            custoDireto: r ? emReais(r.custoPrevisto) : 0,
             percentualAtual: r && r.custoPrevisto > 0 ? Math.round(r.percentualExecutado * 100) / 100 : null,
           };
         })
@@ -2205,7 +2207,9 @@ export function rotasEngenharia(banco: Banco) {
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
       const d = await dadosDoAcompanhamento(banco, obra);
       const hoje = hojeIso();
-      if (!d.planejado.length) return { pontos: [], hoje, custoTotal: Math.round(d.custoTotal), vazio: 'Monte o planejamento (atividades ligadas à EAP) para ver a Curva S.' };
+      if (!d.planejado.length) {
+        return { pontos: [], hoje, custoTotal: emReais(d.custoTotal), dataUltimaMedicao: null, indices: { cpi: null, spi: null }, vazio: 'Monte o planejamento (atividades ligadas à EAP) para ver a Curva S.' };
+      }
       const de = d.planejado.reduce((m, a) => (a.inicio < m ? a.inicio : m), d.planejado[0].inicio).slice(0, 8) + '01';
       const ate = d.planejado.reduce((m, a) => (a.fim > m ? a.fim : m), d.planejado[0].fim);
       const pontos = curvaS({ custos: d.custos, medicoes: d.medicoes, atividades: d.planejado, despesas: d.despesas, de, ate, hoje });
@@ -2214,7 +2218,8 @@ export function rotasEngenharia(banco: Banco) {
       const realizadoAtual = d.despesas.filter((x) => x.data <= (ultima || hoje)).reduce((s, x) => s + x.valor, 0);
       const previstoAtual = pontos.filter((p) => p.data <= (ultima || hoje)).slice(-1)[0]?.previsto ?? 0;
       return {
-        pontos, hoje, custoTotal: Math.round(d.custoTotal), dataUltimaMedicao: ultima || null,
+        pontos: pontos.map((p) => ({ data: p.data, previsto: emReais(p.previsto), executado: p.executado === null ? null : emReais(p.executado), realizado: p.realizado === null ? null : emReais(p.realizado) })),
+        hoje, custoTotal: emReais(d.custoTotal), dataUltimaMedicao: ultima || null,
         indices: {
           cpi: realizadoAtual > 0 ? executadoAtual / realizadoAtual : null,
           spi: previstoAtual > 0 ? executadoAtual / previstoAtual : null,
@@ -2236,13 +2241,15 @@ export function rotasEngenharia(banco: Banco) {
       const totalPrevistoAte = linhas.filter((l) => l.nivel === 'etapa').reduce((s, l) => s + l.previstoAte, 0);
       return {
         dataRef,
-        linhas: linhas.sort((a, b) => compararCodigo(a.codigo, b.codigo)),
+        linhas: linhas
+          .sort((a, b) => compararCodigo(a.codigo, b.codigo))
+          .map((l) => ({ ...l, custoPrevisto: emReais(l.custoPrevisto), previstoAte: emReais(l.previstoAte), executado: emReais(l.executado), saldo: emReais(l.saldo) })),
         totais: {
-          custoPrevisto: totalPrevisto,
-          previstoAte: totalPrevistoAte,
-          executado: totalExecutado,
-          realizado: Math.round(realizado),
-          saldo: totalPrevisto - totalExecutado,
+          custoPrevisto: emReais(totalPrevisto),
+          previstoAte: emReais(totalPrevistoAte),
+          executado: emReais(totalExecutado),
+          realizado: emReais(realizado),
+          saldo: emReais(totalPrevisto - totalExecutado),
           cpi: realizado > 0 ? totalExecutado / realizado : null,
           spi: totalPrevistoAte > 0 ? totalExecutado / totalPrevistoAte : null,
         },

@@ -369,6 +369,7 @@ export type Fornecedor = {
   chavePix: string | null;
   observacoes: string | null;
   ativo: boolean;
+  criadoAutomaticamente?: boolean;
 };
 
 export function formatarDocumento(d: string | null): string {
@@ -467,9 +468,10 @@ export type ContaFinanceira = {
   banco: string | null;
   agencia: string | null;
   conta: string | null;
-  saldoInicial: number;
+  /** null para quem não é dono nem do perfil Financeiro. */
+  saldoInicial: number | null;
   dataSaldoInicial: string;
-  saldo: number;
+  saldo: number | null;
   ativo: boolean;
 };
 export type LinhaDre =

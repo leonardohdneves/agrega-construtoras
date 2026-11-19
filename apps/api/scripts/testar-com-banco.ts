@@ -51,6 +51,12 @@ try {
   codigo = r.status ?? 1;
 } finally {
   await pg.stop().catch(() => {});
-  rmSync(pasta, { recursive: true, force: true });
+  // No Windows o Postgres pode segurar os arquivos por alguns instantes depois de parar: tenta de novo e,
+  // se ainda assim não der, só avisa (a pasta temporária não muda o resultado dos testes).
+  try {
+    rmSync(pasta, { recursive: true, force: true, maxRetries: 10, retryDelay: 300 });
+  } catch (e) {
+    console.warn(`Aviso: não deu para apagar a pasta temporária ${pasta}: ${(e as Error).message}`);
+  }
 }
 process.exit(codigo);

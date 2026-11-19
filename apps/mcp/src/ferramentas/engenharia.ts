@@ -398,7 +398,7 @@ export const ferramentasEngenharia = colecao(
   ferramenta({
     name: 'obter_planilha_acompanhamento',
     description:
-      'Devolve o avanço físico atual da obra por linha da EAP e a lista de medições já lançadas: { hoje, ultimaData, linhas: [{ id, paiId, nivel, codigo, descricao, folha, unidade, quantidadeOrcada, custoDireto, percentualAtual }], medicoes: [{ id, data, descricao, linhas }] }. percentualAtual é o % executado acumulado (0 a 100; null em linha sem custo): nas folhas é o último valor medido, nas linhas de cima é a média ponderada pelo custo. Atenção: custoDireto vem em CENTAVOS (divida por 100 para reais). unidade e quantidadeOrcada só vêm em linha com exatamente um serviço. Use antes de registrar_medicao_fisica para pegar os ids das folhas e o percentual anterior.',
+      'Devolve o avanço físico atual da obra por linha da EAP e a lista de medições já lançadas: { hoje, ultimaData, linhas: [{ id, paiId, nivel, codigo, descricao, folha, unidade, quantidadeOrcada, custoDireto, percentualAtual }], medicoes: [{ id, data, descricao, linhas }] }. percentualAtual é o % executado acumulado (0 a 100; null em linha sem custo): nas folhas é o último valor medido, nas linhas de cima é a média ponderada pelo custo. custoDireto vem em reais, a custo direto (sem BDI). unidade e quantidadeOrcada só vêm em linha com exatamente um serviço. Use antes de registrar_medicao_fisica para pegar os ids das folhas e o percentual anterior.',
     inputSchema: z.object({ obraId: obraId() }),
     handler: async (args, api) => ({ success: true, data: await api.get(`/eng/obras/${args.obraId}/acompanhamento/planilha`) }),
   }),
@@ -436,14 +436,14 @@ export const ferramentasEngenharia = colecao(
   ferramenta({
     name: 'curva_s_obra',
     description:
-      'Curva S mensal da obra, com os índices de desempenho. Devolve { pontos: [{ data (último dia do mês), previsto, executado, realizado }], hoje, custoTotal, dataUltimaMedicao, indices: { cpi, spi } }. previsto é o custo das atividades do planejamento distribuído no tempo; executado é o valor agregado (% medido x custo direto); realizado são as despesas confirmadas apropriadas ao centro de custo da obra; os três são acumulados, e executado e realizado ficam null em meses futuros. Atenção: os valores vêm em CENTAVOS e a custo direto, sem BDI (divida por 100 para reais). cpi = executado / realizado e spi = executado / previsto (abaixo de 1 é desempenho ruim; null sem base de cálculo). Sem planejamento ligado à EAP, pontos vem vazio com a explicação no campo vazio.',
+      'Curva S mensal da obra, com os índices de desempenho. Devolve { pontos: [{ data (último dia do mês), previsto, executado, realizado }], hoje, custoTotal, dataUltimaMedicao, indices: { cpi, spi } }. previsto é o custo das atividades do planejamento distribuído no tempo; executado é o valor agregado (% medido x custo direto); realizado são as despesas confirmadas apropriadas ao centro de custo da obra; os três são acumulados, e executado e realizado ficam null em meses futuros. Os valores vêm em reais, a custo direto (sem BDI). cpi = executado / realizado e spi = executado / previsto (abaixo de 1 é desempenho ruim; null sem base de cálculo). Sem planejamento ligado à EAP, pontos vem vazio com a explicação no campo vazio.',
     inputSchema: z.object({ obraId: obraId() }),
     handler: async (args, api) => ({ success: true, data: await api.get(`/eng/obras/${args.obraId}/relatorios-gerenciais/curva-s`) }),
   }),
   ferramenta({
     name: 'relatorio_previsto_realizado',
     description:
-      'Previsto x executado por linha da EAP numa data de referência. Devolve { dataRef, linhas: [{ id, codigo, descricao, nivel, custoPrevisto, previstoAte, executado, percentualExecutado, saldo, spi }], totais: { custoPrevisto, previstoAte, executado, realizado, saldo, cpi, spi }, observacao }. custoPrevisto é o custo direto orçado da linha, previstoAte o que o planejamento previa até a data, executado o valor agregado pelas medições e saldo o que falta executar. Atenção: os valores vêm em CENTAVOS, sem BDI (divida por 100 para reais); percentualExecutado vai de 0 a 100. O realizado (despesas confirmadas da obra) só existe no total, não por etapa.',
+      'Previsto x executado por linha da EAP numa data de referência. Devolve { dataRef, linhas: [{ id, codigo, descricao, nivel, custoPrevisto, previstoAte, executado, percentualExecutado, saldo, spi }], totais: { custoPrevisto, previstoAte, executado, realizado, saldo, cpi, spi }, observacao }. custoPrevisto é o custo direto orçado da linha, previstoAte o que o planejamento previa até a data, executado o valor agregado pelas medições e saldo o que falta executar. Os valores vêm em reais, sem BDI; percentualExecutado vai de 0 a 100. O realizado (despesas confirmadas da obra) só existe no total, não por etapa.',
     inputSchema: z.object({
       obraId: obraId(),
       data: data('Data de referência, AAAA-MM-DD. Sem informar, a API usa a data da última medição (ou hoje, se não houver medição).').optional(),

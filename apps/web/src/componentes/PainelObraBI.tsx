@@ -23,8 +23,8 @@ type CurvaS = {
 type ObraLista = { id: string; codigo: string; nome: string };
 
 const ROTULO_STATUS: Record<string, string> = { orcamento: 'Em orçamento', planejamento: 'Planejamento', em_andamento: 'Em andamento', suspensa: 'Suspensa', concluida: 'Concluída', arquivada: 'Arquivada' };
-// A API devolve valores monetários em centavos; o painel trabalha em reais.
-const emReais = (c: number) => c / 100;
+// A API já devolve os valores do acompanhamento em reais (P28); as funções abaixo ficam só como ponto único de leitura.
+const emReais = (c: number) => c;
 function previstoRealizadoEmReais(p: PrevReal): PrevReal {
   return {
     ...p,

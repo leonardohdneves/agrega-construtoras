@@ -139,7 +139,7 @@ function PainelAcompanhamento({ obraId, setErro }: { obraId: string; setErro: (m
                     <td>{l.descricao}</td>
                     <td>{l.unidade ?? '—'}</td>
                     <td className="num">{l.quantidadeOrcada === null ? '—' : l.quantidadeOrcada.toLocaleString('pt-BR', { maximumFractionDigits: 3 })}</td>
-                    <td className="num">{formatarMoeda(l.custoDireto / 100)}</td>
+                    <td className="num">{formatarMoeda(l.custoDireto)}</td>
                     <td className="num">{pct(l.percentualAtual)}</td>
                     <td className="num">
                       {l.folha ? (

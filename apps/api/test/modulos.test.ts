@@ -61,6 +61,8 @@ test('regras de acesso', () => {
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), false);
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras/1/planilha'), false);
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/sup/pedidos'), false);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras/1/planejamento'), false);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/panorama'), false);
   // orçamentista: engenharia e comercial; nada de compras nem caixa
   assert.equal(g('orcamentista', null, ['dono', 'gestor'], '/api/eng/obras/1/planilha', 'POST'), true);
   assert.equal(g('orcamentista', null, ['dono', 'gestor', 'vendedor'], '/api/com/propostas', 'POST'), true);
