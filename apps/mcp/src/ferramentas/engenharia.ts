@@ -306,6 +306,18 @@ export const ferramentasEngenharia = colecao(
     inputSchema: z.object({ obraId: obraId() }),
     handler: async (args, api) => ({ success: true, data: await api.get(`/eng/obras/${args.obraId}/versoes`) }),
   }),
+
+ferramenta({
+    name: 'criar_versao_orcamento',
+    description:
+      'Guarda uma versão do orçamento da obra como está agora (planilha, serviços, insumos e BDI), para comparar depois com relatorio_comparacao_versoes. Devolve { versao: { id, numero, nome, criadoEm, precoTotal } }.',
+    inputSchema: z.object({
+      obraId: obraId(),
+      nome: z.string().min(2).max(120).describe('Nome da versão (ex.: "Orçamento aprovado pelo cliente").'),
+      observacao: z.string().max(500).optional().describe('Observação da versão. Opcional.'),
+    }),
+    handler: async ({ obraId, ...corpo }, api) => ({ success: true, data: await api.post(`/eng/obras/${obraId}/versoes`, corpo) }),
+  }),
   ferramenta({
     name: 'relatorio_comparacao_versoes',
     description:
@@ -501,7 +513,7 @@ export const ferramentasEngenharia = colecao(
   ferramenta({
     name: 'buscar_rdo',
     description:
-      'Devolve um RDO completo: { obra, rdo: { id, numero, data, climaManha, climaTarde, climaNoite, responsavel, observacoes, atualizadoEm, maoDeObra: [{ funcao, empresa, quantidade, horas }], equipamentos: [{ descricao, quantidade, horas }], atividades: [{ local, descricao, equipe, percentual }], ocorrencias: [{ tipo, descricao }], fotos: [{ id, legenda, ordem }] } }. As fotos vêm só com id e legenda, sem a imagem. Chame sempre antes de atualizar_rdo, porque a atualização regrava o RDO inteiro. O rdoId vem de listar_rdos.',
+      'Devolve um RDO completo: { obra, rdo: { id, numero, data, climaManha, climaTarde, climaNoite, responsavel, observacoes, atualizadoEm, maoDeObra: [{ funcao, empresa, quantidade, horas }], equipamentos: [{ descricao, quantidade, horas }], atividades: [{ local, descricao, equipe, percentual }], ocorrencias: [{ tipo, descricao }], fotos: [{ id, legenda, ordem }] } }. As fotos vêm só com id e legenda, sem a imagem. Útil antes de atualizar_rdo para acrescentar linhas às listas (cada lista enviada substitui a anterior). O rdoId vem de listar_rdos.',
     inputSchema: z.object({
       obraId: obraId(),
       rdoId: id('Id do RDO (vem de listar_rdos).'),

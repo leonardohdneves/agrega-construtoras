@@ -66,6 +66,21 @@ Variáveis no serviço da API:
 
 No Claude: Configurações → Conectores → Adicionar conector personalizado → `https://mcp.SEU-DOMINIO/mcp`.
 
+O build do serviço do MCP roda a mesma checagem da API (`npm run check`), que carrega o código da API nos testes. Por isso o serviço precisa também de um `JWT_SECRET` com 32 caracteres ou mais. Use um valor próprio, que o MCP não usa para nada além disso.
+
+### Catálogo menor (grupos)
+
+O catálogo inteiro tem 159 ferramentas e pesa uns 176 KB, enviados a cada conexão. Para expor só algumas áreas, acrescente `?grupos=` ao endereço do conector:
+
+| Área | Ferramentas | Tamanho |
+|---|---|---|
+| `engenharia` | 48 | 55 KB |
+| `suprimentos` | 65 | 67 KB |
+| `financeiro` | 38 | 43 KB |
+| `cadastros` | 7 | 11 KB |
+
+Exemplo: `https://mcp.SEU-DOMINIO/mcp?grupos=financeiro,cadastros`. A área `conta` vem sempre. Sem `?grupos=` (ou com `?grupos=todas`), vem tudo. Com só algumas áreas, a conexão ganha a ferramenta `habilitar_area`, que liga outra área no meio da conversa.
+
 ## Incluir uma ferramenta
 
 1. Abra (ou crie) o arquivo da área em `src/ferramentas/`.
