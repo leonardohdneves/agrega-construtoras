@@ -9,12 +9,9 @@ import { modoAtual, PERFIS_CAMPO, salvarModo } from '../modo';
 
 const ORDEM_CONSTRUTORA = ['engenharia', 'suprimentos', 'financeiro', 'comercial', 'incorporacao', 'laudos', 'gerencial', 'administrativo', 'configuracoes'];
 import {
-  IconeBetoneira,
   IconeCapacete,
   IconeCarrinho,
-  IconeFrasco,
   IconeBomba,
-  IconeCaminhao,
   IconeConta,
   IconeDinheiro,
   IconeEngrenagem,
@@ -31,8 +28,6 @@ type Item = { rotulo: string; para?: string; arquivo?: string; etapa?: number; p
 type Modulo = { id: string; numero?: number; titulo: string; icone: ReactNode; perfis?: Perfil[]; itens: Item[] };
 
 const GESTAO: Perfil[] = ['dono', 'gestor'];
-const USINA: Perfil[] = ['dono', 'gestor', 'operador_usina'];
-const LAB: Perfil[] = ['dono', 'gestor', 'laboratorista'];
 
 export const MODULOS: Modulo[] = [
   {
@@ -87,27 +82,6 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
-    id: 'producao',
-    titulo: 'Produção',
-    icone: <IconeBetoneira />,
-    perfis: ['dono', 'gestor', 'operador_usina', 'motorista'],
-    itens: [
-      { rotulo: 'Programação de entregas', para: '/prod/programacao', perfis: USINA },
-      { rotulo: 'Registrar carga', para: '/prod/cargas/nova', perfis: USINA },
-      { rotulo: 'Cargas', para: '/prod/cargas', perfis: USINA },
-      { rotulo: 'Romaneios e etiquetas', para: '/prod/romaneios', perfis: USINA },
-      { rotulo: 'Traços', para: '/prod/tracos', perfis: USINA },
-      { rotulo: 'Insumos', para: '/prod/insumos', perfis: GESTAO },
-      { rotulo: 'Produção dos motoristas', para: '/prod/motoristas', perfis: GESTAO },
-      { rotulo: 'Escala de trabalho', para: '/prod/escala', perfis: GESTAO },
-      { rotulo: 'Estoque e inventário', para: '/prod/estoque', perfis: GESTAO },
-      { rotulo: 'Relatórios', para: '/prod/relatorios', perfis: GESTAO },
-      { rotulo: 'Minhas cargas', para: '/minhas-cargas', perfis: ['motorista'] },
-      { rotulo: 'Minha produção', para: '/minha-producao', perfis: ['motorista'] },
-      { rotulo: 'Minha escala', para: '/minha-escala', perfis: ['motorista'] },
-    ],
-  },
-  {
     id: 'engenharia',
     titulo: 'Engenharia',
     icone: <IconeCapacete />,
@@ -159,39 +133,6 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Conciliação OFX', para: '/fin/conciliacao' },
       { rotulo: 'Plano de contas', para: '/fin/plano-contas' },
       { rotulo: 'Relatórios', para: '/fin/relatorios' },
-    ],
-  },
-  {
-    id: 'qualidade',
-    titulo: 'Qualidade',
-    icone: <IconeFrasco />,
-    perfis: LAB,
-    itens: [
-      { rotulo: 'CPs a receber', para: '/qual/demandas' },
-      { rotulo: 'CPs a romper', para: '/qual/cps' },
-      { rotulo: 'Amostras e resultados', para: '/qual/amostras' },
-      { rotulo: 'Resistência e fck estimado', para: '/qual/resistencia' },
-      { rotulo: 'Laudo para o cliente', para: '/qual/laudo' },
-      { rotulo: 'Rastreabilidade da carga', para: '/qual/rastreabilidade' },
-      { rotulo: 'Ensaios de insumos', para: '/qual/insumos' },
-      { rotulo: 'Equipamentos e calibração', para: '/qual/equipamentos' },
-      { rotulo: 'Traços', para: '/prod/tracos', perfis: ['laboratorista'] },
-      { rotulo: 'Configurações da qualidade', para: '/qual/config' },
-    ],
-  },
-  {
-    id: 'frota',
-    titulo: 'Frota',
-    icone: <IconeCaminhao />,
-    perfis: ['dono', 'gestor', 'motorista'],
-    itens: [
-      { rotulo: 'Registrar abastecimento', para: '/abastecer' },
-      { rotulo: 'Veículos', para: '/frota/veiculos', perfis: GESTAO },
-      { rotulo: 'Motoristas', para: '/frota/motoristas', perfis: GESTAO },
-      { rotulo: 'Abastecimentos e consumo', para: '/frota/abastecimentos', perfis: GESTAO },
-      { rotulo: 'Manutenção preventiva', para: '/frota/manutencao', perfis: GESTAO },
-      { rotulo: 'Ordens de serviço', para: '/frota/os', perfis: GESTAO },
-      { rotulo: 'Relatórios', para: '/frota/relatorios', perfis: GESTAO },
     ],
   },
   {
@@ -408,17 +349,7 @@ export function Layout() {
           <IconeInicio />
           Início
         </NavLink>
-        {perfil === 'laboratorista' ? (
-          <NavLink to="/qual/cps" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeFrasco />
-            CPs
-          </NavLink>
-        ) : perfil === 'operador_usina' ? (
-          <NavLink to="/prod/cargas/nova" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeBetoneira />
-            Carga
-          </NavLink>
-        ) : perfil === 'vendedor' ? (
+        {perfil === 'vendedor' ? (
           <NavLink to="/com/vendas/nova" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconeVenda />
             Venda
@@ -438,24 +369,6 @@ export function Layout() {
           <NavLink to="/com/vendas" end className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
             <IconePasta />
             Vendas
-          </NavLink>
-        )}
-        {perfil === 'operador_usina' && (
-          <NavLink to="/prod/cargas" end className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeCaminhao />
-            Cargas
-          </NavLink>
-        )}
-        {perfil === 'laboratorista' && (
-          <NavLink to="/qual/amostras" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeGrafico />
-            Resultados
-          </NavLink>
-        )}
-        {perfil === 'motorista' && (
-          <NavLink to="/minha-producao" className={({ isActive }) => (isActive ? 'ativo' : undefined)}>
-            <IconeBetoneira />
-            Produção
           </NavLink>
         )}
         {menuCompleto ? (

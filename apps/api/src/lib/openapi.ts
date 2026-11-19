@@ -1,5 +1,6 @@
 // Documentação da API: registra o @fastify/swagger e converte os esquemas zod das rotas em JSON Schema.
 // Só é carregado por scripts/gerar-openapi.ts (criarApp com `documentar: true`); a API em produção não o usa.
+import { rotaLegadaDesligada } from './legado.ts';
 import type { FastifyInstance } from 'fastify';
 import swagger from '@fastify/swagger';
 import type { ZodTypeAny } from 'zod';
@@ -25,10 +26,13 @@ export async function instalarDocumentacao(app: FastifyInstance): Promise<void> 
         },
       },
     },
-    transform: ({ schema, url }) => {
+    transform: ({ schema, url, route }) => {
       const s: Record<string, unknown> = { ...(schema ?? {}) };
       // Só a API é documentada: as telas (arquivos estáticos) ficam de fora.
       if (!url.startsWith('/api/')) s.hide = true;
+      // Rotas legadas desligadas (P22) também ficam de fora.
+      const metodos = ([] as string[]).concat((route?.method as string | string[] | undefined) ?? []);
+      if (metodos.length && metodos.every((m) => rotaLegadaDesligada(m, url))) s.hide = true;
       if (ehZod(s.body)) s.body = corpoParaJsonSchema(s.body);
       return { schema: s, url };
     },

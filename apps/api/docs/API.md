@@ -14,7 +14,7 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
+Total: 397 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
@@ -371,13 +371,12 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 
 ## Gerencial
 
-13 rotas.
+12 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
 | `GET /api/ger/dre` |  | Dono, Gestor, Financeiro | `visao`, `impostos` |  |
 | `GET /api/ger/fluxo` |  | Dono, Financeiro | `semanas` |  |
-| `GET /api/ger/custo-veiculo` |  | Dono, Gestor, Financeiro |  |  |
 | `GET /api/rel/gerencial` |  | Dono, Gestor, Financeiro |  |  |
 | `GET /api/rel/comercial` | Comercial mês a mês: vendas aprovadas (pela data de entrega) e propostas emitidas × fechadas (pela data de criação). | Dono, Gestor, Financeiro |  |  |
 | `GET /api/rel/indicadores` |  | Dono, Gestor, Financeiro |  |  |
@@ -510,99 +509,12 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 
 ## Legado da concreteira
 
-91 rotas.
+4 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
 | `GET /api/frota/veiculos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `POST /api/frota/veiculos` |  | Ninguém |  | `codigo`*, `tipo`*, `placa`, `marcaModelo`, `ano`, `capacidadeM3`, `alcanceLancaM`, `kmAtual`, `horimetroAtual`, `status`, `observacoes` |
-| `GET /api/frota/veiculos/{id}` |  | Ninguém |  |  |
-| `PATCH /api/frota/veiculos/{id}` |  | Ninguém |  | `codigo`, `tipo`, `placa`, `marcaModelo`, `ano`, `capacidadeM3`, `alcanceLancaM`, `kmAtual`, `horimetroAtual`, `status`, `observacoes` |
-| `POST /api/frota/veiculos/{id}/documentos` |  | Ninguém |  | `tipo`*, `descricao`, `numero`, `vencimento`, `valor` |
-| `PATCH /api/frota/documentos/{id}` |  | Ninguém |  | `tipo`, `descricao`, `numero`, `vencimento`, `valor` |
-| `DELETE /api/frota/documentos/{id}` |  | Ninguém |  |  |
 | `GET /api/frota/motoristas` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `POST /api/frota/motoristas` |  | Ninguém |  | `nome`*, `telefone`, `cpf`, `funcao`, `cnhNumero`, `cnhCategoria`, `cnhVencimento`, `cursos`, `ativo`, `cargo`, `email`, `dataAdmissao`, `dataNascimento`, `observacoes` |
-| `PATCH /api/frota/motoristas/{id}` |  | Ninguém |  | `nome`, `telefone`, `cpf`, `funcao`, `cnhNumero`, `cnhCategoria`, `cnhVencimento`, `cursos`, `ativo`, `cargo`, `email`, `dataAdmissao`, `dataNascimento`, `observacoes`, `usuarioId` |
-| `GET /api/frota/alertas` |  | Ninguém |  |  |
-| `GET /api/frota/abastecimentos` |  | Ninguém |  |  |
-| `POST /api/frota/abastecimentos` |  | Ninguém |  | `veiculoId`*, `motoristaId`, `dataHora`, `litros`*, `valorTotal`, `km`, `horimetro`, `origem`, `posto`, `tanqueCheio`, `observacoes`, `confirmarSalto` |
-| `GET /api/frota/abastecimentos/ultima-leitura` | Última leitura do veículo, para orientar quem está lançando. | Ninguém | `veiculoId` |  |
-| `PATCH /api/frota/abastecimentos/{id}` |  | Ninguém |  | `veiculoId`, `motoristaId`, `dataHora`, `litros`, `valorTotal`, `km`, `horimetro`, `origem`, `posto`, `tanqueCheio`, `observacoes`, `confirmarSalto` |
-| `DELETE /api/frota/abastecimentos/{id}` |  | Ninguém |  |  |
-| `GET /api/frota/consumo` |  | Ninguém |  |  |
-| `GET /api/frota/planos` |  | Ninguém |  |  |
-| `POST /api/frota/planos` |  | Ninguém |  | `tipoVeiculo`, `item`*, `intervaloKm`, `intervaloHoras`, `intervaloDias`, `ativo` |
-| `PUT /api/frota/planos/{id}` |  | Ninguém |  | `tipoVeiculo`, `item`*, `intervaloKm`, `intervaloHoras`, `intervaloDias`, `ativo` |
-| `POST /api/frota/planos/padrao` |  | Ninguém |  |  |
-| `GET /api/frota/manutencao` |  | Ninguém | `veiculoId` |  |
-| `PUT /api/frota/revisoes` | Registra a última execução de um item (ex.: ao implantar o sistema). | Ninguém |  | `veiculoId`*, `planoId`*, `km`, `horas`, `data` |
-| `GET /api/frota/os` |  | Ninguém | `status`, `veiculoId`, `dias` |  |
-| `POST /api/frota/os` |  | Ninguém |  | `veiculoId`*, `tipo`*, `descricao`*, `abertura`, `km`, `horimetro`, `oficina`, `fornecedorId`, `observacoes`, `pararVeiculo`, `planoIds` |
-| `GET /api/frota/os/{id}` |  | Ninguém |  |  |
-| `PATCH /api/frota/os/{id}` |  | Ninguém |  | `descricao`, `tipo`, `oficina`, `fornecedorId`, `km`, `horimetro`, `observacoes`, `status` |
-| `POST /api/frota/os/{id}/itens` |  | Ninguém |  | `tipo`*, `descricao`*, `quantidade`, `valorUnitario`, `planoId` |
-| `DELETE /api/frota/os/itens/{id}` |  | Ninguém |  |  |
-| `POST /api/frota/os/{id}/concluir` |  | Ninguém |  | `conclusao`*, `km`, `horimetro`, `liberarVeiculo` |
-| `POST /api/frota/os/{id}/cancelar` |  | Ninguém |  |  |
-| `GET /api/frota/custo-manutencao` | Custo de manutenção por veículo (OS concluídas no período). | Ninguém | `dias` |  |
-| `GET /api/rel/frota` |  | Ninguém |  |  |
 | `GET /api/prod/insumos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `POST /api/prod/insumos` |  | Ninguém |  | `nome`*, `tipo`, `unidade`, `custoUnitario`, `estoqueMinimo`, `ativo`, `controlaEstoque` |
-| `PATCH /api/prod/insumos/{id}` |  | Ninguém |  | `nome`, `tipo`, `unidade`, `custoUnitario`, `estoqueMinimo`, `ativo`, `controlaEstoque` |
 | `GET /api/prod/tracos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial | `todos` |  |
-| `POST /api/prod/tracos` |  | Ninguém |  | `codigo`*, `descricao`, `fck`, `slump`, `brita`, `observacoes`, `ativo`, `itens` |
-| `GET /api/prod/tracos/{id}` |  | Ninguém |  |  |
-| `PATCH /api/prod/tracos/{id}` |  | Ninguém |  | `codigo`, `descricao`, `fck`, `slump`, `brita`, `observacoes`, `ativo`, `itens` |
-| `GET /api/prod/cargas/opcoes` |  | Ninguém |  |  |
-| `GET /api/prod/cargas` |  | Ninguém | `de`, `ate` |  |
-| `POST /api/prod/cargas` |  | Ninguém |  | `dataHora`, `tracoId`*, `volume`*, `clienteId`, `obra`, `betoneiraId`*, `motoristaId`, `bombaId`, `operadorBombaId`, `volumeBombeado`, `devolvido`, `slump`, `documento`, `observacoes`, `vendaId`, `cargaFinal` |
-| `PATCH /api/prod/cargas/{id}` |  | Ninguém |  | `dataHora`, `tracoId`, `volume`, `clienteId`, `obra`, `betoneiraId`, `motoristaId`, `bombaId`, `operadorBombaId`, `volumeBombeado`, `devolvido`, `slump`, `documento`, `observacoes`, `vendaId`, `cargaFinal` |
-| `POST /api/prod/cargas/{id}/cancelar` |  | Ninguém |  | `motivo`* |
-| `GET /api/prod/romaneios` |  | Ninguém | `ids` |  |
-| `GET /api/prod/etiquetas` |  | Ninguém | `ids` |  |
-| `POST /api/prod/impressos` |  | Ninguém |  | `ids`*, `tipo`* |
-| `GET /api/prod/cargas/estoque` |  | Ninguém | `tracoId`, `volume`, `ignorarCarga` |  |
-| `GET /api/prod/programacao` |  | Ninguém | `de`, `ate` |  |
-| `POST /api/prod/programacao/{id}/encerrar` |  | Ninguém |  | `motivo` |
-| `GET /api/prod/valores` |  | Ninguém |  |  |
-| `POST /api/prod/valores` |  | Ninguém |  | `funcao`*, `valorM3`*, `vigencia`* |
-| `DELETE /api/prod/valores/{id}` |  | Ninguém |  |  |
-| `GET /api/prod/producao` |  | Ninguém | `pessoaId` |  |
-| `GET /api/prod/minha-producao` |  | Ninguém |  |  |
-| `GET /api/prod/escala` |  | Ninguém | `data`, `copiar` |  |
-| `PUT /api/prod/escala/{data}` |  | Ninguém |  | `itens`* |
-| `GET /api/prod/minhas-cargas` |  | Ninguém |  |  |
-| `POST /api/prod/minhas-cargas/{id}/etapa` |  | Ninguém |  | `etapa`*, `slump`, `devolvido`, `observacao`, `cpsMoldados`, `motivoSemCps` |
-| `GET /api/prod/minha-escala` |  | Ninguém |  |  |
-| `GET /api/prod/estoque` |  | Ninguém |  |  |
-| `GET /api/prod/estoque/{id}/extrato` |  | Ninguém |  |  |
-| `GET /api/prod/inventarios` |  | Ninguém |  |  |
-| `POST /api/prod/inventarios` |  | Ninguém |  |  |
-| `GET /api/prod/inventarios/previa` |  | Ninguém | `data` |  |
-| `DELETE /api/prod/inventarios/{id}` |  | Ninguém |  |  |
-| `GET /api/prod/relatorios` |  | Ninguém |  |  |
-| `GET /api/qual/config` |  | Ninguém |  |  |
-| `PUT /api/qual/config` |  | Ninguém |  | `idades`*, `cpsPorIdade`*, `idadeControle`*, `diametroMm`*, `responsavelNome`, `responsavelRegistro` |
-| `GET /api/qual/painel` |  | Ninguém |  |  |
-| `GET /api/qual/cps` |  | Ninguém | `ate` |  |
-| `POST /api/qual/cps/resultados` |  | Ninguém |  | `data`, `itens`* |
-| `PATCH /api/qual/cps/{id}` |  | Ninguém |  | `resistencia`*, `dataRuptura`, `observacao` |
-| `GET /api/qual/amostras` |  | Ninguém | `obra` |  |
-| `PATCH /api/qual/amostras/{id}` |  | Ninguém |  | `slump`, `temperatura`, `moldadoPor`, `observacao` |
-| `GET /api/qual/demandas` |  | Ninguém |  |  |
-| `POST /api/qual/amostras/{id}/confirmar` |  | Ninguém |  |  |
-| `POST /api/qual/amostras/{id}/nao-amostrar` |  | Ninguém |  | `motivo`* |
-| `POST /api/qual/amostras/{id}/receber` |  | Ninguém |  | `itens`*, `observacao` |
-| `GET /api/qual/rastreabilidade` |  | Ninguém | `numero` |  |
-| `GET /api/qual/rastreabilidade/{cargaId}` |  | Ninguém |  |  |
-| `GET /api/qual/resistencia` |  | Ninguém |  |  |
-| `GET /api/qual/obras` |  | Ninguém |  |  |
-| `GET /api/qual/laudo` |  | Ninguém | `clienteId`, `obra` |  |
-| `GET /api/qual/equipamentos` |  | Ninguém |  |  |
-| `POST /api/qual/equipamentos` |  | Ninguém |  | `nome`*, `tipo`, `identificacao`, `ultimaCalibracao`, `validadeDias`, `certificado`, `laboratorio`, `observacoes`, `ativo` |
-| `PATCH /api/qual/equipamentos/{id}` |  | Ninguém |  | `nome`, `tipo`, `identificacao`, `ultimaCalibracao`, `validadeDias`, `certificado`, `laboratorio`, `observacoes`, `ativo` |
-| `GET /api/qual/ensaios` |  | Ninguém |  |  |
-| `POST /api/qual/ensaios` |  | Ninguém |  | `insumoId`*, `data`*, `tipo`*, `umidade`, `moduloFinura`, `dimensaoMaxima`, `pulverulento`, `observacao` |
-| `DELETE /api/qual/ensaios/{id}` |  | Ninguém |  |  |
 

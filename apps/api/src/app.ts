@@ -9,6 +9,7 @@ import { config } from './config.ts';
 import type { Banco } from './db.ts';
 import { ErroHttp } from './lib/erros.ts';
 import { instalarSessao } from './sessao.ts';
+import { rotaLegadaDesligada } from './lib/legado.ts';
 import { rotasAuth } from './rotas/auth.ts';
 import { rotasDemo } from './rotas/demo.ts';
 import { rotasProducao } from './rotas/producao.ts';
@@ -59,6 +60,10 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean; documentar
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   instalarSessao(app);
+  // Rotas legadas da concreteira respondem 404, antes de qualquer outra checagem (P22).
+  app.addHook('onRequest', async (req, reply) => {
+    if (rotaLegadaDesligada(req.method, req.routeOptions?.url)) return reply.code(404).send({ erro: 'Endereço não encontrado.' });
+  });
 
   // Versão das telas: o nome do pacote JS do build, que muda a cada deploy. Vai em toda resposta da API
   // para a tela aberta perceber que ficou desatualizada e pedir para recarregar.
