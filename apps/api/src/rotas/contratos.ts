@@ -163,9 +163,10 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
     formaPagamento: k.forma_pagamento as string | null,
     retencoes: { caucao: pctNum(k.caucao_pct), iss: pctNum(k.iss_pct), inss: pctNum(k.inss_pct), ir: pctNum(k.ir_pct), pcc: pctNum(k.pcc_pct) },
     observacao: k.observacao as string | null,
-    // Endereços vêm do cadastro: a empresa que executa a obra (cadastro da obra) e o prestador (cadastro do fornecedor).
-    enderecoContratante: (k.obra_endereco as string | null) || null,
-    enderecoContratada: (k.fornecedor_endereco as string | null) || null,
+    // Endereço gravado no contrato, quando houver; senão o do cadastro (empresa que executa a obra e prestador).
+    // Antes o gravado era ignorado na leitura (P32).
+    enderecoContratante: (k.endereco_contratante as string | null) || (k.obra_endereco as string | null) || null,
+    enderecoContratada: (k.endereco_contratada as string | null) || (k.fornecedor_endereco as string | null) || null,
     prazoCorrecaoDias: k.prazo_correcao_dias as number | null,
     garantiaMeses: k.garantia_meses as number | null,
     encerradoEm: k.encerrado_em as string | null,

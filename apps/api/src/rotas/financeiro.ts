@@ -460,9 +460,9 @@ export function rotasFinanceiro(banco: Banco) {
       const conta = await emTransacao(banco, async (c) => {
         const n = (
           await c.query(
-            `INSERT INTO contas_financeiras (empresa_id, nome, tipo, banco, agencia, conta, saldo_inicial_centavos, data_saldo_inicial)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
-            [empresaId, d.nome, d.tipo, d.banco, d.agencia, d.conta, d.saldoInicial, d.dataSaldoInicial ?? hojeBrasil()],
+            `INSERT INTO contas_financeiras (empresa_id, nome, tipo, banco, agencia, conta, saldo_inicial_centavos, data_saldo_inicial, ativo)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING *`,
+            [empresaId, d.nome, d.tipo, d.banco, d.agencia, d.conta, d.saldoInicial, d.dataSaldoInicial ?? hojeBrasil(), d.ativo ?? true], // ativo era ignorado (P32)
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'contas_financeiras', entidadeId: n.id, depois: n });
@@ -694,7 +694,7 @@ export function rotasFinanceiro(banco: Banco) {
     app.post('/centros-custo', { schema: { body: esquemaCentro } }, async (req, reply) => {
       const d = esquemaCentro.parse(req.body);
       const empresaId = empresaDo(req);
-      const r = (await banco.query('INSERT INTO centros_custo (empresa_id, nome) VALUES ($1,$2) RETURNING *', [empresaId, d.nome])).rows[0];
+      const r = (await banco.query('INSERT INTO centros_custo (empresa_id, nome, ativo) VALUES ($1,$2,$3) RETURNING *', [empresaId, d.nome, d.ativo ?? true])).rows[0]; // ativo era ignorado (P32)
       await auditar(banco, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'centros_custo', entidadeId: r.id, depois: r });
       reply.code(201);
       return { centro: { id: r.id, nome: r.nome, ativo: r.ativo } };

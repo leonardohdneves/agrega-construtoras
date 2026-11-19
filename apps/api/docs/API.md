@@ -53,7 +53,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `PUT /api/eng/obras/{id}/servicos/grupo` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `itemIds`*, `grupoId`* |
 | `POST /api/eng/obras/{id}/adotar-datas-planejamento` | Adota as datas do planejamento: início = primeira atividade; previsão = fim da última atividade. | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `GET /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
-| `PUT /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista |  | `codigo`, `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipo`, `eapPadrao`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
+| `PUT /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista |  | `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
 | `GET /api/eng/obras/{id}/itens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife | `tipo`, `busca` |  |
 | `GET /api/eng/obras/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PATCH /api/eng/obras/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `unidade`, `preco`, `unidadesCompra` |

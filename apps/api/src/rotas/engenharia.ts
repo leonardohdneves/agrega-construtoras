@@ -177,6 +177,8 @@ const esquemaObra = z.object({
     .optional()
     .nullable(),
 });
+/** Na alteração, código, tipo e EAP padrão não mudam: saem do esquema em vez de serem aceitos e ignorados (P32). */
+const esquemaObraPut = esquemaObra.omit({ codigo: true, tipo: true, eapPadrao: true });
 
 /** Define o BDI da obra: calculado (pelos parâmetros, mesclados aos já salvos) ou informado (valor direto). */
 function resolverBdi(d: { bdiModo?: 'calculado' | 'informado'; bdiPercentual?: number; bdiParametros?: Partial<ParametrosBdi> | null }, atual: Record<string, any> | null) {
@@ -572,8 +574,9 @@ export function rotasEngenharia(banco: Banco) {
           } else origem = 'nao_informado';
         }
         const unidades = d.tipo === 'insumo' ? unidadesValidas(d.unidadesCompra ?? [], d.unidade) : [];
-        // Insumo e serviço novos recebem o próximo código da sequência da tabela.
-        const codigo = d.tipo === 'composicao' ? await proximoCodigoServico(c, t.id) : await proximoCodigoInsumo(c, t.id);
+        // Código informado é respeitado (P32: antes era ignorado e a composição não achava "I-001"); vazio recebe o
+        // próximo da sequência da tabela. Código repetido cai no 409 abaixo.
+        const codigo = d.codigo || (d.tipo === 'composicao' ? await proximoCodigoServico(c, t.id) : await proximoCodigoInsumo(c, t.id));
         const x = (
           await c.query(
             'INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos, preco_origem) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, codigo',
@@ -1110,8 +1113,8 @@ export function rotasEngenharia(banco: Banco) {
       return { obra: obraPublica(await obraDetalhe(banco, empresaDo(req), req.params.id)) };
     });
 
-    app.put<{ Params: { id: string } }>('/obras/:id', { schema: { body: esquemaObra } }, async (req) => {
-      const d = esquemaObra.parse(req.body);
+    app.put<{ Params: { id: string } }>('/obras/:id', { schema: { body: esquemaObraPut } }, async (req) => {
+      const d = esquemaObraPut.parse(req.body);
       if (d.responsaveis !== undefined && !PERFIS_ATRIBUEM_OBRA.includes(req.usuario!.perfil)) throw new ErroHttp(403, MSG_ATRIBUIR);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
