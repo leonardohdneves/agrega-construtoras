@@ -5,21 +5,24 @@ import { emTransacao } from './db.ts';
 import { conferirSenha, gerarHashSenha } from './lib/senha.ts';
 import { CNPJ_DEMO, USUARIOS_DEMO } from './lib/demo.ts';
 
-export async function garantirAdmin(banco: Banco, email: string, senha: string, log = console.log): Promise<void> {
+/**
+ * Cria o administrador do sistema se ele ainda não existir (P21, D6). Com o usuário já criado, nada muda a cada
+ * subida: a senha trocada pela tela sobrevive ao deploy. Para redefinir a senha pelo ambiente, suba uma vez com
+ * ADMIN_REDEFINIR=1 (e tire a variável depois). Um usuário de empresa com o mesmo e-mail nunca vira administrador.
+ */
+export async function garantirAdmin(banco: Banco, email: string, senha: string, log = console.log, redefinir = false): Promise<void> {
   if (!email || !senha) return;
   const existe = (
-    await banco.query('SELECT id, senha_hash FROM usuarios WHERE lower(email) = lower($1) AND excluido_em IS NULL', [email])
+    await banco.query('SELECT id, senha_hash, perfil FROM usuarios WHERE lower(email) = lower($1) AND excluido_em IS NULL', [email])
   ).rows[0];
   if (existe) {
-    // As variáveis ADMIN_EMAIL/ADMIN_SENHA são a fonte da verdade do administrador: se a senha
-    // configurada mudou, o próximo deploy passa a aceitar a nova.
-    if (await conferirSenha(senha, existe.senha_hash)) return;
-    await banco.query('UPDATE usuarios SET senha_hash = $2, perfil = $3, empresa_id = NULL, sessao_versao = sessao_versao + 1 WHERE id = $1', [
-      existe.id,
-      await gerarHashSenha(senha),
-      'admin_sistema',
-    ]);
-    log('Senha do administrador do sistema atualizada.');
+    if (existe.perfil !== 'admin_sistema') {
+      log(`ADMIN_EMAIL aponta para um usuário de empresa (${existe.perfil}); nada foi alterado. Use outro e-mail para o administrador do sistema.`);
+      return;
+    }
+    if (!redefinir || (await conferirSenha(senha, existe.senha_hash))) return;
+    await banco.query('UPDATE usuarios SET senha_hash = $2, sessao_versao = sessao_versao + 1 WHERE id = $1', [existe.id, await gerarHashSenha(senha)]);
+    log('Senha do administrador do sistema redefinida pelo ambiente (ADMIN_REDEFINIR=1). Tire a variável para a senha da tela valer.');
     return;
   }
   await banco.query(`INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil) VALUES (NULL, 'Administrador', $1, $2, 'admin_sistema')`, [

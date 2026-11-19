@@ -34,7 +34,8 @@ As migrações do banco (`apps/api/migrations/*.sql`) são aplicadas automaticam
 |---|---|
 | `DATABASE_URL` | Conexão com o PostgreSQL (referência ao serviço Postgres) |
 | `JWT_SECRET` | Segredo das sessões, com pelo menos 32 caracteres |
-| `ADMIN_EMAIL`, `ADMIN_SENHA` | Cria o administrador do sistema no primeiro início, se ainda não existir |
+| `ADMIN_EMAIL`, `ADMIN_SENHA` | Cria o administrador do sistema no primeiro início, se ainda não existir. Depois a senha é a da tela |
+| `ADMIN_REDEFINIR` | `1` redefine a senha do administrador para `ADMIN_SENHA` na próxima subida. Tire depois de usar |
 | `SEED_DEMO`, `DEMO_SENHA` | Só no ambiente de teste: cria a Concreteira Exemplo |
 
 ## Ambiente de teste

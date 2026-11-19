@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import Fastify, { type FastifyError } from 'fastify';
+import Fastify, { type FastifyError, type FastifyServerOptions } from 'fastify';
 import cookie from '@fastify/cookie';
 import rateLimit from '@fastify/rate-limit';
 import fastifyStatic from '@fastify/static';
@@ -8,7 +8,9 @@ import { ZodError } from 'zod';
 import { config } from './config.ts';
 import type { Banco } from './db.ts';
 import { ErroHttp } from './lib/erros.ts';
-import { instalarSessao } from './sessao.ts';
+import { COOKIE_SESSAO, instalarSessao } from './sessao.ts';
+import { cabecalhosSeguranca, conferirOrigem, serializarPedido, versaoDoPacote } from './lib/endurecimento.ts';
+import { rotaLegadaDesligada } from './lib/legado.ts';
 import { rotasAuth } from './rotas/auth.ts';
 import { rotasDemo } from './rotas/demo.ts';
 import { rotasProducao } from './rotas/producao.ts';
@@ -45,11 +47,18 @@ import { rotasManutencao } from './rotas/manutencao.ts';
 import { rotasAdministrativo } from './rotas/administrativo.ts';
 import { rotasBackups, rotasExportacao } from './rotas/backups.ts';
 
-const VERSAO = '0.9.0';
+const VERSAO = versaoDoPacote();
 const PASTA_WEB = path.resolve(import.meta.dirname, '..', '..', 'web', 'dist');
 
 export async function criarApp(banco: Banco, opcoes: { log?: boolean; documentar?: boolean } = {}) {
-  const app = Fastify({ logger: opcoes.log ?? true, trustProxy: true, bodyLimit: 2 * 1024 * 1024 });
+  const app = Fastify({
+    // Log sem os tokens do aceite e da assinatura, e com o IP do cliente (P23).
+    logger: (opcoes.log ?? true) ? ({ serializers: { req: serializarPedido as never } } as FastifyServerOptions["logger"]) : false,
+    // Só os saltos de proxy conhecidos (P23): confiar em toda a cadeia de X-Forwarded-For deixava o cliente escolher
+    // o próprio IP (limite do login, prova do aceite). No Railway, um salto; TRUST_PROXY_SALTOS muda se precisar.
+    trustProxy: (_endereco: string, salto: number) => salto < config.saltosProxy,
+    bodyLimit: 2 * 1024 * 1024,
+  });
 
   // O `schema.body` das rotas é um esquema zod e serve só à documentação (docs/openapi.json).
   // Quem valida continua sendo o `.parse(req.body)` dentro de cada rota; aqui o Fastify não valida nada.
@@ -59,6 +68,12 @@ export async function criarApp(banco: Banco, opcoes: { log?: boolean; documentar
   await app.register(cookie);
   await app.register(rateLimit, { global: false });
   instalarSessao(app);
+  app.addHook('onSend', cabecalhosSeguranca(config.producao));
+  app.addHook('preHandler', conferirOrigem(COOKIE_SESSAO));
+  // Rotas legadas da concreteira respondem 404, antes de qualquer outra checagem (P22).
+  app.addHook('onRequest', async (req, reply) => {
+    if (rotaLegadaDesligada(req.method, req.routeOptions?.url)) return reply.code(404).send({ erro: 'Endereço não encontrado.' });
+  });
 
   // Versão das telas: o nome do pacote JS do build, que muda a cada deploy. Vai em toda resposta da API
   // para a tela aberta perceber que ficou desatualizada e pedir para recarregar.

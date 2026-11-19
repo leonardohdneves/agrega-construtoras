@@ -31,14 +31,6 @@ import { Lancamento } from './paginas/Lancamento';
 import { ContasFinanceiras } from './paginas/ContasFinanceiras';
 import { PlanoContas } from './paginas/PlanoContas';
 import { Nota } from './paginas/Nota';
-import { Cargas, NovaCarga } from './paginas/ProdCargas';
-import { Insumos, Tracos } from './paginas/ProdTracos';
-import { MinhaEscala, MinhaProducao, ProducaoMotoristas } from './paginas/ProdMotoristas';
-import { Escala } from './paginas/ProdEscala';
-import { Estoque } from './paginas/ProdEstoque';
-import { RelProducao } from './paginas/RelProducao';
-import { Amostras, CpsARomper, Laudo, Resistencia } from './paginas/Qualidade';
-import { ConfigQualidade, EnsaiosInsumos, Equipamentos } from './paginas/QualCadastros';
 import { NovaSolicitacao, SolicitacaoDetalhe, SupSolicitacoes } from './paginas/SupSolicitacoes';
 import { CotacaoDetalhe, NovaCotacao, SupCotacoes } from './paginas/SupCotacoes';
 import { PedidoDetalhe, SupPedidos } from './paginas/SupPedidos';
@@ -83,13 +75,9 @@ import { EngCanteiroObras, EngCanteiroObra, EngCanteiroCentral, EngCanteiroBolet
 import { LaudosLista, LaudoGlp, LaudoPatologia, LaudoAvaliacao } from './paginas/Laudos';
 import { EngAcompanhamento } from './paginas/EngAcompanhamento';
 import { GerAcompanhamento } from './paginas/GerAcompanhamento';
-import { ProdProgramacao } from './paginas/ProdProgramacao';
 import { GerProducaoEquipe } from './paginas/GerProducaoEquipe';
 import { GerAdministrativo, GerFinanceiro, GerObras } from './paginas/GerAbas';
-import { PaginaMinhasCargas } from './paginas/MinhasCargas';
-import { QualDemandas, QualRastreabilidade } from './paginas/QualRastreabilidade';
 import { MuralAvisos } from './paginas/Mural';
-import { ImprimirEtiquetas, ImprimirKit, ImprimirRomaneios, ProdRomaneios } from './paginas/ProdRomaneios';
 
 // Service worker: confere de hora em hora se há build novo (a aba pode ficar aberta o dia todo).
 registerSW({
@@ -169,16 +157,6 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="adm/fornecedores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="fornecedor" /></Protegido>} />
             <Route path="adm/credores" element={<Protegido perfis={['dono', 'gestor']}><Fornecedores categoria="credor" /></Protegido>} />
             <Route path="adm/colaboradores" element={<Protegido perfis={['dono', 'gestor']}><Motoristas key="colaboradores" modo="colaboradores" /></Protegido>} />
-            <Route path="prod/cargas" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><Cargas /></Protegido>} />
-            <Route path="prod/cargas/nova" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><NovaCarga /></Protegido>} />
-            <Route path="prod/tracos" element={<Protegido perfis={['dono', 'gestor', 'operador_usina', 'laboratorista']}><Tracos /></Protegido>} />
-            <Route path="qual/cps" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><CpsARomper /></Protegido>} />
-            <Route path="qual/amostras" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Amostras /></Protegido>} />
-            <Route path="qual/resistencia" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Resistencia /></Protegido>} />
-            <Route path="qual/laudo" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Laudo /></Protegido>} />
-            <Route path="qual/insumos" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><EnsaiosInsumos /></Protegido>} />
-            <Route path="qual/equipamentos" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><Equipamentos /></Protegido>} />
-            <Route path="qual/config" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><ConfigQualidade /></Protegido>} />
             <Route path="sup/solicitacoes" element={<Protegido perfis={['dono', 'gestor']}><SupSolicitacoes /></Protegido>} />
             <Route path="sup/solicitacoes/nova" element={<Protegido perfis={['dono', 'gestor']}><NovaSolicitacao /></Protegido>} />
             <Route path="sup/solicitacoes/:id" element={<Protegido perfis={['dono', 'gestor']}><SolicitacaoDetalhe /></Protegido>} />
@@ -254,24 +232,8 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="com/vendas/:id/editar" element={<Protegido perfis={COMERCIAL}><EditarVenda /></Protegido>} />
             <Route path="incorporacao" element={<Protegido perfis={['dono', 'gestor']}><ComIncorporacao /></Protegido>} />
             <Route path="com/relatorios" element={<Protegido perfis={COMERCIAL}><ComRelatoriosContratos /></Protegido>} />
-            <Route path="prod/programacao" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><ProdProgramacao /></Protegido>} />
             <Route path="ger/producao-equipe" element={<Protegido perfis={['dono', 'gestor']}><GerProducaoEquipe /></Protegido>} />
-            <Route path="prod/insumos" element={<Protegido perfis={['dono', 'gestor']}><Insumos /></Protegido>} />
-            <Route path="prod/motoristas" element={<Protegido perfis={['dono', 'gestor']}><ProducaoMotoristas /></Protegido>} />
-            <Route path="prod/estoque" element={<Protegido perfis={['dono', 'gestor']}><Estoque /></Protegido>} />
-            <Route path="prod/relatorios" element={<Protegido perfis={['dono', 'gestor']}><RelProducao /></Protegido>} />
-            <Route path="prod/escala" element={<Protegido perfis={['dono', 'gestor']}><Escala /></Protegido>} />
-            <Route path="minha-producao" element={<Protegido perfis={['motorista']}><MinhaProducao /></Protegido>} />
-            <Route path="prod/romaneios" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><ProdRomaneios /></Protegido>} />
-            <Route path="prod/kit" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><ImprimirKit /></Protegido>} />
-            <Route path="prod/romaneios/imprimir" element={<Protegido perfis={['dono', 'gestor', 'operador_usina']}><ImprimirRomaneios /></Protegido>} />
-            <Route path="prod/etiquetas/imprimir" element={<Protegido perfis={['dono', 'gestor', 'operador_usina', 'laboratorista']}><ImprimirEtiquetas /></Protegido>} />
-            <Route path="minhas-cargas" element={<Protegido perfis={['motorista']}><PaginaMinhasCargas /></Protegido>} />
-            <Route path="qual/demandas" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualDemandas /></Protegido>} />
-            <Route path="qual/rastreabilidade" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualRastreabilidade /></Protegido>} />
-            <Route path="qual/rastreabilidade/:cargaId" element={<Protegido perfis={['dono', 'gestor', 'laboratorista']}><QualRastreabilidade /></Protegido>} />
             <Route path="mural" element={<MuralAvisos />} />
-            <Route path="minha-escala" element={<Protegido perfis={['motorista']}><MinhaEscala /></Protegido>} />
             <Route path="conta" element={<Conta />} />
             <Route path="admin/empresas" element={<Protegido perfis={['admin_sistema']}><AdminEmpresas /></Protegido>} />
             <Route path="admin/acompanhamento" element={<Protegido perfis={['admin_sistema']}><AdminAcompanhamento /></Protegido>} />

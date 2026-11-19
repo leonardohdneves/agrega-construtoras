@@ -8,7 +8,7 @@ import { iniciarAgendamentoBackup } from './lib/backup-job.ts';
 
 const banco = criarBanco(config.databaseUrl);
 await aplicarMigracoes(banco);
-await garantirAdmin(banco, config.adminEmail, config.adminSenha);
+await garantirAdmin(banco, config.adminEmail, config.adminSenha, console.log, config.adminRedefinir);
 if (config.seedDemo) {
   await garantirDemo(banco, config.demoSenha);
   await garantirConteudoDemo(banco);

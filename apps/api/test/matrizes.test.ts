@@ -95,3 +95,12 @@ test('P07: matriz entre empresas: o dono da B não alcança o que é da A', { sk
     for (const id of [obra, cliente, fornecedor, colaborador]) assert.ok(!JSON.stringify(r.corpo).includes(id), `${rota} da B mostra ${id}`);
   }
 });
+
+test('P22: rotas legadas da concreteira respondem 404, menos as consultas mantidas', { skip: semBanco }, async () => {
+  for (const [metodo, url] of [['GET', '/api/prod/inventarios'], ['GET', '/api/qual/amostras'], ['POST', '/api/frota/abastecimentos'], ['GET', '/api/frota/os'], ['GET', '/api/ger/custo-veiculo'], ['GET', '/api/rel/frota'], ['POST', '/api/frota/motoristas']] as const) {
+    assert.equal((await ctx.pedir('dono', metodo, url, metodo === 'POST' ? { corpo: {} } : {})).status, 404, `${metodo} ${url}`);
+  }
+  for (const url of ['/api/frota/veiculos', '/api/frota/motoristas', '/api/prod/insumos', '/api/prod/tracos']) {
+    assert.equal((await ctx.pedir('dono', 'GET', url)).status, 200, url);
+  }
+});

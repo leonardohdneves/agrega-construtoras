@@ -27,7 +27,7 @@ function baseViabiliza(): string {
 
 function lerCorpo<T extends z.ZodTypeAny>(esquema: T, corpo: unknown): z.infer<T> {
   const r = esquema.safeParse(corpo);
-  if (!r.success) throw new ErroHttp(422, r.error.issues[0]?.message ?? 'Dados inválidos.');
+  if (!r.success) throw new ErroHttp(400, r.error.issues[0]?.message ?? 'Dados inválidos.'); // 400, como o resto da API (P23)
   return r.data;
 }
 

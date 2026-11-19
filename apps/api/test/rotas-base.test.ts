@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
 import { criarAceite } from '../src/lib/aceite.ts';
 import { CONDICOES_PADRAO } from '../src/lib/proposta-interessado.ts';
+import { urlParaLog } from '../src/lib/endurecimento.ts';
 
 let ctx: ContextoTeste;
 
@@ -78,4 +79,28 @@ test('P19: rotas de IA têm limite por usuário (429 em português)', { skip: se
   assert.match(bloqueado.corpo.erro, /Muitas tentativas/);
   // O limite é por usuário: o dono continua podendo usar.
   assert.notEqual((await ctx.pedir('dono', 'POST', '/api/fin/lancamentos/leitura', { corpo: {} })).status, 429);
+});
+
+test('P23: cabeçalhos de segurança, versão do pacote e erro de origem', { skip: semBanco }, async () => {
+  const saude = await ctx.app.inject({ method: 'GET', url: '/api/saude' });
+  for (const h of ['x-content-type-options', 'x-frame-options', 'referrer-policy', 'content-security-policy']) assert.ok(saude.headers[h], `falta ${h}`);
+  assert.equal(saude.headers['x-frame-options'], 'DENY');
+  assert.equal(saude.json().versao, '0.9.0');
+});
+
+test('P23: escrita com cookie vinda de outro site é recusada; Bearer e mesma origem passam', { skip: semBanco }, async () => {
+  const token = ctx.usuarios.a.dono.token;
+  const escrever = (headers: Record<string, string>) =>
+    ctx.app.inject({ method: 'POST', url: '/api/fin/centros-custo', headers: { host: 'agrega.teste', ...headers }, payload: { nome: `Centro ${Math.random().toString(36).slice(2, 8)}` } });
+  const fora = await escrever({ cookie: `agrega_sessao=${token}`, origin: 'https://site-malicioso.example' });
+  assert.equal(fora.statusCode, 403, fora.body);
+  assert.equal((await escrever({ cookie: `agrega_sessao=${token}`, origin: 'https://agrega.teste' })).statusCode, 201);
+  assert.equal((await escrever({ authorization: `Bearer ${token}`, origin: 'https://site-malicioso.example' })).statusCode, 201, 'Bearer (servidor MCP) fica isento');
+  assert.equal((await escrever({ cookie: `agrega_sessao=${token}` })).statusCode, 201, 'sem Origin (fora do navegador)');
+});
+
+test('P23: o log mascara o token do aceite e da assinatura', () => {
+  assert.equal(urlParaLog('/api/aceite/abcdefghijklmnopqrstuvwxyz0123456789'), '/api/aceite/abcd…');
+  assert.equal(urlParaLog('/api/assinatura/TOKENSECRETO123?x=1'), '/api/assinatura/TOKE…?x=1');
+  assert.equal(urlParaLog('/api/fin/lancamentos'), '/api/fin/lancamentos');
 });
