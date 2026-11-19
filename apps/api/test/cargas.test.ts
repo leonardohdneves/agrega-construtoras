@@ -3,7 +3,8 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
-import { garantirConteudoDemo, garantirDemo } from '../src/sementes.ts';
+import { garantirAdmin, garantirConteudoDemo, garantirDemo } from '../src/sementes.ts';
+import { conferirSenha, gerarHashSenha } from '../src/lib/senha.ts';
 import { CNPJ_CONSTRUTORA, EMAIL_PROFESSOR, garantirConstrutoraModelo } from '../src/lib/construtora-modelo.ts';
 import { criarTokenSessao } from '../src/sessao.ts';
 import { CNPJ_DEMO } from '../src/lib/demo.ts';
@@ -58,4 +59,28 @@ test('P28: na obra da Construtora Modelo, o total da curva S (em reais) bate com
   // Com 52 mil blocos isso dá uns R$ 25. O que importa aqui é a escala: reais, não centavos (100 vezes mais).
   assert.ok(Math.abs(curva.custoTotal / orcamento.subtotal - 1) < 0.001, `curva ${curva.custoTotal} × orçamento ${orcamento.subtotal}`);
   assert.ok(Math.abs(prevReal.totais.custoPrevisto / orcamento.subtotal - 1) < 0.001, `previsto ${prevReal.totais.custoPrevisto} × orçamento ${orcamento.subtotal}`);
+});
+
+test('P21: a senha do administrador trocada pela tela sobrevive a um reinício', { skip: semBanco }, async () => {
+  const email = 'admin-p21@sistema.teste';
+  await garantirAdmin(ctx.banco, email, 'SenhaDoAmbiente#1', () => {});
+  const novaHash = await gerarHashSenha('SenhaDaTela#2');
+  await ctx.banco.query('UPDATE usuarios SET senha_hash = $2 WHERE lower(email) = $1', [email, novaHash]);
+  await garantirAdmin(ctx.banco, email, 'SenhaDoAmbiente#1', () => {}); // "reinício" sem ADMIN_REDEFINIR
+  const hash = (await ctx.banco.query('SELECT senha_hash FROM usuarios WHERE lower(email) = $1', [email])).rows[0].senha_hash;
+  assert.ok(await conferirSenha('SenhaDaTela#2', hash), 'a senha da tela continua valendo');
+  await garantirAdmin(ctx.banco, email, 'SenhaDoAmbiente#1', () => {}, true); // com ADMIN_REDEFINIR=1
+  const hash2 = (await ctx.banco.query('SELECT senha_hash FROM usuarios WHERE lower(email) = $1', [email])).rows[0].senha_hash;
+  assert.ok(await conferirSenha('SenhaDoAmbiente#1', hash2), 'ADMIN_REDEFINIR=1 redefine');
+});
+
+test('P21: ADMIN_EMAIL de um usuário de empresa não o transforma em administrador', { skip: semBanco }, async () => {
+  const empresa = (await ctx.banco.query("SELECT id FROM empresas LIMIT 1")).rows[0].id;
+  await ctx.banco.query("INSERT INTO usuarios (empresa_id, nome, email, senha_hash, perfil) VALUES ($1, 'Gestora', 'gestora-p21@empresa.teste', 'x', 'gestor')", [empresa]);
+  const log: string[] = [];
+  await garantirAdmin(ctx.banco, 'gestora-p21@empresa.teste', 'Qualquer#1', (m) => log.push(m), true);
+  const u = (await ctx.banco.query("SELECT perfil, empresa_id FROM usuarios WHERE email = 'gestora-p21@empresa.teste'")).rows[0];
+  assert.equal(u.perfil, 'gestor');
+  assert.equal(u.empresa_id, empresa);
+  assert.ok(log.some((m) => m.includes('usuário de empresa')));
 });

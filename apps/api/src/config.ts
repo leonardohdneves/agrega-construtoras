@@ -28,6 +28,8 @@ export const config = {
   ambiente: process.env.RAILWAY_ENVIRONMENT_NAME ?? (producao ? 'production' : 'local'),
   adminEmail: process.env.ADMIN_EMAIL?.trim() || '',
   adminSenha: process.env.ADMIN_SENHA || '',
+  // D6: a senha do administrador só é redefinida pelo ambiente com ADMIN_REDEFINIR=1 (P21).
+  adminRedefinir: process.env.ADMIN_REDEFINIR === '1',
   seedDemo: process.env.SEED_DEMO === 'true',
   demoSenha: process.env.DEMO_SENHA || '',
   cursoSenha: process.env.CURSO_SENHA || '',
