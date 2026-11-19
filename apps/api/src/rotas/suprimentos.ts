@@ -5,7 +5,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
-import { idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
+import { cortarLista, idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { estoqueDaMovimentacao, proximoCodigoEstoque, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
 import { chaveEtiqueta } from '../lib/etiquetas.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
@@ -1027,10 +1027,11 @@ export function rotasSuprimentos(banco: Banco) {
       const soSaldo = lerQuery({ saldo: opcaoQuery('saldo', ['0', '1'] as const) }, req.query).saldo !== '0';
       const r = await banco.query(
         `${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND ($2::uuid IS NULL OR x.obra_id = $2) AND ($3::uuid IS NULL OR x.obra_estoque_id = $3)
-            AND ($4::boolean = false OR x.saldo > 0) ORDER BY x.data DESC, x.insumo_descricao LIMIT 300`,
+            AND ($4::boolean = false OR x.saldo > 0) ORDER BY x.data DESC, x.insumo_descricao LIMIT 301`,
         [empresaId, obraId, estoqueId, soSaldo],
       );
-      return { etiquetas: r.rows.map(etiquetaPublica) };
+      const temMais = cortarLista(r.rows, 300);
+      return { etiquetas: r.rows.map(etiquetaPublica), temMais };
     });
 
     app.get<{ Params: { id: string } }>('/etiquetas/:id', async (req) => {
@@ -1144,12 +1145,14 @@ export function rotasSuprimentos(banco: Banco) {
            FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id LEFT JOIN obras o ON o.id = s.obra_id
           WHERE s.empresa_id = $1 AND ($2::text IS NULL OR s.status = $2) AND ($3::uuid IS NULL OR s.obra_id = $3) AND ($4::text IS NULL OR s.tipo = $4)
             AND ($2::text IS NOT NULL OR s.status IN ('aberta', 'finalizada', 'em_cotacao') OR s.data > current_date - 120)
-          ORDER BY (s.status IN ('aberta', 'finalizada', 'em_cotacao')) DESC, s.numero DESC LIMIT 500`,
+          ORDER BY (s.status IN ('aberta', 'finalizada', 'em_cotacao')) DESC, s.numero DESC LIMIT 501`,
         [empresaId, status, obraId, tipo],
       );
+      const temMais = cortarLista(r.rows, 500);
       const hoje = hojeBrasil();
       const abertas = ['aberta', 'finalizada', 'em_cotacao'];
       return {
+        temMais,
         solicitacoes: r.rows.map((s) => ({
           id: s.id,
           tipo: s.tipo as string,
@@ -1712,10 +1715,12 @@ export function rotasSuprimentos(banco: Banco) {
                   ELSE p.status NOT IN ('cancelado') AND (p.status NOT IN ('recebido', 'encerrado') OR p.data > $3::date - 180)
                 END
           ORDER BY array_position(ARRAY['aguardando_aprovacao','reprovado','rascunho','aprovado','enviado','parcial','recebido','encerrado','cancelado'], p.status), p.numero DESC
-          LIMIT 500`,
+          LIMIT 501`,
         [empresaId, filtro, hoje, soConferencia, obras],
       );
+      const temMais = cortarLista(r.rows, 500);
       return {
+        temMais,
         pedidos: r.rows.map((p) => {
           const atrasado = PEDIDO_A_RECEBER.includes(p.status) && p.previsao_entrega && p.previsao_entrega < hoje;
           return {

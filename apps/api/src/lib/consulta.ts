@@ -37,3 +37,13 @@ export function conferirPeriodo(de: string, ate: string, maxDias = 800) {
   if (ate < de) throw new z.ZodError([{ code: 'custom', path: ['ate'], message: 'A data final é antes da inicial.' }]);
   if ((Date.parse(ate) - Date.parse(de)) / 86_400_000 > maxDias) throw new z.ZodError([{ code: 'custom', path: ['ate'], message: `Escolha um período de até ${maxDias} dias.` }]);
 }
+
+/**
+ * Lista com teto (P18): a consulta pede `limite + 1` linhas; aqui a sobra é cortada e o retorno diz se havia mais.
+ * A resposta leva `temMais` e a tela avisa que a lista não está completa (antes os registros sumiam sem aviso).
+ */
+export function cortarLista<T>(linhas: T[], limite: number): boolean {
+  if (linhas.length <= limite) return false;
+  linhas.length = limite;
+  return true;
+}

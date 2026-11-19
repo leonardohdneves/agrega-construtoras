@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState, type FormEvent, type MouseEvent } from 'react';
+import { AvisoLista } from '../componentes/AvisoLista';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, hojeLocal, lerNumero, somarDias, type PlanoConta } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
@@ -47,13 +48,14 @@ export function SupSolicitacoes({ tipo = 'insumo' }: { tipo?: TipoSolicitacao })
   const [params, setParams] = useSearchParams();
   const filtro = params.get('status') ?? '';
   const [lista, setLista] = useState<SolicitacaoResumo[] | null>(null);
+  const [temMais, setTemMais] = useState(false);
   const [erro, setErro] = useState('');
   useEffect(() => {
     setLista(null);
     const q = new URLSearchParams({ tipo });
     if (filtro) q.set('status', filtro);
-    api<{ solicitacoes: SolicitacaoResumo[] }>(`/sup/solicitacoes?${q}`)
-      .then((r) => setLista(r.solicitacoes))
+    api<{ solicitacoes: SolicitacaoResumo[]; temMais?: boolean }>(`/sup/solicitacoes?${q}`)
+      .then((r) => { setLista(r.solicitacoes); setTemMais(!!r.temMais); })
       .catch((e) => setErro((e as Error).message));
   }, [filtro, tipo]);
 
@@ -74,6 +76,7 @@ export function SupSolicitacoes({ tipo = 'insumo' }: { tipo?: TipoSolicitacao })
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <AvisoLista temMais={temMais} limite={500} />
       <div className="segmentado" role="group" aria-label="Situação" style={{ maxWidth: 640 }}>
         {FILTROS.map((f) => (
           <button key={f.id} type="button" aria-pressed={filtro === f.id} className={filtro === f.id ? 'ativo' : ''} onClick={() => setParams(f.id ? { status: f.id } : {}, { replace: true })}>

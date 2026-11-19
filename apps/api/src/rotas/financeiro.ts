@@ -22,7 +22,7 @@ import { empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { lerLancamentoComIa } from '../lib/ia-lancamento.ts';
-import { conferirPeriodo, diaQuery, flagQuery, idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
+import { cortarLista, conferirPeriodo, diaQuery, flagQuery, idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import {
   estoqueDaMovimentacao,
   registrarEntradasLancamento,
@@ -751,10 +751,12 @@ export function rotasFinanceiro(banco: Banco) {
             AND ($8::uuid IS NULL OR EXISTS (SELECT 1 FROM apropriacoes a WHERE a.lancamento_id = l.id AND a.centro_custo_id = $8))
             AND ($9::uuid IS NULL OR l.fornecedor_id = $9 OR l.cliente_id = $9)
           ORDER BY l.competencia DESC, l.criado_em DESC
-          LIMIT 2000`,
+          LIMIT 2001`,
         [empresaId, de, ate, tipo, q.cancelados, uuid(q.planoContaId), uuid(q.veiculoId), uuid(q.centroCustoId), uuid(q.pessoaId)],
       );
+      const temMais = cortarLista(r.rows, 2000);
       return {
+        temMais,
         de,
         ate,
         lancamentos: r.rows.map((l) => ({
@@ -1069,12 +1071,13 @@ export function rotasFinanceiro(banco: Banco) {
             AND ($4::date IS NULL OR ${campoData} >= $4) AND ($5::date IS NULL OR ${campoData} <= $5)
             AND ($6::uuid IS NULL OR p.conta_financeira_id = $6)
           ORDER BY ${situacao === 'pagas' ? 'p.data_pagamento DESC' : 'p.vencimento'}, l.descricao, p.numero
-          LIMIT 2000`,
+          LIMIT 2001`,
         [empresaId, tipo, status, de, ate, contaId],
       );
+      const temMais = cortarLista(r.rows, 2000);
       const parcelas = r.rows.map((p) => parcelaPublica(p, hoje));
       const total = parcelas.reduce((s, p) => s + (situacao === 'pagas' ? p.valorPago ?? 0 : p.valor ?? 0), 0);
-      return { tipo, situacao, de, ate, parcelas, total: Math.round(total * 100) / 100 };
+      return { temMais, tipo, situacao, de, ate, parcelas, total: Math.round(total * 100) / 100 };
     });
 
     app.post<{ Params: { id: string } }>('/parcelas/:id/baixar', { schema: { body: esquemaBaixa } }, async (req) => {

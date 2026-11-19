@@ -19,7 +19,7 @@ import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../li
 import { atualizarStatusRecebimento, esquemaLigarNotaPedido, ligarNotaAoPedido } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
-import { conferirPeriodo, diaQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
+import { cortarLista, conferirPeriodo, diaQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { fatorPadrao, registrarEntradasNota, registrarEntradasObra, removerEntradasNota, validarApropriacaoObra } from '../lib/estoque.ts';
 import { cadastrosParaIa, vinculoDoItem } from '../lib/vinculos.ts';
 import { baixarParcela, dinheiro, esquemaBaixa, numeroBr } from './financeiro.ts';
@@ -671,9 +671,10 @@ export function rotasNotas(banco: Banco) {
             AND ((($3::text IS NULL OR $3 = 'rascunho') AND n.status IN ('rascunho', 'aguardando_conferencia')) OR (n.data_emissao >= $2::date AND n.data_emissao <= $4::date))
             AND ($3::text IS NULL OR n.status = $3 OR ($3 = 'rascunho' AND n.status = 'aguardando_conferencia'))
           ORDER BY (n.status IN ('rascunho', 'aguardando_conferencia')) DESC, n.data_emissao DESC, n.criado_em DESC
-          LIMIT 1000`,
+          LIMIT 1001`,
         [empresaId, de, status, ate],
       );
+      const temMais = cortarLista(r.rows, 1000);
       // Rascunhos aparecem sempre (qualquer data); as demais, pelo mês de emissão.
       const notas = r.rows.map((n) => ({
           id: n.id,
@@ -693,7 +694,7 @@ export function rotasNotas(banco: Banco) {
           categorias: n.categorias,
         }));
       const rascunhos = (await banco.query("SELECT count(*)::int AS n FROM notas_fiscais WHERE empresa_id = $1 AND excluido_em IS NULL AND status IN ('rascunho','aguardando_conferencia')", [empresaId])).rows[0].n;
-      return { de, ate, notas, rascunhos };
+      return { de, ate, notas, rascunhos, temMais };
     });
 
     app.get<{ Params: { id: string } }>('/notas/:id', async (req) => ({ nota: await detalharNota(banco, empresaDo(req), req.params.id) }));

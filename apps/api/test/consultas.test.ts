@@ -62,3 +62,17 @@ test('P33: baixa na criação do lançamento quita todas as parcelas, como na no
   const parcelas = (await ctx.banco.query('SELECT status FROM parcelas WHERE lancamento_id = $1', [id])).rows.map((p) => p.status);
   assert.deepEqual(parcelas, ['paga', 'paga', 'paga']);
 });
+
+test('P18: lista maior que o limite avisa que há mais (temMais)', { skip: semBanco }, async () => {
+  const forn = (await ctx.pedir('dono', 'POST', '/api/adm/fornecedores', { corpo: { razaoSocial: 'Fornecedor em massa' } })).corpo.fornecedor.id;
+  await ctx.banco.query(
+    `INSERT INTO pedidos_compra (empresa_id, numero, data, fornecedor_id, status)
+     SELECT $1, 10000 + g, '2026-11-01', $2, 'cancelado' FROM generate_series(1, 501) g`,
+    [ctx.empresas.a, forn],
+  );
+  const r = await ctx.pedir('dono', 'GET', '/api/sup/pedidos?status=cancelados');
+  assert.equal(r.status, 200);
+  assert.equal(r.corpo.pedidos.length, 500);
+  assert.equal(r.corpo.temMais, true);
+  assert.equal((await ctx.pedir('dono', 'GET', '/api/sup/pedidos?status=receber')).corpo.temMais, false);
+});

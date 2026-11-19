@@ -7997,7 +7997,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:880"
+        "x-fonte": "src/rotas/financeiro.ts:882"
       }
     },
     "/api/fin/lancamentos/leitura": {
@@ -8036,7 +8036,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:772"
+        "x-fonte": "src/rotas/financeiro.ts:774"
       },
       "post": {
         "requestBody": {
@@ -8109,7 +8109,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:780"
+        "x-fonte": "src/rotas/financeiro.ts:782"
       }
     },
     "/api/fin/lancamentos/pedidos-disponiveis": {
@@ -8146,7 +8146,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:815"
+        "x-fonte": "src/rotas/financeiro.ts:817"
       }
     },
     "/api/fin/lancamentos/pedidos-disponiveis/{id}/estoque": {
@@ -8195,7 +8195,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:843"
+        "x-fonte": "src/rotas/financeiro.ts:845"
       }
     },
     "/api/fin/lancamentos/{id}": {
@@ -8242,7 +8242,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:876"
+        "x-fonte": "src/rotas/financeiro.ts:878"
       },
       "put": {
         "requestBody": {
@@ -8477,7 +8477,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:956"
+        "x-fonte": "src/rotas/financeiro.ts:958"
       }
     },
     "/api/fin/lancamentos/{id}/cancelar": {
@@ -8541,7 +8541,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:993"
+        "x-fonte": "src/rotas/financeiro.ts:995"
       }
     },
     "/api/fin/parcelas": {
@@ -8578,7 +8578,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:1024"
+        "x-fonte": "src/rotas/financeiro.ts:1026"
       }
     },
     "/api/fin/parcelas/{id}/baixar": {
@@ -8696,7 +8696,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:1080"
+        "x-fonte": "src/rotas/financeiro.ts:1083"
       }
     },
     "/api/fin/parcelas/{id}/recibo": {
@@ -8743,7 +8743,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:1088"
+        "x-fonte": "src/rotas/financeiro.ts:1091"
       }
     },
     "/api/fin/parcelas/baixar-lote": {
@@ -8849,7 +8849,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:1126"
+        "x-fonte": "src/rotas/financeiro.ts:1129"
       }
     },
     "/api/fin/parcelas/{id}/estornar": {
@@ -8896,7 +8896,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:1136"
+        "x-fonte": "src/rotas/financeiro.ts:1139"
       }
     },
     "/api/fin/parcelas/{id}": {
@@ -8965,7 +8965,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:1161"
+        "x-fonte": "src/rotas/financeiro.ts:1164"
       }
     },
     "/api/fin/resumo": {
@@ -9007,7 +9007,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/financeiro.ts:1182"
+        "x-fonte": "src/rotas/financeiro.ts:1185"
       }
     },
     "/api/fin/notas": {
@@ -9366,7 +9366,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1024"
+        "x-fonte": "src/rotas/notas.ts:1025"
       }
     },
     "/api/fin/notas/{id}": {
@@ -9413,7 +9413,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:699"
+        "x-fonte": "src/rotas/notas.ts:700"
       },
       "patch": {
         "requestBody": {
@@ -9618,7 +9618,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1074"
+        "x-fonte": "src/rotas/notas.ts:1075"
       },
       "delete": {
         "parameters": [
@@ -9664,7 +9664,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1559"
+        "x-fonte": "src/rotas/notas.ts:1560"
       }
     },
     "/api/fin/notas/{id}/pedido": {
@@ -9785,7 +9785,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:704"
+        "x-fonte": "src/rotas/notas.ts:705"
       }
     },
     "/api/fin/notas/{id}/pedidos-candidatos": {
@@ -9833,7 +9833,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:712"
+        "x-fonte": "src/rotas/notas.ts:713"
       }
     },
     "/api/fin/notas/{id}/xml": {
@@ -9880,7 +9880,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:775"
+        "x-fonte": "src/rotas/notas.ts:776"
       }
     },
     "/api/fin/notas/xml": {
@@ -9938,7 +9938,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:785"
+        "x-fonte": "src/rotas/notas.ts:786"
       }
     },
     "/api/fin/notas/{id}/arquivo": {
@@ -9985,7 +9985,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:864"
+        "x-fonte": "src/rotas/notas.ts:865"
       }
     },
     "/api/fin/notas/leitura": {
@@ -10022,7 +10022,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:876"
+        "x-fonte": "src/rotas/notas.ts:877"
       }
     },
     "/api/fin/notas/pdf": {
@@ -10103,7 +10103,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:886"
+        "x-fonte": "src/rotas/notas.ts:887"
       }
     },
     "/api/fin/notas/{id}/reler": {
@@ -10150,7 +10150,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:970"
+        "x-fonte": "src/rotas/notas.ts:971"
       }
     },
     "/api/fin/notas/chave": {
@@ -10206,7 +10206,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1004"
+        "x-fonte": "src/rotas/notas.ts:1005"
       }
     },
     "/api/fin/notas/{id}/itens": {
@@ -10352,7 +10352,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1120"
+        "x-fonte": "src/rotas/notas.ts:1121"
       }
     },
     "/api/fin/notas/itens/{id}/dividir": {
@@ -10420,7 +10420,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1144"
+        "x-fonte": "src/rotas/notas.ts:1145"
       }
     },
     "/api/fin/notas/itens/{id}": {
@@ -10713,7 +10713,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1181"
+        "x-fonte": "src/rotas/notas.ts:1182"
       },
       "delete": {
         "parameters": [
@@ -10758,7 +10758,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1283"
+        "x-fonte": "src/rotas/notas.ts:1284"
       }
     },
     "/api/fin/notas/{id}/apropriar": {
@@ -10869,7 +10869,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1267"
+        "x-fonte": "src/rotas/notas.ts:1268"
       }
     },
     "/api/fin/notas/itens/{id}/candidatos": {
@@ -10916,7 +10916,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1299"
+        "x-fonte": "src/rotas/notas.ts:1300"
       }
     },
     "/api/fin/notas/itens/{id}/vinculos": {
@@ -10994,7 +10994,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1369"
+        "x-fonte": "src/rotas/notas.ts:1370"
       }
     },
     "/api/fin/notas/{id}/confirmar": {
@@ -11115,7 +11115,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1418"
+        "x-fonte": "src/rotas/notas.ts:1419"
       }
     },
     "/api/fin/notas/{id}/reabrir": {
@@ -11162,7 +11162,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1530"
+        "x-fonte": "src/rotas/notas.ts:1531"
       }
     },
     "/api/fin/notas/{id}/cancelar": {
@@ -11210,7 +11210,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1543"
+        "x-fonte": "src/rotas/notas.ts:1544"
       }
     },
     "/api/fin/regras-apropriacao": {
@@ -11247,7 +11247,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1576"
+        "x-fonte": "src/rotas/notas.ts:1577"
       },
       "post": {
         "requestBody": {
@@ -11371,7 +11371,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1614"
+        "x-fonte": "src/rotas/notas.ts:1615"
       }
     },
     "/api/fin/regras-apropriacao/{id}": {
@@ -11437,7 +11437,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/notas.ts:1634"
+        "x-fonte": "src/rotas/notas.ts:1635"
       }
     },
     "/api/fin/conciliacao/resumo": {
@@ -17101,7 +17101,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1036"
+        "x-fonte": "src/rotas/suprimentos.ts:1037"
       }
     },
     "/api/sup/colaboradores": {
@@ -17142,7 +17142,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1046"
+        "x-fonte": "src/rotas/suprimentos.ts:1047"
       }
     },
     "/api/sup/saidas-material": {
@@ -17182,7 +17182,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1120"
+        "x-fonte": "src/rotas/suprimentos.ts:1121"
       },
       "post": {
         "requestBody": {
@@ -17290,7 +17290,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1069"
+        "x-fonte": "src/rotas/suprimentos.ts:1070"
       }
     },
     "/api/sup/solicitacoes": {
@@ -17329,7 +17329,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1134"
+        "x-fonte": "src/rotas/suprimentos.ts:1135"
       },
       "post": {
         "requestBody": {
@@ -17564,7 +17564,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1176"
+        "x-fonte": "src/rotas/suprimentos.ts:1179"
       }
     },
     "/api/sup/solicitacoes/{id}": {
@@ -17613,7 +17613,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1172"
+        "x-fonte": "src/rotas/suprimentos.ts:1175"
       },
       "put": {
         "requestBody": {
@@ -17858,7 +17858,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1222"
+        "x-fonte": "src/rotas/suprimentos.ts:1225"
       }
     },
     "/api/sup/solicitacoes/{id}/finalizar": {
@@ -17907,7 +17907,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1251"
+        "x-fonte": "src/rotas/suprimentos.ts:1254"
       }
     },
     "/api/sup/solicitacoes/{id}/reabrir": {
@@ -17956,7 +17956,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1263"
+        "x-fonte": "src/rotas/suprimentos.ts:1266"
       }
     },
     "/api/sup/solicitacoes/{id}/cancelar": {
@@ -18005,7 +18005,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1274"
+        "x-fonte": "src/rotas/suprimentos.ts:1277"
       }
     },
     "/api/sup/conferencia-unidades": {
@@ -18045,7 +18045,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1289"
+        "x-fonte": "src/rotas/suprimentos.ts:1292"
       }
     },
     "/api/sup/conferencia-unidades/{id}": {
@@ -18120,7 +18120,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1326"
+        "x-fonte": "src/rotas/suprimentos.ts:1329"
       }
     },
     "/api/sup/cotacoes": {
@@ -18159,7 +18159,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1349"
+        "x-fonte": "src/rotas/suprimentos.ts:1352"
       },
       "post": {
         "requestBody": {
@@ -18240,7 +18240,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1393"
+        "x-fonte": "src/rotas/suprimentos.ts:1396"
       }
     },
     "/api/sup/cotacoes/{id}": {
@@ -18289,7 +18289,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1382"
+        "x-fonte": "src/rotas/suprimentos.ts:1385"
       }
     },
     "/api/sup/cotacoes/{id}/fornecedores": {
@@ -18362,7 +18362,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1447"
+        "x-fonte": "src/rotas/suprimentos.ts:1450"
       }
     },
     "/api/sup/cotacoes/{id}/respostas/{cf}": {
@@ -18526,7 +18526,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1473"
+        "x-fonte": "src/rotas/suprimentos.ts:1476"
       }
     },
     "/api/sup/servicos/{obraItemId}/saldo": {
@@ -18583,7 +18583,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1505"
+        "x-fonte": "src/rotas/suprimentos.ts:1508"
       }
     },
     "/api/sup/cotacoes/leitura-ia": {
@@ -18623,7 +18623,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1539"
+        "x-fonte": "src/rotas/suprimentos.ts:1542"
       }
     },
     "/api/sup/cotacoes/{id}/leitura-ia": {
@@ -18702,7 +18702,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1546"
+        "x-fonte": "src/rotas/suprimentos.ts:1549"
       }
     },
     "/api/sup/cotacoes/{id}/vencedores": {
@@ -18811,7 +18811,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1581"
+        "x-fonte": "src/rotas/suprimentos.ts:1584"
       }
     },
     "/api/sup/cotacoes/{id}/concluir": {
@@ -18861,7 +18861,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1608"
+        "x-fonte": "src/rotas/suprimentos.ts:1611"
       }
     },
     "/api/sup/cotacoes/{id}/cancelar": {
@@ -18910,7 +18910,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1671"
+        "x-fonte": "src/rotas/suprimentos.ts:1674"
       }
     },
     "/api/sup/pedidos": {
@@ -18950,7 +18950,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1689"
+        "x-fonte": "src/rotas/suprimentos.ts:1692"
       }
     },
     "/api/sup/pedidos/{id}": {
@@ -19000,7 +19000,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1741"
+        "x-fonte": "src/rotas/suprimentos.ts:1746"
       },
       "put": {
         "requestBody": {
@@ -19131,7 +19131,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1766"
+        "x-fonte": "src/rotas/suprimentos.ts:1771"
       }
     },
     "/api/sup/pedidos/{id}/enviar-aprovacao": {
@@ -19180,7 +19180,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1798"
+        "x-fonte": "src/rotas/suprimentos.ts:1803"
       }
     },
     "/api/sup/pedidos/{id}/aprovar": {
@@ -19229,7 +19229,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1822"
+        "x-fonte": "src/rotas/suprimentos.ts:1827"
       }
     },
     "/api/sup/pedidos/{id}/reprovar": {
@@ -19299,7 +19299,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1836"
+        "x-fonte": "src/rotas/suprimentos.ts:1841"
       }
     },
     "/api/sup/pedidos/{id}/enviado": {
@@ -19348,7 +19348,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1850"
+        "x-fonte": "src/rotas/suprimentos.ts:1855"
       }
     },
     "/api/sup/pedidos/{id}/cancelar": {
@@ -19415,7 +19415,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1863"
+        "x-fonte": "src/rotas/suprimentos.ts:1868"
       }
     },
     "/api/sup/pedidos/{id}/reabrir": {
@@ -19466,7 +19466,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1901"
+        "x-fonte": "src/rotas/suprimentos.ts:1906"
       }
     },
     "/api/sup/pedidos/{id}/encerrar": {
@@ -19536,7 +19536,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1930"
+        "x-fonte": "src/rotas/suprimentos.ts:1935"
       }
     },
     "/api/sup/pedidos/{id}/notas-candidatas": {
@@ -19585,7 +19585,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1944"
+        "x-fonte": "src/rotas/suprimentos.ts:1949"
       }
     },
     "/api/sup/pedidos/{id}/recebimento": {
@@ -19708,7 +19708,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1995"
+        "x-fonte": "src/rotas/suprimentos.ts:2000"
       }
     },
     "/api/sup/pedidos/{id}/recebimento/{nota}": {
@@ -19765,7 +19765,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2004"
+        "x-fonte": "src/rotas/suprimentos.ts:2009"
       }
     },
     "/api/sup/relatorios": {
@@ -19804,7 +19804,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2021"
+        "x-fonte": "src/rotas/suprimentos.ts:2026"
       }
     },
     "/api/sup/contratos": {
@@ -23251,7 +23251,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2186"
+        "x-fonte": "src/rotas/suprimentos.ts:2191"
       }
     },
     "/api/ger/config": {
@@ -23289,7 +23289,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2270"
+        "x-fonte": "src/rotas/suprimentos.ts:2275"
       },
       "put": {
         "requestBody": {
@@ -23380,7 +23380,7 @@
             "dono"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2277"
+        "x-fonte": "src/rotas/suprimentos.ts:2282"
       }
     },
     "/api/ger/regras-producao": {
