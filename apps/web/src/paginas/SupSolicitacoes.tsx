@@ -162,7 +162,7 @@ function FormSolicitacao({ inicial, aoSalvar, aoCancelar, aoSujar }: { inicial?:
 
   useEffect(() => {
     api<{ obras: ObraLista[] }>('/eng/obras')
-      .then((r) => setObras(r.obras.filter((o) => o.ativo !== false)))
+      .then((r) => setObras(r.obras) /* a lista da API já vem só com obras ativas */)
       .catch((e) => setErro((e as Error).message));
   }, []);
 
@@ -588,7 +588,7 @@ function FormServico({ inicial, aoSalvar, aoCancelar }: { inicial?: Solicitacao;
 
   useEffect(() => {
     api<{ obras: ObraLista[] }>('/eng/obras')
-      .then((r) => setObras(r.obras.filter((o) => o.ativo !== false)))
+      .then((r) => setObras(r.obras) /* a lista da API já vem só com obras ativas */)
       .catch((e) => setErro((e as Error).message));
     api<{ contas: PlanoConta[] }>('/fin/plano-contas')
       .then((r) => {

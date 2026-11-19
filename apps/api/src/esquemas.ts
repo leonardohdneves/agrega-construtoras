@@ -91,7 +91,7 @@ export const esquemaNovoUsuario = z.object({
   senha: esquemaSenha,
   telefoneWhatsapp: opcional,
   administrador: z.boolean().optional().default(false),
-  modulos: z.array(z.enum(MODULOS)).max(8).nullable().optional(),
+  modulos: z.array(z.enum(MODULOS, { message: 'Módulo desconhecido.' })).max(MODULOS.length, 'Módulos demais.').nullable().optional(),
 });
 
 export const esquemaAlterarUsuario = z
@@ -102,7 +102,7 @@ export const esquemaAlterarUsuario = z
     telefoneWhatsapp: opcional,
     senha: esquemaSenha.optional(),
     administrador: z.boolean().optional(),
-    modulos: z.array(z.enum(MODULOS)).max(8).nullable().optional(),
+    modulos: z.array(z.enum(MODULOS, { message: 'Módulo desconhecido.' })).max(MODULOS.length, 'Módulos demais.').nullable().optional(),
   })
   .strict();
 

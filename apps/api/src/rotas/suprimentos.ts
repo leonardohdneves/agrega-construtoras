@@ -1083,8 +1083,9 @@ export function rotasSuprimentos(banco: Banco) {
               `SELECT m.id, m.obra_id, m.eap_no_id, m.obra_estoque_id, m.obra_item_id,
                       (m.quantidade - coalesce((SELECT sum(s.quantidade) FROM estoque_movimentos s WHERE s.etiqueta_id = m.id), 0)) AS saldo
                  FROM estoque_movimentos m
-                WHERE m.id = $1 AND m.empresa_id = $2 AND m.tipo = 'entrada' AND m.nota_item_id IS NOT NULL
+                WHERE m.id = $1 AND m.empresa_id = $2 AND m.tipo = 'entrada' AND m.obra_item_id IS NOT NULL
                 FOR UPDATE OF m`,
+              // Qualquer entrada de insumo da obra, como na lista de etiquetas: a da nota e a da despesa com estoque (P15).
               [it.etiquetaId, empresaId],
             )
           ).rows[0];

@@ -44,7 +44,8 @@ type ConsumoAlto = { veiculoId: string; codigo: string; piora: number; ultimo: {
 type ResumoFrota = { alertas: Alerta[]; consumoAlto: ConsumoAlto[]; manutencao: ItemManutencao[]; osAbertas: number; frota: { disponivel: number; manutencao: number; parado: number; inativo: number } };
 type Bloco = { quantidade: number; valor: number };
 type LadoFin = { vencidas: Bloco; hoje: Bloco; semana: Bloco; aberto: number; realizadoMes: number };
-type ResumoFin = { financeiroVisivel?: boolean; saldoTotal: number; contas: ContaFinanceira[]; pagar: LadoFin; receber: LadoFin; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number; extratoPendente: number; estoqueBaixo?: number; qualidade?: { cpsAtrasados: number; calibracoesVencidas: number; abaixoFck: number } };
+type ResumoFin = { financeiroVisivel?: boolean; saldoTotal: number | null; contas: ContaFinanceira[]; pagar: LadoFin | null; receber: LadoFin | null; configurado: { planoContas: boolean; contas: boolean }; notasParaConferir: number; extratoPendente: number; estoqueBaixo?: number; qualidade?: { cpsAtrasados: number; calibracoesVencidas: number; abaixoFck: number } };
+type ResumoFinVisivel = ResumoFin & { saldoTotal: number; pagar: LadoFin; receber: LadoFin };
 type CustoManut = { veiculoId: string; codigo: string; ordens: number; total: number; pecas: number };
 type Dados = { frota: ResumoFrota | null; fin: ResumoFin | null; consumo: ConsumoVeiculo[]; manut: CustoManut[]; erro: string; carregado?: boolean };
 
@@ -124,7 +125,8 @@ const carregando = <p className="muted">Carregando…</p>;
 function AbaGeral({ d }: { d: Dados }) {
   const { frota, fin } = d;
   // Saldos e contas só para quem pode ver (dono e perfil Financeiro).
-  const fc = fin && fin.financeiroVisivel !== false ? fin : null;
+  // Só com saldos visíveis (dono e perfil Financeiro) os blocos de pagar e receber vêm preenchidos.
+  const fc = fin && fin.financeiroVisivel !== false && fin.pagar && fin.receber ? (fin as ResumoFinVisivel) : null;
   const f = frota?.frota;
   const ativos = f ? f.disponivel + f.manutencao + f.parado : 0;
   const diesel30 = d.consumo.reduce((s, c) => s + (c.valor ?? 0), 0);
@@ -162,24 +164,24 @@ function AbaGeral({ d }: { d: Dados }) {
         {fc && (<>
         <Kpi
           rotulo="Saldo em bancos e caixa"
-          valor={fin ? formatarMoeda(fin.saldoTotal) : '—'}
-          detalhe={fin ? plural(fin.contas.length, 'conta', 'contas') : undefined}
+          valor={fin ? formatarMoeda(fc.saldoTotal) : '—'}
+          detalhe={fin ? plural(fc.contas.length, 'conta', 'contas') : undefined}
           para="/fin/contas"
-          tom={fin && fin.saldoTotal < 0 ? 'perigo' : undefined}
+          tom={fin && fc.saldoTotal < 0 ? 'perigo' : undefined}
         />
         <Kpi
           rotulo="A pagar em 7 dias"
-          valor={fin ? formatarMoeda(fin.pagar.semana.valor + fin.pagar.vencidas.valor) : '—'}
-          detalhe={fin ? (fin.pagar.vencidas.quantidade ? `inclui ${formatarMoeda(fin.pagar.vencidas.valor)} vencido` : plural(fin.pagar.semana.quantidade, 'conta', 'contas')) : undefined}
+          valor={fin ? formatarMoeda(fc.pagar.semana.valor + fc.pagar.vencidas.valor) : '—'}
+          detalhe={fin ? (fc.pagar.vencidas.quantidade ? `inclui ${formatarMoeda(fc.pagar.vencidas.valor)} vencido` : plural(fc.pagar.semana.quantidade, 'conta', 'contas')) : undefined}
           para="/fin/pagar-receber?tipo=despesa&situacao=semana"
-          tom={fin?.pagar.vencidas.quantidade ? 'perigo' : undefined}
+          tom={fc.pagar.vencidas.quantidade ? 'perigo' : undefined}
         />
         <Kpi
           rotulo="A receber em 7 dias"
-          valor={fin ? formatarMoeda(fin.receber.semana.valor + fin.receber.vencidas.valor) : '—'}
-          detalhe={fin ? (fin.receber.vencidas.quantidade ? `inclui ${formatarMoeda(fin.receber.vencidas.valor)} atrasado` : plural(fin.receber.semana.quantidade, 'recebimento', 'recebimentos')) : undefined}
+          valor={fin ? formatarMoeda(fc.receber.semana.valor + fc.receber.vencidas.valor) : '—'}
+          detalhe={fin ? (fc.receber.vencidas.quantidade ? `inclui ${formatarMoeda(fc.receber.vencidas.valor)} atrasado` : plural(fc.receber.semana.quantidade, 'recebimento', 'recebimentos')) : undefined}
           para="/fin/pagar-receber?tipo=receita&situacao=semana"
-          tom={fin?.receber.vencidas.quantidade ? 'aviso' : undefined}
+          tom={fc.receber.vencidas.quantidade ? 'aviso' : undefined}
         />
         </>)}
         {frota && (
@@ -412,6 +414,13 @@ function LadoCartao({ titulo, lado, tipo }: { titulo: string; lado: LadoFin; tip
 function AbaFinanceiro({ d }: { d: Dados }) {
   const { fin } = d;
   if (!fin) return carregando;
+  // Quem recebe o módulo Financeiro sem ser dono nem do perfil Financeiro não vê saldos nem contas (P15).
+  if (!fin.pagar || !fin.receber)
+    return (
+      <div className="card">
+        <p className="muted" style={{ margin: 0 }}>Saldos, contas a pagar e a receber são vistos só pelo dono e pelo perfil Financeiro.</p>
+      </div>
+    );
   if (!fin.configurado.planoContas || !fin.configurado.contas)
     return (
       <div className="card">
@@ -431,7 +440,7 @@ function AbaFinanceiro({ d }: { d: Dados }) {
         </Link>
       )}
       <div className="kpis">
-        <Kpi rotulo="Saldo em bancos e caixa" valor={formatarMoeda(fin.saldoTotal)} para="/fin/contas" tom={fin.saldoTotal < 0 ? 'perigo' : undefined} />
+        <Kpi rotulo="Saldo em bancos e caixa" valor={formatarMoeda(fin.saldoTotal)} para="/fin/contas" tom={(fin.saldoTotal ?? 0) < 0 ? 'perigo' : undefined} />
         <Kpi rotulo="A pagar em aberto" valor={formatarMoeda(fin.pagar.aberto)} detalhe={fin.pagar.vencidas.quantidade ? `${formatarMoeda(fin.pagar.vencidas.valor)} vencido` : 'nada vencido'} para="/fin/pagar-receber?tipo=despesa" tom={fin.pagar.vencidas.quantidade ? 'perigo' : undefined} />
         <Kpi rotulo="A receber em aberto" valor={formatarMoeda(fin.receber.aberto)} detalhe={fin.receber.vencidas.quantidade ? `${formatarMoeda(fin.receber.vencidas.valor)} atrasado` : 'nada atrasado'} para="/fin/pagar-receber?tipo=receita" tom={fin.receber.vencidas.quantidade ? 'aviso' : undefined} />
         <Kpi rotulo="Recebido − pago no mês" valor={formatarMoeda(resultadoMes)} detalhe="caixa do mês" tom={resultadoMes < 0 ? 'perigo' : 'ok'} />
@@ -442,7 +451,7 @@ function AbaFinanceiro({ d }: { d: Dados }) {
         <Cartao titulo="Saldo por conta" link={{ para: '/fin/contas', texto: 'Bancos e caixa' }}>
           <ul className="linhas">
             {fin.contas.map((c) => (
-              <Linha key={c.id} para="/fin/contas" titulo={c.nome} valor={formatarMoeda(c.saldo)} tom={c.saldo < 0 ? 'perigo' : undefined} />
+              <Linha key={c.id} para="/fin/contas" titulo={c.nome} valor={formatarMoeda(c.saldo)} tom={(c.saldo ?? 0) < 0 ? 'perigo' : undefined} />
             ))}
             <Linha titulo={<strong>Total</strong>} valor={<strong>{formatarMoeda(fin.saldoTotal)}</strong>} />
           </ul>

@@ -79,7 +79,7 @@ export function ContasFinanceiras() {
   }
 
   const ativas = (contas ?? []).filter((c) => c.ativo);
-  const total = ativas.reduce((s, c) => s + c.saldo, 0);
+  const total = ativas.reduce((s, c) => s + (c.saldo ?? 0), 0);
 
   return (
     <>
@@ -241,7 +241,7 @@ export function ContasFinanceiras() {
                   <td className="small mono">
                     {formatarMoeda(c.saldoInicial)} em {formatarData(c.dataSaldoInicial)}
                   </td>
-                  <td className="mono" style={{ textAlign: 'right', fontWeight: 600, color: c.saldo < 0 ? 'var(--status-danger-ink)' : undefined }}>{formatarMoeda(c.saldo)}</td>
+                  <td className="mono" style={{ textAlign: 'right', fontWeight: 600, color: (c.saldo ?? 0) < 0 ? 'var(--status-danger-ink)' : undefined }}>{formatarMoeda(c.saldo)}</td>
                   <td>
                     <div className="acoes" style={{ flexWrap: 'nowrap' }}>
                       <button className="btn btn-link" type="button" onClick={() => setExtratoDe({ contaId: c.id, mes: hojeLocal().slice(0, 7) })}>

@@ -40,7 +40,7 @@ export const GRANULARIDADES: { id: Gran; texto: string }[] = [
 ];
 type PeriodoRel = { rotulo: string; inicio: string; fim: string; dias: number };
 type GanttRel = {
-  granularidade: Gran; inicio: string; fim: string; totalDias: number; periodos: PeriodoRel[];
+  granularidade: Gran; inicio: string | null; fim: string | null; totalDias: number; periodos: PeriodoRel[]; // nulos sem atividades
   atividades: { id: string; descricao: string; eapCodigo: string | null; inicio: string; fim: string; duracaoDias: number; deslocamentoDias: number }[];
   atividadesSemEap: number;
 };
@@ -49,7 +49,7 @@ export type CalendarioRel = {
   blocos: { rotulo: string; inicio: string; fim: string; dias: string[]; linhas: { id: string; descricao: string; eapCodigo: string | null; marcas: Record<string, 'inicio' | 'continua' | 'fim' | 'unico'> }[] }[];
 };
 export type EquipesRel = {
-  granularidade: Gran; horasDia: number; inicio: string; fim: string; periodos: string[];
+  granularidade: Gran; horasDia: number; inicio: string | null; fim: string | null; periodos: string[]; // nulos sem atividades
   porTipo: { codigo: string; descricao: string; pico: number; periodos: { rotulo: string; trabalhadores: number }[] }[];
   porAtividade: {
     id: string; descricao: string; inicio: string; fim: string; duracaoDias: number;

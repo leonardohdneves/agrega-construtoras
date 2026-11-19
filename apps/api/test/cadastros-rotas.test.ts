@@ -90,3 +90,16 @@ test('P35: empresa criada pelo administrador já lança despesa, sem passar pela
   });
   assert.equal(lanc.status, 201, JSON.stringify(lanc.corpo));
 });
+
+test('P15: usuário com os 9 módulos marcados é aceito; permuta com preço vazio explica em português', { skip: semBanco }, async () => {
+  const todos = ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'];
+  const r = await ctx.pedir('dono', 'PATCH', `/api/usuarios/${ctx.usuarios.a.financeiro.id}`, { corpo: { modulos: todos } });
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  const obra = (await ctx.pedir('dono', 'POST', '/api/eng/obras', { corpo: { codigo: 'P15', nome: 'Obra P15' } })).corpo.obra.id;
+  const forn = (await ctx.pedir('dono', 'POST', '/api/adm/fornecedores', { corpo: { razaoSocial: 'Fornecedor P15' } })).corpo.fornecedor.id;
+  const p = await ctx.pedir('dono', 'POST', '/api/sup/permutas', {
+    corpo: { obraId: obra, fornecedorId: forn, data: '2026-11-19', materiais: [{ descricao: 'Areia', quantidade: 1, precoUnitario: null }], servicos: [{ descricao: 'Reboco', quantidade: 1, precoUnitario: 10 }] },
+  });
+  assert.equal(p.status, 400);
+  assert.equal(p.corpo.erro, 'Informe o preço acordado.');
+});
