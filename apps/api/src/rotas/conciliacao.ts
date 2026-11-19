@@ -7,6 +7,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { conferirPeriodo, diaQuery, idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { categoriaDoExtrato, ErroOfx, lerOfx } from '../lib/ofx.ts';
 import { empresaDo, exigir } from '../sessao.ts';
 import { baixarParcela } from './financeiro.ts';
@@ -314,18 +315,22 @@ export function rotasConciliacao(banco: Banco) {
     });
 
     app.get<{ Querystring: Record<string, string | undefined> }>('/conciliacao/linhas', async (req) => {
-      const q = req.query;
+      // contaId opcional: sem ele, as linhas de todas as contas (P34: antes era 400). Filtros validados (P17).
+      const q = lerQuery(
+        { contaId: idQuery('contaId'), status: opcaoQuery('status', ['pendente', 'conciliado', 'ignorado', 'todas'] as const), de: diaQuery('de'), ate: diaQuery('ate') },
+        req.query,
+      );
       const empresaId = empresaDo(req);
-      if (!q.contaId || !UUID.test(q.contaId)) throw new ErroHttp(400, 'Escolha a conta.');
-      const status = ['pendente', 'conciliado', 'ignorado'].includes(q.status ?? '') ? q.status! : q.status === 'todas' ? null : 'pendente';
-      const de = /^\d{4}-\d{2}-\d{2}$/.test(q.de ?? '') ? q.de : null;
-      const ate = /^\d{4}-\d{2}-\d{2}$/.test(q.ate ?? '') ? q.ate : null;
+      const status = q.status === 'todas' ? null : (q.status ?? 'pendente');
+      const de = q.de ?? null;
+      const ate = q.ate ?? null;
+      if (de && ate) conferirPeriodo(de, ate);
       const r = await banco.query(
         `${SELECT_LINHA}
-          WHERE el.empresa_id = $1 AND el.conta_financeira_id = $2 AND ($3::text IS NULL OR el.status = $3)
+          WHERE el.empresa_id = $1 AND ($2::uuid IS NULL OR el.conta_financeira_id = $2) AND ($3::text IS NULL OR el.status = $3)
             AND ($4::date IS NULL OR el.data >= $4) AND ($5::date IS NULL OR el.data <= $5)
           ORDER BY el.data DESC, el.valor_centavos LIMIT 1000`,
-        [empresaId, q.contaId, status, de, ate],
+        [empresaId, q.contaId ?? null, status, de, ate],
       );
       return { linhas: r.rows.map(linhaPublica) };
     });

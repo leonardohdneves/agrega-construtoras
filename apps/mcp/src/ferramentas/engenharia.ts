@@ -415,7 +415,7 @@ export const ferramentasEngenharia = colecao(
   ferramenta({
     name: 'registrar_medicao_fisica',
     description:
-      'Lança uma medição de avanço físico da obra numa data. Cada item informa o percentual ACUMULADO até a data (0 a 100, não o incremento do período) de uma linha folha da EAP, ou a quantidade acumulada executada, que a API converte em % pela quantidade orçada (limitado a 100). Só existe uma medição por data: lançar de novo na mesma data SUBSTITUI a medição anterior inteira, então envie todas as linhas daquela data. Erros 400: linha agrupadora (com linhas abaixo), quantidade em linha que não tem exatamente um serviço, ou nenhum item com percentual ou quantidade. Devolve { id }. Os ids e o avanço anterior vêm de obter_planilha_acompanhamento.',
+      'Lança uma medição de avanço físico da obra numa data. Cada item informa o percentual ACUMULADO até a data (0 a 100, não o incremento do período) de uma linha folha da EAP, ou a quantidade acumulada executada, que a API converte em % pela quantidade orçada (limitado a 100). Só existe uma medição por data: se já houver uma, a API responde 409 e só substitui (a medição anterior inteira) com substituir: true, então nesse caso envie todas as linhas daquela data. Erros 400: linha agrupadora (com linhas abaixo), quantidade em linha que não tem exatamente um serviço, ou nenhum item com percentual ou quantidade. Devolve { id }. Os ids e o avanço anterior vêm de obter_planilha_acompanhamento.',
     inputSchema: z.object({
       obraId: obraId(),
       data: data('Data da medição, AAAA-MM-DD.'),
@@ -430,6 +430,7 @@ export const ferramentasEngenharia = colecao(
         )
         .min(1)
         .describe('Linhas medidas. Cada uma precisa de percentual ou quantidade; item sem nenhum dos dois é ignorado.'),
+      substituir: z.boolean().optional().describe('true para substituir a medição que já existe nesta data. Sem ele, a API recusa com 409.'),
     }),
     handler: async ({ obraId, ...corpo }, api) => ({ success: true, data: await api.post(`/eng/obras/${obraId}/acompanhamento/medicoes`, corpo) }),
   }),

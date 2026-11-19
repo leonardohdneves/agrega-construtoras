@@ -1169,10 +1169,12 @@ export function rotasFinanceiro(banco: Banco) {
         if (!antes) throw naoEncontrado('Parcela');
         if (antes.status !== 'aberta') throw new ErroHttp(409, 'Só parcelas em aberto podem ser alteradas.');
         const depois = (
-          await c.query('UPDATE parcelas SET vencimento = coalesce($2, vencimento), observacoes = coalesce($3, observacoes), atualizado_em = now() WHERE id = $1 RETURNING *', [
+          // observacoes enviada (mesmo vazia ou null) substitui; ausente, mantém. Antes o coalesce não deixava apagar (P34).
+          await c.query('UPDATE parcelas SET vencimento = coalesce($2, vencimento), observacoes = CASE WHEN $4 THEN $3 ELSE observacoes END, atualizado_em = now() WHERE id = $1 RETURNING *', [
             antes.id,
             d.vencimento ?? null,
             d.observacoes ?? null,
+            Object.prototype.hasOwnProperty.call(req.body ?? {}, 'observacoes'),
           ])
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'parcelas', entidadeId: antes.id, antes, depois });

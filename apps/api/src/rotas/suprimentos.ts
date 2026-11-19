@@ -240,6 +240,8 @@ const esquemaItemServico = z.object({
 /** Escopo do serviço: quem fornece material, mão de obra e equipamento (direciona a minuta do contrato). */
 export const ESCOPOS_SERVICO = ['mo', 'eq', 'mat', 'mat_mo', 'mat_mo_eq', 'mo_eq', 'mat_eq'] as const;
 const esquemaServico = z.object({
+  // Identifica o corpo de serviço (P34: antes ficava fora do esquema e, sem ele, o corpo era lido como material).
+  tipo: z.literal('servico').optional(),
   obraId: z.string().regex(UUID, 'Escolha a obra.'),
   data: dataOpc,
   necessidade: dataOpc,
@@ -248,7 +250,11 @@ const esquemaServico = z.object({
   escopo: z.enum(ESCOPOS_SERVICO, { message: 'Escolha o escopo do serviço (mão de obra, equipamento e/ou material).' }),
   itens: z.array(esquemaItemServico).min(1, 'Inclua pelo menos um serviço.').max(200, 'Até 200 itens por solicitação.'),
 });
-const ehServico = (corpo: unknown) => (corpo as { tipo?: unknown } | null)?.tipo === 'servico';
+/** Corpo de serviço: tipo "servico", ou, sem tipo, os campos que só o serviço tem (categoria e escopo). */
+const ehServico = (corpo: unknown) => {
+  const c = (corpo ?? {}) as { tipo?: unknown; planoContaId?: unknown; escopo?: unknown };
+  return c.tipo === 'servico' || (c.tipo === undefined && c.planoContaId !== undefined && c.escopo !== undefined);
+};
 
 async function validarPlanoConta(c: Cliente, empresaId: string, id: string) {
   if (!(await c.query('SELECT 1 FROM plano_contas WHERE id = $1 AND empresa_id = $2', [id, empresaId])).rowCount) throw new ErroHttp(400, 'Categoria (plano de contas) não encontrada.');

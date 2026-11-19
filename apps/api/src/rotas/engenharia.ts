@@ -1227,7 +1227,16 @@ export function rotasEngenharia(banco: Banco) {
 
     app.get<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', async (req) => {
       await obraDaEmpresa(banco, empresaDo(req), req.params.id);
-      const i = (await banco.query(`SELECT oi.*, ${precoObra('oi')} AS preco, 0 AS componentes, 0 AS no_orcamento FROM obra_itens oi WHERE oi.id = $1 AND oi.obra_id = $2`, [req.params.itemId, req.params.id])).rows[0];
+      // Os mesmos contadores da lista (antes vinham sempre 0 e "fora do orçamento", P34).
+      const i = (
+        await banco.query(
+          `SELECT oi.*, ${precoObra('oi')} AS preco,
+                  (SELECT count(*)::int FROM obra_composicao_insumos ci WHERE ci.composicao_id = oi.id) AS componentes,
+                  (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_item_id = oi.id) AS no_orcamento
+             FROM obra_itens oi WHERE oi.id = $1 AND oi.obra_id = $2`,
+          [req.params.itemId, req.params.id],
+        )
+      ).rows[0];
       if (!i) throw naoEncontrado('Item');
       const comp = (
         await banco.query(
@@ -2151,6 +2160,8 @@ export function rotasEngenharia(banco: Banco) {
         percentual: z.number().min(0).max(100).optional().nullable(),
         quantidade: z.number().min(0).optional().nullable(),
       })).min(1, 'Preencha ao menos uma linha.'),
+      // Já há medição na data: só substitui com confirmação explícita (P34; antes apagava a anterior sem aviso).
+      substituir: z.boolean().optional().default(false),
     });
 
     app.post<{ Params: { id: string } }>('/obras/:id/acompanhamento/medicoes', { schema: { body: esquemaMedicao } }, async (req, reply) => {
@@ -2171,7 +2182,11 @@ export function rotasEngenharia(banco: Banco) {
           }
         }
         if (!linhas.length) throw new ErroHttp(400, 'Preencha o percentual ou a quantidade de ao menos uma linha.');
-        // Uma medição por data: regravar a mesma data substitui a anterior.
+        // Uma medição por data: regravar a mesma data substitui a anterior, mas só com `substituir: true`.
+        const existe = (await c.query('SELECT 1 FROM obra_medicoes WHERE obra_id = $1 AND data = $2', [obra.id, d.data])).rowCount;
+        if (existe && !d.substituir) {
+          throw new ErroHttp(409, `Já existe uma medição em ${d.data.split('-').reverse().join('/')}. Confirme para substituí-la inteira.`, { jaExiste: true });
+        }
         await c.query('DELETE FROM obra_medicoes WHERE obra_id = $1 AND data = $2', [obra.id, d.data]);
         const m = (await c.query(
           'INSERT INTO obra_medicoes (obra_id, data, descricao, criado_por) VALUES ($1,$2,$3,$4) RETURNING id',
@@ -2858,7 +2873,7 @@ export function rotasEngenharia(banco: Banco) {
       const itens = insumos ? abcInsumos(linhas, await composicoesDaPlanilha(linhas)) : abcServicos(linhas, bdiPct);
       return {
         tipo: insumos ? 'insumos' : 'servicos',
-        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
+        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: bdiPct }, // o BDI usado no cálculo (P34)
         limites: LIMITES_ABC,
         ...curvaAbc(itens),
       };
@@ -2873,7 +2888,7 @@ export function rotasEngenharia(banco: Banco) {
       const rel = montarRelatorioOrcamento(linhas, bdiPct, analitico, composicoes);
       return {
         tipo: analitico ? 'analitico' : 'sintetico',
-        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
+        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: bdiPct }, // o BDI usado no cálculo (P34)
         ...rel,
       };
     });
