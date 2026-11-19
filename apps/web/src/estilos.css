@@ -853,6 +853,12 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .laudo-sumario li { display: flex; align-items: baseline; gap: 6mm; padding: 3mm 0; border-bottom: 1px dotted #999; font-size: 11pt; }
   .laudo-sumario-num { width: 8mm; }
   .laudo-primeira { break-before: auto; }
+  /* Anexos: começam em página nova; as fotos saem duas por linha, sem cortar uma foto entre páginas. */
+  .laudo-anexos { break-before: page; }
+  .laudo-fotos { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; margin-top: 3mm; }
+  .laudo-foto { margin: 0; break-inside: avoid; font-size: 9pt; }
+  .laudo-foto img { display: block; width: 100%; height: 62mm; object-fit: cover; }
+  .laudo-foto figcaption { margin-top: 1.5mm; }
 }
 
 /* RDO · fotos */

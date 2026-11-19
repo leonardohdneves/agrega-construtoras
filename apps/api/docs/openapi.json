@@ -28254,7 +28254,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/laudos.ts:199",
+        "x-fonte": "src/rotas/laudos.ts:222",
         "parameters": [
           {
             "name": "tipo",
@@ -28323,7 +28323,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/laudos.ts:218"
+        "x-fonte": "src/rotas/laudos.ts:241"
       }
     },
     "/api/laudos/{id}": {
@@ -28370,7 +28370,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/laudos.ts:233"
+        "x-fonte": "src/rotas/laudos.ts:256"
       },
       "put": {
         "requestBody": {
@@ -28438,7 +28438,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/laudos.ts:240"
+        "x-fonte": "src/rotas/laudos.ts:263"
       },
       "delete": {
         "parameters": [
@@ -28483,7 +28483,257 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/laudos.ts:255"
+        "x-fonte": "src/rotas/laudos.ts:278"
+      }
+    },
+    "/api/laudos/{id}/anexos": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso. Formato ainda não descrito."
+          },
+          "default": {
+            "description": "Erro.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Laudos"
+        ],
+        "operationId": "get_laudos_id_anexos",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "x-acesso": {
+          "publica": false,
+          "modulo": "laudos",
+          "perfis": [
+            "dono",
+            "gestor"
+          ]
+        },
+        "x-fonte": "src/rotas/laudos.ts:325"
+      },
+      "post": {
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "nome": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  "tipo": {
+                    "type": "string",
+                    "enum": [
+                      "application/pdf",
+                      "image/jpeg",
+                      "image/png",
+                      "image/webp"
+                    ]
+                  },
+                  "categoria": {
+                    "type": "string",
+                    "enum": [
+                      "art",
+                      "foto",
+                      "outro"
+                    ],
+                    "default": "outro"
+                  },
+                  "legenda": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "default": ""
+                  },
+                  "arquivo": {
+                    "type": "string",
+                    "minLength": 1
+                  }
+                },
+                "required": [
+                  "nome",
+                  "tipo",
+                  "arquivo"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso. Formato ainda não descrito."
+          },
+          "default": {
+            "description": "Erro.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Laudos"
+        ],
+        "operationId": "post_laudos_id_anexos",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "x-acesso": {
+          "publica": false,
+          "modulo": "laudos",
+          "perfis": [
+            "dono",
+            "gestor"
+          ]
+        },
+        "x-fonte": "src/rotas/laudos.ts:294"
+      }
+    },
+    "/api/laudos/{id}/anexos/{anexoId}": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "anexoId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso. Formato ainda não descrito."
+          },
+          "default": {
+            "description": "Erro.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Laudos"
+        ],
+        "operationId": "get_laudos_id_anexos_anexoId",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "x-acesso": {
+          "publica": false,
+          "modulo": "laudos",
+          "perfis": [
+            "dono",
+            "gestor"
+          ]
+        },
+        "x-fonte": "src/rotas/laudos.ts:345"
+      },
+      "delete": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          },
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "anexoId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso. Formato ainda não descrito."
+          },
+          "default": {
+            "description": "Erro.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Laudos"
+        ],
+        "operationId": "delete_laudos_id_anexos_anexoId",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "x-acesso": {
+          "publica": false,
+          "modulo": "laudos",
+          "perfis": [
+            "dono",
+            "gestor"
+          ]
+        },
+        "x-fonte": "src/rotas/laudos.ts:364"
       }
     },
     "/api/laudos/ler-identificacao": {
@@ -28544,7 +28794,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/laudos.ts:265"
+        "x-fonte": "src/rotas/laudos.ts:389"
       }
     },
     "/api/laudos/ler-glp": {
@@ -28605,7 +28855,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/laudos.ts:308"
+        "x-fonte": "src/rotas/laudos.ts:432"
       }
     },
     "/api/mural/painel": {

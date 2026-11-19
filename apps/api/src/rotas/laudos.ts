@@ -2,7 +2,7 @@
 // podem ser lidos do PDF de um laudo anterior pela IA; o engenheiro confere antes de salvar.
 import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
-import type { Banco } from '../db.ts';
+import { emTransacao, type Banco, type Cliente } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
@@ -13,6 +13,29 @@ import { LIMITE_IA } from '../lib/limites.ts';
 const TIPOS = ['glp', 'avaliacao', 'patologia'] as const;
 type Tipo = (typeof TIPOS)[number];
 const ROTULO_TIPO: Record<Tipo, string> = { glp: 'Laudo de GLP', avaliacao: 'Laudo de avaliação', patologia: 'Laudo de patologia' };
+
+/** Anexos do laudo: ART (PDF ou foto), fotos da obra e outros documentos. Ficam no banco, como os anexos das notas. */
+const CATEGORIAS_ANEXO = ['art', 'foto', 'outro'] as const;
+const TIPOS_ANEXO = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'] as const;
+const MAX_ANEXO = 10 * 1024 * 1024;
+const LIMITE_ANEXOS_LAUDO = 40;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/** Confere que o conteúdo é mesmo do tipo declarado (PDF ou imagem) antes de guardar e servir o arquivo. */
+function conteudoDoTipo(bytes: Buffer, tipo: string): boolean {
+  if (tipo === 'application/pdf') return bytes.subarray(0, 5).toString('latin1') === '%PDF-';
+  if (tipo === 'image/jpeg') return bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
+  if (tipo === 'image/png') return bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  if (tipo === 'image/webp') return bytes.subarray(0, 4).toString('latin1') === 'RIFF' && bytes.subarray(8, 12).toString('latin1') === 'WEBP';
+  return false;
+}
+
+/** Confere que o laudo existe e pertence à empresa. Id fora do formato de UUID também é "não encontrado". */
+async function laudoDaEmpresa(c: Cliente, empresaId: string, laudoId: string): Promise<void> {
+  if (!UUID.test(laudoId)) throw naoEncontrado('Laudo');
+  const r = await c.query('SELECT 1 FROM laudos WHERE id = $1 AND empresa_id = $2', [laudoId, empresaId]);
+  if (!r.rowCount) throw naoEncontrado('Laudo');
+}
 
 /** Campos do laudo de GLP (rede e central de gás), extraídos do modelo Neves Engenharia (Pex e galvanizado). */
 const esquemaDadosGlp = z.object({
@@ -257,6 +280,107 @@ export function rotasLaudos(banco: Banco) {
       const r = await banco.query('DELETE FROM laudos WHERE id = $1 AND empresa_id = $2 RETURNING id, tipo, numero', [req.params.id, empresaId]);
       if (!r.rowCount) throw naoEncontrado('Laudo');
       await auditar(banco, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'laudos', entidadeId: req.params.id, antes: { tipo: r.rows[0].tipo, numero: r.rows[0].numero } });
+      return { ok: true };
+    });
+
+    // ----- Anexos do laudo (ART em PDF ou foto, fotos da obra, outros documentos) -----
+    const corpoPostLaudosAnexos = z.object({
+      nome: z.string().trim().min(1, 'Informe o nome do arquivo.').max(200),
+      tipo: z.enum(TIPOS_ANEXO, { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
+      categoria: z.enum(CATEGORIAS_ANEXO).default('outro'),
+      legenda: z.string().trim().max(200).default(''),
+      arquivo: z.string().min(1, 'Envie o arquivo.'),
+    });
+    app.post<{ Params: { id: string } }>('/laudos/:id/anexos', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLaudosAnexos } }, async (req, reply) => {
+      const empresaId = empresaDo(req);
+      const d = corpoPostLaudosAnexos.parse(req.body);
+      if (d.categoria === 'foto' && d.tipo === 'application/pdf') throw new ErroHttp(400, 'Fotos precisam ser imagens (JPG, PNG ou WEBP).');
+      const bytes = Buffer.from(d.arquivo, 'base64');
+      if (!bytes.length) throw new ErroHttp(400, 'Arquivo vazio.');
+      if (bytes.length > MAX_ANEXO) throw new ErroHttp(400, 'Arquivo grande demais (máximo 10 MB).');
+      if (!conteudoDoTipo(bytes, d.tipo)) throw new ErroHttp(400, 'O arquivo não é do tipo escolhido. Envie um PDF ou uma foto (JPG, PNG ou WEBP).');
+      const id = await emTransacao(banco, async (c) => {
+        await laudoDaEmpresa(c, empresaId, req.params.id);
+        const total = await c.query('SELECT count(*)::int AS n FROM laudos_anexos WHERE laudo_id = $1', [req.params.id]);
+        if (Number(total.rows[0].n) >= LIMITE_ANEXOS_LAUDO) throw new ErroHttp(409, `Limite de ${LIMITE_ANEXOS_LAUDO} anexos por laudo.`);
+        const nova = await c.query(
+          `INSERT INTO laudos_anexos (empresa_id, laudo_id, nome, tipo, categoria, legenda, tamanho, conteudo, criado_por_id)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
+          [empresaId, req.params.id, d.nome, d.tipo, d.categoria, d.legenda, bytes.length, bytes, req.usuario!.id],
+        );
+        await auditar(c, {
+          empresaId,
+          usuarioId: req.usuario!.id,
+          acao: 'criar',
+          entidade: 'laudos_anexos',
+          entidadeId: nova.rows[0].id,
+          depois: { laudo: req.params.id, nome: d.nome, categoria: d.categoria },
+        });
+        return nova.rows[0].id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.get<{ Params: { id: string } }>('/laudos/:id/anexos', async (req) => {
+      const empresaId = empresaDo(req);
+      await laudoDaEmpresa(banco, empresaId, req.params.id);
+      const r = await banco.query(
+        'SELECT id, nome, tipo, categoria, legenda, tamanho, criado_em FROM laudos_anexos WHERE laudo_id = $1 AND empresa_id = $2 ORDER BY criado_em, id',
+        [req.params.id, empresaId],
+      );
+      return {
+        anexos: r.rows.map((a) => ({
+          id: a.id,
+          nome: a.nome,
+          tipo: a.tipo,
+          categoria: a.categoria,
+          legenda: a.legenda,
+          tamanho: a.tamanho,
+          criadoEm: a.criado_em,
+        })),
+      };
+    });
+
+    app.get<{ Params: { id: string; anexoId: string } }>('/laudos/:id/anexos/:anexoId', async (req, reply) => {
+      const empresaId = empresaDo(req);
+      await laudoDaEmpresa(banco, empresaId, req.params.id);
+      if (!UUID.test(req.params.anexoId)) throw naoEncontrado('Anexo');
+      const a = (
+        await banco.query('SELECT nome, tipo, conteudo FROM laudos_anexos WHERE id = $1 AND laudo_id = $2 AND empresa_id = $3', [
+          req.params.anexoId,
+          req.params.id,
+          empresaId,
+        ])
+      ).rows[0];
+      if (!a) throw naoEncontrado('Anexo');
+      reply.header('Content-Type', a.tipo);
+      reply.header('Content-Disposition', `inline; filename="${String(a.nome).replace(/[^\w.\- ]/g, '_')}"`);
+      reply.header('Cache-Control', 'private, max-age=300');
+      reply.header('X-Content-Type-Options', 'nosniff');
+      return reply.send(a.conteudo);
+    });
+
+    app.delete<{ Params: { id: string; anexoId: string } }>('/laudos/:id/anexos/:anexoId', async (req) => {
+      const empresaId = empresaDo(req);
+      if (!UUID.test(req.params.anexoId)) throw naoEncontrado('Anexo');
+      await emTransacao(banco, async (c) => {
+        await laudoDaEmpresa(c, empresaId, req.params.id);
+        const r = await c.query('DELETE FROM laudos_anexos WHERE id = $1 AND laudo_id = $2 AND empresa_id = $3 RETURNING nome, categoria', [
+          req.params.anexoId,
+          req.params.id,
+          empresaId,
+        ]);
+        if (!r.rowCount) throw naoEncontrado('Anexo');
+        await auditar(c, {
+          empresaId,
+          usuarioId: req.usuario!.id,
+          acao: 'excluir',
+          entidade: 'laudos_anexos',
+          entidadeId: req.params.anexoId,
+          antes: { laudo: req.params.id, nome: r.rows[0].nome, categoria: r.rows[0].categoria },
+        });
+      });
       return { ok: true };
     });
 
