@@ -18,6 +18,7 @@ import { cnpjValido } from '../lib/cnpj.ts';
 import { escolherRegra, normalizar, sugerirPorPalavras, type Regra } from '../lib/sugestoes.ts';
 import { atualizarStatusRecebimento, esquemaLigarNotaPedido, ligarNotaAoPedido } from './suprimentos.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { conferirPeriodo, diaQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { fatorPadrao, registrarEntradasNota, registrarEntradasObra, removerEntradasNota, validarApropriacaoObra } from '../lib/estoque.ts';
 import { cadastrosParaIa, vinculoDoItem } from '../lib/vinculos.ts';
 import { baixarParcela, dinheiro, esquemaBaixa, numeroBr } from './financeiro.ts';
@@ -650,12 +651,14 @@ export function rotasNotas(banco: Banco) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
 
     app.get<{ Querystring: Record<string, string | undefined> }>('/notas', async (req) => {
-      const q = req.query;
+      // Filtro inválido responde 400 (P17); `ate` é inclusivo (P33).
+      const q = lerQuery({ de: diaQuery('de'), ate: diaQuery('ate'), status: opcaoQuery('status', ['rascunho', 'confirmada', 'cancelada'] as const) }, req.query);
       const empresaId = empresaDo(req);
       const hoje = hojeBrasil();
-      const de = /^\d{4}-\d{2}-\d{2}$/.test(q.de ?? '') ? q.de! : `${hoje.slice(0, 7)}-01`;
-      const ate = /^\d{4}-\d{2}-\d{2}$/.test(q.ate ?? '') ? q.ate! : somarDias(`${hoje.slice(0, 7)}-01`, 40).slice(0, 7) + '-01';
-      const status = ['rascunho', 'confirmada', 'cancelada'].includes(q.status ?? '') ? q.status! : null;
+      const de = q.de ?? `${hoje.slice(0, 7)}-01`;
+      const ate = q.ate ?? somarDias(somarDias(`${hoje.slice(0, 7)}-01`, 40).slice(0, 7) + '-01', -1);
+      conferirPeriodo(de, ate);
+      const status = q.status ?? null;
       const r = await banco.query(
         `SELECT n.id, n.direcao, n.modelo, n.numero, n.serie, n.data_emissao, n.competencia, n.total_centavos, n.status, n.origem, n.lancamento_id,
                 coalesce(f.nome_fantasia, f.razao_social, cl.nome_fantasia, cl.razao_social, n.emitente_nome) AS pessoa,
@@ -664,7 +667,7 @@ export function rotasNotas(banco: Banco) {
                 (SELECT string_agg(DISTINCT pc.nome, ', ') FROM notas_itens i JOIN plano_contas pc ON pc.id = i.plano_conta_id WHERE i.nota_id = n.id) AS categorias
            FROM notas_fiscais n LEFT JOIN fornecedores f ON f.id = n.fornecedor_id LEFT JOIN clientes cl ON cl.id = n.cliente_id
           WHERE n.empresa_id = $1 AND n.excluido_em IS NULL
-            AND ((($3::text IS NULL OR $3 = 'rascunho') AND n.status IN ('rascunho', 'aguardando_conferencia')) OR (n.data_emissao >= $2::date AND n.data_emissao < $4::date))
+            AND ((($3::text IS NULL OR $3 = 'rascunho') AND n.status IN ('rascunho', 'aguardando_conferencia')) OR (n.data_emissao >= $2::date AND n.data_emissao <= $4::date))
             AND ($3::text IS NULL OR n.status = $3 OR ($3 = 'rascunho' AND n.status = 'aguardando_conferencia'))
           ORDER BY (n.status IN ('rascunho', 'aguardando_conferencia')) DESC, n.data_emissao DESC, n.criado_em DESC
           LIMIT 1000`,

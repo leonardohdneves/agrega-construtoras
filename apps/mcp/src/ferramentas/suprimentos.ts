@@ -210,7 +210,7 @@ export const ferramentasSuprimentos = colecao(
     description:
       'Lista as solicitações de compra (de material e de serviço): id, número, tipo, data, data de necessidade, obra, status, solicitante, quantidade de itens, resumo dos itens, dias em aberto e se é urgente. Sem `status`, devolve todas as que estão em andamento (aberta, finalizada, em_cotacao) mais as atendidas e canceladas dos últimos 120 dias; máximo 500. O filtro `status` não aceita "finalizada" (pronta para cotar): para achá-las, liste sem status e olhe o campo `status` de cada uma.',
     inputSchema: z.object({
-      status: z.enum(['aberta', 'em_cotacao', 'atendida', 'cancelada']).describe('Filtra por situação. Só estes quatro valores funcionam.').optional(),
+      status: z.enum(['aberta', 'finalizada', 'em_cotacao', 'atendida', 'cancelada']).describe('Filtra por situação.').optional(),
       obraId: uuid('Id da obra (de `listar_obras`).').optional(),
       tipo: z.enum(['insumo', 'servico']).describe('`insumo`: solicitações de material. `servico`: solicitações de serviço (viram contrato).').optional(),
     }),
@@ -560,7 +560,7 @@ export const ferramentasSuprimentos = colecao(
     description:
       'Lista os contratos com prestadores de serviço (empreiteiros): id, número, status, fornecedor, objeto, tipo (itens ou global), vigência, se está vencido, valor, medido, saldo e pago em reais, percentual medido, medições pendentes, medições aprovadas sem autorização de pagamento e caução a liberar. Sem `status`, devolve os em andamento (rascunho, aguardando_aprovacao, reprovado e vigente); máximo 300. O perfil engenheiro de obra só vê contratos do centro de custo das obras dele.',
     inputSchema: z.object({
-      status: z.enum(['rascunho', 'vigente', 'encerrado', 'cancelado']).describe('Filtra por situação. Encerrados e cancelados só aparecem com o filtro.').optional(),
+      status: z.enum(['rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente', 'encerrado', 'cancelado']).describe('Filtra por situação. Encerrados e cancelados só aparecem com o filtro.').optional(),
     }),
     handler: async (args, api) => ({ success: true, data: await api.get('/sup/contratos', { status: args.status }) }),
   }),

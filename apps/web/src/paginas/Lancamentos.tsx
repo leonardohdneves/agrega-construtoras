@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
-import { api, formatarData, formatarMoeda, hojeLocal, nomeMes, somarMeses, type LancamentoResumo } from '../api';
+import { api, formatarData, formatarMoeda, hojeLocal, nomeMes, somarDias, somarMeses, type LancamentoResumo } from '../api';
 import { Notas } from './Notas';
 
 type Filtro = 'todos' | 'despesa' | 'receita';
@@ -17,7 +17,7 @@ export function Lancamentos() {
     setLista(null);
     try {
       const de = `${mes}-01`;
-      const ate = somarMeses(de, 1);
+      const ate = somarDias(somarMeses(de, 1), -1); // último dia do mês: o ate da API é inclusivo
       const r = await api<{ lancamentos: LancamentoResumo[] }>(`/fin/lancamentos?de=${de}&ate=${ate}${filtro !== 'todos' ? `&tipo=${filtro}` : ''}`);
       setLista(r.lancamentos);
     } catch (e) {

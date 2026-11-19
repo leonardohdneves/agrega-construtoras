@@ -8,6 +8,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
+import { diaQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { ehRestritoAObras, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
@@ -715,7 +716,7 @@ export function rotasEngenharia(banco: Banco) {
           WHERE o.empresa_id = $1 AND o.ativo AND o.status <> 'arquivada' AND o.tipo = $3
             AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM obra_responsaveis r WHERE r.obra_id = o.id AND r.usuario_id = $2))
           ORDER BY o.codigo`,
-        [empresaId, engenheiroDe(req), (req.query as { tipo?: string }).tipo === 'acompanhamento' ? 'acompanhamento' : 'execucao'],
+        [empresaId, engenheiroDe(req), lerQuery({ tipo: opcaoQuery('tipo', ['execucao', 'acompanhamento'] as const) }, req.query).tipo ?? 'execucao'],
       );
       const obras = await Promise.all(
         r.rows.map(async (o) => ({ ...obraPublica(o), itens: o.itens, linhasOrcamento: o.linhas_orcamento, total: r2(reais(o.subtotal)! * (1 + (await bdiDaObra(banco, o)) / 100)) })),
@@ -2236,7 +2237,7 @@ export function rotasEngenharia(banco: Banco) {
       const d = await dadosDoAcompanhamento(banco, obra);
       const hoje = hojeIso();
       const ultima = d.medicoes.reduce((m, x) => (x.data > m ? x.data : m), '');
-      const dataRef = req.query.data && DATA.test(req.query.data) ? req.query.data : (ultima || hoje);
+      const dataRef = lerQuery({ data: diaQuery('data') }, req.query).data ?? (ultima || hoje);
       const linhas = previstoXExecutado({ nos: d.nosEap, custos: d.custos, medicoes: d.medicoes, atividades: d.planejado, dataRef });
       const realizado = d.despesas.filter((x) => x.data <= dataRef).reduce((s, x) => s + x.valor, 0);
       const totalPrevisto = linhas.filter((l) => l.nivel === 'etapa').reduce((s, l) => s + l.custoPrevisto, 0) || Math.round(d.custoTotal);

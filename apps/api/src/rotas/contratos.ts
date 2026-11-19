@@ -6,6 +6,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { dispensaAprovacao, lerRegras, podeAprovar, proximoNumero, textoRegras } from '../lib/aprovacao.ts';
@@ -610,7 +611,7 @@ export function rotasContratos(banco: Banco) {
     // ----- Contratos
     app.get<{ Querystring: Record<string, string | undefined> }>('/contratos', async (req) => {
       const empresaId = empresaDo(req);
-      const status = ['rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente', 'encerrado', 'cancelado'].includes(req.query.status ?? '') ? req.query.status! : null;
+      const status = lerQuery({ status: opcaoQuery('status', ['rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente', 'encerrado', 'cancelado'] as const) }, req.query).status ?? null;
       const ids = (
         await banco.query(
           `SELECT id FROM contratos WHERE empresa_id = $1 AND ($2::text IS NULL OR status = $2) AND ($2::text IS NOT NULL OR status IN ('rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente'))
@@ -796,7 +797,7 @@ export function rotasContratos(banco: Banco) {
     // ----- Medições
     app.get<{ Querystring: Record<string, string | undefined> }>('/medicoes', async (req) => {
       const empresaId = empresaDo(req);
-      const st = req.query.status ?? '';
+      const st = lerQuery({ status: opcaoQuery('status', ['aprovacao', 'autorizar', 'aprovadas', 'canceladas'] as const) }, req.query).status ?? '';
       const r = await banco.query(
         `SELECT m.id, m.numero, m.sequencia, m.periodo_inicio, m.periodo_fim, m.data, m.valor_centavos, m.status, k.numero AS contrato_numero, k.objeto,
                 coalesce(f.nome_fantasia, f.razao_social) AS fornecedor,
@@ -932,7 +933,7 @@ export function rotasContratos(banco: Banco) {
     // ----- Autorizações de pagamento
     app.get<{ Querystring: Record<string, string | undefined> }>('/autorizacoes', async (req) => {
       const empresaId = empresaDo(req);
-      const st = req.query.status ?? '';
+      const st = lerQuery({ status: opcaoQuery('status', ['aprovacao', 'aprovadas', 'canceladas'] as const) }, req.query).status ?? '';
       const r = await banco.query(
         `SELECT a.id, a.numero, a.tipo, a.data, a.vencimento, a.bruto_centavos, a.liquido_centavos, a.status, k.numero AS contrato_numero, k.objeto,
                 coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, m.sequencia AS medicao_sequencia,

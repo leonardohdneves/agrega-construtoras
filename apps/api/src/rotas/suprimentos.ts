@@ -5,6 +5,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { estoqueDaMovimentacao, proximoCodigoEstoque, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
 import { chaveEtiqueta } from '../lib/etiquetas.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
@@ -816,7 +817,7 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Estoque da construtora: saldo por insumo da obra e etapa da EAP; saídas por requisição.
     app.get<{ Querystring: Record<string, string | undefined> }>('/estoque', async (req) => {
       const empresaId = empresaDo(req);
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
       const r = await banco.query(
         `WITH s AS (
            SELECT m.obra_id, m.obra_item_id, m.eap_no_id, m.obra_estoque_id, sum(CASE WHEN m.tipo = 'saida' THEN -m.quantidade ELSE m.quantidade END) AS qtd
@@ -951,7 +952,7 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Estoques da empresa: com obra ou gerais, código automático.
     app.get<{ Querystring: Record<string, string | undefined> }>('/estoques', async (req) => {
       const empresaId = empresaDo(req);
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
       const r = await banco.query(
         `SELECT e.id, e.codigo, e.nome, e.recebimento, e.ativo, e.obra_id, o.codigo AS obra_codigo, o.nome AS obra_nome
            FROM obra_estoques e LEFT JOIN obras o ON o.id = e.obra_id
@@ -1020,9 +1021,9 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.get<{ Querystring: Record<string, string | undefined> }>('/etiquetas', async (req) => {
       const empresaId = empresaDo(req);
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
-      const estoqueId = req.query.estoqueId && UUID.test(req.query.estoqueId) ? req.query.estoqueId : null;
-      const soSaldo = req.query.saldo !== '0';
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
+      const estoqueId = lerQuery({ estoqueId: idQuery('estoqueId') }, req.query).estoqueId ?? null;
+      const soSaldo = lerQuery({ saldo: opcaoQuery('saldo', ['0', '1'] as const) }, req.query).saldo !== '0';
       const r = await banco.query(
         `${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND ($2::uuid IS NULL OR x.obra_id = $2) AND ($3::uuid IS NULL OR x.obra_estoque_id = $3)
             AND ($4::boolean = false OR x.saldo > 0) ORDER BY x.data DESC, x.insumo_descricao LIMIT 300`,
@@ -1131,9 +1132,9 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Solicitações de compra: sempre de uma obra, com os insumos das necessidades apropriadas à EAP.
     app.get<{ Querystring: Record<string, string | undefined> }>('/solicitacoes', async (req) => {
       const empresaId = empresaDo(req);
-      const status = STATUS_SOLICITACAO.includes(req.query.status as never) ? req.query.status! : null;
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
-      const tipo = req.query.tipo === 'servico' || req.query.tipo === 'insumo' ? req.query.tipo : null;
+      const status = lerQuery({ status: opcaoQuery('status', STATUS_SOLICITACAO) }, req.query).status ?? null;
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
+      const tipo = lerQuery({ tipo: opcaoQuery('tipo', ['servico', 'insumo'] as const) }, req.query).tipo ?? null;
       const r = await banco.query(
         `SELECT s.id, s.numero, s.data, s.necessidade, s.status, s.observacao, s.finalizada_em, s.obra_id, s.tipo, u.nome AS solicitante,
                 o.codigo AS obra_codigo, o.nome AS obra_nome,
@@ -1346,7 +1347,7 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.get<{ Querystring: Record<string, string | undefined> }>('/cotacoes', async (req) => {
       const empresaId = empresaDo(req);
-      const status = ['aberta', 'concluida', 'cancelada'].includes(req.query.status ?? '') ? req.query.status! : null;
+      const status = lerQuery({ status: opcaoQuery('status', ['aberta', 'concluida', 'cancelada'] as const) }, req.query).status ?? null;
       const r = await banco.query(
         `SELECT ct.id, ct.numero, ct.data, ct.prazo_resposta, ct.status, s.numero AS solicitacao_numero,
                 (SELECT count(*)::int FROM cotacoes_itens ci WHERE ci.cotacao_id = ct.id) AS itens,
@@ -1686,7 +1687,7 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Pedidos de compra
     app.get<{ Querystring: Record<string, string | undefined> }>('/pedidos', async (req) => {
       const empresaId = empresaDo(req);
-      const filtro = req.query.status ?? '';
+      const filtro = lerQuery({ status: opcaoQuery('status', ['abertos', 'aprovacao', 'receber', 'atrasados', 'concluidos', 'cancelados'] as const) }, req.query).status ?? '';
       const hoje = hojeBrasil();
       const u = usuarioDe(req);
       const soConferencia = u.perfil === 'almoxarife';

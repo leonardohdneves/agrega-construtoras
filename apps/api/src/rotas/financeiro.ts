@@ -21,6 +21,7 @@ import {
 import { empresaDo, exigir } from '../sessao.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { lerLancamentoComIa } from '../lib/ia-lancamento.ts';
+import { conferirPeriodo, diaQuery, flagQuery, idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import {
   estoqueDaMovimentacao,
   registrarEntradasLancamento,
@@ -421,7 +422,7 @@ export async function baixarParcela(
   if (!antes) throw naoEncontrado('Parcela');
   if (antes.status !== 'aberta') throw new ErroHttp(409, antes.status === 'paga' ? 'Esta parcela já foi baixada.' : 'Esta parcela foi cancelada.');
   await contaAtiva(c, empresaId, b.contaId);
-  if (b.data > somarDias(hojeBrasil(), 1)) throw new ErroHttp(400, 'A data do pagamento não pode ser futura.');
+  if (b.data > somarDias(hojeBrasil(), 1)) throw new ErroHttp(400, 'A data do pagamento pode ser no máximo amanhã.'); // folga de um dia para o fuso (P33)
   const pago = valorPago(Number(antes.valor_centavos), b.juros, b.desconto);
   if (pago <= 0) throw new ErroHttp(400, 'O desconto não pode ser maior que o valor da parcela.');
   const depois = (
@@ -716,13 +717,21 @@ export function rotasFinanceiro(banco: Banco) {
 
     // ----- Lançamentos -----
     app.get<{ Querystring: Record<string, string | undefined> }>('/lancamentos', async (req) => {
-      const q = req.query;
+      // Filtro inválido responde 400 (P17); `ate` é inclusivo, como no extrato e nas parcelas (P33).
+      const q = lerQuery(
+        {
+          de: diaQuery('de'), ate: diaQuery('ate'), tipo: opcaoQuery('tipo', ['receita', 'despesa'] as const), cancelados: flagQuery('cancelados'),
+          planoContaId: idQuery('planoContaId'), veiculoId: idQuery('veiculoId'), centroCustoId: idQuery('centroCustoId'), pessoaId: idQuery('pessoaId'),
+        },
+        req.query,
+      );
       const empresaId = empresaDo(req);
       const hoje = hojeBrasil();
-      const de = /^\d{4}-\d{2}-\d{2}$/.test(q.de ?? '') ? q.de! : `${hoje.slice(0, 7)}-01`;
-      const ate = /^\d{4}-\d{2}-\d{2}$/.test(q.ate ?? '') ? q.ate! : somarDias(`${hoje.slice(0, 7)}-01`, 40).slice(0, 7) + '-01';
-      const tipo = q.tipo === 'receita' || q.tipo === 'despesa' ? q.tipo : null;
-      const uuid = (v?: string) => (v && /^[0-9a-f-]{36}$/i.test(v) ? v : null);
+      const de = q.de ?? `${hoje.slice(0, 7)}-01`;
+      const ate = q.ate ?? somarDias(somarDias(`${hoje.slice(0, 7)}-01`, 40).slice(0, 7) + '-01', -1);
+      conferirPeriodo(de, ate);
+      const tipo = q.tipo ?? null;
+      const uuid = (v?: string) => v ?? null;
       const r = await banco.query(
         `SELECT l.id, l.tipo, l.competencia, l.descricao, l.documento, l.valor_total_centavos, l.status, l.origem, l.recorrencia, l.recorrencia_ordem,
                 coalesce(cl.nome_fantasia, cl.razao_social, f.nome_fantasia, f.razao_social) AS pessoa,
@@ -733,7 +742,7 @@ export function rotasFinanceiro(banco: Banco) {
                 (SELECT coalesce(sum(p.valor_centavos), 0) FROM parcelas p WHERE p.lancamento_id = l.id AND p.status = 'aberta') AS aberto_centavos,
                 (SELECT min(p.vencimento) FROM parcelas p WHERE p.lancamento_id = l.id AND p.status = 'aberta') AS proximo_vencimento
            FROM lancamentos l LEFT JOIN clientes cl ON cl.id = l.cliente_id LEFT JOIN fornecedores f ON f.id = l.fornecedor_id
-          WHERE l.empresa_id = $1 AND l.excluido_em IS NULL AND l.competencia >= $2 AND l.competencia < $3
+          WHERE l.empresa_id = $1 AND l.excluido_em IS NULL AND l.competencia >= $2 AND l.competencia <= $3
             AND ($4::text IS NULL OR l.tipo = $4)
             AND ($5::boolean OR l.status <> 'cancelado')
             AND ($6::uuid IS NULL OR EXISTS (SELECT 1 FROM apropriacoes a WHERE a.lancamento_id = l.id AND a.plano_conta_id = $6))
@@ -742,7 +751,7 @@ export function rotasFinanceiro(banco: Banco) {
             AND ($9::uuid IS NULL OR l.fornecedor_id = $9 OR l.cliente_id = $9)
           ORDER BY l.competencia DESC, l.criado_em DESC
           LIMIT 2000`,
-        [empresaId, de, ate, tipo, q.cancelados === '1', uuid(q.planoContaId), uuid(q.veiculoId), uuid(q.centroCustoId), uuid(q.pessoaId)],
+        [empresaId, de, ate, tipo, q.cancelados, uuid(q.planoContaId), uuid(q.veiculoId), uuid(q.centroCustoId), uuid(q.pessoaId)],
       );
       return {
         de,
@@ -930,7 +939,11 @@ export function rotasFinanceiro(banco: Banco) {
             await registrarEntradasLancamento(c, empresaId, l.id, hojeBrasil(), usuarioId);
           }
           await auditar(c, { empresaId, usuarioId, acao: 'criar', entidade: 'lancamentos', entidadeId: l.id, depois: { ...l, apropriacoes: d.apropriacoes, parcelas: d.parcelas.length, estoque: d.estoque.length } });
-          if (k === 0 && d.baixa) await baixarParcela(c, empresaId, usuarioId, ids[0], d.baixa);
+          // Baixa na criação: todas as parcelas do primeiro lançamento, como na confirmação da nota (P33). Juros e desconto
+          // entram só na primeira; as ocorrências seguintes de uma recorrência ficam em aberto.
+          if (k === 0 && d.baixa) {
+            for (const [n, pid] of ids.entries()) await baixarParcela(c, empresaId, usuarioId, pid, n === 0 ? d.baixa : { ...d.baixa, juros: 0, desconto: 0 });
+          }
         }
         return { primeiroId, criados: repeticoes };
       });
@@ -1008,19 +1021,31 @@ export function rotasFinanceiro(banco: Banco) {
 
     // ----- Contas a pagar e a receber -----
     app.get<{ Querystring: Record<string, string | undefined> }>('/parcelas', async (req) => {
-      const q = req.query;
+      // Filtro inválido responde 400 (P17). As situações vencidas, hoje, semana e mês já definem o período: com elas,
+      // de/ate são recusados em vez de misturados (antes `de` valia e `ate` era trocado, P33).
+      const q = lerQuery(
+        {
+          tipo: opcaoQuery('tipo', ['receita', 'despesa'] as const),
+          situacao: opcaoQuery('situacao', ['abertas', 'vencidas', 'hoje', 'semana', 'mes', 'pagas', 'todas'] as const),
+          de: diaQuery('de'), ate: diaQuery('ate'), contaId: idQuery('contaId'),
+        },
+        req.query,
+      );
       const empresaId = empresaDo(req);
       const hoje = hojeBrasil();
-      const tipo = q.tipo === 'receita' ? 'receita' : 'despesa';
-      const situacao = ['abertas', 'vencidas', 'hoje', 'semana', 'mes', 'pagas', 'todas'].includes(q.situacao ?? '') ? q.situacao! : 'abertas';
-      const data = (v?: string) => (v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : null);
-      let de = data(q.de);
-      let ate = data(q.ate);
+      const tipo = q.tipo ?? 'despesa';
+      const situacao = q.situacao ?? 'abertas';
+      if (['vencidas', 'hoje', 'semana', 'mes'].includes(situacao) && (q.de || q.ate)) {
+        throw new ErroHttp(400, `A situação "${situacao}" já define o período: use de/ate só com abertas, pagas ou todas.`);
+      }
+      let de: string | null = q.de ?? null;
+      let ate: string | null = q.ate ?? null;
+      if (de && ate) conferirPeriodo(de, ate);
       let status: string | null = 'aberta';
       let campoData = 'p.vencimento';
       if (situacao === 'vencidas') ate = somarDias(hoje, -1);
       if (situacao === 'hoje') de = ate = hoje;
-      if (situacao === 'semana') (de = de ?? hoje), (ate = somarDias(hoje, 6));
+      if (situacao === 'semana') (de = hoje), (ate = somarDias(hoje, 6));
       if (situacao === 'mes') (de = `${hoje.slice(0, 7)}-01`), (ate = somarDias(somarDias(`${hoje.slice(0, 7)}-01`, 32).slice(0, 7) + '-01', -1));
       if (situacao === 'pagas') {
         status = 'paga';
@@ -1029,7 +1054,7 @@ export function rotasFinanceiro(banco: Banco) {
         ate = ate ?? hoje;
       }
       if (situacao === 'todas') status = null;
-      const contaId = q.contaId && /^[0-9a-f-]{36}$/i.test(q.contaId) ? q.contaId : null;
+      const contaId = q.contaId ?? null;
       const r = await banco.query(
         `SELECT p.*, l.tipo, l.descricao, l.documento, l.competencia, cf.nome AS conta_nome,
                 coalesce(cl.nome_fantasia, cl.razao_social, f.nome_fantasia, f.razao_social) AS pessoa,

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LeitorCodigo } from '../componentes/LeitorCodigo';
 import { chaveDoArquivoDeImagem, chaveNoPdf, imagemParaJpeg } from '../leitorBarras';
-import { api, ErroApi, formatarChave, formatarData, formatarMoeda, hojeLocal, NOMES_MODELO, nomeMes, SELO_NOTA, somarMeses, type NotaFiscal, type NotaResumo } from '../api';
+import { api, ErroApi, formatarChave, formatarData, formatarMoeda, hojeLocal, NOMES_MODELO, nomeMes, SELO_NOTA, somarDias, somarMeses, type NotaFiscal, type NotaResumo } from '../api';
 
 type Filtro = 'todas' | 'rascunho' | 'confirmada' | 'cancelada';
 const FILTROS: { id: Filtro; texto: string }[] = [
@@ -58,7 +58,7 @@ export function Notas({ embutida = false }: { embutida?: boolean } = {}) {
     setLista(null);
     try {
       const de = `${mes}-01`;
-      const r = await api<{ notas: NotaResumo[]; rascunhos: number }>(`/fin/notas?de=${de}&ate=${somarMeses(de, 1)}${filtro !== 'todas' ? `&status=${filtro}` : ''}`);
+      const r = await api<{ notas: NotaResumo[]; rascunhos: number }>(`/fin/notas?de=${de}&ate=${somarDias(somarMeses(de, 1), -1)}${filtro !== 'todas' ? `&status=${filtro}` : ''}`);
       setLista(r.notas);
       setRascunhos(r.rascunhos);
     } catch (e) {

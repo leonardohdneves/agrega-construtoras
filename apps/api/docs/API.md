@@ -36,7 +36,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `PUT /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista |  | `descricao`, `unidade`, `grupo`, `preco`, `precoOrigem`, `unidadesCompra`, `componentes` |
 | `DELETE /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista |  |  |
 | `POST /api/eng/tabelas/{id}/itens/{itemId}/preco-ultima-compra` |  | Dono, Gestor, Orçamentista |  |  |
-| `GET /api/eng/obras` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife | `tipo` |  |
+| `GET /api/eng/obras` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife |  |  |
 | `POST /api/eng/obras` |  | Dono, Gestor, Orçamentista |  | `codigo`, `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipo`, `eapPadrao`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
 | `GET /api/eng/panorama` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/insumo-grupos` |  | Dono, Gestor, Orçamentista |  |  |
@@ -203,19 +203,19 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
-| `GET /api/sup/estoque` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife | `obraId` |  |
+| `GET /api/sup/estoque` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `POST /api/sup/estoque/transferencias` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `obraId`*, `obraItemId`*, `eapNoId`*, `origemId`*, `destinoId`*, `data`*, `quantidade`*, `observacao` |
 | `GET /api/sup/obras/{obraId}/estoques` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `POST /api/sup/obras/{obraId}/estoques` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `nome`* |
 | `PUT /api/sup/estoques/{id}` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `nome`, `ativo` |
-| `GET /api/sup/estoques` |  | Dono, Gestor, Comprador, Financeiro, Administrativo, Almoxarife | `obraId` |  |
+| `GET /api/sup/estoques` |  | Dono, Gestor, Comprador, Financeiro, Administrativo, Almoxarife |  |  |
 | `POST /api/sup/estoques` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `nome`*, `obraId` |
-| `GET /api/sup/etiquetas` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife | `obraId`, `estoqueId`, `saldo` |  |
+| `GET /api/sup/etiquetas` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `GET /api/sup/etiquetas/{id}` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `GET /api/sup/colaboradores` | Colaboradores: o mesmo cadastro do Administrativo (motoristas), só os ativos. Quem pega material na saída. | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `GET /api/sup/saidas-material` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `POST /api/sup/saidas-material` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  | `obraId`*, `eapNoId`*, `colaboradorId`*, `data`*, `observacao`, `itens`* |
-| `GET /api/sup/solicitacoes` |  | Dono, Gestor, Comprador, Administrativo | `status`, `obraId`, `tipo` |  |
+| `GET /api/sup/solicitacoes` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/solicitacoes` |  | Dono, Gestor, Comprador, Administrativo |  | `obraId`*, `data`, `necessidade`, `observacao`, `itens`* **ou** `obraId`*, `data`, `necessidade`, `observacao`, `planoContaId`*, `escopo`*, `itens`* |
 | `GET /api/sup/solicitacoes/{id}` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `PUT /api/sup/solicitacoes/{id}` |  | Dono, Gestor, Comprador, Administrativo |  | `obraId`*, `data`, `necessidade`, `observacao`, `itens`* **ou** `obraId`*, `data`, `necessidade`, `observacao`, `planoContaId`*, `escopo`*, `itens`* |
@@ -224,7 +224,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `POST /api/sup/solicitacoes/{id}/cancelar` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `GET /api/sup/conferencia-unidades` | Linhas de nota ligadas a um item de pedido cuja unidade do insumo é diferente da unidade do pedido. | Dono, Gestor, Comprador, Administrativo |  |  |
 | `PATCH /api/sup/conferencia-unidades/{id}` |  | Dono, Gestor, Comprador, Administrativo |  | `fatorEstoque`* |
-| `GET /api/sup/cotacoes` |  | Dono, Gestor, Comprador, Administrativo | `status` |  |
+| `GET /api/sup/cotacoes` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/cotacoes` |  | Dono, Gestor, Comprador, Administrativo |  | `solicitacaoId`*, `data`, `prazoResposta`, `observacao`, `fornecedorIds` |
 | `GET /api/sup/cotacoes/{id}` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `PUT /api/sup/cotacoes/{id}/fornecedores` |  | Dono, Gestor, Comprador, Administrativo |  | `fornecedorIds`* |
@@ -235,7 +235,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `PUT /api/sup/cotacoes/{id}/vencedores` |  | Dono, Gestor, Comprador, Administrativo |  | `menorPreco`, `itens`, `justificativa` |
 | `POST /api/sup/cotacoes/{id}/concluir` | Conclui o mapa: um pedido (rascunho) para cada fornecedor vencedor. | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/cotacoes/{id}/cancelar` |  | Dono, Gestor, Comprador, Administrativo |  |  |
-| `GET /api/sup/pedidos` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife | `status` |  |
+| `GET /api/sup/pedidos` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `GET /api/sup/pedidos/{id}` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
 | `PUT /api/sup/pedidos/{id}` | Pedidos nascem da cotação concluída (um por fornecedor vencedor). Aqui só o cabeçalho é editado; os itens são os da cotação. | Dono, Gestor, Comprador, Administrativo |  | `fornecedorId`*, `data`*, `previsaoEntrega`*, `condicaoPagamento`*, `localEntrega`*, `frete`*, `freteTipo`*, `transportadoraId`*, `centroCustoId`*, `observacao`* |
 | `POST /api/sup/pedidos/{id}/enviar-aprovacao` |  | Dono, Gestor, Comprador, Administrativo |  |  |
@@ -249,7 +249,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `PUT /api/sup/pedidos/{id}/recebimento` |  | Dono, Gestor, Comprador, Administrativo |  | `notaId`*, `itens`* |
 | `DELETE /api/sup/pedidos/{id}/recebimento/{nota}` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `GET /api/sup/relatorios` |  | Dono, Gestor, Comprador, Administrativo |  |  |
-| `GET /api/sup/contratos` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo | `status` |  |
+| `GET /api/sup/contratos` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
 | `POST /api/sup/contratos` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  | `fornecedorId`*, `objeto`*, `tipo`*, `dataAssinatura`, `inicio`*, `fim`, `valorGlobal`, `planoContaId`*, `centroCustoId`, `prazoPagamentoDias`, `formaPagamento`, `enderecoContratante`, `enderecoContratada`, `prazoCorrecaoDias`, `garantiaMeses`, `retencoes`, `observacao`, `itens` |
 | `GET /api/sup/contratos/{id}` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
 | `PUT /api/sup/contratos/{id}` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  | `fornecedorId`*, `objeto`*, `tipo`*, `dataAssinatura`, `inicio`*, `fim`, `valorGlobal`, `planoContaId`*, `centroCustoId`, `prazoPagamentoDias`, `formaPagamento`, `enderecoContratante`, `enderecoContratada`, `prazoCorrecaoDias`, `garantiaMeses`, `retencoes`, `observacao`, `itens` |
@@ -261,7 +261,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `POST /api/sup/contratos/{id}/reabrir` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
 | `POST /api/sup/contratos/{id}/restaurar` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
 | `POST /api/sup/contratos/{id}/cancelar` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
-| `GET /api/sup/medicoes` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo | `status` |  |
+| `GET /api/sup/medicoes` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
 | `POST /api/sup/medicoes` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  | `contratoId`*, `periodoInicio`*, `periodoFim`*, `data`, `observacao`, `itens`, `valor`, `percentual`, `descontos` |
 | `GET /api/sup/medicoes/{id}` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
 | `PUT /api/sup/medicoes/{id}` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  | `contratoId`*, `periodoInicio`*, `periodoFim`*, `data`, `observacao`, `itens`, `valor`, `percentual`, `descontos` |
@@ -269,7 +269,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `POST /api/sup/medicoes/{id}/aprovar` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
 | `POST /api/sup/medicoes/{id}/reprovar` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  | `motivo`* |
 | `POST /api/sup/medicoes/{id}/cancelar` |  | Dono, Gestor, Engenheiro de obra, Comprador, Administrativo |  |  |
-| `GET /api/sup/autorizacoes` |  | Dono, Gestor, Comprador, Administrativo | `status` |  |
+| `GET /api/sup/autorizacoes` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/autorizacoes` |  | Dono, Gestor, Comprador, Administrativo |  | `medicaoId`, `contratoId`, `tipo`, `vencimento`, `documento`, `formaPagamento`, `observacao`, `retencoes` |
 | `GET /api/sup/autorizacoes/{id}` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/autorizacoes/{id}/aprovar` |  | Dono, Gestor, Comprador, Administrativo |  |  |
@@ -311,7 +311,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `GET /api/fin/centros-custo` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
 | `POST /api/fin/centros-custo` |  | Dono, Financeiro |  | `nome`*, `ativo` |
 | `PATCH /api/fin/centros-custo/{id}` |  | Dono, Financeiro |  | `nome`, `ativo` |
-| `GET /api/fin/lancamentos` |  | Dono, Financeiro | `de`, `ate`, `tipo`, `cancelados`, `planoContaId`, `veiculoId`, `centroCustoId`, `pessoaId` |  |
+| `GET /api/fin/lancamentos` |  | Dono, Financeiro |  |  |
 | `POST /api/fin/lancamentos` |  | Dono, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`, `clienteId`, `fornecedorId`, `observacoes`, `valorTotal`*, `apropriacoes`*, `parcelas`*, `baixa`, `recorrencia`, `repeticoes`, `estoque`, `pedidoId` |
 | `GET /api/fin/lancamentos/leitura` | Pedidos de compra aprovados (ou já em andamento) que ainda não viraram despesa: para preencher o lançamento. A IA só sugere os campos; o lançamento só é salvo depois de conferido no formulário. | Dono, Financeiro |  |  |
 | `POST /api/fin/lancamentos/leitura` |  | Dono, Financeiro |  | `arquivo`*, `tipo`*, `tipoLancamento`* |
@@ -320,14 +320,14 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `GET /api/fin/lancamentos/{id}` |  | Dono, Financeiro |  |  |
 | `PUT /api/fin/lancamentos/{id}` | Edição: as parcelas pagas ficam como estão; "parcelas" traz só as parcelas em aberto (substituídas). | Dono, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`*, `clienteId`*, `fornecedorId`*, `observacoes`*, `valorTotal`*, `apropriacoes`*, `parcelas`* |
 | `POST /api/fin/lancamentos/{id}/cancelar` |  | Dono, Financeiro |  | `seguintes` |
-| `GET /api/fin/parcelas` |  | Dono, Financeiro | `tipo`, `situacao`, `de`, `ate`, `contaId` |  |
+| `GET /api/fin/parcelas` |  | Dono, Financeiro |  |  |
 | `POST /api/fin/parcelas/{id}/baixar` |  | Dono, Financeiro |  | `data`*, `contaId`*, `forma`, `juros`, `desconto`, `observacoes` |
 | `GET /api/fin/parcelas/{id}/recibo` |  | Dono, Financeiro |  |  |
 | `POST /api/fin/parcelas/baixar-lote` |  | Dono, Financeiro |  | `data`*, `contaId`*, `forma`, `observacoes`, `ids`* |
 | `POST /api/fin/parcelas/{id}/estornar` |  | Dono, Financeiro |  |  |
 | `PATCH /api/fin/parcelas/{id}` |  | Dono, Financeiro |  | `vencimento`, `observacoes` |
 | `GET /api/fin/resumo` |  | Dono, Gestor, Orçamentista, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `GET /api/fin/notas` |  | Dono, Financeiro | `de`, `ate`, `status` |  |
+| `GET /api/fin/notas` |  | Dono, Financeiro |  |  |
 | `POST /api/fin/notas` |  | Dono, Financeiro |  | `direcao`, `modelo`, `numero`, `serie`, `chaveAcesso`, `dataEmissao`*, `competencia`, `fornecedorId`, `clienteId`, `frete`, `desconto`, `outras`, `formaPagamento`, `observacoes`, `itens`*, `duplicatas` |
 | `GET /api/fin/notas/{id}` |  | Dono, Financeiro |  |  |
 | `PATCH /api/fin/notas/{id}` |  | Dono, Financeiro |  | `competencia`, `observacoes`, `fornecedorId`, `clienteId`, `formaPagamento`, `duplicatas`, `modelo`, `numero`, `serie`, `dataEmissao`, `frete`, `desconto`, `outras` |
