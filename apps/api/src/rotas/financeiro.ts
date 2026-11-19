@@ -144,7 +144,23 @@ const esquemaLancamento = z.object({
   estoque: z.array(esquemaItemEstoque).max(200, 'No máximo 200 itens de estoque.').optional().default([]),
   pedidoId: uuidOpc,
 });
-const esquemaEditarLancamento = z.object({ ...camposLancamento, parcelas: z.array(esquemaParcela).max(120, 'No máximo 120 parcelas.') });
+// PUT do lançamento substitui tudo e exige tudo (D7, P31): campo que pode ficar vazio vem como null, mas tem de vir.
+// Antes, omitir veiculoId numa apropriação apagava o vínculo com o veículo sem aviso.
+const exigidoLanc = (campo: string) => ({ required_error: `Envie ${campo} (o PUT regrava o lançamento inteiro; use null para limpar).` });
+const textoExigido = (max: number, campo: string) => z.string(exigidoLanc(campo)).trim().max(max).nullable().transform((v) => v || null);
+const uuidExigido = (campo: string) => z.union([z.string().uuid(), z.literal(''), z.null()], exigidoLanc(campo)).transform((v) => v || null);
+const esquemaEditarLancamento = z.object({
+  ...camposLancamento,
+  documento: textoExigido(60, 'documento'),
+  clienteId: uuidExigido('clienteId'),
+  fornecedorId: uuidExigido('fornecedorId'),
+  observacoes: textoExigido(1000, 'observacoes'),
+  apropriacoes: z
+    .array(esquemaApropriacao.extend({ centroCustoId: uuidExigido('centroCustoId de cada apropriação'), veiculoId: uuidExigido('veiculoId de cada apropriação') }))
+    .min(1, 'Informe a categoria.')
+    .max(50),
+  parcelas: z.array(esquemaParcela).max(120, 'No máximo 120 parcelas.'),
+});
 
 // ---------- Formatos ----------
 const brl = (centavos: number) => (centavos / 100).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });

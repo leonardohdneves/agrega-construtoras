@@ -23,6 +23,13 @@ const esquemaVisita = z.object({
   responsavel: texto(120),
   observacoes: texto(8000),
 });
+// PUT da visita substitui e exige os três campos (D7, P31): antes, responsável e observações omitidos eram apagados.
+const exigidoVisita = (campo: string) => ({ required_error: `Envie ${campo} (o PUT regrava a visita; use null para limpar).` });
+const esquemaVisitaPut = z.object({
+  data: z.string(exigidoVisita('data')).regex(DATA, 'Data inválida.'),
+  responsavel: z.string(exigidoVisita('responsavel')).trim().max(120).nullable().transform((v) => v || null),
+  observacoes: z.string(exigidoVisita('observacoes')).trim().max(8000).nullable().transform((v) => v || null),
+});
 
 const esquemaFoto = z.object({
   imagem: z.string().min(10),
@@ -140,9 +147,9 @@ export function rotasAcompanhamento(banco: Banco) {
       };
     });
 
-    app.put<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id', { schema: { body: esquemaVisita } }, async (req) => {
+    app.put<{ Params: { obraId: string; id: string } }>('/obras/:obraId/visitas/:id', { schema: { body: esquemaVisitaPut } }, async (req) => {
       const empresaId = empresaDo(req);
-      const d = esquemaVisita.parse(req.body ?? {});
+      const d = esquemaVisitaPut.parse(req.body ?? {});
       await emTransacao(banco, async (c) => {
         const obra = await obraDeVisita(c, empresaId, req.params.obraId, req.usuario);
         const antes = await visitaDaObra(c, empresaId, obra.id, req.params.id);

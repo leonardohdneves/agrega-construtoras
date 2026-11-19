@@ -277,7 +277,7 @@ export const ferramentasFinanceiro = colecao(
   ferramenta({
     name: 'atualizar_lancamento',
     description:
-      'Altera um lançamento. A rota exige o objeto INTEIRO, não aceita parcial: chame buscar_lancamento antes e reenvie todos os campos, mudando só o que precisa (campo opcional omitido é apagado, e as apropriações são todas substituídas). As parcelas já pagas ficam como estão; "parcelas" traz só as parcelas em aberto, que substituem as abertas atuais, e a soma delas mais as já pagas tem de ser igual a valorTotal. Não dá para trocar o tipo, nem alterar lançamento cancelado ou vindo de nota fiscal (erro 409: reabra a nota). Devolve o lançamento atualizado.',
+      'Altera um lançamento. A rota exige o objeto INTEIRO, não aceita parcial: chame buscar_lancamento antes e reenvie todos os campos, mudando só o que precisa (campo omitido é recusado com erro 400: para limpar, envie null; as apropriações são todas substituídas e cada uma precisa trazer centroCustoId e veiculoId, mesmo que null). As parcelas já pagas ficam como estão; "parcelas" traz só as parcelas em aberto, que substituem as abertas atuais, e a soma delas mais as já pagas tem de ser igual a valorTotal. Não dá para trocar o tipo, nem alterar lançamento cancelado ou vindo de nota fiscal (erro 409: reabra a nota). Devolve o lançamento atualizado.',
     inputSchema: z.object({
       lancamentoId: z.string().uuid().describe('Id do lançamento a alterar (de listar_lancamentos).'),
       ...camposLancamento,

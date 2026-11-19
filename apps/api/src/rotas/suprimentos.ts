@@ -640,18 +640,23 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
 }
 
 /** Cabeçalho do pedido. Os itens vêm da cotação (com obra, EAP e necessidade) e não são editados aqui. */
+// PUT do pedido substitui o cabeçalho e exige todos os campos (D7, P31): pode vir null, mas não pode faltar.
+// `solicitacaoId` saiu: era aceito e nunca gravado (P32); o pedido segue ligado à solicitação da cotação.
+const exigidoPedido = (campo: string) => ({ required_error: `Envie ${campo} (o PUT regrava o pedido inteiro; use null para limpar).` });
+const textoPedido = (max: number, campo: string) => z.string(exigidoPedido(campo)).trim().max(max).nullable().transform((v) => v || null);
+const dataPedido = (campo: string) => z.string(exigidoPedido(campo)).regex(DATA, 'Data inválida.').nullable();
+const uuidPedido = (campo: string) => z.string(exigidoPedido(campo)).regex(UUID).nullable();
 const esquemaPedido = z.object({
-  fornecedorId: z.string().regex(UUID, 'Escolha o fornecedor.'),
-  data: dataOpc,
-  previsaoEntrega: dataOpc,
-  condicaoPagamento: texto(120),
-  localEntrega: texto(200),
-  frete: naoNegativo('Frete inválido.').optional().default(0),
-  freteTipo: z.enum(['transportadora', 'proprio']).optional().nullable().transform((v) => v ?? null),
-  transportadoraId: uuidOpc,
-  centroCustoId: uuidOpc,
-  observacao: texto(1000),
-  solicitacaoId: uuidOpc,
+  fornecedorId: z.string({ required_error: 'Escolha o fornecedor.' }).regex(UUID, 'Escolha o fornecedor.'),
+  data: dataPedido('data'),
+  previsaoEntrega: dataPedido('previsaoEntrega'),
+  condicaoPagamento: textoPedido(120, 'condicaoPagamento'),
+  localEntrega: textoPedido(200, 'localEntrega'),
+  frete: z.union([z.number(), z.string()], exigidoPedido('frete')).pipe(naoNegativo('Frete inválido.')),
+  freteTipo: z.enum(['transportadora', 'proprio'], exigidoPedido('freteTipo')).nullable(),
+  transportadoraId: uuidPedido('transportadoraId'),
+  centroCustoId: uuidPedido('centroCustoId'),
+  observacao: textoPedido(1000, 'observacao'),
 });
 
 async function gravarItensPedido(c: Cliente, empresaId: string, pedidoId: string, itens: (ItemResolvido & { precoUnitario: number; cotacaoItemId: string })[], freteCentavos: number) {
@@ -1763,6 +1768,10 @@ export function rotasSuprimentos(banco: Banco) {
       await emTransacao(banco, async (c) => {
         const p = await pedidoPara(c, empresaId, req.params.id);
         if (!['rascunho', 'reprovado'].includes(p.status)) throw new ErroHttp(409, 'Só dá para alterar pedido em rascunho ou reprovado. Depois de aprovado, cancele e faça outro.');
+        // Pedido da cotação tem os preços do fornecedor vencedor: trocar o fornecedor deixaria os preços de outro (P31).
+        if (p.cotacao_id && d.fornecedorId !== p.fornecedor_id) {
+          throw new ErroHttp(409, 'Este pedido veio da cotação, com os preços do fornecedor vencedor. Para comprar de outro fornecedor, refaça a escolha na cotação.');
+        }
         await validarFornecedor(c, empresaId, d.fornecedorId);
         await validarCentro(c, empresaId, d.centroCustoId);
         if (d.freteTipo === 'transportadora') {

@@ -18,22 +18,27 @@ const horas = z.union([z.number(), z.string()]).optional().nullable().transform(
   const n = typeof v === 'number' ? v : Number(String(v).replace(',', '.'));
   return Number.isFinite(n) && n >= 0 ? Math.round(n * 100) / 100 : null;
 });
-const inteiro = z.number().int().min(0).max(100000).catch(0);
+// Quantidade inválida é recusada (antes virava 0 em silêncio, P34).
+const inteiro = z.number({ invalid_type_error: 'Quantidade inválida.', required_error: 'Informe a quantidade.' }).int('Quantidade inteira.').min(0, 'Quantidade inválida.').max(100000, 'Quantidade inválida.');
+/** Campo que o PUT exige (D7): pode vir null ou vazio, mas não pode faltar. */
+const exigido = (campo: string) => ({ required_error: `Envie ${campo} (o PUT regrava o RDO inteiro; use null ou lista vazia para limpar).` });
+const textoExigido = (max: number, campo: string) => z.string(exigido(campo)).trim().max(max).nullable().transform((v) => v || null);
+const climaExigido = (campo: string) => z.enum(CLIMAS, exigido(campo)).nullable();
 
+// PUT do RDO substitui tudo e exige tudo (D7, P31): antes, o que faltasse era apagado sem aviso.
 const esquemaRdo = z.object({
-  data: z.string().regex(DATA, 'Data inválida.'),
-  climaManha: z.enum(CLIMAS).optional().nullable().transform((v) => v ?? null),
-  climaTarde: z.enum(CLIMAS).optional().nullable().transform((v) => v ?? null),
-  climaNoite: z.enum(CLIMAS).optional().nullable().transform((v) => v ?? null),
-  responsavel: texto(120),
-  observacoes: texto(4000),
-  maoDeObra: z.array(z.object({ funcao: z.string().trim().min(1).max(120), empresa: texto(120), quantidade: inteiro, horas })).max(200).default([]),
-  equipamentos: z.array(z.object({ descricao: z.string().trim().min(1).max(160), quantidade: inteiro, horas })).max(200).default([]),
+  data: z.string({ required_error: 'Informe a data.' }).regex(DATA, 'Data inválida.'),
+  climaManha: climaExigido('climaManha'),
+  climaTarde: climaExigido('climaTarde'),
+  climaNoite: climaExigido('climaNoite'),
+  responsavel: textoExigido(120, 'responsavel'),
+  observacoes: textoExigido(4000, 'observacoes'),
+  maoDeObra: z.array(z.object({ funcao: z.string().trim().min(1).max(120), empresa: texto(120), quantidade: inteiro, horas }), exigido('maoDeObra')).max(200),
+  equipamentos: z.array(z.object({ descricao: z.string().trim().min(1).max(160), quantidade: inteiro, horas }), exigido('equipamentos')).max(200),
   atividades: z
-    .array(z.object({ local: texto(120), descricao: z.string().trim().min(1).max(1000), equipe: texto(120), percentual: z.number().min(0).max(100).optional().nullable().transform((v) => v ?? null) }))
-    .max(300)
-    .default([]),
-  ocorrencias: z.array(z.object({ tipo: z.enum(OCORRENCIAS), descricao: texto(500) })).max(200).default([]),
+    .array(z.object({ local: texto(120), descricao: z.string().trim().min(1).max(1000), equipe: texto(120), percentual: z.number().min(0).max(100).optional().nullable().transform((v) => v ?? null) }), exigido('atividades'))
+    .max(300),
+  ocorrencias: z.array(z.object({ tipo: z.enum(OCORRENCIAS), descricao: texto(500) }), exigido('ocorrencias')).max(200),
 });
 
 async function obraDaEmpresa(c: Cliente | Banco, empresaId: string, obraId: string) {

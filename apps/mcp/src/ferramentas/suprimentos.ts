@@ -441,7 +441,7 @@ export const ferramentasSuprimentos = colecao(
   ferramenta({
     name: 'atualizar_pedido_compra',
     description:
-      'Altera o cabeçalho de um pedido de compra em rascunho ou reprovado (o pedido volta para rascunho). Os pedidos nascem de `concluir_cotacao` e os itens não são editáveis aqui. Substitui o cabeçalho inteiro: `fornecedorId` é obrigatório e os campos omitidos são apagados (frete vira 0), exceto `data`, que mantém a atual; leia antes com `buscar_pedido_compra` e reenvie o que quer manter. O total é recalculado como itens + frete. Devolve o pedido.',
+      'Altera o cabeçalho de um pedido de compra em rascunho ou reprovado (o pedido volta para rascunho). Os pedidos nascem de `concluir_cotacao` e os itens não são editáveis aqui. É parcial: o que não for enviado continua como está (a ferramenta lê o pedido atual e completa o resto). Para limpar um campo, envie string vazia. O fornecedor de pedido vindo de cotação não muda (409): refaça a escolha na cotação. Devolve o pedido atualizado.',
     inputSchema: z.object({
       id: uuid('Id do pedido (de `listar_pedidos_compra`).'),
       fornecedorId: uuid('Id do fornecedor do pedido (de `listar_fornecedores`; o atual está em `buscar_pedido_compra`).'),
@@ -455,7 +455,19 @@ export const ferramentasSuprimentos = colecao(
       centroCustoId: uuid('Id do centro de custo (módulo Financeiro).').optional(),
       observacao: z.string().max(1000).describe('Observação do pedido (até 1000 caracteres).').optional(),
     }),
-    handler: async ({ id, ...corpo }, api) => ({ success: true, data: await api.put(`/sup/pedidos/${id}`, corpo) }),
+    // A API exige o cabeçalho inteiro no PUT (D7): completa com o que já está gravado o que não veio.
+    handler: async ({ id, ...corpo }, api) => {
+      const p = ((await api.get(`/sup/pedidos/${id}`)) as { pedido: Record<string, any> }).pedido;
+      const v = corpo as Record<string, unknown>;
+      const ou = (campo: string, atual: unknown) => (v[campo] === undefined ? atual : v[campo] === '' ? null : v[campo]);
+      const completo = {
+        fornecedorId: ou('fornecedorId', p.fornecedorId), data: ou('data', p.data), previsaoEntrega: ou('previsaoEntrega', p.previsaoEntrega),
+        condicaoPagamento: ou('condicaoPagamento', p.condicaoPagamento), localEntrega: ou('localEntrega', p.localEntrega), frete: ou('frete', p.frete ?? 0),
+        freteTipo: ou('freteTipo', p.freteTipo ?? null), transportadoraId: ou('transportadoraId', p.transportadora?.id ?? null),
+        centroCustoId: ou('centroCustoId', p.centroCustoId ?? null), observacao: ou('observacao', p.observacao ?? null),
+      };
+      return { success: true, data: await api.put(`/sup/pedidos/${id}`, completo) };
+    },
   }),
 
   ferramenta({

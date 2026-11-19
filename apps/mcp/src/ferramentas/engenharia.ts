@@ -520,7 +520,7 @@ export const ferramentasEngenharia = colecao(
   ferramenta({
     name: 'atualizar_rdo',
     description:
-      'Grava o conteúdo de um RDO. NÃO é parcial: a rota regrava o RDO inteiro. Campo de texto ou clima omitido fica vazio, e cada lista (maoDeObra, equipamentos, atividades, ocorrencias) substitui a anterior — lista omitida apaga as linhas que existiam. Para acrescentar ou corrigir algo, leia antes com buscar_rdo e reenvie tudo com a mudança. As fotos não são afetadas. Erro 409 se a data for trocada para um dia que já tem RDO nesta obra. Devolve { ok: true }.',
+      'Grava o conteúdo de um RDO. É parcial: o que não for enviado continua como está (a ferramenta lê o RDO atual e completa os campos omitidos antes de gravar). Cada lista enviada (maoDeObra, equipamentos, atividades, ocorrencias) substitui a anterior por inteiro; para acrescentar uma linha, leia antes com buscar_rdo e reenvie a lista com a linha nova. Para limpar um texto ou clima, envie string vazia. As fotos não são afetadas. Erro 409 se a data for trocada para um dia que já tem RDO nesta obra. Devolve { ok: true }.',
     inputSchema: z.object({
       obraId: obraId(),
       rdoId: id('Id do RDO (vem de listar_rdos ou criar_rdo).'),
@@ -576,7 +576,15 @@ export const ferramentasEngenharia = colecao(
         .optional()
         .describe('Ocorrências do dia. Substitui a lista anterior.'),
     }),
-    handler: async ({ obraId, rdoId, ...corpo }, api) => ({ success: true, data: await api.put(`/eng/obras/${obraId}/rdos/${rdoId}`, corpo) }),
+    // A API exige o RDO inteiro no PUT (D7): completa com o que já está gravado o que não veio.
+    handler: async ({ obraId, rdoId, ...corpo }, api) => {
+      const atual = ((await api.get(`/eng/obras/${obraId}/rdos/${rdoId}`)) as { rdo: Record<string, unknown> }).rdo;
+      const campos = ['climaManha', 'climaTarde', 'climaNoite', 'responsavel', 'observacoes', 'maoDeObra', 'equipamentos', 'atividades', 'ocorrencias'] as const;
+      const completo: Record<string, unknown> = { data: corpo.data };
+      for (const c of campos) completo[c] = (corpo as Record<string, unknown>)[c] !== undefined ? (corpo as Record<string, unknown>)[c] : (atual[c] ?? null);
+      for (const c of ['climaManha', 'climaTarde', 'climaNoite'] as const) if (completo[c] === '') completo[c] = null;
+      return { success: true, data: await api.put(`/eng/obras/${obraId}/rdos/${rdoId}`, completo) };
+    },
   }),
 
   // ------------------------------------------------------------------ visitas de acompanhamento (só leitura)

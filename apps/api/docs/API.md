@@ -111,7 +111,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `GET /api/eng/obras/{obraId}/rdos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `POST /api/eng/obras/{obraId}/rdos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `data`* |
 | `GET /api/eng/obras/{obraId}/rdos/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
-| `PUT /api/eng/obras/{obraId}/rdos/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `data`*, `climaManha`, `climaTarde`, `climaNoite`, `responsavel`, `observacoes`, `maoDeObra`, `equipamentos`, `atividades`, `ocorrencias` |
+| `PUT /api/eng/obras/{obraId}/rdos/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `data`*, `climaManha`*, `climaTarde`*, `climaNoite`*, `responsavel`*, `observacoes`*, `maoDeObra`*, `equipamentos`*, `atividades`*, `ocorrencias`* |
 | `DELETE /api/eng/obras/{obraId}/rdos/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `POST /api/eng/obras/{obraId}/rdos/{id}/fotos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `imagem`*, `tipo`*, `legenda` |
 | `GET /api/eng/obras/{obraId}/rdos/{id}/fotos/{fotoId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
@@ -121,7 +121,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `GET /api/eng/obras/{obraId}/visitas` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `POST /api/eng/obras/{obraId}/visitas` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `data`, `responsavel`, `observacoes` |
 | `GET /api/eng/obras/{obraId}/visitas/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
-| `PUT /api/eng/obras/{obraId}/visitas/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `data`, `responsavel`, `observacoes` |
+| `PUT /api/eng/obras/{obraId}/visitas/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `data`*, `responsavel`*, `observacoes`* |
 | `DELETE /api/eng/obras/{obraId}/visitas/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `POST /api/eng/obras/{obraId}/visitas/{id}/assinaturas` | Assinatura do responsável pela visita, desenhada na tela do celular (quem está logado). | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `nome`*, `imagem`* |
 | `POST /api/eng/obras/{obraId}/visitas/{id}/link-assinatura` | Gera o link para o dono da obra assinar a visita, sem login. Vale 30 dias; um link novo substitui o anterior. | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
@@ -237,7 +237,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `POST /api/sup/cotacoes/{id}/cancelar` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `GET /api/sup/pedidos` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife | `status` |  |
 | `GET /api/sup/pedidos/{id}` |  | Dono, Gestor, Comprador, Administrativo, Almoxarife |  |  |
-| `PUT /api/sup/pedidos/{id}` | Pedidos nascem da cotação concluída (um por fornecedor vencedor). Aqui só o cabeçalho é editado; os itens são os da cotação. | Dono, Gestor, Comprador, Administrativo |  | `fornecedorId`*, `data`, `previsaoEntrega`, `condicaoPagamento`, `localEntrega`, `frete`, `freteTipo`, `transportadoraId`, `centroCustoId`, `observacao`, `solicitacaoId` |
+| `PUT /api/sup/pedidos/{id}` | Pedidos nascem da cotação concluída (um por fornecedor vencedor). Aqui só o cabeçalho é editado; os itens são os da cotação. | Dono, Gestor, Comprador, Administrativo |  | `fornecedorId`*, `data`*, `previsaoEntrega`*, `condicaoPagamento`*, `localEntrega`*, `frete`*, `freteTipo`*, `transportadoraId`*, `centroCustoId`*, `observacao`* |
 | `POST /api/sup/pedidos/{id}/enviar-aprovacao` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/pedidos/{id}/aprovar` |  | Dono, Gestor, Comprador, Administrativo |  |  |
 | `POST /api/sup/pedidos/{id}/reprovar` |  | Dono, Gestor, Comprador, Administrativo |  | `motivo`* |
@@ -318,7 +318,7 @@ Total: 485 rotas, 10 públicas, 91 do legado da concreteira.
 | `GET /api/fin/lancamentos/pedidos-disponiveis` |  | Dono, Financeiro |  |  |
 | `GET /api/fin/lancamentos/pedidos-disponiveis/{id}/estoque` | Itens de estoque sugeridos pelo pedido: obra, insumo da obra e etapa vêm da solicitação de compra que originou o pedido; quantidade, unidade e valor são os comprados (do pedido). | Dono, Financeiro |  |  |
 | `GET /api/fin/lancamentos/{id}` |  | Dono, Financeiro |  |  |
-| `PUT /api/fin/lancamentos/{id}` | Edição: as parcelas pagas ficam como estão; "parcelas" traz só as parcelas em aberto (substituídas). | Dono, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`, `clienteId`, `fornecedorId`, `observacoes`, `valorTotal`*, `apropriacoes`*, `parcelas`* |
+| `PUT /api/fin/lancamentos/{id}` | Edição: as parcelas pagas ficam como estão; "parcelas" traz só as parcelas em aberto (substituídas). | Dono, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`*, `clienteId`*, `fornecedorId`*, `observacoes`*, `valorTotal`*, `apropriacoes`*, `parcelas`* |
 | `POST /api/fin/lancamentos/{id}/cancelar` |  | Dono, Financeiro |  | `seguintes` |
 | `GET /api/fin/parcelas` |  | Dono, Financeiro | `tipo`, `situacao`, `de`, `ate`, `contaId` |  |
 | `POST /api/fin/parcelas/{id}/baixar` |  | Dono, Financeiro |  | `data`*, `contaId`*, `forma`, `juros`, `desconto`, `observacoes` |
