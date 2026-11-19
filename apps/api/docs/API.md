@@ -14,7 +14,7 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 397 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 401 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
@@ -185,7 +185,7 @@ Total: 397 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Laudos
 
-7 rotas.
+11 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -194,6 +194,10 @@ Total: 397 rotas, 10 públicas, 4 do legado da concreteira.
 | `GET /api/laudos/{id}` |  | Dono, Gestor |  |  |
 | `PUT /api/laudos/{id}` |  | Dono, Gestor |  | `titulo`, `dados` |
 | `DELETE /api/laudos/{id}` |  | Dono, Gestor |  |  |
+| `GET /api/laudos/{id}/anexos` |  | Dono, Gestor |  |  |
+| `POST /api/laudos/{id}/anexos` |  | Dono, Gestor |  | `nome`*, `tipo`*, `categoria`, `legenda`, `arquivo`* |
+| `GET /api/laudos/{id}/anexos/{anexoId}` |  | Dono, Gestor |  |  |
+| `DELETE /api/laudos/{id}/anexos/{anexoId}` |  | Dono, Gestor |  |  |
 | `POST /api/laudos/ler-identificacao` |  | Dono, Gestor |  | `arquivo`*, `nome` |
 | `POST /api/laudos/ler-glp` |  | Dono, Gestor |  | `arquivo`*, `nome` |
 

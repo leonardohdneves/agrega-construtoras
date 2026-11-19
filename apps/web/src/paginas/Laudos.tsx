@@ -1,10 +1,11 @@
 // Módulo Laudos. Laudo de GLP: rede e central de gás (instalação em PEX ou galvanizado), com campos
 // extraídos de um laudo modelo. Dados do proprietário e do endereço podem vir da leitura do PDF pela IA.
-import { useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import { Assinatura } from '../componentes/Suprimentos';
+import { useSessao } from '../sessao';
 
 type Instalacao = 'pex' | 'galvanizado';
 type Glp = {
@@ -71,6 +72,159 @@ const ARQUIVO_BASE64 = (arquivo: File) =>
     leitor.readAsDataURL(arquivo);
   });
 
+// ----- Anexos do laudo: ART (PDF ou foto), fotos da obra e outros documentos. Enviar e remover só na tela;
+// na impressão, os PDFs são citados e as fotos saem no registro fotográfico.
+type Anexo = { id: string; nome: string; tipo: string; categoria: 'art' | 'foto' | 'outro'; legenda: string; tamanho: number; criadoEm: string };
+const ROTULO_CATEGORIA: Record<Anexo['categoria'], string> = { art: 'ART', foto: 'Foto', outro: 'Documento' };
+const TIPOS_ANEXO = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+const LIMITE_ANEXO = 10 * 1024 * 1024;
+const tamanhoAnexo = (bytes: number) =>
+  bytes >= 1024 * 1024 ? `${(bytes / 1024 / 1024).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`;
+
+/** Lista de anexos do laudo, recarregada depois de enviar ou remover um arquivo. */
+function useAnexosLaudo(laudoId: string) {
+  const [anexos, setAnexos] = useState<Anexo[] | null>(null);
+  const [erroCarga, setErroCarga] = useState('');
+  const recarregar = useCallback(() => {
+    api<{ anexos: Anexo[] }>(`/laudos/${laudoId}/anexos`)
+      .then((r) => {
+        setAnexos(r.anexos);
+        setErroCarga('');
+      })
+      .catch((e) => setErroCarga((e as Error).message));
+  }, [laudoId]);
+  useEffect(() => {
+    recarregar();
+  }, [recarregar]);
+  return { anexos, recarregar, erroCarga };
+}
+
+/** Envio e remoção de anexos, na tela do laudo. Não aparece na impressão. */
+function AnexosLaudo({ laudoId, anexos, recarregar, erroCarga }: { laudoId: string; anexos: Anexo[] | null; recarregar: () => void; erroCarga: string }) {
+  const [categoria, setCategoria] = useState<Anexo['categoria']>('art');
+  const [legenda, setLegenda] = useState('');
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState('');
+  const caminho = (anexoId: string) => `/api/laudos/${laudoId}/anexos/${anexoId}`;
+
+  async function enviar(arquivos: File[]) {
+    if (!arquivos.length) return;
+    setEnviando(true);
+    setErro('');
+    const falhas: string[] = [];
+    for (const arquivo of arquivos) {
+      if (!TIPOS_ANEXO.includes(arquivo.type)) {
+        falhas.push(`${arquivo.name}: envie um PDF ou uma foto (JPG, PNG ou WEBP).`);
+        continue;
+      }
+      if (arquivo.size > LIMITE_ANEXO) {
+        falhas.push(`${arquivo.name}: arquivo grande demais (máximo 10 MB).`);
+        continue;
+      }
+      try {
+        const base64 = await ARQUIVO_BASE64(arquivo);
+        await api(`/laudos/${laudoId}/anexos`, { metodo: 'POST', corpo: { nome: arquivo.name, tipo: arquivo.type, categoria, legenda, arquivo: base64 } });
+      } catch (e) {
+        falhas.push(`${arquivo.name}: ${(e as Error).message}`);
+      }
+    }
+    setEnviando(false);
+    if (falhas.length) setErro(falhas.join(' '));
+    recarregar();
+  }
+
+  async function remover(a: Anexo) {
+    if (!window.confirm(`Remover o anexo "${a.nome}"?`)) return;
+    setErro('');
+    try {
+      await api(`/laudos/${laudoId}/anexos/${a.id}`, { metodo: 'DELETE' });
+      recarregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  }
+
+  return (
+    <div className="card nao-imprimir">
+      <h2>Anexos</h2>
+      <p className="small muted">ART em PDF ou foto, fotos da obra e outros documentos. Ficam guardados com o laudo. Na impressão, os PDFs são citados e as fotos saem em registro fotográfico, depois da assinatura.</p>
+      {(erro || erroCarga) && <div className="alerta alerta-erro" role="alert">{erro || erroCarga}</div>}
+      <div className="campos">
+        <div className="campo">
+          <label htmlFor="an-cat">Tipo do anexo</label>
+          <select id="an-cat" value={categoria} onChange={(e) => setCategoria(e.target.value as Anexo['categoria'])}>
+            <option value="art">ART</option>
+            <option value="foto">Foto</option>
+            <option value="outro">Outro documento</option>
+          </select>
+        </div>
+        <div className="campo">
+          <label htmlFor="an-leg">Legenda (opcional)</label>
+          <input id="an-leg" value={legenda} onChange={(e) => setLegenda(e.target.value)} placeholder="Ex.: Central de GLP, vista frontal" />
+        </div>
+      </div>
+      <label className="btn btn-secundario" style={{ cursor: enviando ? 'progress' : 'pointer', alignSelf: 'flex-start' }}>
+        {enviando ? 'Enviando…' : 'Escolher arquivos'}
+        <input
+          type="file"
+          accept={TIPOS_ANEXO.join(',')}
+          multiple
+          hidden
+          disabled={enviando}
+          onChange={(e) => {
+            const lista = Array.from(e.target.files ?? []);
+            e.target.value = '';
+            enviar(lista);
+          }}
+        />
+      </label>
+      {anexos === null ? (
+        <p className="small muted">Carregando anexos…</p>
+      ) : anexos.length === 0 ? (
+        <p className="small muted">Nenhum anexo neste laudo.</p>
+      ) : (
+        <ul style={{ listStyle: 'none', padding: 0, margin: '12px 0 0', display: 'grid', gap: 10 }}>
+          {anexos.map((a) => (
+            <li key={a.id} style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              {a.tipo.startsWith('image/') && <img src={caminho(a.id)} alt="" width={56} height={56} style={{ objectFit: 'cover', borderRadius: 6, flexShrink: 0 }} />}
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <a href={caminho(a.id)} target="_blank" rel="noreferrer">{a.nome}</a>
+                <div className="small muted">{ROTULO_CATEGORIA[a.categoria]}{a.legenda ? ` · ${a.legenda}` : ''} · {tamanhoAnexo(a.tamanho)}</div>
+              </div>
+              <button type="button" className="btn btn-link" disabled={enviando} onClick={() => remover(a)}>Remover</button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Anexos na impressão: os PDFs são citados (o arquivo fica no laudo digital); as imagens saem no registro fotográfico. */
+function AnexosImpressao({ laudoId, anexos, numero }: { laudoId: string; anexos: Anexo[] | null; numero?: string }) {
+  if (!anexos?.length) return null;
+  const pdfs = anexos.filter((a) => a.tipo === 'application/pdf');
+  const imagens = anexos.filter((a) => a.tipo !== 'application/pdf');
+  return (
+    <div className="laudo-anexos">
+      <h2 className="laudo-secao">{numero ? `${numero} ` : ''}Anexos</h2>
+      {pdfs.map((a) => (
+        <p key={a.id}>{ROTULO_CATEGORIA[a.categoria]}: {a.legenda || a.nome} (PDF anexado ao arquivo digital do laudo)</p>
+      ))}
+      {imagens.length > 0 && (
+        <div className="laudo-fotos">
+          {imagens.map((a, i) => (
+            <figure key={a.id} className="laudo-foto">
+              <img src={`/api/laudos/${laudoId}/anexos/${a.id}`} alt={a.legenda || a.nome} />
+              <figcaption>Figura {i + 1} – {a.legenda || ROTULO_CATEGORIA[a.categoria]}</figcaption>
+            </figure>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 const ROTA_TIPO = { glp: 'glp', avaliacao: 'avaliacoes', patologia: 'patologias' } as const;
 
 /** Lista de laudos de um tipo. Avaliações e patologias ainda não têm modelo cadastrado. */
@@ -126,8 +280,45 @@ export function LaudosLista({ tipo, titulo, descricao }: { tipo: 'glp' | 'avalia
 }
 
 /** Laudo de GLP: formulário com os campos do modelo, leitura de PDF pela IA e impressão no formato do laudo. */
+/** Seções do laudo de GLP, na ordem do impresso (o sumário sai daqui). */
+const SECOES_GLP = ['Dados da edificação', 'Notas gerais', 'Materiais utilizados', 'Especificações', 'A central de gás', 'Pontos de consumo', 'Conclusão'];
+
+/** Capa e sumário do laudo impresso, no padrão dos laudos da Neves. Só aparecem na impressão. */
+function CapaLaudo({ titulo, cliente, local, responsavel, registro }: { titulo: string; cliente: string; local: string; responsavel: string; registro: string }) {
+  const { empresa } = useSessao();
+  return (
+    <>
+      <div className="laudo-capa">
+        {empresa?.temLogo && <img className="laudo-capa-logo" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt={empresa.nomeFantasia || empresa.razaoSocial} />}
+        <div className="laudo-capa-rodape">
+          <h1>{titulo}</h1>
+          {cliente && <p>{cliente}{local ? ` /${local}` : ''}</p>}
+          {responsavel && (
+            <p className="laudo-capa-resp">
+              {responsavel}
+              {registro && <><br /><small>{registro}</small></>}
+            </p>
+          )}
+        </div>
+      </div>
+      <div className="laudo-sumario">
+        <h2>Sumário</h2>
+        <ol>
+          {SECOES_GLP.map((s, i) => (
+            <li key={s}>
+              <span className="laudo-sumario-num">{i + 1}</span>
+              <span>{s}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+    </>
+  );
+}
+
 export function LaudoGlp() {
   const { id = '' } = useParams();
+  const { anexos, recarregar, erroCarga } = useAnexosLaudo(id);
   const [dados, setDados] = useState<Glp | null>(null);
   const [numero, setNumero] = useState<number | null>(null);
   const [erro, setErro] = useState('');
@@ -282,8 +473,19 @@ export function LaudoGlp() {
         </div>
       </form>
 
+      <AnexosLaudo laudoId={id} anexos={anexos} recarregar={recarregar} erroCarga={erroCarga} />
+
       <div className="so-imprimir laudo-impresso">
-        <h2 className="laudo-secao">1 Dados da edificação</h2>
+        <div className="laudo-barra" aria-hidden="true" />
+        <div className="laudo-quadrado" aria-hidden="true" />
+        <CapaLaudo
+          titulo="Laudo de rede de GLP"
+          cliente={dados.proprietarioNome.toUpperCase()}
+          local={dados.cidade ? `${dados.cidade.toUpperCase()}${dados.uf ? `-${dados.uf}` : ''}` : ''}
+          responsavel={dados.responsavelNome.toUpperCase()}
+          registro={dados.responsavelRegistro}
+        />
+        <h2 className="laudo-secao laudo-primeira">1 Dados da edificação</h2>
         <p>Proprietário: {dados.proprietarioNome}{dados.proprietarioDocumento ? `; CNPJ/CPF: ${dados.proprietarioDocumento}` : ''}</p>
         <p>Endereço: {dados.enderecoObra}{dados.cep ? `; CEP: ${dados.cep}` : ''}{dados.cidade ? `; ${dados.cidade}${dados.uf ? ` - ${dados.uf}` : ''}` : ''}</p>
 
@@ -315,6 +517,7 @@ export function LaudoGlp() {
         <div className="so-imprimir assinaturas">
           <Assinatura nome={dados.responsavelNome} papel={dados.responsavelRegistro || 'Engenheiro responsável'} />
         </div>
+        <AnexosImpressao laudoId={id} anexos={anexos} numero="8" />
       </div>
     </>
   );
@@ -353,6 +556,7 @@ type Patologia = {
 /** Laudo de patologia: textos do modelo (vistoria, hipótese, orientações, conclusão e acompanhamento das correções). */
 export function LaudoPatologia() {
   const { id = '' } = useParams();
+  const { anexos, recarregar, erroCarga } = useAnexosLaudo(id);
   const [d, setD] = useState<Patologia | null>(null);
   const [numero, setNumero] = useState<number | null>(null);
   const [erro, setErro] = useState('');
@@ -490,6 +694,8 @@ export function LaudoPatologia() {
         </div>
       </form>
 
+      <AnexosLaudo laudoId={id} anexos={anexos} recarregar={recarregar} erroCarga={erroCarga} />
+
       <div className="so-imprimir laudo-impresso">
         <h2 className="laudo-secao">1 Dados da edificação</h2>
         <p>Proprietário: {d.proprietarioNome}{d.proprietarioDocumento ? `; CPF/CNPJ: ${d.proprietarioDocumento}` : ''}</p>
@@ -526,6 +732,7 @@ export function LaudoPatologia() {
         <h2 className="laudo-secao">9 Anexo</h2>
         <p>9.1 Do acompanhamento técnico das correções{d.acompanhamentoData ? ` (${formatarData(d.acompanhamentoData)})` : ''}</p>
         {paragrafos(textos.acompanhamento)}
+        <AnexosImpressao laudoId={id} anexos={anexos} numero="10" />
       </div>
     </>
   );
@@ -550,6 +757,7 @@ type Avaliacao = {
  */
 export function LaudoAvaliacao() {
   const { id = '' } = useParams();
+  const { anexos, recarregar, erroCarga } = useAnexosLaudo(id);
   const [d, setD] = useState<Avaliacao | null>(null);
   const [numero, setNumero] = useState<number | null>(null);
   const [erro, setErro] = useState('');
@@ -668,6 +876,8 @@ export function LaudoAvaliacao() {
         </div>
       </form>
 
+      <AnexosLaudo laudoId={id} anexos={anexos} recarregar={recarregar} erroCarga={erroCarga} />
+
       <div className="so-imprimir laudo-impresso">
         <h2 className="laudo-secao">1 Identificação do laudo e resumo da avaliação</h2>
         <table className="tabela">
@@ -695,6 +905,7 @@ export function LaudoAvaliacao() {
         <div className="so-imprimir assinaturas">
           <Assinatura nome={d.responsavelNome} papel={d.responsavelRegistro || 'Engenheiro responsável'} />
         </div>
+        <AnexosImpressao laudoId={id} anexos={anexos} />
       </div>
     </>
   );
