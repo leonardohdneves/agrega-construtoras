@@ -68,3 +68,14 @@ test('P13: período de teste do aceite sai no dia certo (sem voltar um dia pelo 
   const lista = await ctx.pedir('admin_sistema', 'GET', '/api/aceite/admin/aceites');
   assert.equal(lista.corpo.aceites.find((a: { cliente: string }) => a.cliente === 'Cliente Teste').testeInicio, '10/12/2026');
 });
+
+test('P19: rotas de IA têm limite por usuário (429 em português)', { skip: semBanco }, async () => {
+  const status: number[] = [];
+  for (let i = 0; i < 21; i++) status.push((await ctx.pedir('financeiro', 'POST', '/api/fin/lancamentos/leitura', { corpo: {} })).status);
+  assert.ok(status.slice(0, 20).every((s) => s !== 429), `antes do limite: ${status.join(',')}`);
+  const bloqueado = await ctx.pedir('financeiro', 'POST', '/api/fin/lancamentos/leitura', { corpo: {} });
+  assert.equal(bloqueado.status, 429);
+  assert.match(bloqueado.corpo.erro, /Muitas tentativas/);
+  // O limite é por usuário: o dono continua podendo usar.
+  assert.notEqual((await ctx.pedir('dono', 'POST', '/api/fin/lancamentos/leitura', { corpo: {} })).status, 429);
+});

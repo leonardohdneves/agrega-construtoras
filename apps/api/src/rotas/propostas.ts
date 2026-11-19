@@ -6,6 +6,7 @@ import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { redigirPropostaIa, textoModelo, type DadosProposta } from '../lib/ia-proposta.ts';
 
@@ -148,7 +149,7 @@ export function rotasPropostas(banco: Banco) {
     });
 
     // A IA redige o texto com os dados da proposta e o histórico de preço do cliente. Sem IA, usa o texto-modelo.
-    app.post<{ Params: { id: string } }>('/propostas/:id/redigir', async (req) => {
+    app.post<{ Params: { id: string } }>('/propostas/:id/redigir', { config: LIMITE_IA }, async (req) => {
       const empresaId = empresaDo(req);
       const r = await carregar(banco, empresaId, req.params.id);
       if (!['rascunho', 'enviada'].includes(r.status)) throw new ErroHttp(400, 'Esta proposta já foi aceita ou recusada.');

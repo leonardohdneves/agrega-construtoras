@@ -6,6 +6,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { hojeBrasil } from '../lib/frota.ts';
 import { somarDias, somarMeses } from '../lib/financeiro.ts';
 import { dispensaAprovacao, lerRegras, podeAprovar, proximoNumero, textoRegras } from '../lib/aprovacao.ts';
@@ -129,6 +130,7 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
   const regras = await lerRegras(c, empresaId);
   return {
     id: k.id as string,
+    obraId: (k.obra_id ?? null) as string | null,
     numero: k.numero as number,
     status: k.status as 'rascunho' | 'aguardando_aprovacao' | 'reprovado' | 'vigente' | 'encerrado' | 'cancelado',
     enviadoAprovacaoEm: k.enviado_aprovacao_em as string | null,
@@ -163,9 +165,10 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
     formaPagamento: k.forma_pagamento as string | null,
     retencoes: { caucao: pctNum(k.caucao_pct), iss: pctNum(k.iss_pct), inss: pctNum(k.inss_pct), ir: pctNum(k.ir_pct), pcc: pctNum(k.pcc_pct) },
     observacao: k.observacao as string | null,
-    // Endereços vêm do cadastro: a empresa que executa a obra (cadastro da obra) e o prestador (cadastro do fornecedor).
-    enderecoContratante: (k.obra_endereco as string | null) || null,
-    enderecoContratada: (k.fornecedor_endereco as string | null) || null,
+    // Endereço gravado no contrato, quando houver; senão o do cadastro (empresa que executa a obra e prestador).
+    // Antes o gravado era ignorado na leitura (P32).
+    enderecoContratante: (k.endereco_contratante as string | null) || (k.obra_endereco as string | null) || null,
+    enderecoContratada: (k.endereco_contratada as string | null) || (k.fornecedor_endereco as string | null) || null,
     prazoCorrecaoDias: k.prazo_correcao_dias as number | null,
     garantiaMeses: k.garantia_meses as number | null,
     encerradoEm: k.encerrado_em as string | null,
@@ -216,6 +219,8 @@ async function detalharContrato(c: Cliente, empresaId: string, id: string, usuar
 }
 
 const esquemaContrato = z.object({
+  // Obra do contrato manual (P34: só os contratos gerados por cotação de serviço ficavam ligados à obra).
+  obraId: uuidOpc,
   fornecedorId: z.string().regex(UUID, 'Escolha o prestador.'),
   objeto: z.string().trim().min(3, 'Descreva o objeto do contrato.').max(300),
   tipo: z.enum(['itens', 'global']),
@@ -258,6 +263,8 @@ const esquemaContrato = z.object({
 });
 
 async function validarContrato(c: Cliente, empresaId: string, d: z.infer<typeof esquemaContrato>) {
+  if (d.obraId && !(await c.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2 AND ativo', [d.obraId, empresaId])).rowCount)
+    throw new ErroHttp(400, 'Obra não encontrada.');
   if (!(await c.query("SELECT 1 FROM fornecedores WHERE id = $1 AND empresa_id = $2 AND excluido_em IS NULL", [d.fornecedorId, empresaId])).rowCount)
     throw new ErroHttp(400, 'Prestador não encontrado.');
   const pc = (await c.query('SELECT tipo, aceita_lancamento, nome FROM plano_contas WHERE id = $1 AND empresa_id = $2', [d.planoContaId, empresaId])).rows[0];
@@ -609,7 +616,7 @@ export function rotasContratos(banco: Banco) {
     // ----- Contratos
     app.get<{ Querystring: Record<string, string | undefined> }>('/contratos', async (req) => {
       const empresaId = empresaDo(req);
-      const status = ['rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente', 'encerrado', 'cancelado'].includes(req.query.status ?? '') ? req.query.status! : null;
+      const status = lerQuery({ status: opcaoQuery('status', ['rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente', 'encerrado', 'cancelado'] as const) }, req.query).status ?? null;
       const ids = (
         await banco.query(
           `SELECT id FROM contratos WHERE empresa_id = $1 AND ($2::text IS NULL OR status = $2) AND ($2::text IS NOT NULL OR status IN ('rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente'))
@@ -643,11 +650,11 @@ export function rotasContratos(banco: Banco) {
           await c.query(
             `INSERT INTO contratos (empresa_id, numero, fornecedor_id, objeto, tipo, data_assinatura, inicio, fim, valor_global_centavos, plano_conta_id, centro_custo_id,
                                     prazo_pagamento_dias, forma_pagamento, caucao_pct, iss_pct, inss_pct, ir_pct, pcc_pct, observacao, criado_por_id,
-                                    endereco_contratante, endereco_contratada, prazo_correcao_dias, garantia_meses)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24) RETURNING id`,
+                                    endereco_contratante, endereco_contratada, prazo_correcao_dias, garantia_meses, obra_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25) RETURNING id`,
             [empresaId, numero, d.fornecedorId, d.objeto, d.tipo, d.dataAssinatura, d.inicio, d.fim, d.tipo === 'global' ? cent(d.valorGlobal!) : null, d.planoContaId, d.centroCustoId,
               d.prazoPagamentoDias, d.formaPagamento, d.retencoes.caucao, d.retencoes.iss, d.retencoes.inss, d.retencoes.ir, d.retencoes.pcc, d.observacao, u.id,
-              d.enderecoContratante, d.enderecoContratada, d.prazoCorrecaoDias, d.garantiaMeses],
+              d.enderecoContratante, d.enderecoContratada, d.prazoCorrecaoDias, d.garantiaMeses, d.obraId],
           )
         ).rows[0];
         if (d.tipo === 'itens') await gravarItensContrato(c, empresaId, k.id, d.itens);
@@ -675,10 +682,12 @@ export function rotasContratos(banco: Banco) {
         await c.query(
           `UPDATE contratos SET fornecedor_id = $2, objeto = $3, tipo = $4, data_assinatura = $5, inicio = $6, fim = $7, valor_global_centavos = $8, plano_conta_id = $9,
                   centro_custo_id = $10, prazo_pagamento_dias = $11, forma_pagamento = $12, caucao_pct = $13, iss_pct = $14, inss_pct = $15, ir_pct = $16, pcc_pct = $17,
-                  observacao = $18, endereco_contratante = $19, endereco_contratada = $20, prazo_correcao_dias = $21, garantia_meses = $22, atualizado_em = now() WHERE id = $1`,
+                  observacao = $18, endereco_contratante = $19, endereco_contratada = $20, prazo_correcao_dias = $21, garantia_meses = $22,
+                  obra_id = CASE WHEN $23 THEN $24 ELSE obra_id END, atualizado_em = now() WHERE id = $1`,
           [k.id, d.fornecedorId, d.objeto, d.tipo, d.dataAssinatura, d.inicio, d.fim, d.tipo === 'global' ? cent(d.valorGlobal!) : null, d.planoContaId, d.centroCustoId,
             d.prazoPagamentoDias, d.formaPagamento, d.retencoes.caucao, d.retencoes.iss, d.retencoes.inss, d.retencoes.ir, d.retencoes.pcc, d.observacao,
-            d.enderecoContratante, d.enderecoContratada, d.prazoCorrecaoDias, d.garantiaMeses],
+            d.enderecoContratante, d.enderecoContratada, d.prazoCorrecaoDias, d.garantiaMeses,
+            Object.prototype.hasOwnProperty.call(req.body ?? {}, 'obraId'), d.obraId],
         );
         if (d.tipo === 'itens') await gravarItensContrato(c, empresaId, k.id, d.itens);
         else await c.query('DELETE FROM contratos_itens WHERE contrato_id = $1', [k.id]);
@@ -795,7 +804,7 @@ export function rotasContratos(banco: Banco) {
     // ----- Medições
     app.get<{ Querystring: Record<string, string | undefined> }>('/medicoes', async (req) => {
       const empresaId = empresaDo(req);
-      const st = req.query.status ?? '';
+      const st = lerQuery({ status: opcaoQuery('status', ['aprovacao', 'autorizar', 'aprovadas', 'canceladas'] as const) }, req.query).status ?? '';
       const r = await banco.query(
         `SELECT m.id, m.numero, m.sequencia, m.periodo_inicio, m.periodo_fim, m.data, m.valor_centavos, m.status, k.numero AS contrato_numero, k.objeto,
                 coalesce(f.nome_fantasia, f.razao_social) AS fornecedor,
@@ -931,7 +940,7 @@ export function rotasContratos(banco: Banco) {
     // ----- Autorizações de pagamento
     app.get<{ Querystring: Record<string, string | undefined> }>('/autorizacoes', async (req) => {
       const empresaId = empresaDo(req);
-      const st = req.query.status ?? '';
+      const st = lerQuery({ status: opcaoQuery('status', ['aprovacao', 'aprovadas', 'canceladas'] as const) }, req.query).status ?? '';
       const r = await banco.query(
         `SELECT a.id, a.numero, a.tipo, a.data, a.vencimento, a.bruto_centavos, a.liquido_centavos, a.status, k.numero AS contrato_numero, k.objeto,
                 coalesce(f.nome_fantasia, f.razao_social) AS fornecedor, m.sequencia AS medicao_sequencia,

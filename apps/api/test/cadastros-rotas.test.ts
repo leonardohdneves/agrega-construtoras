@@ -103,3 +103,26 @@ test('P15: usuário com os 9 módulos marcados é aceito; permuta com preço vaz
   assert.equal(p.status, 400);
   assert.equal(p.corpo.erro, 'Informe o preço acordado.');
 });
+
+test('P32: insumo criado com código "I-001" numa tabela própria é usado numa composição', { skip: semBanco }, async () => {
+  const t = await ctx.pedir('dono', 'POST', '/api/eng/tabelas', { corpo: { fonte: 'proprio', nome: 'Tabela própria P32' } });
+  assert.equal(t.status, 201, JSON.stringify(t.corpo));
+  const tabela = t.corpo.tabela?.id ?? t.corpo.id;
+  const ins = await ctx.pedir('dono', 'POST', `/api/eng/tabelas/${tabela}/itens`, { corpo: { tipo: 'insumo', codigo: 'I-001', descricao: 'Cimento CP II', unidade: 'sc', preco: 35 } });
+  assert.equal(ins.status, 201, JSON.stringify(ins.corpo));
+  assert.equal(ins.corpo.codigo ?? ins.corpo.item?.codigo, 'I-001');
+  const comp = await ctx.pedir('dono', 'POST', `/api/eng/tabelas/${tabela}/itens`, {
+    corpo: { tipo: 'composicao', descricao: 'Argamassa', unidade: 'm3', componentes: [{ insumoCodigo: 'I-001', coeficiente: 6 }] },
+  });
+  assert.equal(comp.status, 201, JSON.stringify(comp.corpo));
+  assert.equal((await ctx.pedir('dono', 'POST', `/api/eng/tabelas/${tabela}/itens`, { corpo: { tipo: 'insumo', codigo: 'I-001', descricao: 'Repetido', unidade: 'un' } })).status, 409);
+});
+
+test('P32: conta financeira e centro de custo criados inativos ficam inativos', { skip: semBanco }, async () => {
+  const conta = await ctx.pedir('dono', 'POST', '/api/fin/contas', { corpo: { nome: 'Caixa antigo', tipo: 'caixa', saldoInicial: 0, ativo: false } });
+  assert.equal(conta.status, 201, JSON.stringify(conta.corpo));
+  assert.equal(conta.corpo.conta.ativo, false);
+  const centro = await ctx.pedir('dono', 'POST', '/api/fin/centros-custo', { corpo: { nome: 'Centro antigo', ativo: false } });
+  assert.equal(centro.status, 201);
+  assert.equal(centro.corpo.centro.ativo, false);
+});

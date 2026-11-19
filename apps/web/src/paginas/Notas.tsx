@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { AvisoLista } from '../componentes/AvisoLista';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { LeitorCodigo } from '../componentes/LeitorCodigo';
 import { chaveDoArquivoDeImagem, chaveNoPdf, imagemParaJpeg } from '../leitorBarras';
-import { api, ErroApi, formatarChave, formatarData, formatarMoeda, hojeLocal, NOMES_MODELO, nomeMes, SELO_NOTA, somarMeses, type NotaFiscal, type NotaResumo } from '../api';
+import { api, ErroApi, formatarChave, formatarData, formatarMoeda, hojeLocal, NOMES_MODELO, nomeMes, SELO_NOTA, somarDias, somarMeses, type NotaFiscal, type NotaResumo } from '../api';
 
 type Filtro = 'todas' | 'rascunho' | 'confirmada' | 'cancelada';
 const FILTROS: { id: Filtro; texto: string }[] = [
@@ -38,6 +39,7 @@ export function Notas({ embutida = false }: { embutida?: boolean } = {}) {
   const mes = /^\d{4}-\d{2}$/.test(params.get('mes') ?? '') ? params.get('mes')! : hojeLocal().slice(0, 7);
   const filtro = (FILTROS.some((f) => f.id === params.get('situacao')) ? params.get('situacao') : 'todas') as Filtro;
   const [lista, setLista] = useState<NotaResumo[] | null>(null);
+  const [temMais, setTemMais] = useState(false);
   const [rascunhos, setRascunhos] = useState(0);
   const [erro, setErro] = useState('');
   const [importando, setImportando] = useState(false);
@@ -58,8 +60,9 @@ export function Notas({ embutida = false }: { embutida?: boolean } = {}) {
     setLista(null);
     try {
       const de = `${mes}-01`;
-      const r = await api<{ notas: NotaResumo[]; rascunhos: number }>(`/fin/notas?de=${de}&ate=${somarMeses(de, 1)}${filtro !== 'todas' ? `&status=${filtro}` : ''}`);
+      const r = await api<{ notas: NotaResumo[]; rascunhos: number; temMais?: boolean }>(`/fin/notas?de=${de}&ate=${somarDias(somarMeses(de, 1), -1)}${filtro !== 'todas' ? `&status=${filtro}` : ''}`);
       setLista(r.notas);
+      setTemMais(!!r.temMais);
       setRascunhos(r.rascunhos);
     } catch (e) {
       setErro((e as Error).message);
@@ -202,6 +205,7 @@ export function Notas({ embutida = false }: { embutida?: boolean } = {}) {
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <AvisoLista temMais={temMais} limite={1000} />
       {progresso && (
         <div className="alerta alerta-info" role="status">
           {progresso} {ia ? 'Ela transcreve os itens, valores, descontos e parcelas e sugere o cadastro de cada item.' : 'A leitura por IA está desligada: o Agrega lê o texto e o código de barras do PDF.'}

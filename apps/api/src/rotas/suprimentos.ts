@@ -5,6 +5,7 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
+import { cortarLista, idQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { estoqueDaMovimentacao, proximoCodigoEstoque, saldoApropriacao, validarApropriacaoObra } from '../lib/estoque.ts';
 import { chaveEtiqueta } from '../lib/etiquetas.ts';
 import { diasEntre, hojeBrasil } from '../lib/frota.ts';
@@ -14,6 +15,7 @@ import { normalizar } from '../lib/sugestoes.ts';
 import { fornecedorAtende } from '../lib/atuacao.ts';
 import { dispensaAprovacao, lerRegras, lerRegrasDe, podeAprovar, proximoNumero, textoRegras, type RegrasAprovacao } from '../lib/aprovacao.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { lerPropostaComIa } from '../lib/ia-cotacao.ts';
 
@@ -238,6 +240,8 @@ const esquemaItemServico = z.object({
 /** Escopo do serviço: quem fornece material, mão de obra e equipamento (direciona a minuta do contrato). */
 export const ESCOPOS_SERVICO = ['mo', 'eq', 'mat', 'mat_mo', 'mat_mo_eq', 'mo_eq', 'mat_eq'] as const;
 const esquemaServico = z.object({
+  // Identifica o corpo de serviço (P34: antes ficava fora do esquema e, sem ele, o corpo era lido como material).
+  tipo: z.literal('servico').optional(),
   obraId: z.string().regex(UUID, 'Escolha a obra.'),
   data: dataOpc,
   necessidade: dataOpc,
@@ -246,7 +250,11 @@ const esquemaServico = z.object({
   escopo: z.enum(ESCOPOS_SERVICO, { message: 'Escolha o escopo do serviço (mão de obra, equipamento e/ou material).' }),
   itens: z.array(esquemaItemServico).min(1, 'Inclua pelo menos um serviço.').max(200, 'Até 200 itens por solicitação.'),
 });
-const ehServico = (corpo: unknown) => (corpo as { tipo?: unknown } | null)?.tipo === 'servico';
+/** Corpo de serviço: tipo "servico", ou, sem tipo, os campos que só o serviço tem (categoria e escopo). */
+const ehServico = (corpo: unknown) => {
+  const c = (corpo ?? {}) as { tipo?: unknown; planoContaId?: unknown; escopo?: unknown };
+  return c.tipo === 'servico' || (c.tipo === undefined && c.planoContaId !== undefined && c.escopo !== undefined);
+};
 
 async function validarPlanoConta(c: Cliente, empresaId: string, id: string) {
   if (!(await c.query('SELECT 1 FROM plano_contas WHERE id = $1 AND empresa_id = $2', [id, empresaId])).rowCount) throw new ErroHttp(400, 'Categoria (plano de contas) não encontrada.');
@@ -640,18 +648,23 @@ async function detalharPedido(c: Cliente, empresaId: string, id: string, usuario
 }
 
 /** Cabeçalho do pedido. Os itens vêm da cotação (com obra, EAP e necessidade) e não são editados aqui. */
+// PUT do pedido substitui o cabeçalho e exige todos os campos (D7, P31): pode vir null, mas não pode faltar.
+// `solicitacaoId` saiu: era aceito e nunca gravado (P32); o pedido segue ligado à solicitação da cotação.
+const exigidoPedido = (campo: string) => ({ required_error: `Envie ${campo} (o PUT regrava o pedido inteiro; use null para limpar).` });
+const textoPedido = (max: number, campo: string) => z.string(exigidoPedido(campo)).trim().max(max).nullable().transform((v) => v || null);
+const dataPedido = (campo: string) => z.string(exigidoPedido(campo)).regex(DATA, 'Data inválida.').nullable();
+const uuidPedido = (campo: string) => z.string(exigidoPedido(campo)).regex(UUID).nullable();
 const esquemaPedido = z.object({
-  fornecedorId: z.string().regex(UUID, 'Escolha o fornecedor.'),
-  data: dataOpc,
-  previsaoEntrega: dataOpc,
-  condicaoPagamento: texto(120),
-  localEntrega: texto(200),
-  frete: naoNegativo('Frete inválido.').optional().default(0),
-  freteTipo: z.enum(['transportadora', 'proprio']).optional().nullable().transform((v) => v ?? null),
-  transportadoraId: uuidOpc,
-  centroCustoId: uuidOpc,
-  observacao: texto(1000),
-  solicitacaoId: uuidOpc,
+  fornecedorId: z.string({ required_error: 'Escolha o fornecedor.' }).regex(UUID, 'Escolha o fornecedor.'),
+  data: dataPedido('data'),
+  previsaoEntrega: dataPedido('previsaoEntrega'),
+  condicaoPagamento: textoPedido(120, 'condicaoPagamento'),
+  localEntrega: textoPedido(200, 'localEntrega'),
+  frete: z.union([z.number(), z.string()], exigidoPedido('frete')).pipe(naoNegativo('Frete inválido.')),
+  freteTipo: z.enum(['transportadora', 'proprio'], exigidoPedido('freteTipo')).nullable(),
+  transportadoraId: uuidPedido('transportadoraId'),
+  centroCustoId: uuidPedido('centroCustoId'),
+  observacao: textoPedido(1000, 'observacao'),
 });
 
 async function gravarItensPedido(c: Cliente, empresaId: string, pedidoId: string, itens: (ItemResolvido & { precoUnitario: number; cotacaoItemId: string })[], freteCentavos: number) {
@@ -811,7 +824,7 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Estoque da construtora: saldo por insumo da obra e etapa da EAP; saídas por requisição.
     app.get<{ Querystring: Record<string, string | undefined> }>('/estoque', async (req) => {
       const empresaId = empresaDo(req);
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
       const r = await banco.query(
         `WITH s AS (
            SELECT m.obra_id, m.obra_item_id, m.eap_no_id, m.obra_estoque_id, sum(CASE WHEN m.tipo = 'saida' THEN -m.quantidade ELSE m.quantidade END) AS qtd
@@ -946,7 +959,7 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Estoques da empresa: com obra ou gerais, código automático.
     app.get<{ Querystring: Record<string, string | undefined> }>('/estoques', async (req) => {
       const empresaId = empresaDo(req);
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
       const r = await banco.query(
         `SELECT e.id, e.codigo, e.nome, e.recebimento, e.ativo, e.obra_id, o.codigo AS obra_codigo, o.nome AS obra_nome
            FROM obra_estoques e LEFT JOIN obras o ON o.id = e.obra_id
@@ -1015,15 +1028,16 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.get<{ Querystring: Record<string, string | undefined> }>('/etiquetas', async (req) => {
       const empresaId = empresaDo(req);
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
-      const estoqueId = req.query.estoqueId && UUID.test(req.query.estoqueId) ? req.query.estoqueId : null;
-      const soSaldo = req.query.saldo !== '0';
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
+      const estoqueId = lerQuery({ estoqueId: idQuery('estoqueId') }, req.query).estoqueId ?? null;
+      const soSaldo = lerQuery({ saldo: opcaoQuery('saldo', ['0', '1'] as const) }, req.query).saldo !== '0';
       const r = await banco.query(
         `${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND ($2::uuid IS NULL OR x.obra_id = $2) AND ($3::uuid IS NULL OR x.obra_estoque_id = $3)
-            AND ($4::boolean = false OR x.saldo > 0) ORDER BY x.data DESC, x.insumo_descricao LIMIT 300`,
+            AND ($4::boolean = false OR x.saldo > 0) ORDER BY x.data DESC, x.insumo_descricao LIMIT 301`,
         [empresaId, obraId, estoqueId, soSaldo],
       );
-      return { etiquetas: r.rows.map(etiquetaPublica) };
+      const temMais = cortarLista(r.rows, 300);
+      return { etiquetas: r.rows.map(etiquetaPublica), temMais };
     });
 
     app.get<{ Params: { id: string } }>('/etiquetas/:id', async (req) => {
@@ -1126,9 +1140,9 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Solicitações de compra: sempre de uma obra, com os insumos das necessidades apropriadas à EAP.
     app.get<{ Querystring: Record<string, string | undefined> }>('/solicitacoes', async (req) => {
       const empresaId = empresaDo(req);
-      const status = STATUS_SOLICITACAO.includes(req.query.status as never) ? req.query.status! : null;
-      const obraId = req.query.obraId && UUID.test(req.query.obraId) ? req.query.obraId : null;
-      const tipo = req.query.tipo === 'servico' || req.query.tipo === 'insumo' ? req.query.tipo : null;
+      const status = lerQuery({ status: opcaoQuery('status', STATUS_SOLICITACAO) }, req.query).status ?? null;
+      const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
+      const tipo = lerQuery({ tipo: opcaoQuery('tipo', ['servico', 'insumo'] as const) }, req.query).tipo ?? null;
       const r = await banco.query(
         `SELECT s.id, s.numero, s.data, s.necessidade, s.status, s.observacao, s.finalizada_em, s.obra_id, s.tipo, u.nome AS solicitante,
                 o.codigo AS obra_codigo, o.nome AS obra_nome,
@@ -1137,12 +1151,14 @@ export function rotasSuprimentos(banco: Banco) {
            FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id LEFT JOIN obras o ON o.id = s.obra_id
           WHERE s.empresa_id = $1 AND ($2::text IS NULL OR s.status = $2) AND ($3::uuid IS NULL OR s.obra_id = $3) AND ($4::text IS NULL OR s.tipo = $4)
             AND ($2::text IS NOT NULL OR s.status IN ('aberta', 'finalizada', 'em_cotacao') OR s.data > current_date - 120)
-          ORDER BY (s.status IN ('aberta', 'finalizada', 'em_cotacao')) DESC, s.numero DESC LIMIT 500`,
+          ORDER BY (s.status IN ('aberta', 'finalizada', 'em_cotacao')) DESC, s.numero DESC LIMIT 501`,
         [empresaId, status, obraId, tipo],
       );
+      const temMais = cortarLista(r.rows, 500);
       const hoje = hojeBrasil();
       const abertas = ['aberta', 'finalizada', 'em_cotacao'];
       return {
+        temMais,
         solicitacoes: r.rows.map((s) => ({
           id: s.id,
           tipo: s.tipo as string,
@@ -1341,7 +1357,7 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.get<{ Querystring: Record<string, string | undefined> }>('/cotacoes', async (req) => {
       const empresaId = empresaDo(req);
-      const status = ['aberta', 'concluida', 'cancelada'].includes(req.query.status ?? '') ? req.query.status! : null;
+      const status = lerQuery({ status: opcaoQuery('status', ['aberta', 'concluida', 'cancelada'] as const) }, req.query).status ?? null;
       const r = await banco.query(
         `SELECT ct.id, ct.numero, ct.data, ct.prazo_resposta, ct.status, s.numero AS solicitacao_numero,
                 (SELECT count(*)::int FROM cotacoes_itens ci WHERE ci.cotacao_id = ct.id) AS itens,
@@ -1536,7 +1552,7 @@ export function rotasSuprimentos(banco: Banco) {
       arquivo: z.string({ required_error: 'Envie a foto ou o PDF da proposta.' }).min(20, 'Arquivo vazio.'),
       tipo: z.enum(['application/pdf', 'image/jpeg', 'image/png', 'image/webp'], { errorMap: () => ({ message: 'Envie um PDF ou uma foto (JPG, PNG ou WEBP).' }) }),
     });
-    app.post<{ Params: { id: string } }>('/cotacoes/:id/leitura-ia', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCotacoesLeituraIa } }, async (req) => {
+    app.post<{ Params: { id: string } }>('/cotacoes/:id/leitura-ia', { config: LIMITE_IA, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostCotacoesLeituraIa } }, async (req) => {
       const d = corpoPostCotacoesLeituraIa
         .parse(req.body);
       const empresaId = empresaDo(req);
@@ -1681,7 +1697,7 @@ export function rotasSuprimentos(banco: Banco) {
     // ----- Pedidos de compra
     app.get<{ Querystring: Record<string, string | undefined> }>('/pedidos', async (req) => {
       const empresaId = empresaDo(req);
-      const filtro = req.query.status ?? '';
+      const filtro = lerQuery({ status: opcaoQuery('status', ['abertos', 'aprovacao', 'receber', 'atrasados', 'concluidos', 'cancelados'] as const) }, req.query).status ?? '';
       const hoje = hojeBrasil();
       const u = usuarioDe(req);
       const soConferencia = u.perfil === 'almoxarife';
@@ -1705,10 +1721,12 @@ export function rotasSuprimentos(banco: Banco) {
                   ELSE p.status NOT IN ('cancelado') AND (p.status NOT IN ('recebido', 'encerrado') OR p.data > $3::date - 180)
                 END
           ORDER BY array_position(ARRAY['aguardando_aprovacao','reprovado','rascunho','aprovado','enviado','parcial','recebido','encerrado','cancelado'], p.status), p.numero DESC
-          LIMIT 500`,
+          LIMIT 501`,
         [empresaId, filtro, hoje, soConferencia, obras],
       );
+      const temMais = cortarLista(r.rows, 500);
       return {
+        temMais,
         pedidos: r.rows.map((p) => {
           const atrasado = PEDIDO_A_RECEBER.includes(p.status) && p.previsao_entrega && p.previsao_entrega < hoje;
           return {
@@ -1763,6 +1781,10 @@ export function rotasSuprimentos(banco: Banco) {
       await emTransacao(banco, async (c) => {
         const p = await pedidoPara(c, empresaId, req.params.id);
         if (!['rascunho', 'reprovado'].includes(p.status)) throw new ErroHttp(409, 'Só dá para alterar pedido em rascunho ou reprovado. Depois de aprovado, cancele e faça outro.');
+        // Pedido da cotação tem os preços do fornecedor vencedor: trocar o fornecedor deixaria os preços de outro (P31).
+        if (p.cotacao_id && d.fornecedorId !== p.fornecedor_id) {
+          throw new ErroHttp(409, 'Este pedido veio da cotação, com os preços do fornecedor vencedor. Para comprar de outro fornecedor, refaça a escolha na cotação.');
+        }
         await validarFornecedor(c, empresaId, d.fornecedorId);
         await validarCentro(c, empresaId, d.centroCustoId);
         if (d.freteTipo === 'transportadora') {

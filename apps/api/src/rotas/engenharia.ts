@@ -8,12 +8,14 @@ import type { Banco, Cliente } from '../db.ts';
 import { emTransacao } from '../db.ts';
 import { auditar } from '../auditoria.ts';
 import { ErroHttp, naoEncontrado, semPermissao } from '../lib/erros.ts';
+import { diaQuery, lerQuery, opcaoQuery } from '../lib/consulta.ts';
 import { ehRestritoAObras, regraEngenheiroEngenharia } from '../lib/obras-acesso.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas } from '../lib/leitura-projeto.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import { producaoDoMes } from '../lib/equipes-servicos.ts';
@@ -177,6 +179,8 @@ const esquemaObra = z.object({
     .optional()
     .nullable(),
 });
+/** Na alteração, código, tipo e EAP padrão não mudam: saem do esquema em vez de serem aceitos e ignorados (P32). */
+const esquemaObraPut = esquemaObra.omit({ codigo: true, tipo: true, eapPadrao: true });
 
 /** Define o BDI da obra: calculado (pelos parâmetros, mesclados aos já salvos) ou informado (valor direto). */
 function resolverBdi(d: { bdiModo?: 'calculado' | 'informado'; bdiPercentual?: number; bdiParametros?: Partial<ParametrosBdi> | null }, atual: Record<string, any> | null) {
@@ -403,7 +407,7 @@ export function rotasEngenharia(banco: Banco) {
     // 1) mapear-ia: a IA vê só as primeiras linhas e diz em que coluna está cada campo;
     // 2) converter: o navegador manda as colunas úteis da planilha inteira e o servidor gera o CSV padrão.
     const corpoPostTabelasMapearIa = z.object({ amostra: z.string().min(1).max(200_000), uf, desonerado: z.boolean().default(false) });
-    app.post('/tabelas/mapear-ia', { schema: { body: corpoPostTabelasMapearIa } }, async (req) => {
+    app.post('/tabelas/mapear-ia', { config: LIMITE_IA, schema: { body: corpoPostTabelasMapearIa } }, async (req) => {
       const d = corpoPostTabelasMapearIa.parse(req.body);
       recusarBinario(d.amostra);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A IA não está configurada. Use o formato padrão do arquivo.');
@@ -572,8 +576,9 @@ export function rotasEngenharia(banco: Banco) {
           } else origem = 'nao_informado';
         }
         const unidades = d.tipo === 'insumo' ? unidadesValidas(d.unidadesCompra ?? [], d.unidade) : [];
-        // Insumo e serviço novos recebem o próximo código da sequência da tabela.
-        const codigo = d.tipo === 'composicao' ? await proximoCodigoServico(c, t.id) : await proximoCodigoInsumo(c, t.id);
+        // Código informado é respeitado (P32: antes era ignorado e a composição não achava "I-001"); vazio recebe o
+        // próximo da sequência da tabela. Código repetido cai no 409 abaixo.
+        const codigo = d.codigo || (d.tipo === 'composicao' ? await proximoCodigoServico(c, t.id) : await proximoCodigoInsumo(c, t.id));
         const x = (
           await c.query(
             'INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, grupo, preco_centavos, preco_origem) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id, codigo',
@@ -712,7 +717,7 @@ export function rotasEngenharia(banco: Banco) {
           WHERE o.empresa_id = $1 AND o.ativo AND o.status <> 'arquivada' AND o.tipo = $3
             AND ($2::uuid IS NULL OR EXISTS (SELECT 1 FROM obra_responsaveis r WHERE r.obra_id = o.id AND r.usuario_id = $2))
           ORDER BY o.codigo`,
-        [empresaId, engenheiroDe(req), (req.query as { tipo?: string }).tipo === 'acompanhamento' ? 'acompanhamento' : 'execucao'],
+        [empresaId, engenheiroDe(req), lerQuery({ tipo: opcaoQuery('tipo', ['execucao', 'acompanhamento'] as const) }, req.query).tipo ?? 'execucao'],
       );
       const obras = await Promise.all(
         r.rows.map(async (o) => ({ ...obraPublica(o), itens: o.itens, linhasOrcamento: o.linhas_orcamento, total: r2(reais(o.subtotal)! * (1 + (await bdiDaObra(banco, o)) / 100)) })),
@@ -1110,8 +1115,8 @@ export function rotasEngenharia(banco: Banco) {
       return { obra: obraPublica(await obraDetalhe(banco, empresaDo(req), req.params.id)) };
     });
 
-    app.put<{ Params: { id: string } }>('/obras/:id', { schema: { body: esquemaObra } }, async (req) => {
-      const d = esquemaObra.parse(req.body);
+    app.put<{ Params: { id: string } }>('/obras/:id', { schema: { body: esquemaObraPut } }, async (req) => {
+      const d = esquemaObraPut.parse(req.body);
       if (d.responsaveis !== undefined && !PERFIS_ATRIBUEM_OBRA.includes(req.usuario!.perfil)) throw new ErroHttp(403, MSG_ATRIBUIR);
       const empresaId = empresaDo(req);
       await emTransacao(banco, async (c) => {
@@ -1222,7 +1227,16 @@ export function rotasEngenharia(banco: Banco) {
 
     app.get<{ Params: { id: string; itemId: string } }>('/obras/:id/itens/:itemId', async (req) => {
       await obraDaEmpresa(banco, empresaDo(req), req.params.id);
-      const i = (await banco.query(`SELECT oi.*, ${precoObra('oi')} AS preco, 0 AS componentes, 0 AS no_orcamento FROM obra_itens oi WHERE oi.id = $1 AND oi.obra_id = $2`, [req.params.itemId, req.params.id])).rows[0];
+      // Os mesmos contadores da lista (antes vinham sempre 0 e "fora do orçamento", P34).
+      const i = (
+        await banco.query(
+          `SELECT oi.*, ${precoObra('oi')} AS preco,
+                  (SELECT count(*)::int FROM obra_composicao_insumos ci WHERE ci.composicao_id = oi.id) AS componentes,
+                  (SELECT count(*)::int FROM orcamento_itens oq WHERE oq.obra_item_id = oi.id) AS no_orcamento
+             FROM obra_itens oi WHERE oi.id = $1 AND oi.obra_id = $2`,
+          [req.params.itemId, req.params.id],
+        )
+      ).rows[0];
       if (!i) throw naoEncontrado('Item');
       const comp = (
         await banco.query(
@@ -2146,6 +2160,8 @@ export function rotasEngenharia(banco: Banco) {
         percentual: z.number().min(0).max(100).optional().nullable(),
         quantidade: z.number().min(0).optional().nullable(),
       })).min(1, 'Preencha ao menos uma linha.'),
+      // Já há medição na data: só substitui com confirmação explícita (P34; antes apagava a anterior sem aviso).
+      substituir: z.boolean().optional().default(false),
     });
 
     app.post<{ Params: { id: string } }>('/obras/:id/acompanhamento/medicoes', { schema: { body: esquemaMedicao } }, async (req, reply) => {
@@ -2166,7 +2182,11 @@ export function rotasEngenharia(banco: Banco) {
           }
         }
         if (!linhas.length) throw new ErroHttp(400, 'Preencha o percentual ou a quantidade de ao menos uma linha.');
-        // Uma medição por data: regravar a mesma data substitui a anterior.
+        // Uma medição por data: regravar a mesma data substitui a anterior, mas só com `substituir: true`.
+        const existe = (await c.query('SELECT 1 FROM obra_medicoes WHERE obra_id = $1 AND data = $2', [obra.id, d.data])).rowCount;
+        if (existe && !d.substituir) {
+          throw new ErroHttp(409, `Já existe uma medição em ${d.data.split('-').reverse().join('/')}. Confirme para substituí-la inteira.`, { jaExiste: true });
+        }
         await c.query('DELETE FROM obra_medicoes WHERE obra_id = $1 AND data = $2', [obra.id, d.data]);
         const m = (await c.query(
           'INSERT INTO obra_medicoes (obra_id, data, descricao, criado_por) VALUES ($1,$2,$3,$4) RETURNING id',
@@ -2233,7 +2253,7 @@ export function rotasEngenharia(banco: Banco) {
       const d = await dadosDoAcompanhamento(banco, obra);
       const hoje = hojeIso();
       const ultima = d.medicoes.reduce((m, x) => (x.data > m ? x.data : m), '');
-      const dataRef = req.query.data && DATA.test(req.query.data) ? req.query.data : (ultima || hoje);
+      const dataRef = lerQuery({ data: diaQuery('data') }, req.query).data ?? (ultima || hoje);
       const linhas = previstoXExecutado({ nos: d.nosEap, custos: d.custos, medicoes: d.medicoes, atividades: d.planejado, dataRef });
       const realizado = d.despesas.filter((x) => x.data <= dataRef).reduce((s, x) => s + x.valor, 0);
       const totalPrevisto = linhas.filter((l) => l.nivel === 'etapa').reduce((s, l) => s + l.custoPrevisto, 0) || Math.round(d.custoTotal);
@@ -2559,7 +2579,7 @@ export function rotasEngenharia(banco: Banco) {
 
     /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */
     const corpoPostObrasLeituraProjeto = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
-    app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { bodyLimit: 24 * 1024 * 1024, schema: { body: corpoPostObrasLeituraProjeto } }, async (req) => {
+    app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { config: LIMITE_IA, bodyLimit: 24 * 1024 * 1024, schema: { body: corpoPostObrasLeituraProjeto } }, async (req) => {
       const { arquivo, nome } = corpoPostObrasLeituraProjeto.parse(req.body);
       const empresaId = empresaDo(req);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
@@ -2853,7 +2873,7 @@ export function rotasEngenharia(banco: Banco) {
       const itens = insumos ? abcInsumos(linhas, await composicoesDaPlanilha(linhas)) : abcServicos(linhas, bdiPct);
       return {
         tipo: insumos ? 'insumos' : 'servicos',
-        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
+        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: bdiPct }, // o BDI usado no cálculo (P34)
         limites: LIMITES_ABC,
         ...curvaAbc(itens),
       };
@@ -2868,7 +2888,7 @@ export function rotasEngenharia(banco: Banco) {
       const rel = montarRelatorioOrcamento(linhas, bdiPct, analitico, composicoes);
       return {
         tipo: analitico ? 'analitico' : 'sintetico',
-        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: Number(obra.bdi_percentual) },
+        obra: { id: obra.id, codigo: obra.codigo, nome: obra.nome, endereco: obra.endereco, cidade: obra.cidade, uf: obra.uf, responsavel: obra.responsavel, bdiPercentual: bdiPct }, // o BDI usado no cálculo (P34)
         ...rel,
       };
     });

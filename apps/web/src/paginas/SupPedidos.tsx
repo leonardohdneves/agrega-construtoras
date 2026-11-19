@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { AvisoLista } from '../componentes/AvisoLista';
 import { Link, useLocation, useParams, useSearchParams } from 'react-router-dom';
 import { api, formatarData, formatarDataHora, formatarDocumento, formatarMoeda, hojeLocal, lerNumero, moedaCampo, NOMES_MODELO, type ModeloNota } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
@@ -31,11 +32,12 @@ export function SupPedidos() {
   const [params, setParams] = useSearchParams();
   const filtro = params.get('status') ?? '';
   const [lista, setLista] = useState<PedidoResumo[] | null>(null);
+  const [temMais, setTemMais] = useState(false);
   const [erro, setErro] = useState('');
   useEffect(() => {
     setLista(null);
-    api<{ pedidos: PedidoResumo[] }>(`/sup/pedidos${filtro ? `?status=${filtro}` : ''}`)
-      .then((r) => setLista(r.pedidos))
+    api<{ pedidos: PedidoResumo[]; temMais?: boolean }>(`/sup/pedidos${filtro ? `?status=${filtro}` : ''}`)
+      .then((r) => { setLista(r.pedidos); setTemMais(!!r.temMais); })
       .catch((e) => setErro((e as Error).message));
   }, [filtro]);
   const total = (lista ?? []).reduce((s, p) => s + p.total, 0);
@@ -49,6 +51,7 @@ export function SupPedidos() {
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <AvisoLista temMais={temMais} limite={500} />
       <div className="abas" role="tablist">
         {FILTROS.map((f) => (
           <button key={f.id} type="button" role="tab" aria-selected={filtro === f.id} className={filtro === f.id ? 'ativa' : ''} onClick={() => setParams(f.id ? { status: f.id } : {}, { replace: true })}>

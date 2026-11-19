@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
+import { AvisoLista } from '../componentes/AvisoLista';
 import { Link, Navigate, useLocation, useSearchParams } from 'react-router-dom';
-import { api, formatarData, formatarMoeda, hojeLocal, nomeMes, somarMeses, type LancamentoResumo } from '../api';
+import { api, formatarData, formatarMoeda, hojeLocal, nomeMes, somarDias, somarMeses, type LancamentoResumo } from '../api';
 import { Notas } from './Notas';
 
 type Filtro = 'todos' | 'despesa' | 'receita';
@@ -10,6 +11,7 @@ export function Lancamentos() {
   const mes = /^\d{4}-\d{2}$/.test(params.get('mes') ?? '') ? params.get('mes')! : hojeLocal().slice(0, 7);
   const filtro = (['todos', 'despesa', 'receita'].includes(params.get('tipo') ?? '') ? params.get('tipo') : 'todos') as Filtro;
   const [lista, setLista] = useState<LancamentoResumo[] | null>(null);
+  const [temMais, setTemMais] = useState(false);
   const [busca, setBusca] = useState('');
   const [erro, setErro] = useState('');
 
@@ -17,9 +19,10 @@ export function Lancamentos() {
     setLista(null);
     try {
       const de = `${mes}-01`;
-      const ate = somarMeses(de, 1);
-      const r = await api<{ lancamentos: LancamentoResumo[] }>(`/fin/lancamentos?de=${de}&ate=${ate}${filtro !== 'todos' ? `&tipo=${filtro}` : ''}`);
+      const ate = somarDias(somarMeses(de, 1), -1); // último dia do mês: o ate da API é inclusivo
+      const r = await api<{ lancamentos: LancamentoResumo[]; temMais?: boolean }>(`/fin/lancamentos?de=${de}&ate=${ate}${filtro !== 'todos' ? `&tipo=${filtro}` : ''}`);
       setLista(r.lancamentos);
+      setTemMais(!!r.temMais);
     } catch (e) {
       setErro((e as Error).message);
     }
@@ -77,6 +80,7 @@ export function Lancamentos() {
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      <AvisoLista temMais={temMais} limite={2000} />
       {abas}
 
       <div className="filtros">

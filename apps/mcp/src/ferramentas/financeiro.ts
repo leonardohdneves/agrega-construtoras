@@ -90,7 +90,7 @@ export const ferramentasFinanceiro = colecao(
       'Lista os lançamentos financeiros (despesas e receitas) pela data de competência: id, tipo, competencia, descricao, documento, valorTotal, status (confirmado ou cancelado), origem, recorrencia, pessoa (cliente ou fornecedor), categorias, parcelas (quantidade), pagas, valorAberto e proximoVencimento, mais o período aplicado (de, ate). Valores em reais; no máximo 2000 linhas. Atenção: "ate" é exclusivo (competência menor que "ate"); sem datas, devolve o mês atual. Para ver parcelas e apropriações de um lançamento use buscar_lancamento.',
     inputSchema: z.object({
       de: data('Competência inicial (incluída), AAAA-MM-DD. Opcional: o padrão é o primeiro dia do mês atual.').optional(),
-      ate: data('Competência final EXCLUSIVA, AAAA-MM-DD: para incluir até 31/03, envie 01/04. Opcional: o padrão é o primeiro dia do mês seguinte.').optional(),
+      ate: data('Competência final (incluída), AAAA-MM-DD: para incluir março, envie 31/03. Opcional: o padrão é o último dia do mês atual.').optional(),
       tipo: z.enum(['receita', 'despesa']).optional().describe('Filtra só receitas ou só despesas. Opcional.'),
       cancelados: z.boolean().optional().describe('true inclui também os lançamentos cancelados. O padrão é não incluir.'),
       planoContaId: z.string().uuid().optional().describe('Só lançamentos com apropriação nesta categoria (id de listar_plano_contas). Opcional.'),
@@ -153,7 +153,7 @@ export const ferramentasFinanceiro = colecao(
       'Lista as notas fiscais de entrada e de saída: id, direcao (entrada ou saida), modelo, numero, serie, dataEmissao, competencia, total em reais, status (rascunho, aguardando_conferencia, confirmada, cancelada), origem, lancamentoId, pessoa, itens, semCategoria e categorias; devolve também o período aplicado e a contagem de rascunhos. O período filtra pela data de emissão e "ate" é exclusivo; sem datas, o mês atual. Notas em rascunho ou aguardando conferência aparecem sempre, de qualquer data, a menos que o status pedido seja "confirmada" ou "cancelada". No máximo 1000 notas.',
     inputSchema: z.object({
       de: data('Emissão inicial (incluída), AAAA-MM-DD. Opcional: o padrão é o primeiro dia do mês atual.').optional(),
-      ate: data('Emissão final EXCLUSIVA, AAAA-MM-DD. Opcional: o padrão é o primeiro dia do mês seguinte.').optional(),
+      ate: data('Emissão final (incluída), AAAA-MM-DD. Opcional: o padrão é o último dia do mês atual.').optional(),
       status: z.enum(['rascunho', 'confirmada', 'cancelada']).optional().describe('Filtra pelo status; "rascunho" inclui também as que aguardam conferência (e ignora o período). Opcional.'),
     }),
     handler: async (args, api) => ({ success: true, data: await api.get('/fin/notas', args) }),
@@ -267,7 +267,7 @@ export const ferramentasFinanceiro = colecao(
           observacoes: z.string().max(300).optional().describe('Observação da baixa. Opcional.'),
         })
         .optional()
-        .describe('Informe só se o lançamento já foi pago ou recebido: baixa a PRIMEIRA parcela na hora (as demais continuam em aberto). Omita para deixar tudo em aberto.'),
+        .describe('Informe só se o lançamento já foi pago ou recebido: baixa TODAS as parcelas na hora (juros e desconto entram só na primeira; numa recorrência, as próximas ocorrências ficam em aberto). Omita para deixar tudo em aberto.'),
       recorrencia: z.enum(['nenhuma', 'semanal', 'mensal', 'anual']).optional().describe('Repetição do lançamento. O padrão é "nenhuma".'),
       repeticoes: z.number().int().min(1).max(60).optional().describe('Quantos lançamentos gerar ao todo quando há recorrência (1 a 60). Ignorado se recorrencia for "nenhuma".'),
       pedidoId: z.string().uuid().optional().describe('Id de um pedido de compra aprovado (de listar_pedidos_para_lancamento) que esta despesa quita. Exige tipo "despesa", sem recorrência, o mesmo fornecedorId do pedido e valorTotal igual ao total do pedido; pedido que já tem despesa devolve erro 409.'),
@@ -277,7 +277,7 @@ export const ferramentasFinanceiro = colecao(
   ferramenta({
     name: 'atualizar_lancamento',
     description:
-      'Altera um lançamento. A rota exige o objeto INTEIRO, não aceita parcial: chame buscar_lancamento antes e reenvie todos os campos, mudando só o que precisa (campo opcional omitido é apagado, e as apropriações são todas substituídas). As parcelas já pagas ficam como estão; "parcelas" traz só as parcelas em aberto, que substituem as abertas atuais, e a soma delas mais as já pagas tem de ser igual a valorTotal. Não dá para trocar o tipo, nem alterar lançamento cancelado ou vindo de nota fiscal (erro 409: reabra a nota). Devolve o lançamento atualizado.',
+      'Altera um lançamento. A rota exige o objeto INTEIRO, não aceita parcial: chame buscar_lancamento antes e reenvie todos os campos, mudando só o que precisa (campo omitido é recusado com erro 400: para limpar, envie null; as apropriações são todas substituídas e cada uma precisa trazer centroCustoId e veiculoId, mesmo que null). As parcelas já pagas ficam como estão; "parcelas" traz só as parcelas em aberto, que substituem as abertas atuais, e a soma delas mais as já pagas tem de ser igual a valorTotal. Não dá para trocar o tipo, nem alterar lançamento cancelado ou vindo de nota fiscal (erro 409: reabra a nota). Devolve o lançamento atualizado.',
     inputSchema: z.object({
       lancamentoId: z.string().uuid().describe('Id do lançamento a alterar (de listar_lancamentos).'),
       ...camposLancamento,

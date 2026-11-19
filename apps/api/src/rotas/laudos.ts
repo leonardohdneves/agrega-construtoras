@@ -8,6 +8,7 @@ import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { empresaDo, exigir } from '../sessao.ts';
+import { LIMITE_IA } from '../lib/limites.ts';
 
 const TIPOS = ['glp', 'avaliacao', 'patologia'] as const;
 type Tipo = (typeof TIPOS)[number];
@@ -261,7 +262,7 @@ export function rotasLaudos(banco: Banco) {
 
     /** Lê um PDF (laudo de patologia ou avaliação) pela IA e devolve a identificação para conferência. Não grava nada. */
     const corpoPostLaudosLerIdentificacao = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
-    app.post('/laudos/ler-identificacao', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLaudosLerIdentificacao } }, async (req) => {
+    app.post('/laudos/ler-identificacao', { config: LIMITE_IA, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLaudosLerIdentificacao } }, async (req) => {
       const { arquivo, nome } = corpoPostLaudosLerIdentificacao.parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
       const bytes = Buffer.from(arquivo, 'base64');
@@ -304,7 +305,7 @@ export function rotasLaudos(banco: Banco) {
 
     /** Lê um PDF de laudo de GLP pela IA e devolve os campos para conferência (não grava nada). */
     const corpoPostLaudosLerGlp = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
-    app.post('/laudos/ler-glp', { bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLaudosLerGlp } }, async (req) => {
+    app.post('/laudos/ler-glp', { config: LIMITE_IA, bodyLimit: 16 * 1024 * 1024, schema: { body: corpoPostLaudosLerGlp } }, async (req) => {
       const { arquivo, nome } = corpoPostLaudosLerGlp.parse(req.body);
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Preencha os dados manualmente.');
       const bytes = Buffer.from(arquivo, 'base64');

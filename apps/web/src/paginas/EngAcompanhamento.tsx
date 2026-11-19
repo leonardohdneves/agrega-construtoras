@@ -1,7 +1,7 @@
 // Engenharia · Acompanhamento de obra: medições físicas por linha da EAP (etapas e subetapas do orçamento e do planejamento).
 // Cada medição é uma data. Em cada linha folha informa-se o % acumulado, ou a quantidade executada na unidade do serviço.
 import { useEffect, useState, type FormEvent } from 'react';
-import { api, formatarMoeda } from '../api';
+import { api, ErroApi, formatarMoeda } from '../api';
 import { SecaoObra } from './EngSecoes';
 import { ROTULO_NIVEL } from './EngObras';
 
@@ -64,8 +64,16 @@ function PainelAcompanhamento({ obraId, setErro }: { obraId: string; setErro: (m
     if (!itens.length) return setErro('Preencha o % ou a quantidade de ao menos uma linha.');
     setOcupado(true);
     try {
-      await api(`/eng/obras/${obraId}/acompanhamento/medicoes`, { metodo: 'POST', corpo: { data, descricao: descricao.trim() || null, itens } });
-      setAviso(`Medição de ${dataBr(data)} registrada com ${itens.length} linha(s). Uma nova medição da mesma data substitui esta.`);
+      const corpo = { data, descricao: descricao.trim() || null, itens };
+      try {
+        await api(`/eng/obras/${obraId}/acompanhamento/medicoes`, { metodo: 'POST', corpo });
+      } catch (e) {
+        // Já há medição na data: pergunta antes de substituir (a API não substitui sem confirmação).
+        if (!(e instanceof ErroApi) || !e.dados.jaExiste) throw e;
+        if (!window.confirm(`${e.message}\n\nSubstituir a medição de ${dataBr(data)} por esta?`)) return;
+        await api(`/eng/obras/${obraId}/acompanhamento/medicoes`, { metodo: 'POST', corpo: { ...corpo, substituir: true } });
+      }
+      setAviso(`Medição de ${dataBr(data)} registrada com ${itens.length} linha(s).`);
       setValores({});
       setDescricao('');
       await carregar();

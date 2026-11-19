@@ -210,7 +210,7 @@ export const ferramentasSuprimentos = colecao(
     description:
       'Lista as solicitações de compra (de material e de serviço): id, número, tipo, data, data de necessidade, obra, status, solicitante, quantidade de itens, resumo dos itens, dias em aberto e se é urgente. Sem `status`, devolve todas as que estão em andamento (aberta, finalizada, em_cotacao) mais as atendidas e canceladas dos últimos 120 dias; máximo 500. O filtro `status` não aceita "finalizada" (pronta para cotar): para achá-las, liste sem status e olhe o campo `status` de cada uma.',
     inputSchema: z.object({
-      status: z.enum(['aberta', 'em_cotacao', 'atendida', 'cancelada']).describe('Filtra por situação. Só estes quatro valores funcionam.').optional(),
+      status: z.enum(['aberta', 'finalizada', 'em_cotacao', 'atendida', 'cancelada']).describe('Filtra por situação.').optional(),
       obraId: uuid('Id da obra (de `listar_obras`).').optional(),
       tipo: z.enum(['insumo', 'servico']).describe('`insumo`: solicitações de material. `servico`: solicitações de serviço (viram contrato).').optional(),
     }),
@@ -441,7 +441,7 @@ export const ferramentasSuprimentos = colecao(
   ferramenta({
     name: 'atualizar_pedido_compra',
     description:
-      'Altera o cabeçalho de um pedido de compra em rascunho ou reprovado (o pedido volta para rascunho). Os pedidos nascem de `concluir_cotacao` e os itens não são editáveis aqui. Substitui o cabeçalho inteiro: `fornecedorId` é obrigatório e os campos omitidos são apagados (frete vira 0), exceto `data`, que mantém a atual; leia antes com `buscar_pedido_compra` e reenvie o que quer manter. O total é recalculado como itens + frete. Devolve o pedido.',
+      'Altera o cabeçalho de um pedido de compra em rascunho ou reprovado (o pedido volta para rascunho). Os pedidos nascem de `concluir_cotacao` e os itens não são editáveis aqui. É parcial: o que não for enviado continua como está (a ferramenta lê o pedido atual e completa o resto). Para limpar um campo, envie string vazia. O fornecedor de pedido vindo de cotação não muda (409): refaça a escolha na cotação. Devolve o pedido atualizado.',
     inputSchema: z.object({
       id: uuid('Id do pedido (de `listar_pedidos_compra`).'),
       fornecedorId: uuid('Id do fornecedor do pedido (de `listar_fornecedores`; o atual está em `buscar_pedido_compra`).'),
@@ -455,7 +455,19 @@ export const ferramentasSuprimentos = colecao(
       centroCustoId: uuid('Id do centro de custo (módulo Financeiro).').optional(),
       observacao: z.string().max(1000).describe('Observação do pedido (até 1000 caracteres).').optional(),
     }),
-    handler: async ({ id, ...corpo }, api) => ({ success: true, data: await api.put(`/sup/pedidos/${id}`, corpo) }),
+    // A API exige o cabeçalho inteiro no PUT (D7): completa com o que já está gravado o que não veio.
+    handler: async ({ id, ...corpo }, api) => {
+      const p = ((await api.get(`/sup/pedidos/${id}`)) as { pedido: Record<string, any> }).pedido;
+      const v = corpo as Record<string, unknown>;
+      const ou = (campo: string, atual: unknown) => (v[campo] === undefined ? atual : v[campo] === '' ? null : v[campo]);
+      const completo = {
+        fornecedorId: ou('fornecedorId', p.fornecedorId), data: ou('data', p.data), previsaoEntrega: ou('previsaoEntrega', p.previsaoEntrega),
+        condicaoPagamento: ou('condicaoPagamento', p.condicaoPagamento), localEntrega: ou('localEntrega', p.localEntrega), frete: ou('frete', p.frete ?? 0),
+        freteTipo: ou('freteTipo', p.freteTipo ?? null), transportadoraId: ou('transportadoraId', p.transportadora?.id ?? null),
+        centroCustoId: ou('centroCustoId', p.centroCustoId ?? null), observacao: ou('observacao', p.observacao ?? null),
+      };
+      return { success: true, data: await api.put(`/sup/pedidos/${id}`, completo) };
+    },
   }),
 
   ferramenta({
@@ -548,7 +560,7 @@ export const ferramentasSuprimentos = colecao(
     description:
       'Lista os contratos com prestadores de serviço (empreiteiros): id, número, status, fornecedor, objeto, tipo (itens ou global), vigência, se está vencido, valor, medido, saldo e pago em reais, percentual medido, medições pendentes, medições aprovadas sem autorização de pagamento e caução a liberar. Sem `status`, devolve os em andamento (rascunho, aguardando_aprovacao, reprovado e vigente); máximo 300. O perfil engenheiro de obra só vê contratos do centro de custo das obras dele.',
     inputSchema: z.object({
-      status: z.enum(['rascunho', 'vigente', 'encerrado', 'cancelado']).describe('Filtra por situação. Encerrados e cancelados só aparecem com o filtro.').optional(),
+      status: z.enum(['rascunho', 'aguardando_aprovacao', 'reprovado', 'vigente', 'encerrado', 'cancelado']).describe('Filtra por situação. Encerrados e cancelados só aparecem com o filtro.').optional(),
     }),
     handler: async (args, api) => ({ success: true, data: await api.get('/sup/contratos', { status: args.status }) }),
   }),
