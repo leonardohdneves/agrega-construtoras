@@ -4,7 +4,8 @@ import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
 import { garantirConteudoDemo, garantirDemo } from '../src/sementes.ts';
-import { CNPJ_CONSTRUTORA, garantirConstrutoraModelo } from '../src/lib/construtora-modelo.ts';
+import { CNPJ_CONSTRUTORA, EMAIL_PROFESSOR, garantirConstrutoraModelo } from '../src/lib/construtora-modelo.ts';
+import { criarTokenSessao } from '../src/sessao.ts';
 import { CNPJ_DEMO } from '../src/lib/demo.ts';
 
 let ctx: ContextoTeste;
@@ -43,3 +44,18 @@ for (const rodada of ['banco vazio', 'recarga por troca de versão']) {
     assert.ok((await contar(cnpj, 'obras')) > 0, 'a Construtora Modelo abre com obras');
   });
 }
+
+test('P28: na obra da Construtora Modelo, o total da curva S (em reais) bate com o orçamento sem BDI', { skip: semBanco }, async () => {
+  const prof = (await ctx.banco.query('SELECT id, empresa_id FROM usuarios WHERE lower(email) = lower($1)', [EMAIL_PROFESSOR])).rows[0];
+  const token = criarTokenSessao({ id: prof.id, empresaId: prof.empresa_id, perfil: 'dono' });
+  const get = async (url: string) => (await ctx.app.inject({ method: 'GET', url, headers: { authorization: `Bearer ${token}` } })).json();
+  const obra = (await ctx.banco.query("SELECT id FROM obras WHERE empresa_id = $1 AND codigo = 'OBR-001'", [prof.empresa_id])).rows[0].id;
+  const orcamento = await get(`/api/eng/obras/${obra}/orcamento`);
+  const curva = await get(`/api/eng/obras/${obra}/relatorios-gerenciais/curva-s`);
+  const prevReal = await get(`/api/eng/obras/${obra}/relatorios-gerenciais/previsto-realizado`);
+  assert.ok(orcamento.subtotal > 0);
+  // A planilha arredonda o preço unitário a centavos antes de multiplicar; o acompanhamento usa o preço exato.
+  // Com 52 mil blocos isso dá uns R$ 25. O que importa aqui é a escala: reais, não centavos (100 vezes mais).
+  assert.ok(Math.abs(curva.custoTotal / orcamento.subtotal - 1) < 0.001, `curva ${curva.custoTotal} × orçamento ${orcamento.subtotal}`);
+  assert.ok(Math.abs(prevReal.totais.custoPrevisto / orcamento.subtotal - 1) < 0.001, `previsto ${prevReal.totais.custoPrevisto} × orçamento ${orcamento.subtotal}`);
+});

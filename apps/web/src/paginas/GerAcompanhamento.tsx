@@ -15,7 +15,7 @@ type PrevistoRealizado = {
 };
 
 const dataBr = (iso: string) => iso.split('-').reverse().join('/');
-const reais = (centavos: number) => formatarMoeda(centavos / 100);
+const reais = (valor: number) => formatarMoeda(valor); // a API devolve em reais (P28)
 const indice = (n: number | null) => (n === null ? '—' : n.toLocaleString('pt-BR', { maximumFractionDigits: 2 }));
 const profundidade = (codigo: string) => codigo.split('.').length - 1;
 
@@ -67,7 +67,7 @@ function CurvaS({ obraId, setErro }: { obraId: string; setErro: (m: string) => v
             { id: "executado", nome: "Executado", cor: "#eb6834" },
             { id: "realizado", nome: "Realizado", cor: "#8b8a85", tracejada: true },
           ]}
-          formatar={(v) => formatarMoeda(v / 100)}
+          formatar={(v) => formatarMoeda(v)}
         />
         <p className="small muted">
           Previsto: custo das atividades do planejamento no tempo. Executado: valor das medições. Realizado: despesas confirmadas apropriadas ao centro de custo da obra.
@@ -138,7 +138,7 @@ function PrevistoRealizadoView({ obraId, setErro }: { obraId: string; setErro: (
           <h3 style={{ marginTop: 0 }}>Previsto x executado por etapa</h3>
           <BarrasComparativasBI
             itens={dados.linhas.filter((l) => l.nivel === "etapa").map((l) => ({ id: l.id, rotulo: `${l.codigo} ${l.descricao}`, primeira: l.previstoAte, segunda: l.executado }))}
-            formatar={(v) => formatarMoeda(v / 100)}
+            formatar={(v) => formatarMoeda(v)}
             rotuloPrimeira="Previsto até a data"
             rotuloSegunda="Executado"
             corPrimeira="#2a78d6"
