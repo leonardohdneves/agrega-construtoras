@@ -444,7 +444,7 @@ export const ferramentasSuprimentos = colecao(
       'Altera o cabeçalho de um pedido de compra em rascunho ou reprovado (o pedido volta para rascunho). Os pedidos nascem de `concluir_cotacao` e os itens não são editáveis aqui. É parcial: o que não for enviado continua como está (a ferramenta lê o pedido atual e completa o resto). Para limpar um campo, envie string vazia. O fornecedor de pedido vindo de cotação não muda (409): refaça a escolha na cotação. Devolve o pedido atualizado.',
     inputSchema: z.object({
       id: uuid('Id do pedido (de `listar_pedidos_compra`).'),
-      fornecedorId: uuid('Id do fornecedor do pedido (de `listar_fornecedores`; o atual está em `buscar_pedido_compra`).'),
+      fornecedorId: uuid('Id do fornecedor do pedido (de `listar_fornecedores`). Omita para manter o atual; pedido de cotação não troca de fornecedor.').optional(),
       data: dia('Data do pedido (AAAA-MM-DD). Se omitida, mantém a atual.').optional(),
       previsaoEntrega: dia('Previsão de entrega (AAAA-MM-DD).').optional(),
       condicaoPagamento: z.string().max(120).describe('Condição de pagamento (até 120 caracteres).').optional(),
@@ -484,6 +484,22 @@ export const ferramentasSuprimentos = colecao(
       'Aprova um pedido de compra que está "aguardando_aprovacao". Só quem tem alçada aprova (o dono sempre; administradores até o limite configurado): sem alçada a API responde 403. O campo `podeAprovar` de `buscar_pedido_compra` e de `listar_aprovacoes_pendentes` diz se o usuário pode. Devolve o pedido aprovado.',
     inputSchema: z.object({ id: uuid('Id do pedido (de `listar_aprovacoes_pendentes` ou `listar_pedidos_compra`).') }),
     handler: async (args, api) => ({ success: true, data: await api.post(`/sup/pedidos/${args.id}/aprovar`) }),
+  }),
+
+ferramenta({
+    name: 'reprovar_pedido_compra',
+    description:
+      'Reprova um pedido de compra que está "aguardando_aprovacao", com o motivo. Só quem tem alçada reprova (403 caso contrário). Reprovado, volta para quem lançou corrigir e reenviar. Devolve o registro atualizado.',
+    inputSchema: z.object({ id: uuid('Id do pedido (de `listar_aprovacoes_pendentes` ou `listar_pedidos_compra`).'), motivo: z.string().min(3).max(500).describe('Motivo, que fica registrado e aparece para quem lançou.') }),
+    handler: async ({ id, motivo }, api) => ({ success: true, data: await api.post(`/sup/pedidos/${id}/reprovar`, { motivo }) }),
+  }),
+
+  ferramenta({
+    name: 'encerrar_pedido_compra',
+    description:
+      'Encerra um pedido aprovado, enviado ou recebido em parte, quando o saldo não vai mais ser entregue. Exige o motivo. Sem isso, um pedido recebido em parte fica aberto para sempre. Devolve o pedido encerrado.',
+    inputSchema: z.object({ id: uuid('Id do pedido (de `listar_pedidos_compra`).'), motivo: z.string().min(3).max(500).describe('Por que o saldo não será entregue.') }),
+    handler: async ({ id, motivo }, api) => ({ success: true, data: await api.post(`/sup/pedidos/${id}/encerrar`, { motivo }) }),
   }),
 
   ferramenta({
@@ -608,6 +624,14 @@ export const ferramentasSuprimentos = colecao(
     handler: async (args, api) => ({ success: true, data: await api.post(`/sup/contratos/${args.id}/aprovar`) }),
   }),
 
+ferramenta({
+    name: 'reprovar_contrato_fornecedor',
+    description:
+      'Reprova um contrato com prestador que está "aguardando_aprovacao", com o motivo. Só quem tem alçada reprova (403 caso contrário). Reprovado, volta para quem lançou corrigir e reenviar. Devolve o registro atualizado.',
+    inputSchema: z.object({ id: uuid('Id do contrato (de `listar_aprovacoes_pendentes` ou `listar_contratos_fornecedor`).'), motivo: z.string().min(3).max(500).describe('Motivo, que fica registrado e aparece para quem lançou.') }),
+    handler: async ({ id, motivo }, api) => ({ success: true, data: await api.post(`/sup/contratos/${id}/reprovar`, { motivo }) }),
+  }),
+
   ferramenta({
     name: 'encerrar_contrato_fornecedor',
     description:
@@ -699,6 +723,14 @@ export const ferramentasSuprimentos = colecao(
     handler: async (args, api) => ({ success: true, data: await api.post(`/sup/medicoes/${args.id}/aprovar`) }),
   }),
 
+ferramenta({
+    name: 'reprovar_medicao_contrato',
+    description:
+      'Reprova uma medição de contrato que está "aguardando_aprovacao", com o motivo. Só quem tem alçada reprova (403 caso contrário). Reprovado, volta para quem lançou corrigir e reenviar. Devolve o registro atualizado.',
+    inputSchema: z.object({ id: uuid('Id da medição (de `listar_aprovacoes_pendentes` ou `listar_medicoes_contrato`).'), motivo: z.string().min(3).max(500).describe('Motivo, que fica registrado e aparece para quem lançou.') }),
+    handler: async ({ id, motivo }, api) => ({ success: true, data: await api.post(`/sup/medicoes/${id}/reprovar`, { motivo }) }),
+  }),
+
   ferramenta({
     name: 'cancelar_medicao_contrato',
     description:
@@ -759,6 +791,14 @@ export const ferramentasSuprimentos = colecao(
       'Aprova uma autorização de pagamento que está "aguardando_aprovacao" e gera no Financeiro a conta a pagar do prestador (valor líquido, no vencimento da autorização) e, se houver, a dos impostos retidos. Só quem tem alçada para o valor bruto aprova (403 caso contrário); veja `podeAprovar` em `buscar_autorizacao_pagamento` ou `listar_aprovacoes_pendentes`. Devolve a autorização.',
     inputSchema: z.object({ id: uuid('Id da autorização (de `listar_aprovacoes_pendentes` ou `listar_autorizacoes_pagamento`).') }),
     handler: async (args, api) => ({ success: true, data: await api.post(`/sup/autorizacoes/${args.id}/aprovar`) }),
+  }),
+
+ferramenta({
+    name: 'reprovar_autorizacao_pagamento',
+    description:
+      'Reprova uma autorização de pagamento que está "aguardando_aprovacao", com o motivo. Só quem tem alçada reprova (403 caso contrário). Reprovado, volta para quem lançou corrigir e reenviar. Devolve o registro atualizado.',
+    inputSchema: z.object({ id: uuid('Id da autorização (de `listar_aprovacoes_pendentes` ou `listar_autorizacoes_pagamento`).'), motivo: z.string().min(3).max(500).describe('Motivo, que fica registrado e aparece para quem lançou.') }),
+    handler: async ({ id, motivo }, api) => ({ success: true, data: await api.post(`/sup/autorizacoes/${id}/reprovar`, { motivo }) }),
   }),
 
   ferramenta({

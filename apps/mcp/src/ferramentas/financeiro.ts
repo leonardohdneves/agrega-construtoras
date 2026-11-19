@@ -77,6 +77,14 @@ export const ferramentasFinanceiro = colecao(
     inputSchema: z.object({}),
     handler: async (_args, api) => ({ success: true, data: await api.get('/fin/plano-contas') }),
   }),
+
+ferramenta({
+    name: 'aplicar_plano_contas_padrao',
+    description:
+      'Cria o que falta do plano de contas padrão e dos centros de custo padrão da empresa (não mexe no que já existe). Empresa nova já nasce com ele; use quando o plano estiver vazio ou incompleto. Devolve { contas, centros } com o número de itens criados.',
+    inputSchema: z.object({}),
+    handler: async (_args, api) => ({ success: true, data: await api.post('/fin/plano-contas/padrao') }),
+  }),
   ferramenta({
     name: 'listar_centros_custo',
     description:
@@ -257,9 +265,25 @@ export const ferramentasFinanceiro = colecao(
       ...camposLancamento,
       apropriacoes: z.array(apropriacao).min(1).max(50).describe('Categorias do plano de contas (e centros de custo) entre as quais o valor total se divide. Pelo menos uma.'),
       parcelas: z.array(parcela).min(1).max(120).describe('Parcelas com vencimento e valor; a soma tem de ser igual a valorTotal. Para pagamento à vista, uma parcela só com o valor total.'),
+      estoque: z
+        .array(
+          z.object({
+            descricao: z.string().min(2).max(200).describe('Descrição do material comprado.'),
+            quantidade: z.number().positive().describe('Quantidade que entra no estoque, na unidade do insumo da obra.'),
+            unidade: z.string().max(20).optional().describe('Unidade. Opcional.'),
+            valor: z.number().min(0).describe('Valor do item, em reais.'),
+            obraId: z.string().uuid().describe('Obra (de listar_obras).'),
+            obraItemId: z.string().uuid().describe('Insumo da planilha da obra (de listar_itens_obra).'),
+            eapNoId: z.string().uuid().describe('Linha da EAP a que o material é apropriado (de listar_planilha_orcamentaria).'),
+            obraEstoqueId: z.string().uuid().optional().describe('Estoque da obra que recebe (de listar_estoques). Sem ele, o estoque de recebimento.'),
+          }),
+        )
+        .max(200)
+        .optional()
+        .describe('Itens que dão entrada no estoque da obra junto com a despesa (compra sem nota). Opcional.'),
       baixa: z
         .object({
-          data: data('Data do pagamento ou recebimento, AAAA-MM-DD. Não pode ser futura.'),
+          data: data('Data do pagamento ou recebimento, AAAA-MM-DD. No máximo amanhã.'),
           contaId: z.string().uuid().describe('Id da conta financeira por onde o dinheiro saiu ou entrou (de listar_contas_financeiras). A conta precisa estar ativa.'),
           forma: z.enum(FORMAS).optional().describe('Forma de pagamento. Opcional.'),
           juros: z.number().min(0).max(100_000_000).optional().describe('Juros e multa pagos, em reais. Opcional (padrão 0).'),
@@ -302,10 +326,10 @@ export const ferramentasFinanceiro = colecao(
   ferramenta({
     name: 'baixar_parcela',
     description:
-      'Registra o pagamento (despesa) ou o recebimento (receita) de uma parcela em aberto: ela passa a "paga" e o valor entra no saldo da conta escolhida. O valor pago é o valor da parcela mais juros menos desconto. Erros: 409 se a parcela já foi baixada ou cancelada; 400 se a data for futura, se a conta estiver desativada ou se o desconto zerar o valor. Devolve a parcela atualizada. Os ids vêm de listar_parcelas (parcela) e listar_contas_financeiras (conta).',
+      'Registra o pagamento (despesa) ou o recebimento (receita) de uma parcela em aberto: ela passa a "paga" e o valor entra no saldo da conta escolhida. O valor pago é o valor da parcela mais juros menos desconto. Erros: 409 se a parcela já foi baixada ou cancelada; 400 se a data passar de amanhã, se a conta estiver desativada ou se o desconto zerar o valor. Devolve a parcela atualizada. Os ids vêm de listar_parcelas (parcela) e listar_contas_financeiras (conta).',
     inputSchema: z.object({
       parcelaId: z.string().uuid().describe('Id da parcela em aberto (de listar_parcelas ou buscar_lancamento).'),
-      data: data('Data do pagamento ou recebimento, AAAA-MM-DD. Não pode ser futura.'),
+      data: data('Data do pagamento ou recebimento, AAAA-MM-DD. No máximo amanhã.'),
       contaId: z.string().uuid().describe('Id da conta financeira por onde o dinheiro saiu ou entrou (de listar_contas_financeiras).'),
       forma: z.enum(FORMAS).optional().describe('Forma de pagamento. Opcional.'),
       juros: z.number().min(0).max(100_000_000).optional().describe('Juros e multa, em reais. Opcional (padrão 0).'),
@@ -426,7 +450,7 @@ export const ferramentasFinanceiro = colecao(
       vencimento: data('Vencimento da parcela única, AAAA-MM-DD; só é usado quando a nota não tem duplicatas. Opcional: o padrão é a data de emissão.').optional(),
       baixa: z
         .object({
-          data: data('Data do pagamento ou recebimento, AAAA-MM-DD. Não pode ser futura.'),
+          data: data('Data do pagamento ou recebimento, AAAA-MM-DD. No máximo amanhã.'),
           contaId: z.string().uuid().describe('Id da conta financeira (de listar_contas_financeiras).'),
           forma: z.enum(FORMAS).optional().describe('Forma de pagamento. Opcional: o padrão é a forma de pagamento da nota.'),
           observacoes: z.string().max(300).optional().describe('Observação da baixa. Opcional.'),

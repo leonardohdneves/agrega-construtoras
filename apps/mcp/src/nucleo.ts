@@ -5,7 +5,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import { zodToJsonSchema } from 'zod-to-json-schema';
 import { anotacoesDaFerramenta } from './lib/anotacoes.ts';
 import { ClienteApi } from './lib/cliente-api.ts';
-import { ferramentas } from './ferramentas/index.ts';
+import { AREAS, areaDaFerramenta, ferramentas, type Area } from './ferramentas/index.ts';
 
 export const API_BASE_URL = (process.env.API_BASE_URL || 'http://localhost:3000').replace(/\/+$/, '');
 
@@ -65,20 +65,47 @@ export function listaDeFerramentas(): unknown[] {
   return listaEmCache;
 }
 
+/** Lê `?grupos=engenharia,financeiro` (ou `todas`). Vazio ou inválido: todas as áreas, como antes. */
+export function areasDoParametro(valor: unknown): Set<Area> {
+  const pedidas = String(valor ?? '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const validas = pedidas.filter((x): x is Area => (AREAS as readonly string[]).includes(x));
+  if (!validas.length || pedidas.includes('todas')) return new Set(AREAS);
+  return new Set<Area>(['conta', ...validas]);
+}
+
+/** Ferramenta fixa: liga uma área do catálogo nesta conexão (o cliente recebe o aviso de lista alterada). */
+const HABILITAR_AREA = {
+  name: 'habilitar_area',
+  description: `Liga mais uma área de ferramentas nesta conexão, quando ela foi aberta com só algumas (endereço com ?grupos=). Áreas: ${AREAS.join(', ')}. Depois de ligar, as ferramentas da área aparecem na lista.`,
+  inputSchema: { type: 'object', properties: { area: { type: 'string', enum: [...AREAS], description: 'Área a ligar.' } }, required: ['area'] },
+};
+
 /** Cria um servidor MCP ligado ao cliente da API da sessão (o transporte troca o token dele quando o OAuth renova). */
-export function createMcpServer(api: ClienteApi): Server {
+export function createMcpServer(api: ClienteApi, areas: Set<Area> = new Set(AREAS)): Server {
   const server = new Server(
     { name: 'mcp-agrega', version: '0.1.0' },
     {
-      capabilities: { tools: {} },
+      capabilities: { tools: { listChanged: true } },
       instructions:
         'Agrega é um ERP para construtoras. As ferramentas agem em nome do usuário que autorizou a conexão, dentro da construtora dele e com as permissões do perfil dele. Dinheiro vai em reais (número), datas em AAAA-MM-DD e identificadores são UUID. Antes de criar ou alterar algo, confirme os dados com o usuário.',
     },
   );
 
-  server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: listaDeFerramentas() as never }));
+  // Catálogo da conexão: as áreas pedidas, mais habilitar_area quando nem todas estão ligadas (P37: o catálogo
+  // inteiro pesa uns 170 KB, enviados a cada conexão).
+  server.setRequestHandler(ListToolsRequestSchema, async () => {
+    const lista = (listaDeFerramentas() as { name: string }[]).filter((t) => areas.has(areaDaFerramenta[t.name]));
+    return { tools: (areas.size < AREAS.length ? [HABILITAR_AREA, ...lista] : lista) as never };
+  });
 
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
+    if (request.params.name === 'habilitar_area') {
+      const area = String((request.params.arguments as { area?: unknown } | undefined)?.area ?? '') as Area;
+      if (!(AREAS as readonly string[]).includes(area)) return { content: [{ type: 'text', text: JSON.stringify({ success: false, error: `Área desconhecida. Use: ${AREAS.join(', ')}.` }) }], isError: true };
+      areas.add(area);
+      await server.sendToolListChanged().catch(() => {});
+      return { content: [{ type: 'text', text: JSON.stringify({ success: true, data: { area, areasLigadas: [...areas] } }) }] };
+    }
     const f = ferramentas[request.params.name];
     if (!f) throw new Error(`Ferramenta não encontrada: ${request.params.name}`);
     try {

@@ -16,7 +16,7 @@ import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { z } from 'zod';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
-import { API_BASE_URL, createMcpServer, createApiClient, getServerInfo } from './nucleo.ts';
+import { API_BASE_URL, areasDoParametro, createMcpServer, createApiClient, getServerInfo } from './nucleo.ts';
 import type { ClienteApi as ApiClient } from './lib/cliente-api.ts';
 import {
   assinaturaEstavelEntreDeploys,
@@ -1156,7 +1156,8 @@ app.all(['/mcp', '/sse'], asyncHandler(async (req: Request, res: Response) => {
     await abrirVagaParaSessao(tokenHash);
 
     const client = createApiClient(jwtDoUsuario);
-    const server = createMcpServer(client);
+    // `?grupos=engenharia,financeiro` no endereço do conector expõe só essas áreas (P37); sem ele, todas.
+    const server = createMcpServer(client, areasDoParametro(req.query?.grupos));
 
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => crypto.randomUUID(),
