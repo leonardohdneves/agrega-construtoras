@@ -6,7 +6,7 @@
 <link rel="preload" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;800&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap"></noscript>
 <style>
-@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega construtoras · Manual de operação · versão 1.10"; font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } @bottom-right { content: counter(page); font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } }
+@page { size: A4; margin: 16mm 16mm 22mm 16mm; @bottom-left { content: "agrega construtoras · Manual de operação · versão 1.11"; font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } @bottom-right { content: counter(page); font: 7.5pt 'IBM Plex Sans', sans-serif; color: #6b7078; } }
 :root { --ink:#1f2328; --muted:#4a4f57; --cinza:#6b7078; --line:#dedbd5; --accent:#1f5fad; --accent-escuro:#174a8a; --soft:#e7eff9; --warn:#78350f; --warnbg:#fdf0d5; --capa:#1f2328; }
 * { box-sizing: border-box; }
 html, body { margin:0; padding:0; }
@@ -64,7 +64,7 @@ th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: 
     <p class="sub">Engenharia, suprimentos, estoque e patrimônio, medições, financeiro e gerencial para construtoras e incorporadoras.</p>
   </div>
   <div class="rod">
-    <p>Versão 1.10 · novembro de 2026</p>
+    <p>Versão 1.11 · novembro de 2026</p>
     <p>Para dono, gestor, engenharia, orçamento, compras, almoxarife, financeiro, administrativo e vendas.</p>
   </div>
 </section>
@@ -231,6 +231,16 @@ th { font-size: 7.8pt; text-transform: uppercase; letter-spacing: .05em; color: 
   <p><b>Curva S.</b> Mostra previsto, executado e realizado mês a mês. A curva vai até o mês de hoje, ou até o fim do planejamento se ele for depois. Executado e realizado só aparecem até hoje.</p>
   <h2>Tabelas de referência e relatórios</h2>
   <p>As tabelas de referência trazem insumos e composições de preços. Copie para a obra só o que for usar e ajuste os preços sem alterar a tabela original. Os relatórios da obra ficam em Engenharia › Relatórios.</p>
+  <h2>Atualizar o SINAPI <span class="novo">novo</span></h2>
+  <p>Em Engenharia › Tabelas de referência, clique em <b>Atualizar SINAPI</b>. Esse caminho não importa nada sozinho: ele confere os arquivos e mostra o resumo para você validar antes.</p>
+  <ol>
+    <li>Baixe os arquivos da competência na página de downloads da Caixa (categoria SINAPI). Você vai usar os CSV do pacote: <b>insumos</b>, <b>composições</b>, <b>itens das composições</b>, <b>preços dos insumos</b> (Tocantins) e, se houver, <b>custos das composições</b>, que serve para conferir o cálculo.</li>
+    <li>Escolha a UF e o mês de referência, envie os arquivos e clique em <b>Analisar pacote</b>.</li>
+    <li>Leia o resumo de cada regime (com e sem desoneração): quantos insumos e composições entram, quais composições ficaram de fora e por quê, e o que mudou em relação à última tabela da mesma UF e regime (novos insumos, preços alterados, variação mediana, maiores altas e quedas).</li>
+    <li>Só clique em <b>Importar</b> quando estiver de acordo. Cada regime vira uma tabela própria.</li>
+  </ol>
+  <p><b>Composições excluídas.</b> Uma composição fica de fora quando algum insumo dela não tem preço no Tocantins, ou quando ela depende de uma composição auxiliar que também está nessa situação. O sistema não usa preço fictício. Parte delas ainda tem custo na fonte, porque a Caixa completa o preço com preço de São Paulo; esse valor não é recalculado aqui, por isso o resumo mostra essas composições separadamente.</p>
+  <p>Composições com item de outra composição (auxiliares) são desdobradas nos insumos, e o custo calculado é conferido com o custo que a Caixa informa. Divergências relevantes aparecem no resumo.</p>
   <p>O <b>Calendário de produção</b> mostra a programação em formato de planner, por dia, semana, quinzena ou mês. Em cada dia, a atividade marca o início (▶), a continuação (faixa colorida) e o término (■). Uma atividade de um dia só recebe ◆.</p>
 </section>
 

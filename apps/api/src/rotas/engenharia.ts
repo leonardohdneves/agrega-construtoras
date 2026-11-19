@@ -14,6 +14,7 @@ import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColu
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas } from '../lib/leitura-projeto.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
+import { converterPacote, REGIMES, type ResultadoRegime } from '../lib/sinapi-pacote.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
 import { GRANULARIDADES, montarCalendario, montarCompras, montarEquipes, montarGantt, type Granularidade } from '../lib/planejamento-relatorios.ts';
 import { producaoDoMes } from '../lib/equipes-servicos.ts';
@@ -459,6 +460,98 @@ export function rotasEngenharia(banco: Banco) {
         contagem: { insumos: leitura.insumos.length, composicoes: leitura.composicoes.length, componentes: leitura.componentes.length },
       };
     });
+
+    // Análise do pacote SINAPI (arquivos CSV da Caixa), sem gravar nada. Devolve o resumo para validação e o CSV de
+    // cada regime; a importação é uma confirmação separada, com POST /tabelas (fonte sinapi).
+    const corpoAnalisarSinapi = z.object({
+      uf: z.string().length(2).default('TO'),
+      mesReferencia: mes,
+      arquivos: z.object({
+        insumos: z.string().min(1).max(LIMITE_ARQUIVO),
+        composicoes: z.string().min(1).max(LIMITE_ARQUIVO),
+        composicaoItens: z.string().min(1).max(LIMITE_ARQUIVO),
+        precos: z.string().min(1).max(LIMITE_ARQUIVO),
+        custos: z.string().max(LIMITE_ARQUIVO).optional().nullable(),
+      }),
+    });
+    app.post('/tabelas/sinapi/analisar', { bodyLimit: LIMITE_CORPO, schema: { body: corpoAnalisarSinapi } }, async (req) => {
+      const d = corpoAnalisarSinapi.parse(req.body);
+      for (const t of Object.values(d.arquivos)) if (t) recusarBinario(t);
+      const empresaId = empresaDo(req);
+      const resultados = REGIMES.map((regime) => converterPacote(d.arquivos, d.uf, regime));
+      if (resultados.some((r) => r.insumos === 0 || r.composicoes === 0)) {
+        throw new ErroHttp(422, 'Os arquivos não viraram uma tabela. Confira se são os quatro arquivos CSV do pacote SINAPI da Caixa (e o de custos, se enviado).');
+      }
+      const regimes = [];
+      for (const r of resultados) regimes.push(await resumoRegimeSinapi(empresaId, d.uf, d.mesReferencia, r));
+      return { uf: d.uf, mesReferencia: d.mesReferencia, regimes };
+    });
+
+    /** Resumo de um regime, comparado com a última tabela SINAPI importada do mesmo estado e regime. */
+    async function resumoRegimeSinapi(empresaId: string, uf: string, mesReferencia: string, r: ResultadoRegime) {
+      const ant = (
+        await banco.query(
+          `SELECT id, mes_referencia FROM ref_tabelas WHERE empresa_id = $1 AND fonte = 'sinapi' AND uf = $2 AND desonerado = $3 AND mes_referencia < $4
+           ORDER BY mes_referencia DESC LIMIT 1`,
+          [empresaId, uf, r.desonerado, mesReferencia],
+        )
+      ).rows[0] as { id: string; mes_referencia: string } | undefined;
+      const nomeRegime = r.desonerado ? 'com desoneração' : 'sem desoneração';
+      const base = {
+        regime: r.regime,
+        nome: `SINAPI ${uf} ${mesReferencia} (${nomeRegime})`,
+        desonerado: r.desonerado,
+        insumos: r.insumos,
+        composicoes: r.composicoes,
+        componentes: r.componentes,
+        insumosSemPreco: r.semPrecoInsumos,
+        excluidas: r.excluidas.length,
+        excluidasComCustoNaFonte: r.excluidasComCustoFonte,
+        excluidasAmostra: r.excluidas.slice(0, 40),
+        divergencias: r.divergencias.length,
+        divergenciasAmostra: r.divergencias.slice(0, 20),
+        anterior: ant ? { mesReferencia: ant.mes_referencia } : null,
+        mudancas: null as null | Record<string, unknown>,
+        csv: r.csv,
+      };
+      if (!ant) return base;
+      const itensAnt = (await banco.query('SELECT tipo, codigo, descricao, preco_centavos FROM ref_itens WHERE tabela_id = $1', [ant.id])).rows as {
+        tipo: string; codigo: string; descricao: string; preco_centavos: string | null;
+      }[];
+      const precoAnt = new Map(itensAnt.filter((i) => i.tipo === 'insumo' && i.preco_centavos !== null).map((i) => [i.codigo, Number(i.preco_centavos) / 100]));
+      const compAnt = new Set(itensAnt.filter((i) => i.tipo === 'composicao').map((i) => i.codigo));
+      const variacoes: { codigo: string; descricao: string; anterior: number; atual: number; variacaoPct: number }[] = [];
+      let insumosNovos = 0;
+      for (const [codigo, atual] of r.precosInsumos) {
+        const anterior = precoAnt.get(codigo);
+        if (anterior === undefined) {
+          insumosNovos++;
+          continue;
+        }
+        if (anterior !== atual) variacoes.push({ codigo, descricao: r.descricoes.get(codigo) ?? '', anterior, atual, variacaoPct: Math.round(((atual - anterior) / anterior) * 10000) / 100 });
+      }
+      const insumosRemovidos = [...precoAnt.keys()].filter((c) => !r.precosInsumos.has(c)).length;
+      const ordenadas = [...variacoes].sort((a, b) => a.variacaoPct - b.variacaoPct);
+      const pcts = ordenadas.map((v) => v.variacaoPct);
+      const mediana = pcts.length ? pcts[Math.floor(pcts.length / 2)] : null;
+      const compNovas = [...r.codigosComposicoes].filter((c) => !compAnt.has(c));
+      const compRemovidas = [...compAnt].filter((c) => !r.codigosComposicoes.has(c));
+      return {
+        ...base,
+        mudancas: {
+          insumosNovos,
+          insumosRemovidos,
+          precosAlterados: variacoes.length,
+          medianaVariacaoPct: mediana,
+          maioresQuedas: ordenadas.slice(0, 10),
+          maioresAltas: ordenadas.slice(-10).reverse(),
+          composicoesNovas: compNovas.length,
+          composicoesRemovidas: compRemovidas.length,
+          composicoesNovasAmostra: compNovas.slice(0, 20).map((c) => ({ codigo: c, descricao: r.descricoes.get(c) ?? '' })),
+          composicoesRemovidasAmostra: compRemovidas.slice(0, 20),
+        },
+      };
+    }
 
     // Importa mais itens numa tabela existente (por exemplo, as composições da SINAPI na tabela dos insumos do mesmo mês).
     // Itens com código já existente ficam como estão; as composições podem usar os insumos que já estão na tabela.

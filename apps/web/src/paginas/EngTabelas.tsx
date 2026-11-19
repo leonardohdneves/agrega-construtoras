@@ -24,6 +24,7 @@ export function EngTabelas() {
   const [tabelas, setTabelas] = useState<Tabela[] | null>(null);
   const [erro, setErro] = useState('');
   const [nova, setNova] = useState(false);
+  const [atualizando, setAtualizando] = useState(false);
   const carregar = () => api<{ tabelas: Tabela[] }>('/eng/tabelas').then((r) => setTabelas(r.tabelas)).catch((e) => setErro((e as Error).message));
   useEffect(() => {
     carregar();
@@ -37,10 +38,12 @@ export function EngTabelas() {
           <span className="muted">SINAPI, importada por versão (mês e UF) e imutável; e a tabela própria da empresa, editável.</span>
         </div>
         <div className="acoes">
-          <button className="btn btn-primario" type="button" onClick={() => setNova(!nova)} aria-expanded={nova}>{nova ? 'Fechar' : 'Nova tabela'}</button>
+          <button className="btn" type="button" onClick={() => { setAtualizando(!atualizando); setNova(false); }} aria-expanded={atualizando}>{atualizando ? 'Fechar' : 'Atualizar SINAPI'}</button>
+          <button className="btn btn-primario" type="button" onClick={() => { setNova(!nova); setAtualizando(false); }} aria-expanded={nova}>{nova ? 'Fechar' : 'Nova tabela'}</button>
         </div>
       </div>
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {atualizando && <AtualizarSinapi aoImportar={(id) => navegar(`/eng/tabelas/${id}`)} />}
       {nova && (
         <NovaTabela
           aoCriar={(id) => navegar(`/eng/tabelas/${id}`)}
@@ -929,6 +932,172 @@ export function ConferenciaComposicao({ inicial, carregar, aoFechar }: { inicial
           </p>
         </>
       )}
+    </div>
+  );
+}
+
+type ArquivosSinapi = { insumos: string; composicoes: string; composicaoItens: string; precos: string; custos: string | null };
+type ExcluidaSinapi = { codigo: string; descricao: string; motivo: string };
+type RegimeSinapi = {
+  regime: string; nome: string; desonerado: boolean; insumos: number; composicoes: number; componentes: number; insumosSemPreco: number;
+  excluidas: number; excluidasComCustoNaFonte: number; excluidasAmostra: ExcluidaSinapi[]; divergencias: number;
+  divergenciasAmostra: { codigo: string; calculado: number; fonte: number; diferencaPct: number }[];
+  anterior: { mesReferencia: string } | null;
+  mudancas: null | {
+    insumosNovos: number; insumosRemovidos: number; precosAlterados: number; medianaVariacaoPct: number | null;
+    maioresQuedas: { codigo: string; descricao: string; anterior: number; atual: number; variacaoPct: number }[];
+    maioresAltas: { codigo: string; descricao: string; anterior: number; atual: number; variacaoPct: number }[];
+    composicoesNovas: number; composicoesRemovidas: number;
+  };
+  csv: string;
+};
+const ROTULO_ARQUIVOS: { chave: keyof Omit<ArquivosSinapi, 'custos'> | 'custos'; rotulo: string; arquivo: string; obrigatorio: boolean }[] = [
+  { chave: 'insumos', rotulo: 'Insumos', arquivo: 'insumos.csv', obrigatorio: true },
+  { chave: 'composicoes', rotulo: 'Composições', arquivo: 'composicoes.csv', obrigatorio: true },
+  { chave: 'composicaoItens', rotulo: 'Itens das composições', arquivo: 'composicao_itens.csv', obrigatorio: true },
+  { chave: 'precos', rotulo: 'Preços dos insumos (UF)', arquivo: 'precos_insumos_TO.csv', obrigatorio: true },
+  { chave: 'custos', rotulo: 'Custos das composições (UF, opcional: confere o cálculo)', arquivo: 'custos_composicoes_TO.csv', obrigatorio: false },
+];
+
+/** Atualização do SINAPI a partir dos CSV do pacote da Caixa: analisa e mostra o resumo; só importa depois de confirmar. */
+function AtualizarSinapi({ aoImportar }: { aoImportar: (id: string) => void }) {
+  const [uf, setUf] = useState('TO');
+  const [mes, setMes] = useState('');
+  const [arquivos, setArquivos] = useState<Partial<Record<keyof ArquivosSinapi, string>>>({});
+  const [resumo, setResumo] = useState<{ mesReferencia: string; regimes: RegimeSinapi[] } | null>(null);
+  const [erro, setErro] = useState('');
+  const [erros, setErros] = useState<string[]>([]);
+  const [ocupado, setOcupado] = useState(false);
+  const [importada, setImportada] = useState('');
+  const prontos = ROTULO_ARQUIVOS.filter((a) => a.obrigatorio).every((a) => arquivos[a.chave]);
+
+  async function lerArquivo(chave: keyof ArquivosSinapi, f: File | undefined) {
+    setResumo(null);
+    setImportada('');
+    const texto = f ? await f.text() : undefined;
+    setArquivos((a) => ({ ...a, [chave]: texto }));
+  }
+
+  async function analisar(e: FormEvent) {
+    e.preventDefault();
+    setErro('');
+    setErros([]);
+    setResumo(null);
+    setImportada('');
+    setOcupado(true);
+    try {
+      const r = await api<{ mesReferencia: string; regimes: RegimeSinapi[] }>('/eng/tabelas/sinapi/analisar', {
+        corpo: {
+          uf,
+          mesReferencia: mes,
+          arquivos: { insumos: arquivos.insumos, composicoes: arquivos.composicoes, composicaoItens: arquivos.composicaoItens, precos: arquivos.precos, custos: arquivos.custos ?? null },
+        },
+      });
+      setResumo(r);
+    } catch (err) {
+      setErro((err as Error).message);
+      setErros(errosDe(err));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  async function importar(reg: RegimeSinapi) {
+    if (!resumo) return;
+    setErro('');
+    setOcupado(true);
+    try {
+      const r = await api<{ tabela: Tabela }>('/eng/tabelas', {
+        corpo: { fonte: 'sinapi', nome: reg.nome, uf, mesReferencia: resumo.mesReferencia, desonerado: reg.desonerado, csv: reg.csv },
+      });
+      setImportada(reg.nome);
+      aoImportar(r.tabela.id);
+    } catch (err) {
+      setErro((err as Error).message);
+      setErros(errosDe(err));
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <h2>Atualizar SINAPI</h2>
+      <p className="muted">
+        Envie os CSV do pacote da Caixa. O sistema confere os arquivos e mostra o resumo do que mudou. Nada é importado até você confirmar.
+      </p>
+      <form onSubmit={analisar} className="formulario">
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+          <label>
+            UF
+            <input value={uf} onChange={(e) => setUf(e.target.value.toUpperCase().slice(0, 2))} maxLength={2} required />
+          </label>
+          <label>
+            Mês de referência
+            <input type="month" value={mes} onChange={(e) => setMes(e.target.value)} required />
+          </label>
+        </div>
+        {ROTULO_ARQUIVOS.map((a) => (
+          <label key={a.chave}>
+            {a.rotulo} <span className="muted">({a.arquivo})</span>
+            <input type="file" accept=".csv,text/csv" onChange={(e) => lerArquivo(a.chave, e.target.files?.[0])} required={a.obrigatorio} />
+          </label>
+        ))}
+        <div className="acoes">
+          <button className="btn btn-primario" type="submit" disabled={ocupado || !prontos || !mes}>
+            {ocupado ? 'Analisando…' : 'Analisar pacote'}
+          </button>
+        </div>
+      </form>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}{erros.length > 0 && <ul>{erros.map((x, i) => <li key={i}>{x}</li>)}</ul>}</div>}
+      {importada && <div className="alerta" role="status">Tabela “{importada}” importada.</div>}
+
+      {resumo && resumo.regimes.map((reg) => (
+        <div key={reg.regime} className="card" style={{ marginTop: 16 }}>
+          <h3>{reg.nome}</h3>
+          <ul>
+            <li>Insumos com preço: <strong>{reg.insumos}</strong> (sem preço nesta UF: {reg.insumosSemPreco})</li>
+            <li>Composições que entram: <strong>{reg.composicoes}</strong>, com {reg.componentes} componentes</li>
+            <li>
+              Composições excluídas: <strong>{reg.excluidas}</strong>
+              {reg.excluidasComCustoNaFonte > 0 && <> ({reg.excluidasComCustoNaFonte} delas ainda têm custo na fonte, pois usam preço atribuído a São Paulo)</>}
+            </li>
+            <li>Divergências relevantes de custo com a fonte: <strong>{reg.divergencias}</strong></li>
+          </ul>
+          {reg.anterior ? (
+            reg.mudancas && (
+              <>
+                <p>Comparado com {reg.anterior.mesReferencia}:</p>
+                <ul>
+                  <li>Insumos novos: {reg.mudancas.insumosNovos} · removidos: {reg.mudancas.insumosRemovidos}</li>
+                  <li>Preços alterados: {reg.mudancas.precosAlterados}{reg.mudancas.medianaVariacaoPct !== null && <> · variação mediana: {reg.mudancas.medianaVariacaoPct.toFixed(2).replace('.', ',')}%</>}</li>
+                  <li>Composições novas: {reg.mudancas.composicoesNovas} · removidas: {reg.mudancas.composicoesRemovidas}</li>
+                </ul>
+                {reg.mudancas.maioresAltas.length > 0 && (
+                  <details>
+                    <summary>Maiores altas e quedas de preço</summary>
+                    <ul>
+                      {reg.mudancas.maioresAltas.slice(0, 5).map((v) => <li key={'a' + v.codigo}>{v.codigo} {v.descricao}: {v.variacaoPct.toFixed(2).replace('.', ',')}%</li>)}
+                      {reg.mudancas.maioresQuedas.slice(0, 5).map((v) => <li key={'q' + v.codigo}>{v.codigo} {v.descricao}: {v.variacaoPct.toFixed(2).replace('.', ',')}%</li>)}
+                    </ul>
+                  </details>
+                )}
+              </>
+            )
+          ) : (
+            <p className="muted">Não há tabela SINAPI anterior nesta UF e regime para comparar.</p>
+          )}
+          {reg.excluidasAmostra.length > 0 && (
+            <details>
+              <summary>Composições excluídas (amostra de {reg.excluidasAmostra.length} de {reg.excluidas})</summary>
+              <ul>{reg.excluidasAmostra.map((x) => <li key={x.codigo}>{x.codigo} {x.descricao}: <span className="muted">{x.motivo}</span></li>)}</ul>
+            </details>
+          )}
+          <div className="acoes">
+            <button className="btn btn-primario" type="button" onClick={() => importar(reg)} disabled={ocupado}>Importar “{reg.nome}”</button>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }
