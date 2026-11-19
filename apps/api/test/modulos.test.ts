@@ -54,7 +54,11 @@ test('regras de acesso', () => {
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), true);
   assert.equal(g('gestor', ['suprimentos'], ['dono', 'gestor'], '/api/eng/obras'), false);
   assert.equal(g('vendedor', null, ['dono', 'gestor'], '/api/eng/obras'), false);
-  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras'), false);
+  // P11: o Financeiro lê as listas da apropriação da nota (obras, insumos, EAP, estoques), e só elas.
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras'), true);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), false);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras/1/planejamento'), false);
+  assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/panorama'), false);
   // orçamentista: engenharia e comercial; nada de compras nem caixa
   assert.equal(g('orcamentista', null, ['dono', 'gestor'], '/api/eng/obras/1/planilha', 'POST'), true);
   assert.equal(g('orcamentista', null, ['dono', 'gestor', 'vendedor'], '/api/com/propostas', 'POST'), true);
