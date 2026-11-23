@@ -19,6 +19,13 @@ type Planilha = { precoTotal: number; linhas: Linha[] };
 const qtd = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 4 });
 const profundidade = (codigo: string) => codigo.split('.').length - 1;
 
+/** Uma linha aparece na EAP se nenhum antepassado (etapa ou subetapa) estiver recolhido. */
+function visivelNaEap(l: Linha, linhas: Linha[], recolhidas: Set<string>): boolean {
+  const porId = new Map(linhas.map((x) => [x.id, x]));
+  for (let pai = l.paiId; pai; pai = porId.get(pai)?.paiId ?? null) if (recolhidas.has(pai)) return false;
+  return true;
+}
+
 export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; itens: ItemObra[]; setErro: (m: string) => void }) {
   const [p, setP] = useState<Planilha | null>(null);
   const [editando, setEditando] = useState<string | null>(null);
@@ -26,6 +33,14 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
   const [itensAtuais, setItensAtuais] = useState<ItemObra[]>(itens);
   useEffect(() => setItensAtuais(itens), [itens]);
   const servicos = itensAtuais.filter((i) => i.tipo === 'composicao');
+  // Etapas e subetapas recolhidas: as linhas abaixo delas somem da tabela até expandir de novo.
+  const [recolhidas, setRecolhidas] = useState<Set<string>>(new Set());
+  const alternarRecolhida = (id: string) => setRecolhidas((atual) => {
+    const proxima = new Set(atual);
+    if (proxima.has(id)) proxima.delete(id);
+    else proxima.add(id);
+    return proxima;
+  });
 
   const carregar = () =>
     api<Planilha>(`/eng/obras/${obra.id}/planilha`)
@@ -74,7 +89,7 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
         </div>
       </div>
 
-      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+      <div className="card planilha-eap-rolagem" style={{ padding: 0, overflowX: 'auto' }}>
         <table className="tabela planilha-orc">
           <thead>
             <tr>
@@ -95,14 +110,29 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
                 <td colSpan={9} className="muted">Planilha vazia. Comece pela linha de Obra ou de Etapa, logo abaixo.</td>
               </tr>
             )}
-            {p.linhas.map((l) =>
+            {p.linhas.filter((l) => visivelNaEap(l, p.linhas, recolhidas)).map((l) =>
               editando === l.id ? (
                 <EditarLinha key={l.id} obraId={obra.id} linha={l} servicos={servicos} setErro={setErro} aoFechar={async (salvou) => { setEditando(null); if (salvou) await carregar(); }} />
               ) : (
                 <tr key={l.id} className={`nivel-${l.nivel}`} style={l.nivel !== 'tarefa' ? { fontWeight: l.nivel === 'obra' ? 700 : 600, background: 'var(--surface-sunken)' } : undefined}>
                   <td className="mono">{l.codigo}</td>
                   <td className="small">{ROTULO[l.nivel]}</td>
-                  <td className="descricao-linha" style={{ paddingLeft: 12 + profundidade(l.codigo) * 16 }}>{l.descricao}</td>
+                  <td className="descricao-linha" style={{ paddingLeft: 12 + profundidade(l.codigo) * 16 }}>
+                    {(l.nivel === 'etapa' || l.nivel === 'subetapa') && p.linhas.some((x) => x.paiId === l.id) && (
+                      <button
+                        className="btn btn-link"
+                        type="button"
+                        aria-expanded={!recolhidas.has(l.id)}
+                        aria-label={`${recolhidas.has(l.id) ? 'Expandir' : 'Recolher'} ${l.codigo} ${l.descricao}`}
+                        title={recolhidas.has(l.id) ? 'Expandir' : 'Recolher'}
+                        onClick={() => alternarRecolhida(l.id)}
+                        style={{ padding: '0 6px 0 0', width: 22 }}
+                      >
+                        {recolhidas.has(l.id) ? '▸' : '▾'}
+                      </button>
+                    )}
+                    {l.descricao}
+                  </td>
                   <td className="mono small">{l.servico?.codigo ?? ''}</td>
                   <td>{l.servico?.unidade ?? ''}</td>
                   <td className="num">{l.servico ? qtd(l.servico.quantidade) : ''}</td>
