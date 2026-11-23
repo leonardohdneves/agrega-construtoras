@@ -16,6 +16,7 @@ import { Usuarios } from './paginas/Usuarios';
 import { Conta } from './paginas/Conta';
 import { AdminEmpresas } from './paginas/AdminEmpresas';
 import { AdminAcompanhamento } from './paginas/AdminAcompanhamento';
+import { AdminContratoHistorico } from './paginas/AdminContratoHistorico';
 import { AssinarVisita } from './paginas/AssinarVisita';
 import { MaterialPublicitario } from './paginas/MaterialPublicitario';
 import { ContratosSistema, PropostasSistema } from './paginas/ComercialSistema';
@@ -238,6 +239,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="mural" element={<MuralAvisos />} />
             <Route path="conta" element={<Conta />} />
             <Route path="admin/empresas" element={<Protegido perfis={['admin_sistema']}><AdminEmpresas /></Protegido>} />
+            <Route path="admin/empresas/:id/historico" element={<Protegido perfis={['admin_sistema']}><AdminContratoHistorico /></Protegido>} />
             <Route path="admin/acompanhamento" element={<Protegido perfis={['admin_sistema']}><AdminAcompanhamento /></Protegido>} />
             <Route path="comercial-sistema/propostas" element={<Protegido perfis={['admin_sistema']}><PropostasSistema /></Protegido>} />
             <Route path="comercial-sistema/contratos" element={<Protegido perfis={['admin_sistema']}><ContratosSistema /></Protegido>} />

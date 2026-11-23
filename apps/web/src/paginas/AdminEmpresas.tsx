@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import { api, formatarCnpj, formatarDataHora, NOMES_PERFIL, type Empresa, type PacoteContrato, type Perfil } from '../api';
 import { CondicoesProposta } from '../componentes/CondicoesProposta';
 
@@ -234,6 +235,9 @@ function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { ed
         <button className="btn btn-secundario" type="button" onClick={aoFechar}>
           Fechar
         </button>
+        <Link className="btn btn-link" to={`/admin/empresas/${edicao.id}/historico`}>
+          Ver histórico do contrato
+        </Link>
       </div>
     </form>
   );

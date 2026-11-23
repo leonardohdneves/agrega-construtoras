@@ -14,7 +14,7 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 411 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 412 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
@@ -404,7 +404,7 @@ Total: 411 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Administrativo
 
-28 rotas.
+29 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -420,6 +420,7 @@ Total: 411 rotas, 10 públicas, 4 do legado da concreteira.
 | `GET /api/admin/proposta/condicoes` | Condições padrão da proposta: o painel usa para preencher o formulário de condições. | Administrador do sistema, Administrativo |  |  |
 | `GET /api/admin/empresas/{id}/proposta` | Proposta comercial de uma construtora já cadastrada: pacote e limites do contrato, dono como responsável. | Administrador do sistema, Administrativo |  |  |
 | `PUT /api/admin/empresas/{id}/contrato` | Contrato da construtora: pacote vendido, módulos liberados e limites de obras e usuários. | Administrador do sistema, Administrativo |  | `pacote`*, `modulos`, `recursos`, `limiteObras`*, `limiteUsuarios`*, `testeFim` |
+| `GET /api/admin/empresas/{id}/contrato/historico` |  | Administrador do sistema, Administrativo |  |  |
 | `GET /api/admin/backups` |  | Administrador do sistema, Administrativo |  |  |
 | `POST /api/admin/backups` |  | Administrador do sistema, Administrativo |  |  |
 | `GET /api/admin/backups/{id}/download` |  | Administrador do sistema, Administrativo |  |  |
