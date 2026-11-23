@@ -13,7 +13,8 @@ import { ehRestritoAObras, regraEngenheiroEngenharia } from '../lib/obras-acesso
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
-import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas } from '../lib/leitura-projeto.ts';
+import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas, type ComposicaoRef } from '../lib/leitura-projeto.ts';
+import { geraTabelasPorScript, quantitativosDasTabelas, tabelasDoHtml } from '../lib/leitura-html.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
@@ -3125,6 +3126,43 @@ export function rotasEngenharia(banco: Banco) {
       };
     });
 
+    /** Composições cadastradas nas tabelas da empresa (SINAPI ou próprias), para sugerir na leitura de projeto. */
+    async function composicoesDaEmpresa(empresaId: string): Promise<ComposicaoRef[]> {
+      const r = await banco.query(
+        `SELECT r.id, r.codigo, r.descricao, r.unidade, t.id AS tabela_id, t.nome AS tabela, t.fonte
+           FROM ref_itens r JOIN ref_tabelas t ON t.id = r.tabela_id
+          WHERE t.empresa_id = $1 AND r.tipo = 'composicao'`,
+        [empresaId],
+      );
+      return r.rows.map((x) => ({ id: x.id as string, tabelaId: x.tabela_id as string, tabela: x.tabela as string, fonte: x.fonte as string, codigo: x.codigo as string, descricao: x.descricao as string, unidade: x.unidade as string }));
+    }
+
+    /**
+     * Lê as tabelas de um HTML estático (quantitativos de projeto exportados) e sugere composições já cadastradas, pela
+     * mesma conciliação da leitura por IA. Não executa script e não grava nada: o usuário confirma na planilha.
+     */
+    const corpoPostObrasLeituraHtml = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    app.post<{ Params: { id: string } }>('/obras/:id/leitura-html', { bodyLimit: 12 * 1024 * 1024, schema: { body: corpoPostObrasLeituraHtml } }, async (req) => {
+      const { arquivo } = corpoPostObrasLeituraHtml.parse(req.body);
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const bytes = Buffer.from(base64Puro(arquivo), 'base64');
+      if (!bytes.length || bytes.length > 8 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 8 MB).');
+      const html = bytes.toString('utf8');
+      if (!/<(table|html|body)[\s>]/i.test(html)) throw new ErroHttp(400, 'Envie um arquivo HTML.');
+      const tabelas = tabelasDoHtml(html);
+      const { itens, pendencias } = quantitativosDasTabelas(tabelas);
+      if (itens.length === 0 && geraTabelasPorScript(html, tabelas.length))
+        pendencias.unshift('Este arquivo monta as tabelas por script (é um visualizador), e o Agrega não executa script de arquivo enviado. Exporte os quantitativos em tabelas HTML simples ou peça uma versão estática do arquivo.');
+      const composicoes = await composicoesDaEmpresa(empresaId);
+      return {
+        obraId: obra.id as string,
+        tabelasLidas: tabelas.length,
+        itens: itens.map((q) => ({ ...q, candidatas: pontuarCandidatas(q, composicoes) })),
+        pendencias,
+      };
+    });
+
     /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */
     const corpoPostObrasLeituraProjeto = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
     app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { config: LIMITE_IA, bodyLimit: 24 * 1024 * 1024, schema: { body: corpoPostObrasLeituraProjeto } }, async (req) => {
@@ -3142,14 +3180,7 @@ export function rotasEngenharia(banco: Banco) {
         maxTokens: 3000,
       });
       const { itens, pendencias } = lerQuantitativos(r);
-      const composicoes = (
-        await banco.query(
-          `SELECT r.id, r.codigo, r.descricao, r.unidade, t.id AS tabela_id, t.nome AS tabela, t.fonte
-             FROM ref_itens r JOIN ref_tabelas t ON t.id = r.tabela_id
-            WHERE t.empresa_id = $1 AND r.tipo = 'composicao'`,
-          [empresaId],
-        )
-      ).rows.map((x) => ({ id: x.id as string, tabelaId: x.tabela_id as string, tabela: x.tabela as string, fonte: x.fonte as string, codigo: x.codigo as string, descricao: x.descricao as string, unidade: x.unidade as string }));
+      const composicoes = await composicoesDaEmpresa(empresaId);
       return {
         obraId: obra.id as string,
         itens: itens.map((q) => ({ ...q, candidatas: pontuarCandidatas(q, composicoes) })),
