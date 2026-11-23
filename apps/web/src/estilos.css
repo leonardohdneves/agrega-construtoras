@@ -817,12 +817,16 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 }
 
 /* Laudos (impressão do laudo de GLP) */
-.laudo-impresso { font-size: 11pt; line-height: 1.5; }
-.laudo-impresso .laudo-secao { font-size: 11pt; font-weight: 700; margin: 4mm 0 1.5mm; text-transform: uppercase; }
-.laudo-impresso p { margin: 0 0 2mm; }
+/* Recuo de 10 mm à esquerda: a faixa vermelha fica na área útil, à esquerda do texto, sem encostar nas letras. */
+.laudo-impresso { font-family: Arial, Helvetica, sans-serif; color: #000; font-size: 11pt; line-height: 1.5; padding-left: 10mm; }
+/* Espaçamento em padding (não em margin): o Chrome corta a margem no fim da folha, e o cálculo das páginas do sumário
+   (componentes/paginacaoLaudo.ts) depende de a altura do texto ser a mesma na tela e na impressão. Parágrafos e títulos
+   não deixam uma linha sozinha na folha (orphans/widows 1), pelo mesmo motivo. */
+.laudo-impresso .laudo-secao { font-size: 11pt; font-weight: 700; margin: 0; padding: 4mm 0 1.5mm; text-transform: uppercase; }
+.laudo-impresso p { margin: 0; padding-bottom: 2mm; orphans: 1; widows: 1; }
 .laudo-impresso .texto-justificado { text-align: justify; }
-.laudo-impresso .direita { text-align: right; margin-top: 6mm; }
-.laudo-impresso ul { margin: 0 0 2mm; padding-left: 6mm; }
+.laudo-impresso .direita { text-align: right; padding-top: 6mm; }
+.laudo-impresso ul { margin: 0; padding: 0 0 2mm 6mm; }
 @media print { .laudo-impresso .assinatura-linha { margin-top: 16mm; } }
 .laudo-impresso .laudo-nota { font-size: 9pt; font-style: italic; }
 
@@ -831,13 +835,15 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 @media print {
   @page laudo {
     size: A4 portrait;
-    margin: 22mm 20mm 24mm 26mm;
+    margin: 22mm 20mm 24mm 20mm;
     @bottom-right { content: "Página " counter(page) " de " counter(pages); font: 8pt Arial, Helvetica, sans-serif; color: #555; }
   }
   @page laudo:first { @bottom-right { content: none; } }
   /* Sem a faixa e o título do sistema: a capa é que identifica o documento. */
   body:has(.laudo-impresso) .doc-cabecalho { display: none !important; }
-  .laudo-impresso { page: laudo; font-family: Arial, Helvetica, sans-serif; color: #000; }
+  .laudo-impresso { page: laudo; }
+  /* A posição fixa é medida a partir da área útil da folha, e o Chrome corta o que sai dela. Por isso a faixa fica
+     em left: 0, na margem esquerda de 20 mm, e o texto começa 10 mm depois (ver .laudo-impresso). */
   .laudo-barra { position: fixed; left: 0; top: 0; bottom: 6mm; width: 6mm; background: #c00000; }
   .laudo-quadrado { position: fixed; left: 0; bottom: 0; width: 6mm; height: 6mm; background: #000; }
   .laudo-capa { display: flex; flex-direction: column; justify-content: space-between; height: 236mm; break-after: page; }
@@ -853,6 +859,12 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .laudo-sumario li { display: flex; align-items: baseline; gap: 6mm; padding: 3mm 0; border-bottom: 1px dotted #999; font-size: 11pt; }
   .laudo-sumario-num { width: 8mm; }
   .laudo-primeira { break-before: auto; }
+  /* Título da seção e o primeiro trecho do texto ficam juntos: o título nunca sobra sozinho no fim da folha. */
+  .laudo-bloco { break-inside: avoid; }
+  /* Sumário: o número da página fica à direita, na mesma linha do título. */
+  .laudo-sumario-pag { margin-left: auto; padding-left: 6mm; }
+  /* Assinatura: linha de 80 mm, centralizada (sem a coluna inteira). */
+  .laudo-impresso .assinatura { width: 80mm; justify-self: center; }
   /* Anexos: começam em página nova; as fotos saem duas por linha, sem cortar uma foto entre páginas. */
   .laudo-anexos { break-before: page; }
   .laudo-fotos { display: grid; grid-template-columns: 1fr 1fr; gap: 6mm; margin-top: 3mm; }

@@ -1,10 +1,11 @@
 // Módulo Laudos. Laudo de GLP: rede e central de gás (instalação em PEX ou galvanizado), com campos
 // extraídos de um laudo modelo. Dados do proprietário e do endereço podem vir da leitura do PDF pela IA.
-import { useCallback, useEffect, useState, type FormEvent } from 'react';
+import { useCallback, useEffect, useRef, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData } from '../api';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import { Assinatura } from '../componentes/Suprimentos';
+import { marcarPaginasDoSumario } from '../componentes/paginacaoLaudo';
 import { useSessao } from '../sessao';
 
 type Instalacao = 'pex' | 'galvanizado';
@@ -308,6 +309,7 @@ function CapaLaudo({ titulo, cliente, local, responsavel, registro }: { titulo: 
             <li key={s}>
               <span className="laudo-sumario-num">{i + 1}</span>
               <span>{s}</span>
+              <span className="laudo-sumario-pag" data-secao={i} />
             </li>
           ))}
         </ol>
@@ -319,6 +321,15 @@ function CapaLaudo({ titulo, cliente, local, responsavel, registro }: { titulo: 
 export function LaudoGlp() {
   const { id = '' } = useParams();
   const { anexos, recarregar, erroCarga } = useAnexosLaudo(id);
+  // O sumário recebe os números de página na hora de imprimir (o Chrome não tem target-counter).
+  const blocoImpresso = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const antesDeImprimir = () => {
+      if (blocoImpresso.current) marcarPaginasDoSumario(blocoImpresso.current);
+    };
+    window.addEventListener('beforeprint', antesDeImprimir);
+    return () => window.removeEventListener('beforeprint', antesDeImprimir);
+  }, []);
   const [dados, setDados] = useState<Glp | null>(null);
   const [numero, setNumero] = useState<number | null>(null);
   const [erro, setErro] = useState('');
@@ -475,7 +486,7 @@ export function LaudoGlp() {
 
       <AnexosLaudo laudoId={id} anexos={anexos} recarregar={recarregar} erroCarga={erroCarga} />
 
-      <div className="so-imprimir laudo-impresso">
+      <div className="so-imprimir laudo-impresso" ref={blocoImpresso}>
         <div className="laudo-barra" aria-hidden="true" />
         <div className="laudo-quadrado" aria-hidden="true" />
         <CapaLaudo
@@ -485,33 +496,49 @@ export function LaudoGlp() {
           responsavel={dados.responsavelNome.toUpperCase()}
           registro={dados.responsavelRegistro}
         />
-        <h2 className="laudo-secao laudo-primeira">1 Dados da edificação</h2>
-        <p>Proprietário: {dados.proprietarioNome}{dados.proprietarioDocumento ? `; CNPJ/CPF: ${dados.proprietarioDocumento}` : ''}</p>
+        {/* Cada seção começa num bloco com o título e o primeiro trecho: o título não fica sozinho no fim da folha. */}
+        <div className="laudo-bloco">
+          <h2 className="laudo-secao laudo-primeira">1 Dados da edificação</h2>
+          <p>Proprietário: {dados.proprietarioNome}{dados.proprietarioDocumento ? `; CNPJ/CPF: ${dados.proprietarioDocumento}` : ''}</p>
+        </div>
         <p>Endereço: {dados.enderecoObra}{dados.cep ? `; CEP: ${dados.cep}` : ''}{dados.cidade ? `; ${dados.cidade}${dados.uf ? ` - ${dados.uf}` : ''}` : ''}</p>
 
-        <h2 className="laudo-secao">2 Notas gerais</h2>
-        {notas.split('\n\n').map((p, i) => <p key={i} className="texto-justificado">{p}</p>)}
+        <div className="laudo-bloco">
+          <h2 className="laudo-secao">2 Notas gerais</h2>
+          <p className="texto-justificado">{notas.split('\n\n')[0]}</p>
+        </div>
+        {notas.split('\n\n').slice(1).map((p, i) => <p key={i} className="texto-justificado">{p}</p>)}
 
-        <h2 className="laudo-secao">3 Materiais utilizados</h2>
-        <p>3.1 {ehPex ? 'Tubos e conexões Pex.' : 'Tubos e conexões Galvanizadas.'}</p>
+        <div className="laudo-bloco">
+          <h2 className="laudo-secao">3 Materiais utilizados</h2>
+          <p>3.1 {ehPex ? 'Tubos e conexões Pex.' : 'Tubos e conexões Galvanizadas.'}</p>
+        </div>
         <ul>
           <li>Locais de aplicação: {dados.locaisAplicacao}</li>
           {dados.bitola && <li>Bitola(s) utilizada(s): {dados.bitola}</li>}
         </ul>
 
-        <h2 className="laudo-secao">4 Especificações</h2>
-        <p>4.1 {ehPex ? 'Pex' : 'Tubos e conexões galvanizadas'}</p>
+        <div className="laudo-bloco">
+          <h2 className="laudo-secao">4 Especificações</h2>
+          <p>4.1 {ehPex ? 'Pex' : 'Tubos e conexões galvanizadas'}</p>
+        </div>
         {especificacoes.split('\n\n').map((p, i) => <p key={i} className="texto-justificado">{p}</p>)}
 
-        <h2 className="laudo-secao">5 A central de gás</h2>
-        <p>Central de GLP: {dados.centralGlp || '—'}</p>
+        <div className="laudo-bloco">
+          <h2 className="laudo-secao">5 A central de gás</h2>
+          <p>Central de GLP: {dados.centralGlp || '—'}</p>
+        </div>
 
-        <h2 className="laudo-secao">6 Pontos de consumo</h2>
-        <p>{dados.pontosConsumo} Pontos de Utilização{dados.notaPontos ? '*' : ''}</p>
+        <div className="laudo-bloco">
+          <h2 className="laudo-secao">6 Pontos de consumo</h2>
+          <p>{dados.pontosConsumo} Pontos de Utilização{dados.notaPontos ? '*' : ''}</p>
+        </div>
         {dados.notaPontos && <p className="laudo-nota">* {dados.notaPontos}</p>}
 
-        <h2 className="laudo-secao">7 Conclusão</h2>
-        <p className="texto-justificado">{conclusao}</p>
+        <div className="laudo-bloco">
+          <h2 className="laudo-secao">7 Conclusão</h2>
+          <p className="texto-justificado">{conclusao}</p>
+        </div>
         {dados.art && <p>Laudo vinculado a ART – CREA/TO nº {dados.art}.</p>}
         {dados.cidade && <p className="direita">{dados.cidade}{dados.dataLaudo ? `, ${dataExtenso(dados.dataLaudo)}` : ''}.</p>}
         <div className="so-imprimir assinaturas">
