@@ -461,7 +461,7 @@ function AbaFinanceiro({ d }: { d: Dados }) {
   );
 }
 
-// ---------- Aba Indicadores (só o dono) ----------
+// ---------- Aba Indicadores (dono e gestor) ----------
 // Indicadores da concreteira (frota, produção, equipamentos): não aparecem no painel da construtora.
 const IND_CONCRETEIRA = new Set(['disponibilidade', 'revisoes_em_dia', 'perda_inventario', 'calibracoes_vencidas', 'frota_sobre_receita', 'consumo_bet', 'consumo_bomba', 'preco_diesel', 'custo_km', 'custo_hora_bomba', 'dias_parado_os', 'custo_manutencao', 'volume_produzido', 'm3_betoneira_dia', 'cimento_m3', 'material_teorico_m3', 'material_real_m3', 'frota_m3', 'devolvido_pct']);
 const ehConstrutora = lerEscolha() === 'construtora';
@@ -569,7 +569,8 @@ function AbaIndicadores() {
 function PainelGestao() {
   const [params, setParams] = useSearchParams();
   const { usuario } = useSessao();
-  const dono = usuario?.perfil === 'dono';
+  // Dono e gestor veem o painel inteiro (indicadores e obras também).
+  const dono = usuario?.perfil === 'dono' || usuario?.perfil === 'gestor';
   // Na construtora o painel mostra Obras (para quem tem Engenharia) no lugar de Frota.
   const construtora = lerEscolha() === 'construtora';
   const frotaOk = temModulo(usuario, 'frota') && !construtora;
@@ -584,7 +585,7 @@ function PainelGestao() {
     const erros: string[] = [];
     const [frota, fin, consumo, manut] = await Promise.all([
       frotaOk ? api<ResumoFrota>('/frota/alertas').catch((e) => (erros.push(e.message), null)) : null,
-      api<ResumoFin>('/fin/resumo').catch((e) => (erros.push(e.message), null)),
+      finOk ? api<ResumoFin>('/fin/resumo').catch((e) => (erros.push(e.message), null)) : null,
       frotaOk ? api<{ veiculos: ConsumoVeiculo[] }>('/frota/consumo?dias=30').then((r) => r.veiculos).catch(() => []) : [],
       frotaOk ? api<{ veiculos: CustoManut[] }>('/frota/custo-manutencao?dias=30').then((r) => r.veiculos).catch(() => []) : [],
     ]);

@@ -380,7 +380,7 @@ export function PedidoDetalhe() {
   const local = useLocation();
   const { empresa, usuario } = useSessao();
   // Almoxarife confere o pedido no recebimento: vê tudo, mas não age sobre ele.
-  const somenteLeitura = usuario?.perfil === 'almoxarife';
+  const somenteLeitura = usuario?.perfil === 'almoxarife' || usuario?.perfil === 'engenheiro_obra';
   const [p, setP] = useState<Pedido | null>(null);
   const [erro, setErro] = useState('');
   const [aviso, setAviso] = useState((local.state as { aviso?: string } | null)?.aviso ?? '');

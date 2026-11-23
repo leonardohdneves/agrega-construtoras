@@ -14,11 +14,13 @@ test('módulo de cada rota', () => {
 test('módulos efetivos', () => {
   assert.equal(modulosEfetivos('dono', ['frota']).length, MODULOS.length);
   assert.deepEqual(modulosEfetivos('operador_usina', null), []);
+  // dono e gestor: tudo o que o contrato permite, qualquer que seja a lista gravada no usuário
+  assert.deepEqual(modulosEfetivos('gestor', ['financeiro', 'frota']), [...MODULOS]);
+  assert.deepEqual(modulosEfetivos('gestor', null), [...MODULOS]);
   // módulos da concreteira gravados num usuário antigo não valem mais
-  assert.deepEqual(modulosEfetivos('gestor', ['financeiro', 'frota']), ['financeiro']);
-  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo']);
+  assert.deepEqual(modulosEfetivos('comprador', ['suprimentos', 'frota']), ['suprimentos']);
   assert.deepEqual(modulosEfetivos('orcamentista', null), ['engenharia', 'comercial']);
-  assert.deepEqual(modulosEfetivos('engenheiro_obra', null), ['engenharia']);
+  assert.deepEqual(modulosEfetivos('engenheiro_obra', null), ['engenharia', 'suprimentos']);
   assert.deepEqual(modulosEfetivos('comprador', null), ['suprimentos']);
 });
 
@@ -52,7 +54,7 @@ test('regras de acesso', () => {
   // engenharia como módulo
   assert.equal(g('dono', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), true);
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/eng/obras', 'POST'), true);
-  assert.equal(g('gestor', ['suprimentos'], ['dono', 'gestor'], '/api/eng/obras'), false);
+  assert.equal(g('gestor', ['suprimentos'], ['dono', 'gestor'], '/api/eng/obras'), true, 'o gestor ignora a lista gravada');
   assert.equal(g('vendedor', null, ['dono', 'gestor'], '/api/eng/obras'), false);
   // Financeiro: só as listas que a apropriação de notas e lançamentos usa (P11); nada além disso na Engenharia.
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/eng/obras'), true);
@@ -87,7 +89,7 @@ test('regras de acesso', () => {
 
 test('contrato da empresa limita os módulos, inclusive do dono', () => {
   assert.deepEqual(modulosEfetivos('dono', null, ['engenharia', 'suprimentos', 'configuracoes']), ['engenharia', 'suprimentos', 'configuracoes']);
-  assert.deepEqual(modulosEfetivos('gestor', null, ['engenharia', 'suprimentos', 'configuracoes']), ['engenharia', 'suprimentos']);
+  assert.deepEqual(modulosEfetivos('gestor', null, ['engenharia', 'suprimentos', 'configuracoes']), ['engenharia', 'suprimentos', 'configuracoes']);
 });
 
 test('contrato Obra: financeiro e comercial ficam fora, mesmo para o dono', () => {

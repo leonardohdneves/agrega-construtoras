@@ -821,22 +821,45 @@ export function rotasSuprimentos(banco: Banco) {
   return async function (app: FastifyInstance) {
     app.addHook('preHandler', exigir(banco, 'dono', 'gestor'));
 
+    /** Engenheiro de obra e almoxarife: só as obras atribuídas a eles. Os demais perfis veem todas (null). */
+    const obrasAtribuidas = async (empresaId: string, u: { id: string; perfil: string }) =>
+      u.perfil === 'engenheiro_obra' || u.perfil === 'almoxarife' ? ((await obrasPermitidas(banco, empresaId, u)) ?? []) : null;
+    /** A obra precisa ser uma das atribuídas; senão responde como se não existisse. */
+    async function exigirObraAtribuida(req: FastifyRequest, empresaId: string, obraId: string | null | undefined) {
+      const obras = await obrasAtribuidas(empresaId, usuarioDe(req));
+      if (obras && (!obraId || !obras.includes(obraId))) throw new ErroHttp(404, 'Obra não encontrada.');
+    }
+    /** A solicitação precisa ser de uma obra do engenheiro; senão responde como se não existisse. */
+    async function solicitacaoDaObraDele(req: FastifyRequest, empresaId: string, id: string) {
+      const obras = await obrasAtribuidas(empresaId, usuarioDe(req));
+      if (!obras) return;
+      const s = UUID.test(id) ? (await banco.query('SELECT obra_id FROM solicitacoes_compra WHERE id = $1 AND empresa_id = $2', [id, empresaId])).rows[0] : null;
+      if (!s || !obras.includes(s.obra_id)) throw naoEncontrado('Solicitação');
+    }
+    /** Obra do corpo da solicitação: o engenheiro só pede para as obras dele. */
+    async function obraDoCorpoDele(req: FastifyRequest, empresaId: string) {
+      const obras = await obrasAtribuidas(empresaId, usuarioDe(req));
+      const obraId = (req.body as { obraId?: string } | undefined)?.obraId ?? '';
+      if (obras && !obras.includes(obraId)) throw new ErroHttp(403, 'Você só solicita material das obras atribuídas a você.');
+    }
+
     // ----- Estoque da construtora: saldo por insumo da obra e etapa da EAP; saídas por requisição.
     app.get<{ Querystring: Record<string, string | undefined> }>('/estoque', async (req) => {
       const empresaId = empresaDo(req);
       const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
+      const obrasEng = await obrasAtribuidas(empresaId, usuarioDe(req));
       const r = await banco.query(
         `WITH s AS (
            SELECT m.obra_id, m.obra_item_id, m.eap_no_id, m.obra_estoque_id, sum(CASE WHEN m.tipo = 'saida' THEN -m.quantidade ELSE m.quantidade END) AS qtd
              FROM estoque_movimentos m
-            WHERE m.empresa_id = $1 AND m.obra_item_id IS NOT NULL AND ($2::uuid IS NULL OR m.obra_id = $2)
+            WHERE m.empresa_id = $1 AND m.obra_item_id IS NOT NULL AND ($2::uuid IS NULL OR m.obra_id = $2) AND ($3::uuid[] IS NULL OR m.obra_id = ANY($3::uuid[]))
             GROUP BY m.obra_id, m.obra_item_id, m.eap_no_id, m.obra_estoque_id)
          SELECT s.obra_id, s.obra_item_id, s.eap_no_id, s.obra_estoque_id, ee.nome AS estoque_nome, s.qtd, oi.codigo, oi.descricao, oi.unidade, o.codigo AS obra_codigo, e.codigo AS eap_codigo, e.descricao AS eap_descricao
            FROM s JOIN obra_itens oi ON oi.id = s.obra_item_id JOIN obras o ON o.id = s.obra_id JOIN eap_nos e ON e.id = s.eap_no_id
            LEFT JOIN obra_estoques ee ON ee.id = s.obra_estoque_id
           WHERE s.qtd <> 0
           ORDER BY oi.descricao, ee.nome, e.codigo`,
-        [empresaId, obraId],
+        [empresaId, obraId, obrasEng],
       );
       const mapa = new Map<string, { obraItemId: string; codigo: string; descricao: string; unidade: string; saldo: number; apropriacoes: { obraId: string; obraCodigo: string; estoqueId: string | null; estoqueNome: string | null; eapNoId: string; eapCodigo: string; eapDescricao: string; quantidade: number }[] }>();
       for (const x of r.rows) {
@@ -875,6 +898,7 @@ export function rotasSuprimentos(banco: Banco) {
       if (d.origemId === d.destinoId) throw new ErroHttp(400, 'Origem e destino são o mesmo estoque.');
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
+      await exigirObraAtribuida(req, empresaId, d.obraId);
       const qtd = Math.round(d.quantidade * 1000) / 1000;
       const ref = await emTransacao(banco, async (c) => {
         await validarApropriacaoObra(c, empresaId, d.obraId, d.obraItemId, d.eapNoId);
@@ -905,6 +929,8 @@ export function rotasSuprimentos(banco: Banco) {
     app.get<{ Params: { obraId: string } }>('/obras/:obraId/estoques', async (req) => {
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.obraId)) throw new ErroHttp(404, 'Obra não encontrada.');
+      const obrasEng = await obrasAtribuidas(empresaId, usuarioDe(req));
+      if (obrasEng && !obrasEng.includes(req.params.obraId)) throw new ErroHttp(404, 'Obra não encontrada.');
       const r = await banco.query(
         `SELECT e.id, e.nome, e.recebimento, e.ativo, (SELECT count(*) FROM estoque_movimentos m WHERE m.obra_estoque_id = e.id)::int AS movimentos
            FROM obra_estoques e JOIN obras o ON o.id = e.obra_id
@@ -921,6 +947,7 @@ export function rotasSuprimentos(banco: Banco) {
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
       if (!UUID.test(req.params.obraId)) throw new ErroHttp(404, 'Obra não encontrada.');
+      await exigirObraAtribuida(req, empresaId, req.params.obraId);
       const id = await emTransacao(banco, async (c) => {
         if (!(await c.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2', [req.params.obraId, empresaId])).rowCount) throw new ErroHttp(404, 'Obra não encontrada.');
         if ((await c.query('SELECT 1 FROM obra_estoques WHERE obra_id = $1 AND lower(nome) = lower($2)', [req.params.obraId, d.nome])).rowCount)
@@ -947,6 +974,8 @@ export function rotasSuprimentos(banco: Banco) {
           await c.query('SELECT e.* FROM obra_estoques e JOIN obras o ON o.id = e.obra_id WHERE e.id = $1 AND o.empresa_id = $2', [req.params.id, empresaId])
         ).rows[0];
         if (!atual) throw new ErroHttp(404, 'Estoque não encontrado.');
+        const obras = await obrasAtribuidas(empresaId, u);
+        if (obras && !obras.includes(atual.obra_id)) throw new ErroHttp(404, 'Estoque não encontrado.');
         if (atual.recebimento && d.ativo === false) throw new ErroHttp(400, 'O estoque de recebimento não pode ser desativado. Toda obra precisa dele.');
         if (d.nome && d.nome.toLowerCase() !== String(atual.nome).toLowerCase() && (await c.query('SELECT 1 FROM obra_estoques WHERE obra_id = $1 AND lower(nome) = lower($2) AND id <> $3', [atual.obra_id, d.nome, atual.id])).rowCount)
           throw new ErroHttp(400, 'Já existe um estoque com esse nome nesta obra.');
@@ -960,12 +989,13 @@ export function rotasSuprimentos(banco: Banco) {
     app.get<{ Querystring: Record<string, string | undefined> }>('/estoques', async (req) => {
       const empresaId = empresaDo(req);
       const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
+      const obrasEng = await obrasAtribuidas(empresaId, usuarioDe(req));
       const r = await banco.query(
         `SELECT e.id, e.codigo, e.nome, e.recebimento, e.ativo, e.obra_id, o.codigo AS obra_codigo, o.nome AS obra_nome
            FROM obra_estoques e LEFT JOIN obras o ON o.id = e.obra_id
-          WHERE e.empresa_id = $1 AND ($2::uuid IS NULL OR e.obra_id = $2 OR e.obra_id IS NULL)
+          WHERE e.empresa_id = $1 AND ($2::uuid IS NULL OR e.obra_id = $2 OR e.obra_id IS NULL) AND ($3::uuid[] IS NULL OR e.obra_id = ANY($3::uuid[]))
           ORDER BY e.recebimento DESC, e.codigo`,
-        [empresaId, obraId],
+        [empresaId, obraId, obrasEng],
       );
       return { estoques: r.rows.map((x) => ({ id: x.id, codigo: x.codigo, nome: x.nome, recebimento: x.recebimento, ativo: x.ativo, obraId: x.obra_id ?? null, obraCodigo: x.obra_codigo ?? null, obraNome: x.obra_nome ?? null })) };
     });
@@ -980,6 +1010,8 @@ export function rotasSuprimentos(banco: Banco) {
         .parse(req.body);
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
+      // Quem só vê as obras atribuídas cria estoque só dentro de uma delas (estoque geral é do dono e do gestor).
+      await exigirObraAtribuida(req, empresaId, d.obraId);
       const criado = await emTransacao(banco, async (c) => {
         if (d.obraId && !(await c.query('SELECT 1 FROM obras WHERE id = $1 AND empresa_id = $2', [d.obraId, empresaId])).rowCount) throw new ErroHttp(400, 'Obra não encontrada.');
         // Nome único dentro da obra (ou entre os gerais).
@@ -1031,10 +1063,11 @@ export function rotasSuprimentos(banco: Banco) {
       const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
       const estoqueId = lerQuery({ estoqueId: idQuery('estoqueId') }, req.query).estoqueId ?? null;
       const soSaldo = lerQuery({ saldo: opcaoQuery('saldo', ['0', '1'] as const) }, req.query).saldo !== '0';
+      const obrasEng = await obrasAtribuidas(empresaId, usuarioDe(req));
       const r = await banco.query(
         `${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND ($2::uuid IS NULL OR x.obra_id = $2) AND ($3::uuid IS NULL OR x.obra_estoque_id = $3)
-            AND ($4::boolean = false OR x.saldo > 0) ORDER BY x.data DESC, x.insumo_descricao LIMIT 301`,
-        [empresaId, obraId, estoqueId, soSaldo],
+            AND ($4::boolean = false OR x.saldo > 0) AND ($5::uuid[] IS NULL OR x.obra_id = ANY($5::uuid[])) ORDER BY x.data DESC, x.insumo_descricao LIMIT 301`,
+        [empresaId, obraId, estoqueId, soSaldo, obrasEng],
       );
       const temMais = cortarLista(r.rows, 300);
       return { etiquetas: r.rows.map(etiquetaPublica), temMais };
@@ -1043,7 +1076,8 @@ export function rotasSuprimentos(banco: Banco) {
     app.get<{ Params: { id: string } }>('/etiquetas/:id', async (req) => {
       const empresaId = empresaDo(req);
       if (!UUID.test(req.params.id)) throw new ErroHttp(404, 'Etiqueta não encontrada.');
-      const r = await banco.query(`${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND x.id = $2`, [empresaId, req.params.id]);
+      const obrasEng = await obrasAtribuidas(empresaId, usuarioDe(req));
+      const r = await banco.query(`${SQL_ETIQUETAS} WHERE x.empresa_id = $1 AND x.id = $2 AND ($3::uuid[] IS NULL OR x.obra_id = ANY($3::uuid[]))`, [empresaId, req.params.id, obrasEng]);
       if (!r.rows[0]) throw new ErroHttp(404, 'Etiqueta não encontrada.');
       return { etiqueta: etiquetaPublica(r.rows[0]) };
     });
@@ -1079,6 +1113,7 @@ export function rotasSuprimentos(banco: Banco) {
       if (new Set(d.itens.map((i) => i.etiquetaId)).size !== d.itens.length) throw new ErroHttp(400, 'A mesma etiqueta aparece mais de uma vez.');
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
+      await exigirObraAtribuida(req, empresaId, d.obraId);
       const criada = await emTransacao(banco, async (c) => {
         await validarApropriacaoObra(c, empresaId, d.obraId, null, d.eapNoId);
         if (!(await c.query('SELECT 1 FROM motoristas WHERE id = $1 AND empresa_id = $2 AND ativo AND excluido_em IS NULL', [d.colaboradorId, empresaId])).rowCount)
@@ -1125,14 +1160,15 @@ export function rotasSuprimentos(banco: Banco) {
     });
 
     app.get('/saidas-material', async (req) => {
+      const obrasEng = await obrasAtribuidas(empresaDo(req), usuarioDe(req));
       const r = await banco.query(
         `SELECT s.id, s.numero, s.data, s.observacao, o.codigo AS obra_codigo, o.nome AS obra_nome, e.codigo AS eap_codigo, e.descricao AS eap_descricao,
                 coalesce(c.nome, s.funcionario_nome) AS colaborador_nome, u.nome AS entregue_por,
                 (SELECT count(*) FROM estoque_movimentos m WHERE m.saida_material_id = s.id)::int AS itens
            FROM saidas_material s JOIN obras o ON o.id = s.obra_id JOIN eap_nos e ON e.id = s.eap_no_id
            LEFT JOIN motoristas c ON c.id = s.colaborador_id JOIN usuarios u ON u.id = s.entregue_por_id
-          WHERE s.empresa_id = $1 ORDER BY s.criado_em DESC LIMIT 200`,
-        [empresaDo(req)],
+          WHERE s.empresa_id = $1 AND ($2::uuid[] IS NULL OR s.obra_id = ANY($2::uuid[])) ORDER BY s.criado_em DESC LIMIT 200`,
+        [empresaDo(req), obrasEng],
       );
       return { saidas: r.rows.map((x) => ({ id: x.id, numero: x.numero, data: String(x.data).slice(0, 10), observacao: x.observacao ?? null, obraCodigo: x.obra_codigo, obraNome: x.obra_nome, eapCodigo: x.eap_codigo, eapDescricao: x.eap_descricao, colaborador: x.colaborador_nome, entreguePor: x.entregue_por, itens: x.itens })) };
     });
@@ -1143,6 +1179,7 @@ export function rotasSuprimentos(banco: Banco) {
       const status = lerQuery({ status: opcaoQuery('status', STATUS_SOLICITACAO) }, req.query).status ?? null;
       const obraId = lerQuery({ obraId: idQuery('obraId') }, req.query).obraId ?? null;
       const tipo = lerQuery({ tipo: opcaoQuery('tipo', ['servico', 'insumo'] as const) }, req.query).tipo ?? null;
+      const obrasEng = await obrasAtribuidas(empresaId, usuarioDe(req));
       const r = await banco.query(
         `SELECT s.id, s.numero, s.data, s.necessidade, s.status, s.observacao, s.finalizada_em, s.obra_id, s.tipo, u.nome AS solicitante,
                 o.codigo AS obra_codigo, o.nome AS obra_nome,
@@ -1150,9 +1187,10 @@ export function rotasSuprimentos(banco: Banco) {
                 (SELECT string_agg(si.descricao, ', ' ORDER BY si.descricao) FROM solicitacoes_itens si WHERE si.solicitacao_id = s.id) AS resumo
            FROM solicitacoes_compra s LEFT JOIN usuarios u ON u.id = s.solicitante_id LEFT JOIN obras o ON o.id = s.obra_id
           WHERE s.empresa_id = $1 AND ($2::text IS NULL OR s.status = $2) AND ($3::uuid IS NULL OR s.obra_id = $3) AND ($4::text IS NULL OR s.tipo = $4)
+            AND ($5::uuid[] IS NULL OR s.obra_id = ANY($5::uuid[]))
             AND ($2::text IS NOT NULL OR s.status IN ('aberta', 'finalizada', 'em_cotacao') OR s.data > current_date - 120)
           ORDER BY (s.status IN ('aberta', 'finalizada', 'em_cotacao')) DESC, s.numero DESC LIMIT 501`,
-        [empresaId, status, obraId, tipo],
+        [empresaId, status, obraId, tipo, obrasEng],
       );
       const temMais = cortarLista(r.rows, 500);
       const hoje = hojeBrasil();
@@ -1178,13 +1216,17 @@ export function rotasSuprimentos(banco: Banco) {
       };
     });
 
-    app.get<{ Params: { id: string } }>('/solicitacoes/:id', async (req) => ({ solicitacao: await detalharSolicitacao(banco, empresaDo(req), req.params.id) }));
+    app.get<{ Params: { id: string } }>('/solicitacoes/:id', async (req) => {
+      await solicitacaoDaObraDele(req, empresaDo(req), req.params.id);
+      return { solicitacao: await detalharSolicitacao(banco, empresaDo(req), req.params.id) };
+    });
 
     // O corpo é de material ou de serviço (tipo: 'servico'); o manipulador escolhe o esquema.
     const corpoSolicitacao = z.union([esquemaSolicitacao, esquemaServico]);
     app.post('/solicitacoes', { schema: { body: corpoSolicitacao } }, async (req, reply) => {
       const empresaId = empresaDo(req);
       const u = usuarioDe(req);
+      await obraDoCorpoDele(req, empresaId);
       if (ehServico(req.body)) {
         const ds = esquemaServico.parse(req.body);
         const idServico = await emTransacao(banco, async (c) => {
@@ -1230,6 +1272,8 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.put<{ Params: { id: string } }>('/solicitacoes/:id', { schema: { body: corpoSolicitacao } }, async (req) => {
       const empresaId = empresaDo(req);
+      await solicitacaoDaObraDele(req, empresaId, req.params.id);
+      await obraDoCorpoDele(req, empresaId);
       const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
       const servico = atual.tipo === 'servico';
       const d = servico ? esquemaServico.parse(req.body) : esquemaSolicitacao.parse(req.body);
@@ -1259,6 +1303,7 @@ export function rotasSuprimentos(banco: Banco) {
     /** Finalizar: a solicitação fica disponível para cotação (e só então aparece no mapa de cotações). */
     app.post<{ Params: { id: string } }>('/solicitacoes/:id/finalizar', async (req) => {
       const empresaId = empresaDo(req);
+      await solicitacaoDaObraDele(req, empresaId, req.params.id);
       const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
       if (atual.status !== 'aberta') throw new ErroHttp(409, 'Esta solicitação já foi finalizada ou está em cotação.');
       if (!atual.itens.length) throw new ErroHttp(400, 'Inclua pelo menos um insumo antes de finalizar.');
@@ -1271,6 +1316,7 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.post<{ Params: { id: string } }>('/solicitacoes/:id/reabrir', async (req) => {
       const empresaId = empresaDo(req);
+      await solicitacaoDaObraDele(req, empresaId, req.params.id);
       const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
       if (atual.status !== 'finalizada') throw new ErroHttp(409, 'Só dá para reabrir solicitação finalizada.');
       await emTransacao(banco, async (c) => {
@@ -1282,6 +1328,7 @@ export function rotasSuprimentos(banco: Banco) {
 
     app.post<{ Params: { id: string } }>('/solicitacoes/:id/cancelar', async (req) => {
       const empresaId = empresaDo(req);
+      await solicitacaoDaObraDele(req, empresaId, req.params.id);
       const atual = await detalharSolicitacao(banco, empresaId, req.params.id);
       if (!['aberta', 'finalizada', 'em_cotacao'].includes(atual.status)) throw new ErroHttp(409, 'Esta solicitação já foi atendida ou cancelada.');
       if (atual.cotacoes.some((c: { status: string }) => c.status === 'aberta')) throw new ErroHttp(409, 'Cancele antes a cotação aberta desta solicitação.');
@@ -1700,7 +1747,7 @@ export function rotasSuprimentos(banco: Banco) {
       const filtro = lerQuery({ status: opcaoQuery('status', ['abertos', 'aprovacao', 'receber', 'atrasados', 'concluidos', 'cancelados'] as const) }, req.query).status ?? '';
       const hoje = hojeBrasil();
       const u = usuarioDe(req);
-      const soConferencia = u.perfil === 'almoxarife';
+      const soConferencia = u.perfil === 'almoxarife' || u.perfil === 'engenheiro_obra';
       const obras = soConferencia ? (await obrasPermitidas(banco, empresaId, u)) ?? [] : [];
       const r = await banco.query(
         `SELECT p.id, p.numero, p.data, p.status, p.previsao_entrega, p.total_centavos, p.aprovacao_automatica,
@@ -1752,8 +1799,8 @@ export function rotasSuprimentos(banco: Banco) {
     app.get<{ Params: { id: string } }>('/pedidos/:id', async (req) => {
       const u = usuarioDe(req);
       const empresaId = empresaDo(req);
-      if (u.perfil === 'almoxarife') {
-        // Conferência no recebimento: o almoxarife vê o pedido depois de aprovado, com preços, mas não o altera.
+      if (u.perfil === 'almoxarife' || u.perfil === 'engenheiro_obra') {
+        // Conferência no recebimento: o almoxarife e o engenheiro de obra veem o pedido das obras deles depois de aprovado, com preços, mas não o alteram.
         const obras = (await obrasPermitidas(banco, empresaId, u)) ?? [];
         const st = (
           await banco.query(

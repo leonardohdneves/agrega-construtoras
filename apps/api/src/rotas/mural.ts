@@ -24,14 +24,16 @@ const TITULO_RANKING: Record<Ranking, string> = {
 };
 
 export type ConfigMural = { aniversariantes: boolean; ranking: boolean; rankings: Ranking[]; posicoes: number };
-const PADRAO: ConfigMural = { aniversariantes: true, ranking: true, rankings: ['motoristas_m3', 'vendedores_m3'], posicoes: 5 };
+// Os rankings (motoristas, bomba e vendedores por m³ ou valor) vêm das tabelas da concreteira (cargas e vendas por m³).
+// Na construtora ficam desligados, qualquer que seja a configuração gravada.
+const PADRAO: ConfigMural = { aniversariantes: true, ranking: false, rankings: [], posicoes: 5 };
 
 export function lerConfigMural(json: unknown): ConfigMural {
   const j = (json ?? {}) as Partial<ConfigMural>;
   return {
     aniversariantes: j.aniversariantes ?? PADRAO.aniversariantes,
-    ranking: j.ranking ?? PADRAO.ranking,
-    rankings: (j.rankings ?? PADRAO.rankings).filter((r): r is Ranking => (RANKINGS as readonly string[]).includes(r)),
+    ranking: false,
+    rankings: [],
     posicoes: Math.min(10, Math.max(3, Number(j.posicoes ?? PADRAO.posicoes) || PADRAO.posicoes)),
   };
 }
