@@ -14,11 +14,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 412 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 417 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
-117 rotas.
+122 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -73,6 +73,11 @@ Total: 412 rotas, 10 públicas, 4 do legado da concreteira.
 | `GET /api/eng/obras/{id}/canteiro/vertical/concretagens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra | `pavimentoId` |  |
 | `POST /api/eng/obras/{id}/canteiro/vertical/concretagens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `pavimentoId`*, `data`*, `volumeM3`*, `fck`, `nota` |
 | `DELETE /api/eng/obras/{id}/canteiro/vertical/concretagens/{cid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
+| `GET /api/eng/obras/{id}/canteiro/centrais/{tipo}/kanban` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
+| `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `prioridade`, `ordem` |
+| `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}/kanban/ordem` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `frentes`* |
+| `POST /api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}/os` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
+| `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/os/{oid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `status`* |
 | `GET /api/eng/obras/{id}/canteiro` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `periodicidadeDias`, `servicos` |

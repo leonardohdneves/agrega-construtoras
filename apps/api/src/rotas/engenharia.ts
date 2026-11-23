@@ -23,6 +23,7 @@ import { conciliarLinha, type LinhaPlanilha, type RefComposicao } from '../lib/c
 import { curvaS, percentualDeQuantidade, previstoXExecutado, somarDias, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import { CENTRAIS, NOMES_CENTRAL, PERIODICIDADE_PADRAO, montarItensBoletim, proximoPeriodo, type TipoCentral } from '../lib/canteiro.ts';
 import { recursoDaRotaCanteiro, recursosEfetivos, NOMES_RECURSO } from '../lib/recursos.ts';
+import { COLUNAS_KANBAN, NOMES_COLUNA, PRIORIDADES, STATUS_OS, colunaDoCard, transicaoPermitida } from '../lib/canteiro-kanban.ts';
 import { ETAPAS_CICLO, EQUIPAMENTOS_VERTICAIS, conflitoAgenda, resumirCiclo, totalConcreto, type EtapaCiclo } from '../lib/canteiro-vertical.ts';
 import {
   abcInsumos,
@@ -1881,6 +1882,137 @@ export function rotasEngenharia(banco: Banco) {
         const r = await c.query('DELETE FROM canteiro_concretagens WHERE id = $1 AND obra_id = $2 RETURNING data, volume_m3', [req.params.cid, obra.id]);
         if (!r.rowCount) throw naoEncontrado('Concretagem');
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'canteiro_concretagens', entidadeId: req.params.cid, antes: { data: dataIso(r.rows[0].data), volumeM3: Number(r.rows[0].volume_m3) } });
+      });
+      return { ok: true };
+    });
+
+    // ---------------------------------------------------------------- kanban das centrais (frentes e OS)
+
+    function centralValida(tipo: string): TipoCentral {
+      if (!(CENTRAIS as readonly string[]).includes(tipo)) throw naoEncontrado('Central');
+      return tipo as TipoCentral;
+    }
+    /** Uma frente por serviço da central, criada na primeira leitura. Nada é apagado: frente com OS fica no histórico. */
+    async function sincronizarFrentes(c: Cliente, obraId: string, tipo: TipoCentral) {
+      await c.query(
+        `INSERT INTO canteiro_frentes (obra_id, central, eap_no_id, ordem)
+         SELECT cs.obra_id, cs.tipo, cs.eap_no_id,
+                coalesce((SELECT max(f.ordem) FROM canteiro_frentes f WHERE f.obra_id = $1 AND f.central = $2), 0) + row_number() OVER (ORDER BY n.codigo)
+           FROM canteiro_servicos cs JOIN eap_nos n ON n.id = cs.eap_no_id
+          WHERE cs.obra_id = $1 AND cs.tipo = $2
+         ON CONFLICT (eap_no_id) DO UPDATE SET central = EXCLUDED.central`,
+        [obraId, tipo],
+      );
+    }
+    const esquemaFrente = z.object({
+      prioridade: z.enum(PRIORIDADES, { errorMap: () => ({ message: 'Escolha a prioridade: alta, média ou baixa.' }) }).optional(),
+      ordem: z.number().int().min(0).max(9999).optional(),
+    });
+    const esquemaOrdemFrentes = z.object({ frentes: z.array(z.string().uuid()).max(500) });
+    const esquemaStatusOs = z.object({ status: z.enum(STATUS_OS, { errorMap: () => ({ message: 'Status de OS inválido.' }) }) });
+
+    /** Kanban da central: colunas com as frentes na ordem do planejamento. Cada frente mostra a OS mais recente. */
+    app.get<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo/kanban', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      const tipo = centralValida(req.params.tipo);
+      await emTransacao(banco, (c) => sincronizarFrentes(c, obra.id, tipo));
+      const r = await banco.query(
+        `SELECT f.id, f.eap_no_id, f.prioridade, f.ordem, n.codigo, n.descricao,
+                (SELECT json_build_object('id', o.id, 'numero', o.numero, 'status', o.status) FROM canteiro_os o WHERE o.frente_id = f.id ORDER BY o.criado_em DESC LIMIT 1) AS os
+           FROM canteiro_frentes f
+           JOIN canteiro_servicos cs ON cs.eap_no_id = f.eap_no_id AND cs.tipo = f.central
+           JOIN eap_nos n ON n.id = f.eap_no_id
+          WHERE f.obra_id = $1 AND f.central = $2
+          ORDER BY f.ordem, n.codigo`,
+        [obra.id, tipo],
+      );
+      const frentes = r.rows.map((f) => ({
+        id: f.id as string,
+        eapNoId: f.eap_no_id as string,
+        codigo: f.codigo as string,
+        descricao: f.descricao as string,
+        prioridade: f.prioridade as string,
+        ordem: Number(f.ordem),
+        coluna: colunaDoCard(f.os),
+        os: f.os ? { id: f.os.id as string, numero: Number(f.os.numero), status: f.os.status as string } : null,
+      }));
+      return {
+        colunas: COLUNAS_KANBAN.map((col) => ({ id: col, nome: NOMES_COLUNA[col], frentes: frentes.filter((x) => x.coluna === col) })),
+        total: frentes.length,
+      };
+    });
+
+    /** Prioridade e posição de uma frente. */
+    app.patch<{ Params: { id: string; tipo: string; fid: string } }>('/obras/:id/canteiro/centrais/:tipo/frentes/:fid', { schema: { body: esquemaFrente } }, async (req) => {
+      const d = esquemaFrente.parse(req.body);
+      const empresaId = empresaDo(req);
+      const tipo = centralValida(req.params.tipo);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const f = (await c.query('SELECT id FROM canteiro_frentes WHERE id = $1 AND obra_id = $2 AND central = $3', [req.params.fid, obra.id, tipo])).rows[0];
+        if (!f) throw naoEncontrado('Frente');
+        await c.query('UPDATE canteiro_frentes SET prioridade = coalesce($2, prioridade), ordem = coalesce($3, ordem) WHERE id = $1', [f.id, d.prioridade ?? null, d.ordem ?? null]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_frentes', entidadeId: f.id, depois: d });
+      });
+      return { ok: true };
+    });
+
+    /** Nova ordem das frentes da central (a lista é a ordem de cima para baixo). */
+    app.put<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo/kanban/ordem', { schema: { body: esquemaOrdemFrentes } }, async (req) => {
+      const d = esquemaOrdemFrentes.parse(req.body);
+      if (new Set(d.frentes).size !== d.frentes.length) throw new ErroHttp(400, 'Cada frente aparece uma vez só na ordem.');
+      const empresaId = empresaDo(req);
+      const tipo = centralValida(req.params.tipo);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const existentes = (await c.query('SELECT id FROM canteiro_frentes WHERE obra_id = $1 AND central = $2', [obra.id, tipo])).rows.map((x) => x.id as string);
+        if (d.frentes.some((id) => !existentes.includes(id))) throw naoEncontrado('Frente');
+        for (const [i, id] of d.frentes.entries()) await c.query('UPDATE canteiro_frentes SET ordem = $2 WHERE id = $1', [id, i]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_frentes', entidadeId: obra.id, depois: { ordem: d.frentes.length } });
+      });
+      return { ok: true };
+    });
+
+    /** Libera a frente: gera a OS. A frente só tem uma OS em aberto por vez. */
+    app.post<{ Params: { id: string; tipo: string; fid: string } }>('/obras/:id/canteiro/centrais/:tipo/frentes/:fid/os', async (req, reply) => {
+      const empresaId = empresaDo(req);
+      const tipo = centralValida(req.params.tipo);
+      const os = await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const f = (await c.query('SELECT id FROM canteiro_frentes WHERE id = $1 AND obra_id = $2 AND central = $3 FOR UPDATE', [req.params.fid, obra.id, tipo])).rows[0];
+        if (!f) throw naoEncontrado('Frente');
+        if ((await c.query("SELECT 1 FROM canteiro_os WHERE frente_id = $1 AND status IN ('liberada', 'em_execucao')", [f.id])).rowCount)
+          throw new ErroHttp(409, 'Esta frente já tem uma OS em aberto.');
+        const nova = (
+          await c.query(
+            'INSERT INTO canteiro_os (obra_id, frente_id, numero, criado_por) VALUES ($1, $2, (SELECT coalesce(max(numero), 0) + 1 FROM canteiro_os WHERE obra_id = $1), $3) RETURNING id, numero',
+            [obra.id, f.id, req.usuario!.id],
+          )
+        ).rows[0];
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_os', entidadeId: nova.id, depois: { frente: f.id, numero: nova.numero } });
+        return { id: nova.id as string, numero: Number(nova.numero), status: 'liberada' };
+      });
+      reply.code(201);
+      return { os };
+    });
+
+    /** Avança a OS: liberada, em execução, concluída. Cancelada ou concluída não voltam. */
+    app.patch<{ Params: { id: string; tipo: string; oid: string } }>('/obras/:id/canteiro/centrais/:tipo/os/:oid', { schema: { body: esquemaStatusOs } }, async (req) => {
+      const d = esquemaStatusOs.parse(req.body);
+      const empresaId = empresaDo(req);
+      const tipo = centralValida(req.params.tipo);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraDaEmpresa(c, empresaId, req.params.id);
+        const o = (
+          await c.query(
+            'SELECT o.id, o.status, o.numero FROM canteiro_os o JOIN canteiro_frentes f ON f.id = o.frente_id WHERE o.id = $1 AND o.obra_id = $2 AND f.central = $3 FOR UPDATE',
+            [req.params.oid, obra.id, tipo],
+          )
+        ).rows[0];
+        if (!o) throw naoEncontrado('OS');
+        if (!transicaoPermitida(o.status, d.status)) throw new ErroHttp(409, `Não dá para mudar a OS ${o.numero} de ${o.status} para ${d.status}.`);
+        await c.query('UPDATE canteiro_os SET status = $2, atualizado_em = now() WHERE id = $1', [o.id, d.status]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_os', entidadeId: o.id, antes: { status: o.status }, depois: { status: d.status } });
       });
       return { ok: true };
     });
