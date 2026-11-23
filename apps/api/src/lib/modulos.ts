@@ -30,8 +30,8 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   dono: [...MODULOS],
   // Almoxarife: só o estoque da construtora (Suprimentos › Estoque).
   almoxarife: ['suprimentos'],
-  // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
-  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'incorporacao', 'laudos', 'administrativo'],
+  // O gestor tem o módulo Financeiro, com saldos e contas, como o dono e o perfil Financeiro.
+  gestor: ['engenharia', 'suprimentos', 'financeiro', 'gerencial', 'comercial', 'incorporacao', 'laudos', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
   // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
   engenheiro_obra: ['engenharia'],

@@ -27,9 +27,9 @@ after(async () => {
 
 test('P04: endereço com letra codificada não fura o módulo Financeiro', { skip: semBanco }, async () => {
   for (const via of ['bearer', 'cookie'] as const) {
-    assert.equal((await ctx.pedir('gestor', 'GET', '/api/fin/lancamentos', { via })).status, 403, `normal, ${via}`);
-    assert.equal((await ctx.pedir('gestor', 'GET', '/api/%66in/lancamentos', { via })).status, 403, `%66in, ${via}`);
-    assert.equal((await ctx.pedir('gestor', 'GET', '/api/fin/%6Cancamentos', { via })).status, 403, `%6C, ${via}`);
+    assert.equal((await ctx.pedir('engenheiro_obra', 'GET', '/api/fin/lancamentos', { via })).status, 403, `normal, ${via}`);
+    assert.equal((await ctx.pedir('engenheiro_obra', 'GET', '/api/%66in/lancamentos', { via })).status, 403, `%66in, ${via}`);
+    assert.equal((await ctx.pedir('engenheiro_obra', 'GET', '/api/fin/%6Cancamentos', { via })).status, 403, `%6C, ${via}`);
   }
   assert.equal((await ctx.pedir('financeiro', 'GET', '/api/%66in/lancamentos')).status, 200, 'quem tem o módulo continua entrando');
 });
