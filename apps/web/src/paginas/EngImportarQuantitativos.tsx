@@ -146,6 +146,8 @@ function LeituraProjeto({
   const [escolhas, setEscolhas] = useState<EscolhaProjeto[]>([]);
   const [pai, setPai] = useState('auto');
   const [feito, setFeito] = useState('');
+  // No HTML, a descrição da linha é sempre a da composição escolhida, como está na tabela.
+  const [lidoDeHtml, setLidoDeHtml] = useState(false);
 
   // As mesmas posições da linha "Adicionar linha": etapa, subetapa ou obra.
   const pais = linhas.filter((l) => POSICAO[l.nivel] < POSICAO.tarefa);
@@ -159,7 +161,9 @@ function LeituraProjeto({
     if (!valor) return atualizar(i, { marcado: false, fonte: '', refId: '' });
     const sep = valor.indexOf(':');
     const fonte = valor.slice(0, sep) as 'cand' | 'obra';
-    atualizar(i, { marcado: true, fonte, refId: valor.slice(sep + 1) });
+    const refId = valor.slice(sep + 1);
+    const descricao = fonte === 'obra' ? itens.find((it) => it.id === refId)?.descricao : lidos?.[i]?.candidatas.find((c) => c.id === refId)?.descricao;
+    atualizar(i, { marcado: true, fonte, refId, ...(lidoDeHtml && descricao ? { descricao } : {}) });
   }
 
   async function analisar() {
@@ -168,6 +172,7 @@ function LeituraProjeto({
     setFeito('');
     setAnalisando(true);
     setLidos(null);
+    setLidoDeHtml(ehHtml(arquivo));
     try {
       const base64 = await lerArquivoBase64(arquivo);
       // HTML com tabelas de quantitativo: leitura direta das tabelas (sem IA). PDF: leitura pela IA.
@@ -183,7 +188,7 @@ function LeituraProjeto({
             fonte: cand ? 'cand' : '',
             refId: cand?.id ?? '',
             quantidade: x.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 4 }),
-            descricao: x.descricao,
+            descricao: ehHtml(arquivo) && cand ? cand.descricao : x.descricao,
           };
         }),
       );
@@ -228,7 +233,7 @@ function LeituraProjeto({
           }
         }
         if (!item) throw new Error('Não consegui incluir uma composição na obra. Atualize a lista de composições e tente de novo.');
-        const corpo: Record<string, unknown> = { nivel: 'tarefa', descricao: (descricao || item.descricao).slice(0, 200), itemId: item.id, quantidade };
+        const corpo: Record<string, unknown> = { nivel: 'tarefa', descricao: (lidoDeHtml ? item.descricao : descricao || item.descricao).slice(0, 200), itemId: item.id, quantidade };
         if (pai === 'raiz') corpo.paiId = null;
         else if (pai !== 'auto') corpo.paiId = pai;
         await api(`/eng/obras/${obra.id}/planilha`, { corpo });
@@ -323,7 +328,7 @@ function LeituraProjeto({
                       </td>
                       <td>{ROTULO_SERVICO[x.servico] ?? 'Outro'}</td>
                       <td>
-                        <input aria-label="Descrição da linha" value={e?.descricao ?? ''} maxLength={200} onChange={(ev) => atualizar(i, { descricao: ev.target.value })} style={{ width: '100%' }} />
+                        <input aria-label="Descrição da linha" value={e?.descricao ?? ''} maxLength={200} readOnly={lidoDeHtml} title={lidoDeHtml ? 'No HTML, a descrição vem da composição escolhida' : undefined} onChange={(ev) => atualizar(i, { descricao: ev.target.value })} style={{ width: '100%' }} />
                         {x.origem && <div className="ajuda small">{x.origem}</div>}
                       </td>
                       <td className="num">
