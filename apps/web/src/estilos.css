@@ -892,6 +892,10 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .kanban-card.prioridade-baixa { border-left-color: #2e7d32; }
 .kanban-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .kanban-acoes select { padding: 4px 6px; font-size: 13px; }
+.kanban-atrasada { color: #c62828; font-weight: 600; }
+.kanban-os-form { display: flex; flex-direction: column; gap: 6px; font-size: 13px; border-top: 1px dashed var(--border); padding-top: 6px; }
+.kanban-os-form label { display: flex; flex-direction: column; gap: 2px; font-weight: 600; }
+.kanban-os-form input { padding: 4px 6px; font-size: 13px; font-weight: 400; }
 @media (max-width: 899px) { .kanban { grid-template-columns: repeat(4, 260px); } }
 
 /* RDO · fotos */

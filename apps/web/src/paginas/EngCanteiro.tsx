@@ -429,8 +429,25 @@ export function EngCanteiroBoletimImprimir() {
 
 // ----- Kanban das centrais: um quadro por central, abaixo do organograma. Cada card é uma frente de serviço da central;
 // a cor é a prioridade, a posição é a ordem do fluxo, e a coluna segue o status da OS da frente.
-type OsCard = { id: string; numero: number; status: string };
-type FrenteCard = { id: string; eapNoId: string; codigo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa'; ordem: number; coluna: string; os: OsCard | null };
+type OsCard = { id: string; numero: number; status: string; equipe: string; quantidade: number | null; unidade: string; prazo: string | null; atrasada: boolean };
+type FrenteCard = {
+  id: string; eapNoId: string; codigo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa'; ordem: number; coluna: string; os: OsCard | null;
+  /** Sugestão para a OS: equipe do serviço e quantidade do orçamento. */
+  sugestao: { equipe: string; quantidade: number | null; unidade: string };
+};
+type FormOsDados = { frenteId: string; osId?: string; equipe: string; quantidade: string; unidade: string; prazo: string };
+const quantidadeTexto = (n: number | null) => (n === null ? '' : n.toLocaleString('pt-BR', { maximumFractionDigits: 4 }));
+/** "1.234,5" ou "1234.5" viram número; vazio vira null. */
+function lerQuantidade(texto: string): number | null | undefined {
+  const t = texto.trim();
+  if (!t) return null;
+  const n = Number(t.includes(',') ? t.replace(/\./g, '').replace(',', '.') : t);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+const detalhesOs = (os: OsCard) =>
+  [os.equipe && `Equipe: ${os.equipe}`, os.quantidade !== null && `${os.quantidade.toLocaleString('pt-BR')} ${os.unidade}`.trim(), os.prazo && `Prazo ${formatarData(os.prazo)}`]
+    .filter(Boolean)
+    .join(' · ');
 type Kanban = { colunas: { id: string; nome: string; frentes: FrenteCard[] }[]; total: number };
 
 const NOMES_PRIORIDADE: Record<FrenteCard['prioridade'], string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
@@ -442,6 +459,30 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
   const [erro, setErro] = useState('');
   const [ocupado, setOcupado] = useState(false);
   const base = `/eng/obras/${obraId}/canteiro/centrais/${tipo}`;
+  const [formOs, setFormOs] = useState<FormOsDados | null>(null);
+
+  /** Abre o formulário da OS no card: nova (com a sugestão) ou editando a OS aberta. */
+  function abrirFormOs(f: FrenteCard, os?: OsCard) {
+    setFormOs(
+      os
+        ? { frenteId: f.id, osId: os.id, equipe: os.equipe, quantidade: quantidadeTexto(os.quantidade), unidade: os.unidade, prazo: os.prazo ?? '' }
+        : { frenteId: f.id, equipe: f.sugestao.equipe, quantidade: quantidadeTexto(f.sugestao.quantidade), unidade: f.sugestao.unidade, prazo: '' },
+    );
+  }
+
+  function salvarOs(e: FormEvent) {
+    e.preventDefault();
+    if (!formOs) return;
+    const quantidade = lerQuantidade(formOs.quantidade);
+    if (quantidade === undefined) return setErro('Informe a quantidade maior que zero, ou deixe em branco.');
+    const corpo = { equipe: formOs.equipe.trim(), quantidade, unidade: formOs.unidade.trim(), prazo: formOs.prazo || null };
+    const editando = !!formOs.osId;
+    const url = editando ? `${base}/os/${formOs.osId}` : `${base}/frentes/${formOs.frenteId}/os`;
+    executar(async () => {
+      await api(url, { metodo: editando ? 'PATCH' : 'POST', corpo });
+      setFormOs(null);
+    });
+  }
 
   const carregar = async () => {
     try {
@@ -490,7 +531,7 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
       <h2 style={{ marginTop: 0 }}>Kanban das centrais</h2>
       <div className="abas" role="tablist" aria-label="Centrais">
         {centrais.map((c) => (
-          <button key={c.tipo} type="button" role="tab" aria-selected={c.tipo === tipo} className={`aba ${c.tipo === tipo ? 'ativa' : ''}`} onClick={() => setTipo(c.tipo)}>
+          <button key={c.tipo} type="button" role="tab" aria-selected={c.tipo === tipo} className={`aba ${c.tipo === tipo ? 'ativa' : ''}`} onClick={() => { setTipo(c.tipo); setFormOs(null); }}>
             {c.nome}
           </button>
         ))}
@@ -514,6 +555,34 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
                     Prioridade {NOMES_PRIORIDADE[f.prioridade].toLowerCase()}
                     {f.os && f.os.status !== 'cancelada' ? ` · OS ${f.os.numero} · ${NOMES_STATUS_OS[f.os.status]}` : ''}
                   </div>
+                  {f.os && f.os.status !== 'cancelada' && detalhesOs(f.os) && <div className="small">{detalhesOs(f.os)}</div>}
+                  {f.os?.atrasada && <div className="small kanban-atrasada">Prazo vencido</div>}
+                  {formOs?.frenteId === f.id && (
+                    <form className="kanban-os-form" onSubmit={salvarOs} aria-label={formOs.osId ? 'Editar OS' : 'Gerar OS'}>
+                      <label>
+                        Equipe
+                        <input value={formOs.equipe} maxLength={300} onChange={(e) => setFormOs({ ...formOs, equipe: e.target.value })} placeholder="Ex.: João, Pedro" />
+                      </label>
+                      <div style={{ display: 'flex', gap: 6 }}>
+                        <label style={{ flex: 1 }}>
+                          Quantidade
+                          <input inputMode="decimal" value={formOs.quantidade} onChange={(e) => setFormOs({ ...formOs, quantidade: e.target.value })} />
+                        </label>
+                        <label style={{ width: 80 }}>
+                          Unidade
+                          <input value={formOs.unidade} maxLength={20} onChange={(e) => setFormOs({ ...formOs, unidade: e.target.value })} />
+                        </label>
+                      </div>
+                      <label>
+                        Prazo
+                        <input type="date" value={formOs.prazo} onChange={(e) => setFormOs({ ...formOs, prazo: e.target.value })} />
+                      </label>
+                      <div className="kanban-acoes">
+                        <button className="btn btn-primario" type="submit" disabled={ocupado}>{formOs.osId ? 'Salvar OS' : 'Gerar OS'}</button>
+                        <button type="button" className="btn btn-link" onClick={() => setFormOs(null)}>Cancelar</button>
+                      </div>
+                    </form>
+                  )}
                   {podeEditar && (
                     <div className="kanban-acoes">
                       <select aria-label={`Prioridade de ${f.codigo}`} value={f.prioridade} disabled={ocupado} onChange={(e) => executar(() => api(`${base}/frentes/${f.id}`, { metodo: 'PATCH', corpo: { prioridade: e.target.value } }))}>
@@ -524,13 +593,16 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
                       <button type="button" className="btn btn-link" title="Subir" aria-label={`Subir ${f.codigo}`} disabled={ocupado || i === 0} onClick={() => mover(f, -1)}>↑</button>
                       <button type="button" className="btn btn-link" title="Descer" aria-label={`Descer ${f.codigo}`} disabled={ocupado || i === col.frentes.length - 1} onClick={() => mover(f, 1)}>↓</button>
                       {col.id === 'planejada' && (
-                        <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/frentes/${f.id}/os`, { metodo: 'POST' }))}>Gerar OS</button>
+                        <button type="button" className="btn btn-secundario" disabled={ocupado || formOs?.frenteId === f.id} onClick={() => abrirFormOs(f)}>Gerar OS</button>
                       )}
                       {col.id === 'liberada' && f.os && (
                         <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'em_execucao' } }))}>Iniciar</button>
                       )}
                       {col.id === 'em_execucao' && f.os && (
                         <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'concluida' } }))}>Concluir</button>
+                      )}
+                      {(col.id === 'liberada' || col.id === 'em_execucao') && f.os && formOs?.frenteId !== f.id && (
+                        <button type="button" className="btn btn-link" disabled={ocupado} onClick={() => abrirFormOs(f, f.os!)}>Editar OS</button>
                       )}
                       {(col.id === 'liberada' || col.id === 'em_execucao') && f.os && (
                         <button

@@ -99,3 +99,40 @@ test('kanban: central inexistente dá 404 e sem o recurso de centrais o kanban s
   assert.equal((await ctx.pedir('dono', 'GET', `${base}/kanban`)).status, 403);
   await ctx.pedir('admin_sistema', 'PUT', `/api/admin/empresas/${ctx.empresas.a}/contrato`, { corpo: { pacote: 'completo', recursos: ['canteiro_horizontal', 'centrais'], limiteObras: 10, limiteUsuarios: 8 } });
 });
+
+test('kanban: OS atrasada é a aberta com prazo vencido', async () => {
+  const { osAtrasada } = await import('../src/lib/canteiro-kanban.ts');
+  assert.equal(osAtrasada({ status: 'liberada', prazo: '2026-11-20' }, '2026-11-21'), true);
+  assert.equal(osAtrasada({ status: 'em_execucao', prazo: '2026-11-21' }, '2026-11-21'), false, 'no dia do prazo ainda não atrasou');
+  assert.equal(osAtrasada({ status: 'concluida', prazo: '2026-11-01' }, '2026-11-21'), false);
+  assert.equal(osAtrasada({ status: 'liberada', prazo: null }, '2026-11-21'), false);
+});
+
+test('kanban: OS com equipe, quantidade e prazo; editável só enquanto aberta', { skip: semBanco }, async () => {
+  const { base } = await obraComCentral();
+  const frente = (await ctx.pedir('dono', 'GET', `${base}/kanban`)).corpo.colunas[0].frentes[0] as { id: string; sugestao: unknown };
+  assert.ok(frente.sugestao, 'o card traz a sugestão para a OS');
+  const gerar = await ctx.pedir('dono', 'POST', `${base}/frentes/${frente.id}/os`, { corpo: { equipe: 'João e Pedro', quantidade: 120.5, unidade: 'm²', prazo: '2020-01-10' } });
+  assert.equal(gerar.status, 201, JSON.stringify(gerar.corpo));
+  const os = gerar.corpo.os as { id: string };
+  const lerOs = async () =>
+    ((await ctx.pedir('dono', 'GET', `${base}/kanban`)).corpo.colunas as { frentes: { id: string; os: Record<string, unknown> | null }[] }[]).flatMap((c) => c.frentes).find((f) => f.id === frente.id)!.os!;
+  const lida = await lerOs();
+  assert.equal(lida.equipe, 'João e Pedro');
+  assert.equal(lida.quantidade, 120.5);
+  assert.equal(lida.unidade, 'm²');
+  assert.equal(lida.prazo, '2020-01-10');
+  assert.equal(lida.atrasada, true, 'prazo no passado com OS aberta');
+
+  assert.equal((await ctx.pedir('dono', 'PATCH', `${base}/os/${os.id}`, { corpo: { prazo: '2099-12-31', quantidade: null } })).status, 200);
+  const editada = await lerOs();
+  assert.equal(editada.prazo, '2099-12-31');
+  assert.equal(editada.quantidade, null);
+  assert.equal(editada.atrasada, false);
+  assert.equal(editada.equipe, 'João e Pedro', 'o que não foi enviado não muda');
+  assert.equal((await ctx.pedir('dono', 'PATCH', `${base}/os/${os.id}`, { corpo: { quantidade: 0 } })).status, 400);
+
+  await ctx.pedir('dono', 'PATCH', `${base}/os/${os.id}`, { corpo: { status: 'em_execucao' } });
+  await ctx.pedir('dono', 'PATCH', `${base}/os/${os.id}`, { corpo: { status: 'concluida' } });
+  assert.equal((await ctx.pedir('dono', 'PATCH', `${base}/os/${os.id}`, { corpo: { equipe: 'Outra' } })).status, 409, 'OS concluída não muda');
+});

@@ -23,7 +23,7 @@ import { conciliarLinha, type LinhaPlanilha, type RefComposicao } from '../lib/c
 import { curvaS, percentualDeQuantidade, previstoXExecutado, somarDias, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import { CENTRAIS, NOMES_CENTRAL, PERIODICIDADE_PADRAO, montarItensBoletim, proximoPeriodo, type TipoCentral } from '../lib/canteiro.ts';
 import { recursoDaRotaCanteiro, recursosEfetivos, NOMES_RECURSO } from '../lib/recursos.ts';
-import { COLUNAS_KANBAN, NOMES_COLUNA, PRIORIDADES, STATUS_OS, colunaDoCard, transicaoPermitida } from '../lib/canteiro-kanban.ts';
+import { COLUNAS_KANBAN, NOMES_COLUNA, PRIORIDADES, STATUS_OS, colunaDoCard, osAberta, osAtrasada, transicaoPermitida } from '../lib/canteiro-kanban.ts';
 import { ETAPAS_CICLO, EQUIPAMENTOS_VERTICAIS, conflitoAgenda, resumirCiclo, totalConcreto, type EtapaCiclo } from '../lib/canteiro-vertical.ts';
 import {
   abcInsumos,
@@ -1909,7 +1909,14 @@ export function rotasEngenharia(banco: Banco) {
       ordem: z.number().int().min(0).max(9999).optional(),
     });
     const esquemaOrdemFrentes = z.object({ frentes: z.array(z.string().uuid()).max(500) });
-    const esquemaStatusOs = z.object({ status: z.enum(STATUS_OS, { errorMap: () => ({ message: 'Status de OS inválido.' }) }) });
+    const esquemaDadosOs = {
+      equipe: z.string().trim().max(300).optional(),
+      quantidade: z.number().positive('A quantidade precisa ser maior que zero.').max(1e9).nullable().optional(),
+      unidade: z.string().trim().max(20).optional(),
+      prazo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Informe o prazo no formato AAAA-MM-DD.').nullable().optional(),
+    };
+    const esquemaNovaOs = z.object(esquemaDadosOs);
+    const esquemaStatusOs = z.object({ status: z.enum(STATUS_OS, { errorMap: () => ({ message: 'Status de OS inválido.' }) }).optional(), ...esquemaDadosOs });
 
     /** Kanban da central: colunas com as frentes na ordem do planejamento. Cada frente mostra a OS mais recente. */
     app.get<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo/kanban', async (req) => {
@@ -1918,7 +1925,13 @@ export function rotasEngenharia(banco: Banco) {
       await emTransacao(banco, (c) => sincronizarFrentes(c, obra.id, tipo));
       const r = await banco.query(
         `SELECT f.id, f.eap_no_id, f.prioridade, f.ordem, n.codigo, n.descricao,
-                (SELECT json_build_object('id', o.id, 'numero', o.numero, 'status', o.status) FROM canteiro_os o WHERE o.frente_id = f.id ORDER BY o.criado_em DESC LIMIT 1) AS os
+                (SELECT json_build_object('id', o.id, 'numero', o.numero, 'status', o.status, 'equipe', o.equipe, 'quantidade', o.quantidade, 'unidade', o.unidade,
+                                          'prazo', to_char(o.prazo, 'YYYY-MM-DD'))
+                   FROM canteiro_os o WHERE o.frente_id = f.id ORDER BY o.criado_em DESC LIMIT 1) AS os,
+                -- Sugestões para a OS: quantidade do orçamento (só com uma unidade) e a equipe do serviço.
+                (SELECT CASE WHEN count(DISTINCT it.unidade) = 1 THEN json_build_object('quantidade', sum(oi.quantidade), 'unidade', min(it.unidade)) END
+                   FROM orcamento_itens oi JOIN obra_itens it ON it.id = oi.obra_item_id WHERE oi.eap_no_id = f.eap_no_id) AS previsto,
+                (SELECT string_agg(m.nome, ', ' ORDER BY m.nome) FROM equipes_servicos es JOIN motoristas m ON m.id = es.colaborador_id WHERE es.eap_no_id = f.eap_no_id) AS equipe_prevista
            FROM canteiro_frentes f
            JOIN canteiro_servicos cs ON cs.eap_no_id = f.eap_no_id AND cs.tipo = f.central
            JOIN eap_nos n ON n.id = f.eap_no_id
@@ -1934,7 +1947,23 @@ export function rotasEngenharia(banco: Banco) {
         prioridade: f.prioridade as string,
         ordem: Number(f.ordem),
         coluna: colunaDoCard(f.os),
-        os: f.os ? { id: f.os.id as string, numero: Number(f.os.numero), status: f.os.status as string } : null,
+        os: f.os
+          ? {
+              id: f.os.id as string,
+              numero: Number(f.os.numero),
+              status: f.os.status as string,
+              equipe: (f.os.equipe as string) ?? '',
+              quantidade: f.os.quantidade === null ? null : Number(f.os.quantidade),
+              unidade: (f.os.unidade as string) ?? '',
+              prazo: (f.os.prazo as string | null) ?? null,
+              atrasada: osAtrasada({ status: f.os.status, prazo: f.os.prazo ?? null }, hoje()),
+            }
+          : null,
+        sugestao: {
+          equipe: (f.equipe_prevista as string | null) ?? '',
+          quantidade: f.previsto ? Number(f.previsto.quantidade) : null,
+          unidade: (f.previsto?.unidade as string | undefined) ?? '',
+        },
       }));
       return {
         colunas: COLUNAS_KANBAN.map((col) => ({ id: col, nome: NOMES_COLUNA[col], frentes: frentes.filter((x) => x.coluna === col) })),
@@ -1974,7 +2003,8 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Libera a frente: gera a OS. A frente só tem uma OS em aberto por vez. */
-    app.post<{ Params: { id: string; tipo: string; fid: string } }>('/obras/:id/canteiro/centrais/:tipo/frentes/:fid/os', async (req, reply) => {
+    app.post<{ Params: { id: string; tipo: string; fid: string } }>('/obras/:id/canteiro/centrais/:tipo/frentes/:fid/os', { schema: { body: esquemaNovaOs } }, async (req, reply) => {
+      const d = esquemaNovaOs.parse(req.body ?? {});
       const empresaId = empresaDo(req);
       const tipo = centralValida(req.params.tipo);
       const os = await emTransacao(banco, async (c) => {
@@ -1985,11 +2015,12 @@ export function rotasEngenharia(banco: Banco) {
           throw new ErroHttp(409, 'Esta frente já tem uma OS em aberto.');
         const nova = (
           await c.query(
-            'INSERT INTO canteiro_os (obra_id, frente_id, numero, criado_por) VALUES ($1, $2, (SELECT coalesce(max(numero), 0) + 1 FROM canteiro_os WHERE obra_id = $1), $3) RETURNING id, numero',
-            [obra.id, f.id, req.usuario!.id],
+            `INSERT INTO canteiro_os (obra_id, frente_id, numero, criado_por, equipe, quantidade, unidade, prazo)
+             VALUES ($1, $2, (SELECT coalesce(max(numero), 0) + 1 FROM canteiro_os WHERE obra_id = $1), $3, $4, $5, $6, $7) RETURNING id, numero`,
+            [obra.id, f.id, req.usuario!.id, d.equipe ?? '', d.quantidade ?? null, d.unidade ?? '', d.prazo ?? null],
           )
         ).rows[0];
-        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_os', entidadeId: nova.id, depois: { frente: f.id, numero: nova.numero } });
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_os', entidadeId: nova.id, depois: { frente: f.id, numero: nova.numero, ...d } });
         return { id: nova.id as string, numero: Number(nova.numero), status: 'liberada' };
       });
       reply.code(201);
@@ -2010,9 +2041,16 @@ export function rotasEngenharia(banco: Banco) {
           )
         ).rows[0];
         if (!o) throw naoEncontrado('OS');
-        if (!transicaoPermitida(o.status, d.status)) throw new ErroHttp(409, `Não dá para mudar a OS ${o.numero} de ${o.status} para ${d.status}.`);
-        await c.query('UPDATE canteiro_os SET status = $2, atualizado_em = now() WHERE id = $1', [o.id, d.status]);
-        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_os', entidadeId: o.id, antes: { status: o.status }, depois: { status: d.status } });
+        if (d.status && !transicaoPermitida(o.status, d.status)) throw new ErroHttp(409, `Não dá para mudar a OS ${o.numero} de ${o.status} para ${d.status}.`);
+        const mudaDados = d.equipe !== undefined || d.quantidade !== undefined || d.unidade !== undefined || d.prazo !== undefined;
+        if (mudaDados && !osAberta(o.status)) throw new ErroHttp(409, `A OS ${o.numero} já foi encerrada: equipe, quantidade e prazo não mudam mais.`);
+        await c.query(
+          `UPDATE canteiro_os SET status = coalesce($2, status), equipe = coalesce($3, equipe), unidade = coalesce($4, unidade),
+                  quantidade = CASE WHEN $5 THEN $6::numeric ELSE quantidade END, prazo = CASE WHEN $7 THEN $8::date ELSE prazo END, atualizado_em = now()
+            WHERE id = $1`,
+          [o.id, d.status ?? null, d.equipe ?? null, d.unidade ?? null, d.quantidade !== undefined, d.quantidade ?? null, d.prazo !== undefined, d.prazo ?? null],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_os', entidadeId: o.id, antes: { status: o.status }, depois: d });
       });
       return { ok: true };
     });
