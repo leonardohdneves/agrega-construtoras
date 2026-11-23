@@ -1,6 +1,7 @@
 // Formatos de dados devolvidos pela API (nomes em camelCase).
 import { contratoComBase, listaDoUsuario, modulosEfetivos } from './lib/modulos.ts';
 import { NOMES_PACOTE } from './lib/pacotes.ts';
+import { recursosEfetivos } from './lib/recursos.ts';
 
 /** `contratados`: módulos do contrato da empresa do usuário (sem ele, todos valem). */
 export function usuarioPublico(r: Record<string, any>, contratados?: readonly string[] | null) {
@@ -50,6 +51,7 @@ export function empresaPublica(r: Record<string, any>) {
       pacote: r.contrato_pacote ?? 'completo',
       nomePacote: NOMES_PACOTE[(r.contrato_pacote ?? 'completo') as keyof typeof NOMES_PACOTE] ?? 'Completo',
       modulos: contratoComBase(r.modulos_contratados),
+      recursos: recursosEfetivos(r.recursos_contratados),
       limiteObras: r.limite_obras ?? null,
       limiteUsuarios: r.limite_usuarios ?? null,
       testeInicio: dataCurta(r.teste_inicio),

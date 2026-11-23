@@ -58,8 +58,9 @@ export async function prepararAppTeste(esquema: string): Promise<ContextoTeste> 
   const usuarios = {} as Record<Letra, Record<PerfilEmpresa, UsuarioTeste>>;
   for (const letra of ['a', 'b'] as const) {
     const empresaId = await um(
-      `INSERT INTO empresas (razao_social, cnpj, contrato_pacote, modulos_contratados) VALUES ($1, $2, 'completo', $3) RETURNING id`,
-      [`Construtora ${letra.toUpperCase()}`, CNPJ[letra], [...MODULOS]],
+      // Recursos do canteiro como nas empresas que já existiam: canteiro e centrais (o vertical os testes contratam).
+      `INSERT INTO empresas (razao_social, cnpj, contrato_pacote, modulos_contratados, recursos_contratados) VALUES ($1, $2, 'completo', $3, $4) RETURNING id`,
+      [`Construtora ${letra.toUpperCase()}`, CNPJ[letra], [...MODULOS], ['canteiro_horizontal', 'centrais']],
     );
     empresas[letra] = empresaId;
     usuarios[letra] = {} as Record<PerfilEmpresa, UsuarioTeste>;

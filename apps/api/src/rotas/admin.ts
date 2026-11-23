@@ -218,12 +218,13 @@ export function rotasAdmin(banco: Banco) {
             testeFim = d.testeFim;
           }
         }
+        const recursos: string[] = d.recursos ?? antes.recursos_contratados ?? [];
         const depois = (
           await c.query(
             `UPDATE empresas SET contrato_pacote = $2, modulos_contratados = $3, limite_obras = $4, limite_usuarios = $5,
-                    teste_inicio = $6, teste_fim = $7, atualizado_em = now()
+                    teste_inicio = $6, teste_fim = $7, recursos_contratados = $8, atualizado_em = now()
               WHERE id = $1 RETURNING *, ${SQL_EM_TESTE} AS em_teste`,
-            [antes.id, d.pacote, contratoComBase(modulos), d.limiteObras, d.limiteUsuarios, testeInicio, testeFim],
+            [antes.id, d.pacote, contratoComBase(modulos), d.limiteObras, d.limiteUsuarios, testeInicio, testeFim, recursos],
           )
         ).rows[0];
         await auditar(c, { empresaId: antes.id, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas', entidadeId: antes.id, antes: { contrato: antes.modulos_contratados, limites: [antes.limite_obras, antes.limite_usuarios], teste: [antes.teste_inicio_txt ?? null, antes.teste_fim_txt ?? null] }, depois: { pacote: d.pacote, modulos: contratoComBase(modulos), limiteObras: d.limiteObras, limiteUsuarios: d.limiteUsuarios, teste: [testeInicio, testeFim] } });

@@ -19,7 +19,7 @@ type CentralResumo = {
   proximoPeriodo: Periodo;
 };
 type Folha = { eapNoId: string; codigo: string; descricao: string; central: string | null };
-type CanteiroObra = { obra: { id: string; codigo: string; nome: string; inicio: string | null }; centrais: CentralResumo[]; folhas: Folha[] };
+type CanteiroObra = { obra: { id: string; codigo: string; nome: string; inicio: string | null; tipoCanteiro?: 'horizontal' | 'vertical' }; centrais: CentralResumo[]; folhas: Folha[] };
 type BoletimResumo = { id: string; tipo: string; numero: number; inicio: string; fim: string; criadoEm: string };
 type CentralDetalhe = { tipo: string; nome: string; periodicidadeDias: number; servicos: Folha[]; boletins: BoletimResumo[] };
 type ItemBoletim = { eapNoId: string; codigo: string; descricao: string; previstoPct: number; realizadoPct: number; diferencaPct: number };
@@ -68,8 +68,10 @@ export function EngCanteiroObras() {
 /** Fluxograma da obra: Engenharia ligada às quatro centrais. */
 export function EngCanteiroObra() {
   const { obraId = '' } = useParams();
+  const { empresa } = useSessao();
   const [dados, setDados] = useState<CanteiroObra | null>(null);
   const [erro, setErro] = useState('');
+  const recursos = empresa?.contrato?.recursos ?? [];
   useEffect(() => {
     setDados(null);
     setErro('');
@@ -78,33 +80,48 @@ export function EngCanteiroObra() {
 
   if (erro) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
   if (!dados) return <p className="muted">Carregando…</p>;
+  const temCentrais = recursos.includes('centrais');
+  const temVertical = recursos.includes('canteiro_vertical') && dados.obra.tipoCanteiro === 'vertical';
   return (
     <>
       <div className="cabecalho">
         <div className="titulo">
           <h1>Canteiro de obra</h1>
-          <span className="muted">{dados.obra.codigo} · {dados.obra.nome}</span>
+          <span className="muted">{dados.obra.codigo} · {dados.obra.nome} · Canteiro {dados.obra.tipoCanteiro === 'vertical' ? 'vertical' : 'horizontal'}</span>
         </div>
         <div className="acoes nao-imprimir">
           <Link className="btn" to="/eng/canteiro">Todas as obras</Link>
         </div>
       </div>
-      <div className="card canteiro-fluxo">
-        <div className="canteiro-no canteiro-raiz">
-          <strong>Engenharia</strong>
-          <small>Planeja a produção de cada central</small>
+      {temVertical && (
+        <div className="card">
+          <h2 style={{ marginTop: 0 }}>Obra vertical</h2>
+          <p className="muted">Agenda de guincho e grua por pavimento, ciclo de cada laje e concreto lançado por andar.</p>
+          <Link className="btn btn-primario" to={`/eng/canteiro/${obraId}/vertical`}>Abrir o canteiro vertical</Link>
         </div>
-        <div className="canteiro-ramos">
-          {dados.centrais.map((c) => (
-            <Link key={c.tipo} to={`/eng/canteiro/${obraId}/${c.tipo}`} className="canteiro-no canteiro-central">
-              <strong>{c.nome}</strong>
-              <span className="muted">{c.servicos} serviço(s) · boletim a cada {c.periodicidadeDias} dia(s)</span>
-              <span className="muted">{c.ultimoBoletim ? `Último boletim: nº ${c.ultimoBoletim.numero}` : 'Sem boletim ainda'}</span>
-            </Link>
-          ))}
-        </div>
-      </div>
-      <p className="muted">Clique em uma central para ver os serviços, a periodicidade e os boletins.</p>
+      )}
+      {temCentrais ? (
+        <>
+          <div className="card canteiro-fluxo">
+            <div className="canteiro-no canteiro-raiz">
+              <strong>Engenharia</strong>
+              <small>Planeja a produção de cada central</small>
+            </div>
+            <div className="canteiro-ramos">
+              {dados.centrais.map((c) => (
+                <Link key={c.tipo} to={`/eng/canteiro/${obraId}/${c.tipo}`} className="canteiro-no canteiro-central">
+                  <strong>{c.nome}</strong>
+                  <span className="muted">{c.servicos} serviço(s) · boletim a cada {c.periodicidadeDias} dia(s)</span>
+                  <span className="muted">{c.ultimoBoletim ? `Último boletim: nº ${c.ultimoBoletim.numero}` : 'Sem boletim ainda'}</span>
+                </Link>
+              ))}
+            </div>
+          </div>
+          <p className="muted">Clique em uma central para ver os serviços, a periodicidade e os boletins.</p>
+        </>
+      ) : (
+        <p className="muted">O contrato desta empresa não inclui as centrais de produção (argamassa, carpintaria, armação e almoxarifado). Elas são um recurso à parte.</p>
+      )}
     </>
   );
 }

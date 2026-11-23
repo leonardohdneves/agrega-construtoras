@@ -11,7 +11,7 @@ import { SeletorBusca } from '../componentes/SeletorBusca';
 import type { Nivel, No } from './arvorePlanejamento';
 export type { Nivel, No };
 export type Obra = {
-  id: string; tipo?: 'execucao' | 'acompanhamento'; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null; referenciaEntrega?: string | null;
+  id: string; tipo?: 'execucao' | 'acompanhamento'; tipoCanteiro?: 'horizontal' | 'vertical'; codigo: string; nome: string; endereco: string | null; cidade: string | null; uf: string | null; responsavel: string | null; contatoObraNome?: string | null; contatoObraTelefone?: string | null; referenciaEntrega?: string | null;
   status: string; dataInicio: string | null; dataPrevisao: string | null; nivelApropriacao: Nivel; bdiPercentual: number; horasDia?: number;
   bdiModo: 'calculado' | 'informado'; bdiParametros: Partial<Record<CampoBdi, number>> | null;
   centroCustoId: string; centroCustoNome: string | null; itens?: number; linhasOrcamento?: number; total?: number;
@@ -135,12 +135,13 @@ export function bdiCalculadoPrevia(p: Partial<Record<CampoBdi, number>>): number
 
 const paraTexto = (n: number | undefined) => String(n ?? 0).replace('.', ',');
 
-type DadosForm = { tipo: 'execucao' | 'acompanhamento'; eapPadrao: boolean; codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; referenciaEntrega: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
+type DadosForm = { tipo: 'execucao' | 'acompanhamento'; tipoCanteiro: 'horizontal' | 'vertical'; eapPadrao: boolean; codigo: string; nome: string; endereco: string; cidade: string; uf: string; responsavel: string; contatoObraNome: string; contatoObraTelefone: string; referenciaEntrega: string; empresaGrupoId: string; status: string; dataInicio: string; dataPrevisao: string; nivelApropriacao: Nivel; horasDia: string; bdiModo: 'calculado' | 'informado'; bdi: string; params: Record<CampoBdi, string> };
 
 function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar: (o: Obra) => void; aoCancelar?: () => void }) {
   const editando = !!inicial;
   const [d, setD] = useState<DadosForm>({
     tipo: inicial?.tipo ?? 'execucao',
+    tipoCanteiro: inicial?.tipoCanteiro ?? 'horizontal',
     eapPadrao: false,
     codigo: inicial?.codigo ?? '',
     nome: inicial?.nome ?? '',
@@ -184,6 +185,7 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
     const corpo = {
       ...(editando ? {} : { codigo: d.codigo.trim() || undefined, tipo: d.tipo, eapPadrao: d.tipo === 'execucao' && d.eapPadrao }),
       nome: d.nome.trim(),
+      tipoCanteiro: d.tipoCanteiro,
       endereco: d.endereco.trim() || null,
       cidade: d.cidade.trim() || null,
       uf: d.uf.trim().toUpperCase() || null,
@@ -222,6 +224,15 @@ function FormObra({ inicial, aoSalvar, aoCancelar }: { inicial?: Obra; aoSalvar:
             <select id="ob-tipo" value={d.tipo} onChange={(e) => setD({ ...d, tipo: e.target.value as DadosForm['tipo'] })}>
               <option value="execucao">Execução (orçamento, EAP, planejamento, estoque e diário)</option>
               <option value="acompanhamento">Acompanhamento por visitas (fotos, anotações e relatório)</option>
+            </select>
+          </div>
+        )}
+        {d.tipo === 'execucao' && (
+          <div className="campo" style={{ gridColumn: 'span 2' }}>
+            <label htmlFor="ob-canteiro">Canteiro</label>
+            <select id="ob-canteiro" value={d.tipoCanteiro} onChange={(e) => setD({ ...d, tipoCanteiro: e.target.value as DadosForm['tipoCanteiro'] })}>
+              <option value="horizontal">Horizontal (casas e condomínios)</option>
+              <option value="vertical">Vertical (torres: guincho, grua, ciclo de laje e concreto por andar)</option>
             </select>
           </div>
         )}

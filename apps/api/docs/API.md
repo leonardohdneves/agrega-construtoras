@@ -14,11 +14,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 401 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 411 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
-107 rotas.
+117 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -37,7 +37,7 @@ Total: 401 rotas, 10 públicas, 4 do legado da concreteira.
 | `DELETE /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista |  |  |
 | `POST /api/eng/tabelas/{id}/itens/{itemId}/preco-ultima-compra` |  | Dono, Gestor, Orçamentista |  |  |
 | `GET /api/eng/obras` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife |  |  |
-| `POST /api/eng/obras` |  | Dono, Gestor, Orçamentista |  | `codigo`, `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipo`, `eapPadrao`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
+| `POST /api/eng/obras` |  | Dono, Gestor, Orçamentista |  | `codigo`, `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipo`, `tipoCanteiro`, `eapPadrao`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
 | `GET /api/eng/panorama` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/insumo-grupos` |  | Dono, Gestor, Orçamentista |  |  |
 | `POST /api/eng/insumo-grupos` |  | Dono, Gestor, Orçamentista |  | `nome`*, `ordem` |
@@ -53,7 +53,7 @@ Total: 401 rotas, 10 públicas, 4 do legado da concreteira.
 | `PUT /api/eng/obras/{id}/servicos/grupo` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `itemIds`*, `grupoId`* |
 | `POST /api/eng/obras/{id}/adotar-datas-planejamento` | Adota as datas do planejamento: início = primeira atividade; previsão = fim da última atividade. | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `GET /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
-| `PUT /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista |  | `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
+| `PUT /api/eng/obras/{id}` |  | Dono, Gestor, Orçamentista |  | `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipoCanteiro`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |
 | `GET /api/eng/obras/{id}/itens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife | `tipo`, `busca` |  |
 | `GET /api/eng/obras/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PATCH /api/eng/obras/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `unidade`, `preco`, `unidadesCompra` |
@@ -63,6 +63,16 @@ Total: 401 rotas, 10 públicas, 4 do legado da concreteira.
 | `PUT /api/eng/obras/{id}/itens/{itemId}/composicao` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `componentes`* |
 | `POST /api/eng/obras/{id}/servicos/salvar` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `modo`*, `itemId`*, `tabelaId`*, `codigo`, `descricao`*, `unidade`*, `componentes`* |
 | `GET /api/eng/obras/{id}/eap` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife |  |  |
+| `GET /api/eng/obras/{id}/canteiro/vertical/pavimentos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
+| `POST /api/eng/obras/{id}/canteiro/vertical/pavimentos` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `nome`*, `ordem` |
+| `DELETE /api/eng/obras/{id}/canteiro/vertical/pavimentos/{pid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
+| `PUT /api/eng/obras/{id}/canteiro/vertical/pavimentos/{pid}/ciclo` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `etapas`* |
+| `GET /api/eng/obras/{id}/canteiro/vertical/agenda` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra | `inicio`, `fim` |  |
+| `POST /api/eng/obras/{id}/canteiro/vertical/agenda` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `pavimentoId`*, `equipamento`*, `data`*, `inicio`*, `fim`*, `descricao` |
+| `DELETE /api/eng/obras/{id}/canteiro/vertical/agenda/{aid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
+| `GET /api/eng/obras/{id}/canteiro/vertical/concretagens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra | `pavimentoId` |  |
+| `POST /api/eng/obras/{id}/canteiro/vertical/concretagens` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `pavimentoId`*, `data`*, `volumeM3`*, `fck`, `nota` |
+| `DELETE /api/eng/obras/{id}/canteiro/vertical/concretagens/{cid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `GET /api/eng/obras/{id}/canteiro` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `periodicidadeDias`, `servicos` |
@@ -409,7 +419,7 @@ Total: 401 rotas, 10 públicas, 4 do legado da concreteira.
 | `POST /api/admin/empresas/{id}/aceite` | Link de aceite do período de testes para uma construtora cadastrada. Quem aceita pelo link inicia o teste dela. | Administrador do sistema, Administrativo |  |  |
 | `GET /api/admin/proposta/condicoes` | Condições padrão da proposta: o painel usa para preencher o formulário de condições. | Administrador do sistema, Administrativo |  |  |
 | `GET /api/admin/empresas/{id}/proposta` | Proposta comercial de uma construtora já cadastrada: pacote e limites do contrato, dono como responsável. | Administrador do sistema, Administrativo |  |  |
-| `PUT /api/admin/empresas/{id}/contrato` | Contrato da construtora: pacote vendido, módulos liberados e limites de obras e usuários. | Administrador do sistema, Administrativo |  | `pacote`*, `modulos`, `limiteObras`*, `limiteUsuarios`*, `testeFim` |
+| `PUT /api/admin/empresas/{id}/contrato` | Contrato da construtora: pacote vendido, módulos liberados e limites de obras e usuários. | Administrador do sistema, Administrativo |  | `pacote`*, `modulos`, `recursos`, `limiteObras`*, `limiteUsuarios`*, `testeFim` |
 | `GET /api/admin/backups` |  | Administrador do sistema, Administrativo |  |  |
 | `POST /api/admin/backups` |  | Administrador do sistema, Administrativo |  |  |
 | `GET /api/admin/backups/{id}/download` |  | Administrador do sistema, Administrativo |  |  |

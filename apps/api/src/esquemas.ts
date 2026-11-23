@@ -111,6 +111,8 @@ export const esquemaContrato = z
   .object({
     pacote: z.enum(['obra', 'obra_gestao', 'completo', 'personalizado'], { message: 'Escolha o pacote.' }),
     modulos: z.array(z.enum(['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'])).optional(),
+    // Recursos do canteiro vendidos à parte (ver lib/recursos.ts). Ausente: não mexe.
+    recursos: z.array(z.enum(['canteiro_horizontal', 'canteiro_vertical', 'centrais'])).optional(),
     limiteObras: z.number().int('Use número inteiro.').positive('O limite de obras precisa ser maior que zero.').nullable(),
     limiteUsuarios: z.number().int('Use número inteiro.').positive('O limite de usuários precisa ser maior que zero.').nullable(),
     // Fim do período de teste (AAAA-MM-DD). Ausente: não mexe. Nulo: encerra o teste.

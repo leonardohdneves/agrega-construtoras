@@ -72,6 +72,7 @@ import { EngRelatorios } from './paginas/EngRelatorios';
 import { EngRdoObras, EngRdoObra, EngRdoDetalhe } from './paginas/EngRdo';
 import { EngVisitasObras, EngVisitasObra, EngVisitaDetalhe, EngVisitaRelatorio } from './paginas/EngVisitas';
 import { EngCanteiroObras, EngCanteiroObra, EngCanteiroCentral, EngCanteiroBoletimImprimir } from './paginas/EngCanteiro';
+import { EngCanteiroVertical } from './paginas/EngCanteiroVertical';
 import { LaudosLista, LaudoGlp, LaudoPatologia, LaudoAvaliacao } from './paginas/Laudos';
 import { EngAcompanhamento } from './paginas/EngAcompanhamento';
 import { GerAcompanhamento } from './paginas/GerAcompanhamento';
@@ -219,6 +220,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="eng/rdo/:obraId/:rdoId" element={<Protegido perfis={['dono', 'gestor']}><EngRdoDetalhe /></Protegido>} />
             <Route path="eng/canteiro" element={<Protegido perfis={['dono', 'gestor', 'engenheiro_obra', 'mestre_obra']}><EngCanteiroObras /></Protegido>} />
             <Route path="eng/canteiro/:obraId" element={<Protegido perfis={['dono', 'gestor', 'engenheiro_obra', 'mestre_obra']}><EngCanteiroObra /></Protegido>} />
+            <Route path="eng/canteiro/:obraId/vertical" element={<Protegido perfis={['dono', 'gestor', 'engenheiro_obra', 'mestre_obra']}><EngCanteiroVertical /></Protegido>} />
             <Route path="eng/canteiro/:obraId/:tipo" element={<Protegido perfis={['dono', 'gestor', 'engenheiro_obra', 'mestre_obra']}><EngCanteiroCentral /></Protegido>} />
             <Route path="eng/canteiro/:obraId/:tipo/boletins/:boletimId" element={<Protegido perfis={['dono', 'gestor', 'engenheiro_obra', 'mestre_obra']}><EngCanteiroBoletimImprimir /></Protegido>} />
             <Route path="eng/visitas" element={<Protegido perfis={['dono', 'gestor', 'engenheiro_obra']}><EngVisitasObras /></Protegido>} />
