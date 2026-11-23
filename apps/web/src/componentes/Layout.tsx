@@ -93,6 +93,7 @@ export const MODULOS: Modulo[] = [
       { rotulo: 'Serviços', para: '/eng/servicos' },
       { rotulo: 'Grupos de serviços', para: '/eng/grupos-servicos' },
       { rotulo: 'EAP e orçamento', para: '/eng/eap' },
+      { rotulo: 'Importar quantitativos', para: '/eng/importar-quantitativos' },
       { rotulo: 'Planejamento', para: '/eng/planejamento' },
       { rotulo: 'Canteiro de obra', para: '/eng/canteiro' },
       { rotulo: 'Acompanhamento de obra', para: '/eng/acompanhamento' },

@@ -66,6 +66,7 @@ import { ComIncorporacao } from './paginas/ComIncorporacao';
 import { EngTabelas, EngTabelaDetalhe } from './paginas/EngTabelas';
 import { EngObras, EngObraNova, EngObraDetalhe } from './paginas/EngObras';
 import { EngApropriacao, EngEap, EngInsumos, EngServicos } from './paginas/EngSecoes';
+import { EngImportarQuantitativos } from './paginas/EngImportarQuantitativos';
 import { EngGruposInsumo } from './paginas/EngGruposInsumo';
 import { EngGruposServico } from './paginas/EngGruposServico';
 import { EngPlanejamento } from './paginas/EngPlanejamento';
@@ -209,6 +210,7 @@ createRoot(document.getElementById('raiz')!).render(
             <Route path="eng/servicos" element={<Protegido perfis={['dono', 'gestor']}><EngServicos /></Protegido>} />
             <Route path="eng/apropriacao" element={<Protegido perfis={['dono', 'gestor']}><EngApropriacao /></Protegido>} />
             <Route path="eng/eap" element={<Protegido perfis={['dono', 'gestor']}><EngEap /></Protegido>} />
+            <Route path="eng/importar-quantitativos" element={<Protegido perfis={['dono', 'gestor']}><EngImportarQuantitativos /></Protegido>} />
             <Route path="eng/planejamento" element={<Protegido perfis={['dono', 'gestor']}><EngPlanejamento /></Protegido>} />
             <Route path="eng/relatorios" element={<Protegido perfis={['dono', 'gestor']}><EngRelatorios /></Protegido>} />
             <Route path="laudos/glp" element={<Protegido perfis={['dono', 'gestor']}><LaudosLista tipo="glp" titulo="Laudo de GLP" descricao="Laudos de rede e central de gás (instalações em PEX ou galvanizado)." /></Protegido>} />
