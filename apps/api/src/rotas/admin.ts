@@ -10,6 +10,7 @@ import { esquemaContrato, esquemaNovaEmpresa } from '../esquemas.ts';
 import { empresaPublica, usuarioPublico } from '../formatos.ts';
 import { contratoComBase } from '../lib/modulos.ts';
 import { PACOTES } from '../lib/pacotes.ts';
+import { descreverMudancas, lerContrato } from '../lib/historico-contrato.ts';
 import { ErroHttp, naoEncontrado } from '../lib/erros.ts';
 import { gerarHashSenha } from '../lib/senha.ts';
 import { aplicarCondicoes, CONDICOES_PADRAO, indicacaoContrato, lerCondicoes, preencherProposta } from '../lib/proposta-interessado.ts';
@@ -227,10 +228,46 @@ export function rotasAdmin(banco: Banco) {
             [antes.id, d.pacote, contratoComBase(modulos), d.limiteObras, d.limiteUsuarios, testeInicio, testeFim, recursos],
           )
         ).rows[0];
-        await auditar(c, { empresaId: antes.id, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'empresas', entidadeId: antes.id, antes: { contrato: antes.modulos_contratados, limites: [antes.limite_obras, antes.limite_usuarios], teste: [antes.teste_inicio_txt ?? null, antes.teste_fim_txt ?? null] }, depois: { pacote: d.pacote, modulos: contratoComBase(modulos), limiteObras: d.limiteObras, limiteUsuarios: d.limiteUsuarios, teste: [testeInicio, testeFim] } });
+        await auditar(c, {
+          empresaId: antes.id,
+          usuarioId: req.usuario!.id,
+          acao: 'alterar',
+          entidade: 'empresas',
+          entidadeId: antes.id,
+          antes: { pacote: antes.contrato_pacote, modulos: antes.modulos_contratados, recursos: antes.recursos_contratados, limiteObras: antes.limite_obras, limiteUsuarios: antes.limite_usuarios, testeFim: antes.teste_fim_txt ?? null },
+          depois: { pacote: d.pacote, modulos: contratoComBase(modulos), recursos, limiteObras: d.limiteObras, limiteUsuarios: d.limiteUsuarios, testeFim },
+        });
         return depois;
       });
       return { empresa: empresaPublica(empresa) };
+    });
+
+    /** Histórico do contrato: o cadastro da empresa e cada alteração de pacote, módulos, recursos, limites e teste. */
+    app.get<{ Params: { id: string } }>('/empresas/:id/contrato/historico', { preHandler: exigir(banco, 'admin_sistema') }, async (req) => {
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(req.params.id)) throw naoEncontrado('Construtora');
+      const e = (await banco.query('SELECT razao_social, nome_fantasia FROM empresas WHERE id = $1 AND excluido_em IS NULL', [req.params.id])).rows[0];
+      if (!e) throw naoEncontrado('Construtora');
+      const r = await banco.query(
+        `SELECT a.id, a.acao, a.antes, a.depois, a.data_hora, u.nome AS quem
+           FROM auditoria a LEFT JOIN usuarios u ON u.id = a.usuario_id
+          WHERE a.entidade = 'empresas' AND a.entidade_id = $1 AND (a.acao = 'criar' OR (a.acao = 'alterar' AND a.depois ? 'pacote'))
+          ORDER BY a.data_hora DESC, a.id DESC LIMIT 200`,
+        [req.params.id],
+      );
+      return {
+        empresa: { nome: (e.nome_fantasia || e.razao_social) as string },
+        historico: r.rows.map((x) => {
+          const criacao = x.acao === 'criar';
+          const mudancas = descreverMudancas(criacao ? lerContrato({}) : lerContrato(x.antes), lerContrato(x.depois));
+          return {
+            id: String(x.id),
+            quando: new Date(x.data_hora).toISOString(),
+            quem: (x.quem as string | null) ?? null,
+            tipo: criacao ? 'cadastro' : 'alteracao',
+            mudancas: criacao ? ['Empresa cadastrada', ...mudancas] : mudancas.length ? mudancas : ['Contrato salvo sem alterações'],
+          };
+        }),
+      };
     });
 
     app.post('/empresas', { preHandler: exigir(banco, 'admin_sistema'), schema: { body: esquemaNovaEmpresa } }, async (req, reply) => {

@@ -1612,7 +1612,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:38"
+        "x-fonte": "src/rotas/admin.ts:39"
       }
     },
     "/api/admin/avisos": {
@@ -1650,7 +1650,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:52"
+        "x-fonte": "src/rotas/admin.ts:53"
       }
     },
     "/api/admin/avisos/{id}/lido": {
@@ -1697,7 +1697,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:61"
+        "x-fonte": "src/rotas/admin.ts:62"
       }
     },
     "/api/admin/empresas": {
@@ -1734,7 +1734,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:67"
+        "x-fonte": "src/rotas/admin.ts:68"
       },
       "post": {
         "requestBody": {
@@ -1946,7 +1946,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:236"
+        "x-fonte": "src/rotas/admin.ts:273"
       }
     },
     "/api/admin/empresas/{id}/dados": {
@@ -1994,7 +1994,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:76"
+        "x-fonte": "src/rotas/admin.ts:77"
       }
     },
     "/api/admin/empresas/{id}/apresentacao": {
@@ -2042,7 +2042,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:88"
+        "x-fonte": "src/rotas/admin.ts:89"
       }
     },
     "/api/admin/acompanhamento": {
@@ -2080,7 +2080,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:99"
+        "x-fonte": "src/rotas/admin.ts:100"
       }
     },
     "/api/admin/empresas/{id}/aceite": {
@@ -2128,7 +2128,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:142"
+        "x-fonte": "src/rotas/admin.ts:143"
       }
     },
     "/api/admin/proposta/condicoes": {
@@ -2166,7 +2166,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:158"
+        "x-fonte": "src/rotas/admin.ts:159"
       }
     },
     "/api/admin/empresas/{id}/proposta": {
@@ -2214,7 +2214,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:161"
+        "x-fonte": "src/rotas/admin.ts:162"
       }
     },
     "/api/admin/empresas/{id}/contrato": {
@@ -2333,7 +2333,54 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/admin.ts:202"
+        "x-fonte": "src/rotas/admin.ts:203"
+      }
+    },
+    "/api/admin/empresas/{id}/contrato/historico": {
+      "get": {
+        "parameters": [
+          {
+            "schema": {
+              "type": "string"
+            },
+            "in": "path",
+            "name": "id",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Sucesso. Formato ainda não descrito."
+          },
+          "default": {
+            "description": "Erro.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Erro"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Administrativo"
+        ],
+        "operationId": "get_admin_empresas_id_contrato_historico",
+        "security": [
+          {
+            "sessao": []
+          }
+        ],
+        "x-acesso": {
+          "publica": false,
+          "modulo": "administrativo",
+          "perfis": [
+            "admin_sistema",
+            "administrativo"
+          ]
+        },
+        "x-fonte": "src/rotas/admin.ts:246"
       }
     },
     "/api/admin/backups": {
