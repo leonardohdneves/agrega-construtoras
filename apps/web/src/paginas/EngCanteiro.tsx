@@ -3,7 +3,7 @@
 // (previsto pelo planejamento x realizado pelas medições físicas). O mestre de obra acompanha em consulta.
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api, formatarData } from '../api';
+import { api, ErroApi, formatarData } from '../api';
 import { useSessao } from '../sessao';
 import { CabecalhoDocumento } from '../componentes/Documento';
 import { Assinatura } from '../componentes/Suprimentos';
@@ -118,6 +118,11 @@ export function EngCanteiroObra() {
             </div>
           </div>
           <p className="muted">Clique em uma central para ver os serviços, a periodicidade e os boletins.</p>
+          <div className="card" style={{ marginTop: 16 }}>
+            <h2 style={{ marginTop: 0 }}>Status das OS na EAP</h2>
+            <p className="muted">A EAP da obra com as OS como botões, na cor da prioridade, com filtros e impressão.</p>
+            <Link className="btn btn-primario" to={`/eng/canteiro/${obraId}/os-eap`}>Abrir OS na EAP</Link>
+          </div>
           <KanbanCentrais obraId={obraId} centrais={dados.centrais} podeEditar={usuario?.perfil !== 'mestre_obra'} />
         </>
       ) : (
@@ -429,9 +434,13 @@ export function EngCanteiroBoletimImprimir() {
 
 // ----- Kanban das centrais: um quadro por central, abaixo do organograma. Cada card é uma frente de serviço da central;
 // a cor é a prioridade, a posição é a ordem do fluxo, e a coluna segue o status da OS da frente.
-type OsCard = { id: string; numero: number; status: string; equipe: string; quantidade: number | null; unidade: string; prazo: string | null; atrasada: boolean };
+type PredecessoraCard = { atividade: number; descricao: string; nivel: number; situacao: string; codigoOs: string | null };
+const NOMES_SITUACAO_TAREFA: Record<string, string> = { sem_central: 'fora das centrais', planejada: 'sem OS', liberada: 'liberada', em_execucao: 'em execução', concluida: 'concluída' };
+type OsCard = { id: string; numero: number; codigo: string; status: string; equipe: string; quantidade: number | null; unidade: string; prazo: string | null; atrasada: boolean };
 type FrenteCard = {
   id: string; eapNoId: string; codigo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa'; ordem: number; coluna: string; os: OsCard | null;
+  /** Predecessoras do planejamento (a mais próxima primeiro), com a situação da OS de cada uma. */
+  predecessoras: PredecessoraCard[];
   /** Sugestão para a OS: equipe do serviço e quantidade do orçamento. */
   sugestao: { equipe: string; quantidade: number | null; unidade: string };
 };
@@ -468,6 +477,27 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
         ? { frenteId: f.id, osId: os.id, equipe: os.equipe, quantidade: quantidadeTexto(os.quantidade), unidade: os.unidade, prazo: os.prazo ?? '' }
         : { frenteId: f.id, equipe: f.sugestao.equipe, quantidade: quantidadeTexto(f.sugestao.quantidade), unidade: f.sugestao.unidade, prazo: '' },
     );
+  }
+
+  /** Inicia a OS. Se há predecessora pendente, o servidor avisa: o engenheiro confirma e a OS segue. */
+  async function iniciar(os: OsCard) {
+    setOcupado(true);
+    setErro('');
+    try {
+      try {
+        await api(`${base}/os/${os.id}`, { metodo: 'PATCH', corpo: { status: 'em_execucao' } });
+      } catch (e) {
+        const pendente = e instanceof ErroApi && e.dados?.codigo === 'predecessoras_pendentes';
+        if (!pendente) throw e;
+        if (!window.confirm(`${(e as Error).message}\n\nIniciar mesmo assim?`)) return;
+        await api(`${base}/os/${os.id}`, { metodo: 'PATCH', corpo: { status: 'em_execucao', confirmarPredecessoras: true } });
+      }
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
   }
 
   function salvarOs(e: FormEvent) {
@@ -553,10 +583,15 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
                   </div>
                   <div className="small muted">
                     Prioridade {NOMES_PRIORIDADE[f.prioridade].toLowerCase()}
-                    {f.os && f.os.status !== 'cancelada' ? ` · OS ${f.os.numero} · ${NOMES_STATUS_OS[f.os.status]}` : ''}
+                    {f.os && f.os.status !== 'cancelada' ? ` · ${f.os.codigo} · ${NOMES_STATUS_OS[f.os.status]}` : ''}
                   </div>
                   {f.os && f.os.status !== 'cancelada' && detalhesOs(f.os) && <div className="small">{detalhesOs(f.os)}</div>}
                   {f.os?.atrasada && <div className="small kanban-atrasada">Prazo vencido</div>}
+                  {f.predecessoras.length > 0 && (
+                    <div className="small muted">
+                      Predecessoras: {f.predecessoras.map((p) => `${p.atividade} ${p.descricao}${p.codigoOs ? ` (${p.codigoOs})` : ''} — ${NOMES_SITUACAO_TAREFA[p.situacao] ?? p.situacao}`).join(' · ')}
+                    </div>
+                  )}
                   {formOs?.frenteId === f.id && (
                     <form className="kanban-os-form" onSubmit={salvarOs} aria-label={formOs.osId ? 'Editar OS' : 'Gerar OS'}>
                       <label>
@@ -596,7 +631,7 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
                         <button type="button" className="btn btn-secundario" disabled={ocupado || formOs?.frenteId === f.id} onClick={() => abrirFormOs(f)}>Gerar OS</button>
                       )}
                       {col.id === 'liberada' && f.os && (
-                        <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'em_execucao' } }))}>Iniciar</button>
+                        <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => iniciar(f.os!)}>Iniciar</button>
                       )}
                       {col.id === 'em_execucao' && f.os && (
                         <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'concluida' } }))}>Concluir</button>
@@ -610,7 +645,7 @@ function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; cent
                           className="btn btn-link"
                           disabled={ocupado}
                           onClick={() => {
-                            if (window.confirm(`Cancelar a OS ${f.os!.numero}? A frente volta para Planejada.`)) executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'cancelada' } }));
+                            if (window.confirm(`Cancelar a ${f.os!.codigo}? A frente volta para Planejada.`)) executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'cancelada' } }));
                           }}
                         >
                           Cancelar OS

@@ -14,11 +14,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 417 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 418 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
-122 rotas.
+123 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -77,7 +77,8 @@ Total: 417 rotas, 10 públicas, 4 do legado da concreteira.
 | `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `prioridade`, `ordem` |
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}/kanban/ordem` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `frentes`* |
 | `POST /api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}/os` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `equipe`, `quantidade`, `unidade`, `prazo` |
-| `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/os/{oid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `status`, `equipe`, `quantidade`, `unidade`, `prazo` |
+| `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/os/{oid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `status`, `confirmarPredecessoras`, `equipe`, `quantidade`, `unidade`, `prazo` |
+| `GET /api/eng/obras/{id}/canteiro/os-eap` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/obras/{id}/canteiro` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `periodicidadeDias`, `servicos` |

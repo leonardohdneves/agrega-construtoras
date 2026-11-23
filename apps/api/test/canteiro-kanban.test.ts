@@ -136,3 +136,74 @@ test('kanban: OS com equipe, quantidade e prazo; editável só enquanto aberta',
   await ctx.pedir('dono', 'PATCH', `${base}/os/${os.id}`, { corpo: { status: 'concluida' } });
   assert.equal((await ctx.pedir('dono', 'PATCH', `${base}/os/${os.id}`, { corpo: { equipe: 'Outra' } })).status, 409, 'OS concluída não muda');
 });
+
+test('OS: código sequencial, situação da tarefa e cadeia de predecessoras', async () => {
+  const { cadeiaDePredecessoras, codigoOs, predecessorasPendentes, situacaoDaTarefa } = await import('../src/lib/canteiro-kanban.ts');
+  assert.equal(codigoOs(1), 'OS-0001');
+  assert.equal(codigoOs(123), 'OS-0123');
+  assert.equal(situacaoDaTarefa(false, null), 'sem_central');
+  assert.equal(situacaoDaTarefa(true, null), 'planejada');
+  assert.equal(situacaoDaTarefa(true, { status: 'cancelada' }), 'planejada');
+  assert.equal(situacaoDaTarefa(true, { status: 'em_execucao' }), 'em_execucao');
+
+  const ativ = (id: string, numero: number, predecessoraId: string | null) => [id, { id, numero, descricao: `Atividade ${numero}`, eapNoId: null, predecessoraId }] as const;
+  const mapa = new Map([ativ('a', 1, null), ativ('b', 2, 'a'), ativ('c', 3, 'b'), ativ('x', 8, 'y'), ativ('y', 9, 'x')]);
+  assert.deepEqual(cadeiaDePredecessoras('c', mapa).map((a) => a.numero), [2, 1], 'da mais próxima para a mais distante');
+  assert.deepEqual(cadeiaDePredecessoras('a', mapa), []);
+  assert.deepEqual(cadeiaDePredecessoras('x', mapa).map((a) => a.numero), [9], 'ciclo não trava');
+
+  const p = (nivel: number, situacao: 'planejada' | 'concluida' | 'sem_central') => ({ atividade: 1, descricao: 'x', eapNoId: null, nivel, situacao, codigoOs: null });
+  assert.equal(predecessorasPendentes([p(1, 'planejada'), p(1, 'concluida'), p(1, 'sem_central'), p(2, 'planejada')]).length, 1, 'só as diretas e que tenham OS pendente');
+});
+
+test('OS: predecessoras do planejamento, aviso ao iniciar e tela da EAP', { skip: semBanco }, async () => {
+  const { obra, base } = await obraComCentral();
+  const no = async (codigo: string) => (await ctx.banco.query('SELECT id FROM eap_nos WHERE obra_id = $1 AND codigo = $2', [obra, codigo])).rows[0].id as string;
+  const atividade = async (numero: number, codigo: string, predecessora: string | null) =>
+    (await ctx.banco.query(
+      `INSERT INTO obra_atividades (obra_id, eap_no_id, descricao, inicio, duracao_dias, predecessora_id, numero) VALUES ($1, $2, $3, '2026-12-01', 3, $4, $5) RETURNING id`,
+      [obra, await no(codigo), `Serviço ${codigo}`, predecessora, numero],
+    )).rows[0].id as string;
+  const a1 = await atividade(1, '1.1', null);
+  await atividade(2, '1.2', a1);
+
+  const cards = async () => ((await ctx.pedir('dono', 'GET', `${base}/kanban`)).corpo.colunas as { frentes: { id: string; codigo: string; os: { codigo: string; status: string } | null; predecessoras: { atividade: number; situacao: string; codigoOs: string | null; nivel: number }[] }[] }[]).flatMap((c) => c.frentes);
+  const card = async (codigo: string) => (await cards()).find((f) => f.codigo === codigo)!;
+
+  const f11 = await card('1.1');
+  const f12 = await card('1.2');
+  assert.deepEqual((await card('1.3')).predecessoras, [], 'tarefa sem atividade predecessora');
+  assert.deepEqual(f12.predecessoras.map((p) => [p.atividade, p.situacao, p.nivel]), [[1, 'planejada', 1]]);
+
+  const os12 = (await ctx.pedir('dono', 'POST', `${base}/frentes/${f12.id}/os`, { corpo: {} })).corpo.os as { id: string; codigo: string };
+  assert.equal(os12.codigo, 'OS-0001', 'código sequencial único por obra');
+
+  // Predecessora sem OS concluída: avisa, e só segue com a confirmação.
+  const aviso = await ctx.pedir('dono', 'PATCH', `${base}/os/${os12.id}`, { corpo: { status: 'em_execucao' } });
+  assert.equal(aviso.status, 409);
+  assert.equal(aviso.corpo.codigo, 'predecessoras_pendentes');
+  assert.match(aviso.corpo.erro, /OS-0001/);
+  assert.equal(aviso.corpo.predecessoras.length, 1);
+  assert.equal((await ctx.pedir('dono', 'PATCH', `${base}/os/${os12.id}`, { corpo: { status: 'em_execucao', confirmarPredecessoras: true } })).status, 200);
+
+  // Com a predecessora concluída, não há aviso para a próxima OS da mesma tarefa.
+  const os11 = (await ctx.pedir('dono', 'POST', `${base}/frentes/${f11.id}/os`, { corpo: {} })).corpo.os as { id: string; codigo: string };
+  assert.equal(os11.codigo, 'OS-0002');
+  await ctx.pedir('dono', 'PATCH', `${base}/os/${os11.id}`, { corpo: { status: 'em_execucao' } });
+  await ctx.pedir('dono', 'PATCH', `${base}/os/${os11.id}`, { corpo: { status: 'concluida' } });
+  const f12Depois = await card('1.2');
+  assert.deepEqual(f12Depois.predecessoras.map((p) => [p.situacao, p.codigoOs]), [['concluida', 'OS-0002']]);
+
+  // Tela "OS na EAP": a árvore com as frentes, as OS (com código) e o resumo.
+  const eap = await ctx.pedir('mestre_obra', 'GET', `/api/eng/obras/${obra}/canteiro/os-eap`);
+  assert.equal(eap.status, 404, 'mestre de obra não atribuído à obra nem a enxerga');
+  const r = await ctx.pedir('dono', 'GET', `/api/eng/obras/${obra}/canteiro/os-eap`);
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  const nos = r.corpo.nos as { codigo: string; frente: { os: { codigo: string; status: string }[]; prioridade: string } | null }[];
+  assert.deepEqual(nos.map((n) => n.codigo), ['1.1', '1.2', '1.3']);
+  assert.deepEqual(nos.find((n) => n.codigo === '1.2')!.frente!.os.map((o) => [o.codigo, o.status]), [['OS-0001', 'em_execucao']]);
+  assert.deepEqual(nos.find((n) => n.codigo === '1.3')!.frente!.os, [], 'frente sem OS aparece como planejada');
+  assert.equal(r.corpo.resumo.concluidas, 1);
+  assert.equal(r.corpo.resumo.emExecucao, 1);
+  assert.equal(r.corpo.resumo.planejadas, 1);
+});

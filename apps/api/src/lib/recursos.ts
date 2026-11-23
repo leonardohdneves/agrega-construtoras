@@ -25,7 +25,7 @@ export function recursosEfetivos(lista: readonly string[] | null | undefined): R
  */
 export function recursoDaRotaCanteiro(caminho: string): RecursoCanteiro | null {
   if (/^\/api\/eng\/obras\/[^/]+\/canteiro\/vertical(\/|$)/.test(caminho)) return 'canteiro_vertical';
-  if (/^\/api\/eng\/obras\/[^/]+\/canteiro\/(centrais|boletins)(\/|$)/.test(caminho)) return 'centrais';
+  if (/^\/api\/eng\/obras\/[^/]+\/canteiro\/(centrais|boletins|os-eap)(\/|$)/.test(caminho)) return 'centrais';
   if (/^\/api\/eng\/obras\/[^/]+\/canteiro(\/|$)/.test(caminho)) return 'canteiro_horizontal';
   return null;
 }
