@@ -28,14 +28,18 @@ export function usePaginaImpressao(): [Impressao, (p: Impressao) => void] {
 }
 
 /** Aplica a página escolhida (sobrepõe o @page padrão) e abre a janela de impressão. */
-export function imprimirPagina(p: Impressao) {
+export function imprimirPagina(p: Impressao, rodape?: string) {
   let el = document.getElementById('agrega-pagina') as HTMLStyleElement | null;
   if (!el) {
     el = document.createElement('style');
     el.id = 'agrega-pagina';
     document.head.appendChild(el);
   }
-  el.textContent = `@page { size: ${TAMANHO[p.papel]} ${p.orientacao === 'retrato' ? 'portrait' : 'landscape'}; }`;
+  // O rodapé da folha leva os dados de quem emitiu (texto montado na hora); a página é numerada à direita.
+  const regraRodape = rodape
+    ? ` @page { @bottom-left { content: ${JSON.stringify(rodape)}; width: 72%; font: 8pt 'IBM Plex Sans', sans-serif; color: #6B7078; } }`
+    : '';
+  el.textContent = `@page { size: ${TAMANHO[p.papel]} ${p.orientacao === 'retrato' ? 'portrait' : 'landscape'}; }${regraRodape}`;
   document.documentElement.dataset.orientacao = p.orientacao;
   // Chamada direta, dentro do toque: o iOS bloqueia abrir aba ou imprimir depois de um timer.
   imprimirNaTela();
@@ -115,13 +119,21 @@ export function CabecalhoDocumento({
   const [painel, setPainel] = useState(false);
   const [pagina, setPagina] = usePaginaImpressao();
   const agora = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  // Rodapé de cada folha impressa: marca, empresa, CNPJ e quem emitiu em que dia.
+  const rodape = ['agrega · ERP para construtoras', empresa?.nomeFantasia || empresa?.razaoSocial, empresa?.cnpj ? `CNPJ ${formatarCnpj(empresa.cnpj)}` : null, `Emitido em ${agora}${usuario ? ` por ${usuario.nome}` : ''}`]
+    .filter(Boolean)
+    .join(' · ');
   return (
     <header className={`doc-cabecalho${logoDireita ? ' doc-cabecalho-logo-direita' : ''}`}>
       <div className="doc-faixa">
-        <span className="doc-marca">
-          <Simbolo tamanho={22} escuro />
-          <span>agrega</span>
-        </span>
+        {empresa?.temLogo ? (
+          <img className="doc-logo-faixa" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt={`Logo de ${empresa.nomeFantasia || empresa.razaoSocial}`} />
+        ) : (
+          <span className="doc-marca">
+            <Simbolo tamanho={22} escuro />
+            <span>agrega</span>
+          </span>
+        )}
         <span className="doc-modulo">{modulo}</span>
       </div>
       <div className="doc-corpo">
@@ -141,15 +153,6 @@ export function CabecalhoDocumento({
             </p>
           )}
         </div>
-        <div className="doc-meta">
-          {empresa?.temLogo && <img className="doc-logo" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt={`Logo de ${empresa.nomeFantasia || empresa.razaoSocial}`} />}
-          <strong>{empresa?.nomeFantasia || empresa?.razaoSocial || 'Agrega'}</strong>
-          {empresa?.cnpj && <span>CNPJ {formatarCnpj(empresa.cnpj)}</span>}
-          <span>
-            Emitido em {agora}
-            {usuario ? ` por ${usuario.nome}` : ''}
-          </span>
-        </div>
       </div>
       <div className="doc-acoes nao-imprimir">
         {acoes}
@@ -161,7 +164,7 @@ export function CabecalhoDocumento({
         <div className="nao-imprimir painel-impressao card" style={{ margin: '0 18px 14px' }}>
           <OpcoesPagina valor={pagina} aoMudar={setPagina} />
           <div className="acoes" style={{ marginTop: 10 }}>
-            <button className="btn btn-primario" type="button" onClick={() => { setPainel(false); imprimirPagina(pagina); }}>Imprimir</button>
+            <button className="btn btn-primario" type="button" onClick={() => { setPainel(false); imprimirPagina(pagina, rodape); }}>Imprimir</button>
             <button className="btn btn-link" type="button" onClick={() => setPainel(false)}>Fechar</button>
             <span className="small muted">Para salvar em PDF, escolha "Salvar como PDF" como impressora.</span>
           </div>
