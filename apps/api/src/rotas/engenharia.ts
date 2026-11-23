@@ -22,6 +22,8 @@ import { producaoDoMes } from '../lib/equipes-servicos.ts';
 import { conciliarLinha, type LinhaPlanilha, type RefComposicao } from '../lib/conciliacao-orcamento.ts';
 import { curvaS, percentualDeQuantidade, previstoXExecutado, somarDias, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import { CENTRAIS, NOMES_CENTRAL, PERIODICIDADE_PADRAO, montarItensBoletim, proximoPeriodo, type TipoCentral } from '../lib/canteiro.ts';
+import { recursoDaRotaCanteiro, recursosEfetivos, NOMES_RECURSO } from '../lib/recursos.ts';
+import { ETAPAS_CICLO, EQUIPAMENTOS_VERTICAIS, conflitoAgenda, resumirCiclo, totalConcreto, type EtapaCiclo } from '../lib/canteiro-vertical.ts';
 import {
   abcInsumos,
   abcServicos,
@@ -160,6 +162,8 @@ const esquemaObra = z.object({
   status: z.enum(['orcamento', 'planejamento', 'em_andamento', 'suspensa', 'concluida']).optional(),
   // Tipo só é escolhido na criação: execução (EAP, orçamento, planejamento, estoque) ou acompanhamento por visitas.
   tipo: z.enum(['execucao', 'acompanhamento']).optional(),
+  // Canteiro horizontal (casas, condomínios) ou vertical (torres, com guincho, grua e concreto por andar).
+  tipoCanteiro: z.enum(['horizontal', 'vertical']).optional(),
   // Só na criação: começa a planilha com a EAP padrão (etapas da planilha AltoQi Visus).
   eapPadrao: z.boolean().optional(),
   dataInicio: z.string().regex(DATA).optional().nullable().transform((v) => v || null),
@@ -220,6 +224,15 @@ export function rotasEngenharia(banco: Banco) {
         );
         if (!ok.rowCount) throw naoEncontrado('Obra');
       }
+    });
+
+    // Recurso do canteiro: a rota só responde se o contrato da empresa tiver o recurso dela (base, centrais ou vertical).
+    app.addHook('preHandler', async (req) => {
+      const recurso = recursoDaRotaCanteiro(caminhoDaRota(req));
+      if (!recurso) return;
+      const r = await banco.query('SELECT recursos_contratados FROM empresas WHERE id = $1', [empresaDo(req)]);
+      if (!recursosEfetivos(r.rows[0]?.recursos_contratados).includes(recurso))
+        throw new ErroHttp(403, `O recurso ${NOMES_RECURSO[recurso]} não está no contrato desta empresa.`);
     });
 
     /** Engenheiro de obra logado: limita listas às obras atribuídas a ele. Outros perfis: null (todas). */
@@ -1099,6 +1112,7 @@ export function rotasEngenharia(banco: Banco) {
           )
         ).rows[0];
         if (d.tipo === 'acompanhamento') await c.query(`UPDATE obras SET tipo = 'acompanhamento' WHERE id = $1`, [o.id]);
+        if (d.tipoCanteiro === 'vertical') await c.query(`UPDATE obras SET tipo_canteiro = 'vertical' WHERE id = $1`, [o.id]);
         if (d.responsaveis?.length) await gravarResponsaveis(c, empresaId, o.id, d.responsaveis);
         // Obra de acompanhamento não tem estoque próprio: o almoxarifado de recebimento só existe nas de execução.
         if (d.tipo !== 'acompanhamento') await estoqueRecebimento(c, empresaId, o.id);
@@ -1159,6 +1173,7 @@ export function rotasEngenharia(banco: Banco) {
         );
         await c.query('UPDATE centros_custo SET nome = $2 WHERE id = $1', [atual.centro_custo_id, `Obra ${atual.codigo} - ${nome}`.slice(0, 120)]);
         if (d.responsaveis !== undefined) await gravarResponsaveis(c, empresaId, atual.id, d.responsaveis);
+        if (d.tipoCanteiro) await c.query('UPDATE obras SET tipo_canteiro = $2 WHERE id = $1', [atual.id, d.tipoCanteiro]);
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'obras', entidadeId: atual.id, depois: d });
       });
       return { obra: obraPublica(await obraDetalhe(banco, empresaId, req.params.id)) };
@@ -1646,6 +1661,230 @@ export function rotasEngenharia(banco: Banco) {
       return r.rows.map((b) => ({ id: b.id as string, tipo: b.tipo as string, numero: Number(b.numero), inicio: dataIso(b.inicio), fim: dataIso(b.fim), criadoEm: new Date(b.criado_em).toISOString() }));
     }
 
+    // ---------------------------------------------------------------- canteiro vertical (obra com movimentação vertical)
+
+    /** Obra de canteiro vertical da empresa. Obra horizontal responde 409: o tipo é escolhido no cadastro da obra. */
+    async function obraVerticalDaEmpresa(c: Cliente, empresaId: string, id: string) {
+      const obra = await obraDaEmpresa(c, empresaId, id);
+      if (obra.tipo_canteiro !== 'vertical') throw new ErroHttp(409, 'Esta obra é de canteiro horizontal. Mude o tipo do canteiro da obra para vertical.');
+      return obra;
+    }
+    async function pavimentoDaObra(c: Cliente, obraId: string, pavimentoId: string) {
+      const p = (await c.query('SELECT id, nome FROM canteiro_pavimentos WHERE id = $1 AND obra_id = $2', [pavimentoId, obraId])).rows[0];
+      if (!p) throw naoEncontrado('Pavimento');
+      return p;
+    }
+    const DATA_ISO = /^\d{4}-\d{2}-\d{2}$/;
+    const HORA = /^([01]\d|2[0-3]):[0-5]\d$/;
+    const esquemaPavimento = z.object({
+      nome: z.string().trim().min(1, 'Dê um nome ao pavimento.').max(60),
+      ordem: z.number().int().min(0).max(999).optional(),
+    });
+    const esquemaCicloLaje = z.object({
+      etapas: z
+        .array(z.object({ etapa: z.enum(ETAPAS_CICLO, { errorMap: () => ({ message: 'Escolha uma etapa do ciclo.' }) }), inicio: z.string().regex(DATA_ISO), fim: z.string().regex(DATA_ISO) }))
+        .max(ETAPAS_CICLO.length),
+    });
+    const esquemaAgendaVertical = z.object({
+      pavimentoId: z.string().uuid('Escolha o pavimento.'),
+      equipamento: z.enum(EQUIPAMENTOS_VERTICAIS, { errorMap: () => ({ message: 'Escolha o guincho ou a grua.' }) }),
+      data: z.string().regex(DATA_ISO, 'Informe a data.'),
+      inicio: z.string().regex(HORA, 'Use o horário no formato HH:MM.'),
+      fim: z.string().regex(HORA, 'Use o horário no formato HH:MM.'),
+      descricao: z.string().trim().max(200).default(''),
+    });
+    const esquemaConcretagem = z.object({
+      pavimentoId: z.string().uuid('Escolha o pavimento.'),
+      data: z.string().regex(DATA_ISO, 'Informe a data.'),
+      volumeM3: z.number().positive('O volume precisa ser maior que zero.').max(9999),
+      fck: z.string().trim().max(20).default(''),
+      nota: z.string().trim().max(300).default(''),
+    });
+
+    /** Pavimentos com o ciclo de cada laje e o concreto lançado, mais as médias da obra. */
+    app.get<{ Params: { id: string } }>('/obras/:id/canteiro/vertical/pavimentos', async (req) => {
+      const obra = await obraVerticalDaEmpresa(banco, empresaDo(req), req.params.id);
+      const pavs = (await banco.query('SELECT id, ordem, nome FROM canteiro_pavimentos WHERE obra_id = $1 ORDER BY ordem, nome', [obra.id])).rows;
+      const etapas = (await banco.query('SELECT pavimento_id, etapa, inicio, fim FROM canteiro_ciclo_etapas WHERE obra_id = $1', [obra.id])).rows;
+      const concretos = (await banco.query('SELECT pavimento_id, volume_m3 FROM canteiro_concretagens WHERE obra_id = $1', [obra.id])).rows;
+      const pavimentos = pavs.map((p) => {
+        const ciclo = resumirCiclo(
+          etapas.filter((e) => e.pavimento_id === p.id).map((e) => ({ etapa: e.etapa as EtapaCiclo, inicio: dataIso(e.inicio), fim: dataIso(e.fim) })),
+        );
+        const concretadoM3 = totalConcreto(concretos.filter((c) => c.pavimento_id === p.id).map((c) => Number(c.volume_m3)));
+        return { id: p.id as string, ordem: Number(p.ordem), nome: p.nome as string, ciclo, concretadoM3 };
+      });
+      const ciclos = pavimentos.map((p) => p.ciclo.diasCiclo).filter((d): d is number => d !== null);
+      return {
+        pavimentos,
+        mediaDiasCiclo: ciclos.length ? Math.round((ciclos.reduce((a, b) => a + b, 0) / ciclos.length) * 10) / 10 : null,
+        concretadoTotalM3: totalConcreto(pavimentos.map((p) => p.concretadoM3)),
+      };
+    });
+
+    app.post<{ Params: { id: string } }>('/obras/:id/canteiro/vertical/pavimentos', { schema: { body: esquemaPavimento } }, async (req, reply) => {
+      const d = esquemaPavimento.parse(req.body);
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraVerticalDaEmpresa(c, empresaId, req.params.id);
+        if ((await c.query('SELECT 1 FROM canteiro_pavimentos WHERE obra_id = $1 AND nome = $2', [obra.id, d.nome])).rowCount)
+          throw new ErroHttp(409, 'Já existe um pavimento com esse nome nesta obra.');
+        const ordem = d.ordem ?? Number((await c.query('SELECT coalesce(max(ordem), -1) + 1 AS n FROM canteiro_pavimentos WHERE obra_id = $1', [obra.id])).rows[0].n);
+        const nova = await c.query('INSERT INTO canteiro_pavimentos (obra_id, ordem, nome) VALUES ($1, $2, $3) RETURNING id', [obra.id, ordem, d.nome]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_pavimentos', entidadeId: nova.rows[0].id, depois: { obra: obra.id, nome: d.nome, ordem } });
+        return nova.rows[0].id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    /** Apaga o pavimento e, com ele, a agenda, o ciclo e as concretagens dele. */
+    app.delete<{ Params: { id: string; pid: string } }>('/obras/:id/canteiro/vertical/pavimentos/:pid', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraVerticalDaEmpresa(c, empresaId, req.params.id);
+        const p = await pavimentoDaObra(c, obra.id, req.params.pid);
+        await c.query('DELETE FROM canteiro_pavimentos WHERE id = $1', [p.id]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'canteiro_pavimentos', entidadeId: p.id, antes: { nome: p.nome } });
+      });
+      return { ok: true };
+    });
+
+    /** Grava o ciclo da laje (substitui as etapas do pavimento). Etapa sem data fica fora do ciclo. */
+    app.put<{ Params: { id: string; pid: string } }>('/obras/:id/canteiro/vertical/pavimentos/:pid/ciclo', { schema: { body: esquemaCicloLaje } }, async (req) => {
+      const d = esquemaCicloLaje.parse(req.body);
+      const empresaId = empresaDo(req);
+      for (const e of d.etapas) if (e.fim < e.inicio) throw new ErroHttp(400, `Na etapa ${e.etapa}, o fim é antes do início.`);
+      if (new Set(d.etapas.map((e) => e.etapa)).size !== d.etapas.length) throw new ErroHttp(400, 'Cada etapa aparece uma vez só no ciclo.');
+      await emTransacao(banco, async (c) => {
+        const obra = await obraVerticalDaEmpresa(c, empresaId, req.params.id);
+        const p = await pavimentoDaObra(c, obra.id, req.params.pid);
+        await c.query('DELETE FROM canteiro_ciclo_etapas WHERE pavimento_id = $1', [p.id]);
+        for (const e of d.etapas)
+          await c.query('INSERT INTO canteiro_ciclo_etapas (obra_id, pavimento_id, etapa, inicio, fim) VALUES ($1, $2, $3, $4, $5)', [obra.id, p.id, e.etapa, e.inicio, e.fim]);
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_ciclo', entidadeId: p.id, depois: { etapas: d.etapas.length } });
+      });
+      return { ok: true };
+    });
+
+    /** Agenda do guincho e da grua. Com inicio e fim (AAAA-MM-DD), só o período pedido. */
+    app.get<{ Params: { id: string }; Querystring: { inicio?: string; fim?: string } }>('/obras/:id/canteiro/vertical/agenda', async (req) => {
+      const obra = await obraVerticalDaEmpresa(banco, empresaDo(req), req.params.id);
+      const inicio = DATA_ISO.test(req.query.inicio ?? '') ? req.query.inicio! : null;
+      const fim = DATA_ISO.test(req.query.fim ?? '') ? req.query.fim! : null;
+      const r = await banco.query(
+        `SELECT a.id, a.pavimento_id, p.nome AS pavimento, a.equipamento, a.data, a.inicio, a.fim, a.descricao
+           FROM canteiro_agenda_vertical a JOIN canteiro_pavimentos p ON p.id = a.pavimento_id
+          WHERE a.obra_id = $1 AND ($2::date IS NULL OR a.data >= $2::date) AND ($3::date IS NULL OR a.data <= $3::date)
+          ORDER BY a.data, a.inicio, a.equipamento LIMIT 1000`,
+        [obra.id, inicio, fim],
+      );
+      return {
+        agenda: r.rows.map((a) => ({
+          id: a.id as string,
+          pavimentoId: a.pavimento_id as string,
+          pavimento: a.pavimento as string,
+          equipamento: a.equipamento as string,
+          data: dataIso(a.data),
+          inicio: String(a.inicio).slice(0, 5),
+          fim: String(a.fim).slice(0, 5),
+          descricao: a.descricao as string,
+        })),
+      };
+    });
+
+    app.post<{ Params: { id: string } }>('/obras/:id/canteiro/vertical/agenda', { schema: { body: esquemaAgendaVertical } }, async (req, reply) => {
+      const d = esquemaAgendaVertical.parse(req.body);
+      if (d.fim <= d.inicio) throw new ErroHttp(400, 'O horário de fim precisa ser depois do início.');
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraVerticalDaEmpresa(c, empresaId, req.params.id);
+        await pavimentoDaObra(c, obra.id, d.pavimentoId);
+        const existentes = (
+          await c.query(
+            `SELECT id, equipamento, to_char(data, 'YYYY-MM-DD') AS data, to_char(inicio, 'HH24:MI') AS inicio, to_char(fim, 'HH24:MI') AS fim
+               FROM canteiro_agenda_vertical WHERE obra_id = $1 AND equipamento = $2 AND data = $3`,
+            [obra.id, d.equipamento, d.data],
+          )
+        ).rows;
+        const conflito = conflitoAgenda({ equipamento: d.equipamento, data: d.data, inicio: d.inicio, fim: d.fim }, existentes);
+        if (conflito) throw new ErroHttp(409, `O ${d.equipamento === 'grua' ? 'a grua' : 'o guincho'} já está reservado de ${conflito.inicio} a ${conflito.fim} nesse dia.`);
+        const nova = await c.query(
+          `INSERT INTO canteiro_agenda_vertical (obra_id, pavimento_id, equipamento, data, inicio, fim, descricao, criado_por)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+          [obra.id, d.pavimentoId, d.equipamento, d.data, d.inicio, d.fim, d.descricao, req.usuario!.id],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_agenda_vertical', entidadeId: nova.rows[0].id, depois: { equipamento: d.equipamento, data: d.data, inicio: d.inicio, fim: d.fim } });
+        return nova.rows[0].id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.delete<{ Params: { id: string; aid: string } }>('/obras/:id/canteiro/vertical/agenda/:aid', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraVerticalDaEmpresa(c, empresaId, req.params.id);
+        const r = await c.query('DELETE FROM canteiro_agenda_vertical WHERE id = $1 AND obra_id = $2 RETURNING equipamento, data', [req.params.aid, obra.id]);
+        if (!r.rowCount) throw naoEncontrado('Agendamento');
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'canteiro_agenda_vertical', entidadeId: req.params.aid, antes: { equipamento: r.rows[0].equipamento, data: dataIso(r.rows[0].data) } });
+      });
+      return { ok: true };
+    });
+
+    /** Concretagens lançadas, da mais recente para a mais antiga. Com pavimentoId, só as desse andar. */
+    app.get<{ Params: { id: string }; Querystring: { pavimentoId?: string } }>('/obras/:id/canteiro/vertical/concretagens', async (req) => {
+      const obra = await obraVerticalDaEmpresa(banco, empresaDo(req), req.params.id);
+      const pav = req.query.pavimentoId && z.string().uuid().safeParse(req.query.pavimentoId).success ? req.query.pavimentoId : null;
+      const r = await banco.query(
+        `SELECT c.id, c.pavimento_id, p.nome AS pavimento, c.data, c.volume_m3, c.fck, c.nota
+           FROM canteiro_concretagens c JOIN canteiro_pavimentos p ON p.id = c.pavimento_id
+          WHERE c.obra_id = $1 AND ($2::uuid IS NULL OR c.pavimento_id = $2::uuid)
+          ORDER BY c.data DESC, c.criado_em DESC LIMIT 500`,
+        [obra.id, pav],
+      );
+      return {
+        concretagens: r.rows.map((c) => ({
+          id: c.id as string,
+          pavimentoId: c.pavimento_id as string,
+          pavimento: c.pavimento as string,
+          data: dataIso(c.data),
+          volumeM3: Number(c.volume_m3),
+          fck: c.fck as string,
+          nota: c.nota as string,
+        })),
+      };
+    });
+
+    app.post<{ Params: { id: string } }>('/obras/:id/canteiro/vertical/concretagens', { schema: { body: esquemaConcretagem } }, async (req, reply) => {
+      const d = esquemaConcretagem.parse(req.body);
+      const empresaId = empresaDo(req);
+      const id = await emTransacao(banco, async (c) => {
+        const obra = await obraVerticalDaEmpresa(c, empresaId, req.params.id);
+        await pavimentoDaObra(c, obra.id, d.pavimentoId);
+        const nova = await c.query(
+          `INSERT INTO canteiro_concretagens (obra_id, pavimento_id, data, volume_m3, fck, nota, criado_por)
+           VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+          [obra.id, d.pavimentoId, d.data, d.volumeM3, d.fck, d.nota, req.usuario!.id],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_concretagens', entidadeId: nova.rows[0].id, depois: { pavimento: d.pavimentoId, data: d.data, volumeM3: d.volumeM3 } });
+        return nova.rows[0].id as string;
+      });
+      reply.code(201);
+      return { id };
+    });
+
+    app.delete<{ Params: { id: string; cid: string } }>('/obras/:id/canteiro/vertical/concretagens/:cid', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        const obra = await obraVerticalDaEmpresa(c, empresaId, req.params.id);
+        const r = await c.query('DELETE FROM canteiro_concretagens WHERE id = $1 AND obra_id = $2 RETURNING data, volume_m3', [req.params.cid, obra.id]);
+        if (!r.rowCount) throw naoEncontrado('Concretagem');
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'canteiro_concretagens', entidadeId: req.params.cid, antes: { data: dataIso(r.rows[0].data), volumeM3: Number(r.rows[0].volume_m3) } });
+      });
+      return { ok: true };
+    });
+
     app.get<{ Params: { id: string } }>('/obras/:id/canteiro', async (req) => {
       const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
       await garantirCentrais(banco, obra.id);
@@ -1654,7 +1893,7 @@ export function rotasEngenharia(banco: Banco) {
       const boletins = await boletinsDaObra(banco, obra.id);
       const inicioObra = obra.data_inicio ? dataIso(obra.data_inicio) : null;
       return {
-        obra: { id: obra.id as string, codigo: obra.codigo as string, nome: obra.nome as string, inicio: inicioObra },
+        obra: { id: obra.id as string, codigo: obra.codigo as string, nome: obra.nome as string, inicio: inicioObra, tipoCanteiro: (obra.tipo_canteiro as string) ?? 'horizontal' },
         centrais: CENTRAIS.map((tipo) => {
           const cfg = centrais.find((x) => x.tipo === tipo);
           const periodicidadeDias = Number(cfg?.periodicidade_dias ?? PERIODICIDADE_PADRAO);
@@ -3042,6 +3281,7 @@ function obraPublica(o: Record<string, any>) {
   return {
     id: o.id as string,
     tipo: (o.tipo as string | undefined) ?? 'execucao',
+    tipoCanteiro: (o.tipo_canteiro as string | undefined) ?? 'horizontal',
     codigo: o.codigo as string,
     nome: o.nome as string,
     endereco: (o.endereco as string | null) ?? null,

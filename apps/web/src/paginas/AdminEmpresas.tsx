@@ -38,7 +38,14 @@ const MODULOS_CONTRATO: [string, string][] = [
   ['laudos', 'Laudos (contratado à parte)'],
 ];
 
-type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; limiteObras: string; limiteUsuarios: string; testeFim: string };
+/** Recursos do canteiro vendidos à parte, somados ao pacote. O vertical já inclui a base e as centrais. */
+const RECURSOS_CONTRATO: [string, string][] = [
+  ['canteiro_horizontal', 'Canteiro horizontal'],
+  ['canteiro_vertical', 'Canteiro vertical (inclui a base do canteiro e as centrais)'],
+  ['centrais', 'Centrais de produção (add-on)'],
+];
+
+type EdicaoContrato = { id: string; nome: string; pacote: PacoteContrato; modulos: string[]; recursos: string[]; limiteObras: string; limiteUsuarios: string; testeFim: string };
 
 function editarContrato(e: Empresa): EdicaoContrato {
   return {
@@ -46,6 +53,7 @@ function editarContrato(e: Empresa): EdicaoContrato {
     nome: e.nomeFantasia || e.razaoSocial,
     pacote: e.contrato?.pacote ?? 'completo',
     modulos: (e.contrato?.modulos ?? []).filter((m) => m !== 'configuracoes'),
+    recursos: e.contrato?.recursos ?? [],
     limiteObras: e.contrato?.limiteObras?.toString() ?? '',
     limiteUsuarios: e.contrato?.limiteUsuarios?.toString() ?? '',
     testeFim: e.contrato?.testeFim ?? '',
@@ -153,6 +161,10 @@ function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { ed
     const modulos = edicao.modulos.includes(m) ? edicao.modulos.filter((x) => x !== m) : [...edicao.modulos, m];
     aoMudar({ ...edicao, modulos });
   }
+  function alternarRecurso(r: string) {
+    const recursos = edicao.recursos.includes(r) ? edicao.recursos.filter((x) => x !== r) : [...edicao.recursos, r];
+    aoMudar({ ...edicao, recursos });
+  }
   return (
     <form className="card form" onSubmit={aoSalvar}>
       <h2>Contrato de {edicao.nome}</h2>
@@ -200,6 +212,21 @@ function ContratoEmpresa({ edicao, aoMudar, aoSalvar, aoFechar, salvando }: { ed
       ) : (
         <p className="ajuda">Módulos do pacote: {PREDEFINIDO[edicao.pacote].modulos.map((m) => MODULOS_CONTRATO.find(([v]) => v === m)?.[1]).join(', ')}, mais Configurações.</p>
       )}
+      <fieldset className="campo">
+        <legend className="rotulo">Canteiro (somado ao pacote)</legend>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '6px 0' }}>
+          {RECURSOS_CONTRATO.map(([v, nome]) => {
+            // Com o vertical marcado, a base e as centrais já estão incluídas.
+            const incluido = edicao.recursos.includes('canteiro_vertical') && v !== 'canteiro_vertical';
+            return (
+              <label key={v} className="marcar">
+                <input type="checkbox" checked={edicao.recursos.includes(v) || incluido} disabled={incluido} onChange={() => alternarRecurso(v)} /> {nome}
+              </label>
+            );
+          })}
+        </div>
+        <span className="ajuda">Sem nenhum recurso, a empresa não usa o canteiro. As centrais são vendidas à parte para quem tem canteiro horizontal.</span>
+      </fieldset>
       <div className="acoes">
         <button className="btn btn-primario" type="submit" disabled={salvando}>
           {salvando ? 'Salvando…' : 'Salvar contrato'}
@@ -312,7 +339,7 @@ export function AdminEmpresas() {
     try {
       await api(`/admin/empresas/${contrato.id}/contrato`, {
         metodo: 'PUT',
-        corpo: { pacote: contrato.pacote, modulos: contrato.pacote === 'personalizado' ? contrato.modulos : undefined, limiteObras: obras, limiteUsuarios: usuarios, testeFim: contrato.testeFim.trim() || null },
+        corpo: { pacote: contrato.pacote, modulos: contrato.pacote === 'personalizado' ? contrato.modulos : undefined, recursos: contrato.recursos, limiteObras: obras, limiteUsuarios: usuarios, testeFim: contrato.testeFim.trim() || null },
       });
       setAviso(`Contrato de ${contrato.nome} salvo. Os novos limites valem a partir de agora.`);
       setContrato(null);

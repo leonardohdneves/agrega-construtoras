@@ -323,8 +323,8 @@ export async function garantirConstrutoraModelo(banco: Banco, senha: string, log
     if (!empresa) {
       empresa = (
         await banco.query(
-          `INSERT INTO empresas (razao_social, nome_fantasia, cnpj, regime_tributario, aliquotas_dre, cidade, uf, plano)
-           VALUES ('Construtora Modelo Ltda', 'Construtora Modelo', $1, 'presumido', '{"pis": 0.65, "cofins": 3, "iss": 2, "irpj": 1.2, "csll": 1.08}', 'Palmas', 'TO', 'demonstracao')
+          `INSERT INTO empresas (razao_social, nome_fantasia, cnpj, regime_tributario, aliquotas_dre, cidade, uf, plano, recursos_contratados)
+           VALUES ('Construtora Modelo Ltda', 'Construtora Modelo', $1, 'presumido', '{"pis": 0.65, "cofins": 3, "iss": 2, "irpj": 1.2, "csll": 1.08}', 'Palmas', 'TO', 'demonstracao', ARRAY['canteiro_vertical'])
            RETURNING id`,
           [CNPJ_CONSTRUTORA],
         )
