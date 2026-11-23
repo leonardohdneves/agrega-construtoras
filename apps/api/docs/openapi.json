@@ -10334,7 +10334,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:842"
+        "x-fonte": "src/rotas/suprimentos.ts:847"
       }
     },
     "/api/sup/estoque/transferencias": {
@@ -10435,7 +10435,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:890"
+        "x-fonte": "src/rotas/suprimentos.ts:895"
       }
     },
     "/api/sup/obras/{obraId}/estoques": {
@@ -10486,7 +10486,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:923"
+        "x-fonte": "src/rotas/suprimentos.ts:929"
       },
       "post": {
         "requestBody": {
@@ -10555,7 +10555,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:939"
+        "x-fonte": "src/rotas/suprimentos.ts:945"
       }
     },
     "/api/sup/estoques/{id}": {
@@ -10626,7 +10626,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:960"
+        "x-fonte": "src/rotas/suprimentos.ts:967"
       }
     },
     "/api/sup/estoques": {
@@ -10668,7 +10668,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:980"
+        "x-fonte": "src/rotas/suprimentos.ts:989"
       },
       "post": {
         "requestBody": {
@@ -10732,7 +10732,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:999"
+        "x-fonte": "src/rotas/suprimentos.ts:1008"
       }
     },
     "/api/sup/etiquetas": {
@@ -10773,7 +10773,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1050"
+        "x-fonte": "src/rotas/suprimentos.ts:1061"
       }
     },
     "/api/sup/etiquetas/{id}": {
@@ -10824,7 +10824,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1065"
+        "x-fonte": "src/rotas/suprimentos.ts:1076"
       }
     },
     "/api/sup/colaboradores": {
@@ -10866,7 +10866,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1076"
+        "x-fonte": "src/rotas/suprimentos.ts:1087"
       }
     },
     "/api/sup/saidas-material": {
@@ -10907,7 +10907,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1150"
+        "x-fonte": "src/rotas/suprimentos.ts:1162"
       },
       "post": {
         "requestBody": {
@@ -11015,7 +11015,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1099"
+        "x-fonte": "src/rotas/suprimentos.ts:1110"
       }
     },
     "/api/sup/solicitacoes": {
@@ -11055,7 +11055,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1165"
+        "x-fonte": "src/rotas/suprimentos.ts:1177"
       },
       "post": {
         "requestBody": {
@@ -11297,7 +11297,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1214"
+        "x-fonte": "src/rotas/suprimentos.ts:1226"
       }
     },
     "/api/sup/solicitacoes/{id}": {
@@ -11347,7 +11347,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1207"
+        "x-fonte": "src/rotas/suprimentos.ts:1219"
       },
       "put": {
         "requestBody": {
@@ -11599,7 +11599,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1261"
+        "x-fonte": "src/rotas/suprimentos.ts:1273"
       }
     },
     "/api/sup/solicitacoes/{id}/finalizar": {
@@ -11649,7 +11649,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1292"
+        "x-fonte": "src/rotas/suprimentos.ts:1304"
       }
     },
     "/api/sup/solicitacoes/{id}/reabrir": {
@@ -11699,7 +11699,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1305"
+        "x-fonte": "src/rotas/suprimentos.ts:1317"
       }
     },
     "/api/sup/solicitacoes/{id}/cancelar": {
@@ -11749,7 +11749,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1317"
+        "x-fonte": "src/rotas/suprimentos.ts:1329"
       }
     },
     "/api/sup/conferencia-unidades": {
@@ -11789,7 +11789,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1333"
+        "x-fonte": "src/rotas/suprimentos.ts:1345"
       }
     },
     "/api/sup/conferencia-unidades/{id}": {
@@ -11864,7 +11864,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1370"
+        "x-fonte": "src/rotas/suprimentos.ts:1382"
       }
     },
     "/api/sup/cotacoes": {
@@ -11903,7 +11903,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1393"
+        "x-fonte": "src/rotas/suprimentos.ts:1405"
       },
       "post": {
         "requestBody": {
@@ -11984,7 +11984,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1437"
+        "x-fonte": "src/rotas/suprimentos.ts:1449"
       }
     },
     "/api/sup/cotacoes/{id}": {
@@ -12033,7 +12033,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1426"
+        "x-fonte": "src/rotas/suprimentos.ts:1438"
       }
     },
     "/api/sup/cotacoes/{id}/fornecedores": {
@@ -12106,7 +12106,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1491"
+        "x-fonte": "src/rotas/suprimentos.ts:1503"
       }
     },
     "/api/sup/cotacoes/{id}/respostas/{cf}": {
@@ -12270,7 +12270,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1517"
+        "x-fonte": "src/rotas/suprimentos.ts:1529"
       }
     },
     "/api/sup/servicos/{obraItemId}/saldo": {
@@ -12328,7 +12328,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1549"
+        "x-fonte": "src/rotas/suprimentos.ts:1561"
       }
     },
     "/api/sup/cotacoes/leitura-ia": {
@@ -12368,7 +12368,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1583"
+        "x-fonte": "src/rotas/suprimentos.ts:1595"
       }
     },
     "/api/sup/cotacoes/{id}/leitura-ia": {
@@ -12447,7 +12447,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1590"
+        "x-fonte": "src/rotas/suprimentos.ts:1602"
       }
     },
     "/api/sup/cotacoes/{id}/vencedores": {
@@ -12556,7 +12556,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1625"
+        "x-fonte": "src/rotas/suprimentos.ts:1637"
       }
     },
     "/api/sup/cotacoes/{id}/concluir": {
@@ -12606,7 +12606,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1652"
+        "x-fonte": "src/rotas/suprimentos.ts:1664"
       }
     },
     "/api/sup/cotacoes/{id}/cancelar": {
@@ -12655,7 +12655,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1715"
+        "x-fonte": "src/rotas/suprimentos.ts:1727"
       }
     },
     "/api/sup/pedidos": {
@@ -12696,7 +12696,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1733"
+        "x-fonte": "src/rotas/suprimentos.ts:1745"
       }
     },
     "/api/sup/pedidos/{id}": {
@@ -12747,7 +12747,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1787"
+        "x-fonte": "src/rotas/suprimentos.ts:1799"
       },
       "put": {
         "requestBody": {
@@ -12878,7 +12878,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1812"
+        "x-fonte": "src/rotas/suprimentos.ts:1824"
       }
     },
     "/api/sup/pedidos/{id}/enviar-aprovacao": {
@@ -12927,7 +12927,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1844"
+        "x-fonte": "src/rotas/suprimentos.ts:1856"
       }
     },
     "/api/sup/pedidos/{id}/aprovar": {
@@ -12976,7 +12976,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1868"
+        "x-fonte": "src/rotas/suprimentos.ts:1880"
       }
     },
     "/api/sup/pedidos/{id}/reprovar": {
@@ -13046,7 +13046,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1882"
+        "x-fonte": "src/rotas/suprimentos.ts:1894"
       }
     },
     "/api/sup/pedidos/{id}/enviado": {
@@ -13095,7 +13095,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1896"
+        "x-fonte": "src/rotas/suprimentos.ts:1908"
       }
     },
     "/api/sup/pedidos/{id}/cancelar": {
@@ -13162,7 +13162,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1909"
+        "x-fonte": "src/rotas/suprimentos.ts:1921"
       }
     },
     "/api/sup/pedidos/{id}/reabrir": {
@@ -13213,7 +13213,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1947"
+        "x-fonte": "src/rotas/suprimentos.ts:1959"
       }
     },
     "/api/sup/pedidos/{id}/encerrar": {
@@ -13283,7 +13283,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1976"
+        "x-fonte": "src/rotas/suprimentos.ts:1988"
       }
     },
     "/api/sup/pedidos/{id}/notas-candidatas": {
@@ -13332,7 +13332,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:1990"
+        "x-fonte": "src/rotas/suprimentos.ts:2002"
       }
     },
     "/api/sup/pedidos/{id}/recebimento": {
@@ -13455,7 +13455,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2041"
+        "x-fonte": "src/rotas/suprimentos.ts:2053"
       }
     },
     "/api/sup/pedidos/{id}/recebimento/{nota}": {
@@ -13512,7 +13512,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2050"
+        "x-fonte": "src/rotas/suprimentos.ts:2062"
       }
     },
     "/api/sup/relatorios": {
@@ -13551,7 +13551,7 @@
             "administrativo"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2067"
+        "x-fonte": "src/rotas/suprimentos.ts:2079"
       }
     },
     "/api/sup/contratos": {
@@ -17008,7 +17008,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2232"
+        "x-fonte": "src/rotas/suprimentos.ts:2244"
       }
     },
     "/api/ger/config": {
@@ -17046,7 +17046,7 @@
             "financeiro"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2316"
+        "x-fonte": "src/rotas/suprimentos.ts:2328"
       },
       "put": {
         "requestBody": {
@@ -17137,7 +17137,7 @@
             "dono"
           ]
         },
-        "x-fonte": "src/rotas/suprimentos.ts:2323"
+        "x-fonte": "src/rotas/suprimentos.ts:2335"
       }
     },
     "/api/ger/regras-producao": {

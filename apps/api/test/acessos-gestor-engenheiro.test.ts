@@ -86,3 +86,22 @@ test('mural: os rankings da concreteira ficam desligados', { skip: semBanco }, a
   assert.deepEqual(painel.config.rankings, []);
   assert.deepEqual(painel.rankings, []);
 });
+
+test('almoxarife: estoque, etiquetas e saídas só das obras atribuídas a ele', { skip: semBanco }, async () => {
+  const almox = ctx.usuarios.a.almoxarife.id;
+  const dele = await novaObra('Obra do almoxarife', [almox]);
+  const alheia = await novaObra('Obra sem almoxarife');
+
+  assert.equal((await ctx.pedir('almoxarife', 'GET', `/api/sup/obras/${dele}/estoques`)).status, 200);
+  assert.equal((await ctx.pedir('almoxarife', 'GET', `/api/sup/obras/${alheia}/estoques`)).status, 404);
+  const estoques = (await ctx.pedir('almoxarife', 'GET', '/api/sup/estoques')).corpo.estoques as { obraId: string | null }[];
+  assert.ok(estoques.length > 0 && estoques.every((e) => e.obraId === dele), 'só os estoques da obra dele');
+
+  assert.equal((await ctx.pedir('almoxarife', 'POST', `/api/sup/obras/${dele}/estoques`, { corpo: { nome: 'Depósito B' } })).status, 201);
+  assert.equal((await ctx.pedir('almoxarife', 'POST', `/api/sup/obras/${alheia}/estoques`, { corpo: { nome: 'Depósito B' } })).status, 404);
+  assert.equal((await ctx.pedir('almoxarife', 'POST', '/api/sup/estoques', { corpo: { nome: 'Geral' } })).status, 404, 'estoque geral não é dele');
+  const saida = { obraId: alheia, eapNoId: '00000000-0000-4000-8000-000000000001', colaboradorId: '00000000-0000-4000-8000-000000000001', data: '2026-11-23', itens: [{ etiquetaId: '00000000-0000-4000-8000-000000000001', quantidade: 1 }] };
+  assert.equal((await ctx.pedir('almoxarife', 'POST', '/api/sup/saidas-material', { corpo: saida })).status, 404, 'saída de material de obra alheia');
+  assert.equal((await ctx.pedir('almoxarife', 'GET', '/api/sup/estoque')).status, 200);
+  assert.equal((await ctx.pedir('dono', 'GET', `/api/sup/obras/${alheia}/estoques`)).status, 200, 'o dono continua vendo todas');
+});
