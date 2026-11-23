@@ -68,7 +68,7 @@ export function EngCanteiroObras() {
 /** Fluxograma da obra: Engenharia ligada às quatro centrais. */
 export function EngCanteiroObra() {
   const { obraId = '' } = useParams();
-  const { empresa } = useSessao();
+  const { empresa, usuario } = useSessao();
   const [dados, setDados] = useState<CanteiroObra | null>(null);
   const [erro, setErro] = useState('');
   const recursos = empresa?.contrato?.recursos ?? [];
@@ -118,6 +118,7 @@ export function EngCanteiroObra() {
             </div>
           </div>
           <p className="muted">Clique em uma central para ver os serviços, a periodicidade e os boletins.</p>
+          <KanbanCentrais obraId={obraId} centrais={dados.centrais} podeEditar={usuario?.perfil !== 'mestre_obra'} />
         </>
       ) : (
         <p className="muted">O contrato desta empresa não inclui as centrais de produção (argamassa, carpintaria, armação e almoxarifado). Elas são um recurso à parte.</p>
@@ -423,5 +424,134 @@ export function EngCanteiroBoletimImprimir() {
         <Assinatura nome="" papel={`Encarregado · ${b.nome.toLowerCase()}`} />
       </div>
     </>
+  );
+}
+
+// ----- Kanban das centrais: um quadro por central, abaixo do organograma. Cada card é uma frente de serviço da central;
+// a cor é a prioridade, a posição é a ordem do fluxo, e a coluna segue o status da OS da frente.
+type OsCard = { id: string; numero: number; status: string };
+type FrenteCard = { id: string; eapNoId: string; codigo: string; descricao: string; prioridade: 'alta' | 'media' | 'baixa'; ordem: number; coluna: string; os: OsCard | null };
+type Kanban = { colunas: { id: string; nome: string; frentes: FrenteCard[] }[]; total: number };
+
+const NOMES_PRIORIDADE: Record<FrenteCard['prioridade'], string> = { alta: 'Alta', media: 'Média', baixa: 'Baixa' };
+const NOMES_STATUS_OS: Record<string, string> = { liberada: 'Liberada', em_execucao: 'Em execução', concluida: 'Concluída', cancelada: 'Cancelada' };
+
+function KanbanCentrais({ obraId, centrais, podeEditar }: { obraId: string; centrais: CentralResumo[]; podeEditar: boolean }) {
+  const [tipo, setTipo] = useState(() => centrais.find((c) => c.servicos > 0)?.tipo ?? centrais[0]?.tipo ?? 'argamassa');
+  const [quadro, setQuadro] = useState<Kanban | null>(null);
+  const [erro, setErro] = useState('');
+  const [ocupado, setOcupado] = useState(false);
+  const base = `/eng/obras/${obraId}/canteiro/centrais/${tipo}`;
+
+  const carregar = async () => {
+    try {
+      setQuadro(await api<Kanban>(`${base}/kanban`));
+      setErro('');
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  };
+  useEffect(() => {
+    setQuadro(null);
+    carregar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [obraId, tipo]);
+
+  /** Executa uma alteração e recarrega o quadro; o erro do servidor aparece no alerta. */
+  async function executar(fn: () => Promise<unknown>) {
+    setOcupado(true);
+    setErro('');
+    try {
+      await fn();
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setOcupado(false);
+    }
+  }
+
+  /** Sobe ou desce o card dentro da coluna: troca de lugar com o vizinho da mesma coluna na ordem geral da central. */
+  function mover(card: FrenteCard, direcao: -1 | 1) {
+    if (!quadro) return;
+    const todos = quadro.colunas.flatMap((c) => c.frentes).sort((a, b) => a.ordem - b.ordem);
+    const mesmaColuna = todos.filter((f) => f.coluna === card.coluna);
+    const vizinho = mesmaColuna[mesmaColuna.findIndex((f) => f.id === card.id) + direcao];
+    if (!vizinho) return;
+    const ids = todos.map((f) => f.id);
+    const i = ids.indexOf(card.id);
+    const j = ids.indexOf(vizinho.id);
+    [ids[i], ids[j]] = [ids[j], ids[i]];
+    executar(() => api(`${base}/kanban/ordem`, { metodo: 'PUT', corpo: { frentes: ids } }));
+  }
+
+  return (
+    <div className="card" style={{ marginTop: 16 }}>
+      <h2 style={{ marginTop: 0 }}>Kanban das centrais</h2>
+      <div className="abas" role="tablist" aria-label="Centrais">
+        {centrais.map((c) => (
+          <button key={c.tipo} type="button" role="tab" aria-selected={c.tipo === tipo} className={`aba ${c.tipo === tipo ? 'ativa' : ''}`} onClick={() => setTipo(c.tipo)}>
+            {c.nome}
+          </button>
+        ))}
+      </div>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {!quadro ? (
+        <p className="muted">Carregando…</p>
+      ) : quadro.total === 0 ? (
+        <p className="muted">Nenhum serviço nesta central. Associe os serviços da EAP na página da central.</p>
+      ) : (
+        <div className="kanban">
+          {quadro.colunas.map((col) => (
+            <section key={col.id} className="kanban-coluna" aria-label={col.nome}>
+              <h3>{col.nome} <span className="muted">({col.frentes.length})</span></h3>
+              {col.frentes.map((f, i) => (
+                <article key={f.id} className={`kanban-card prioridade-${f.prioridade}`}>
+                  <div>
+                    <strong>{f.codigo}</strong> {f.descricao}
+                  </div>
+                  <div className="small muted">
+                    Prioridade {NOMES_PRIORIDADE[f.prioridade].toLowerCase()}
+                    {f.os && f.os.status !== 'cancelada' ? ` · OS ${f.os.numero} · ${NOMES_STATUS_OS[f.os.status]}` : ''}
+                  </div>
+                  {podeEditar && (
+                    <div className="kanban-acoes">
+                      <select aria-label={`Prioridade de ${f.codigo}`} value={f.prioridade} disabled={ocupado} onChange={(e) => executar(() => api(`${base}/frentes/${f.id}`, { metodo: 'PATCH', corpo: { prioridade: e.target.value } }))}>
+                        <option value="alta">Alta</option>
+                        <option value="media">Média</option>
+                        <option value="baixa">Baixa</option>
+                      </select>
+                      <button type="button" className="btn btn-link" title="Subir" aria-label={`Subir ${f.codigo}`} disabled={ocupado || i === 0} onClick={() => mover(f, -1)}>↑</button>
+                      <button type="button" className="btn btn-link" title="Descer" aria-label={`Descer ${f.codigo}`} disabled={ocupado || i === col.frentes.length - 1} onClick={() => mover(f, 1)}>↓</button>
+                      {col.id === 'planejada' && (
+                        <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/frentes/${f.id}/os`, { metodo: 'POST' }))}>Gerar OS</button>
+                      )}
+                      {col.id === 'liberada' && f.os && (
+                        <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'em_execucao' } }))}>Iniciar</button>
+                      )}
+                      {col.id === 'em_execucao' && f.os && (
+                        <button type="button" className="btn btn-secundario" disabled={ocupado} onClick={() => executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'concluida' } }))}>Concluir</button>
+                      )}
+                      {(col.id === 'liberada' || col.id === 'em_execucao') && f.os && (
+                        <button
+                          type="button"
+                          className="btn btn-link"
+                          disabled={ocupado}
+                          onClick={() => {
+                            if (window.confirm(`Cancelar a OS ${f.os!.numero}? A frente volta para Planejada.`)) executar(() => api(`${base}/os/${f.os!.id}`, { metodo: 'PATCH', corpo: { status: 'cancelada' } }));
+                          }}
+                        >
+                          Cancelar OS
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </article>
+              ))}
+            </section>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }

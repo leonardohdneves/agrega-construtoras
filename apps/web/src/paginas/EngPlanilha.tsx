@@ -470,9 +470,12 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
   }
 
   const podeIncluir = descricao.trim().length >= 2 || (nivel === 'tarefa' && !!itemId);
+  // Barra fixa embaixo da tela: o lançamento fica sempre à mão, sem rolar até o fim da planilha.
   return (
-    <form className="card form" onSubmit={incluir} aria-label="Adicionar linha">
-      <h2 style={{ margin: 0 }}>Adicionar linha</h2>
+    <>
+    <div className="lancamento-espaco" aria-hidden="true" />
+    <form className="card form lancamento-fixo" onSubmit={incluir} aria-label="Adicionar linha">
+      <h2 className="lancamento-titulo">Adicionar linha</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <div className="campo">
           <label htmlFor="pl-nivel">Nível</label>
@@ -523,5 +526,6 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
         <button className="btn btn-primario" type="submit" disabled={ocupado || !podeIncluir}>{ocupado ? 'Adicionando…' : '+ Adicionar linha'}</button>
       </div>
     </form>
+    </>
   );
 }
