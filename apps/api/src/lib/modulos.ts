@@ -33,8 +33,9 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   // O gestor tem o módulo Financeiro, com saldos e contas, como o dono e o perfil Financeiro.
   gestor: ['engenharia', 'suprimentos', 'financeiro', 'gerencial', 'comercial', 'incorporacao', 'laudos', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
-  // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
-  engenheiro_obra: ['engenharia'],
+  // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras. Em Suprimentos: solicitações,
+  // pedidos e estoque dessas obras.
+  engenheiro_obra: ['engenharia', 'suprimentos'],
   // Só as obras atribuídas a ele, em consulta: acompanha o canteiro e os boletins, sem lançar nada.
   mestre_obra: ['engenharia'],
   comprador: ['suprimentos'],
@@ -55,7 +56,8 @@ export const PERFIS_POR_MODULO: Perfil[] = ['financeiro', 'administrativo', 'ven
  * `contratados` são os módulos do contrato da empresa (sem ele, todos valem).
  */
 export function modulosEfetivos(perfil: Perfil, modulos: string[] | null | undefined, contratados: readonly string[] = MODULOS): Modulo[] {
-  const lista = perfil === 'dono' ? [...MODULOS] : (modulos ?? MODULOS_PADRAO[perfil] ?? []);
+  // Dono e gestor: tudo o que a empresa contratou, sem lista própria.
+  const lista = perfil === 'dono' || perfil === 'gestor' ? [...MODULOS] : (modulos ?? MODULOS_PADRAO[perfil] ?? []);
   return MODULOS.filter((m) => lista.includes(m) && contratados.includes(m));
 }
 
@@ -114,6 +116,21 @@ const FINANCEIRO_PARCIAL = [/^\/api\/fin\/resumo\/?$/, /^\/api\/fin\/(contas|pla
 const ALMOXARIFADO = [/^\/api\/sup\/(estoques?|obras\/[^/]+\/estoques|colaboradores|etiquetas|saidas-material|patrimonio)(\/|$)/];
 const ALMOXARIFADO_CONSULTAS = [/^\/api\/eng\/obras\/?$/, /^\/api\/eng\/obras\/[^/]+\/(itens|eap)\/?$/, /^\/api\/sup\/pedidos(\/[^/]+)?\/?$/];
 
+/**
+ * Suprimentos do engenheiro de obra (módulo Suprimentos liberado): solicitações de material e de serviço, pedidos e estoque,
+ * sempre só das obras atribuídas a ele (as rotas conferem a obra). Não cota, não aprova pedido e não mexe em fornecedor.
+ */
+const SUPRIMENTOS_ENGENHEIRO: { rx: RegExp; metodos: string[] }[] = [
+  { rx: /^\/api\/sup\/solicitacoes\/?$/, metodos: ['GET', 'POST'] },
+  { rx: /^\/api\/sup\/solicitacoes\/[^/]+\/?$/, metodos: ['GET', 'PUT'] },
+  { rx: /^\/api\/sup\/solicitacoes\/[^/]+\/(finalizar|reabrir|cancelar)\/?$/, metodos: ['POST'] },
+  { rx: /^\/api\/sup\/servicos\/[^/]+\/saldo\/?$/, metodos: ['GET'] },
+  { rx: /^\/api\/sup\/pedidos(\/[^/]+)?\/?$/, metodos: ['GET'] },
+  { rx: /^\/api\/sup\/(estoque|estoques|etiquetas|saidas-material|colaboradores)\/?$/, metodos: ['GET'] },
+  { rx: /^\/api\/sup\/etiquetas\/[^/]+\/?$/, metodos: ['GET'] },
+  { rx: /^\/api\/sup\/obras\/[^/]+\/estoques\/?$/, metodos: ['GET'] },
+];
+
 export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; perfisRota: Perfil[]; url: string; metodo: string; contratados?: readonly string[] }): boolean {
   const porPerfil = !o.perfisRota.length || o.perfisRota.includes(o.perfil);
   const modulo = moduloDaRota(o.url);
@@ -135,6 +152,7 @@ export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; p
     // Contratos e medições das obras dele (a rota confere a obra); listas de cadastro para preenchê-los.
     if (CONTRATOS_DA_OBRA.some((rx) => rx.test(path))) return true;
     if (consulta || (o.metodo === 'GET' && CONSULTAS_ENGENHEIRO.some((rx) => rx.test(path)))) return true;
+    if (efetivos.includes('suprimentos') && SUPRIMENTOS_ENGENHEIRO.some((r) => r.rx.test(path) && r.metodos.includes(o.metodo))) return true;
     // Engenharia: a rota limita às obras atribuídas.
     if (modulo === 'engenharia' && efetivos.includes('engenharia')) return true;
   }

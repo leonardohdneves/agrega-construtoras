@@ -11,8 +11,9 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   // O gestor tem o módulo Financeiro, com saldos e contas, como o dono e o perfil Financeiro.
   gestor: ['engenharia', 'suprimentos', 'financeiro', 'gerencial', 'comercial', 'incorporacao', 'laudos', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
-  // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
-  engenheiro_obra: ['engenharia'],
+  // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras. Em Suprimentos: solicitações,
+  // pedidos e estoque dessas obras.
+  engenheiro_obra: ['engenharia', 'suprimentos'],
   // Só as obras atribuídas a ele, em consulta (canteiro e boletins).
   mestre_obra: ['engenharia'],
   comprador: ['suprimentos'],
@@ -65,6 +66,8 @@ export function podeAcessar(usuario: Usuario | null, perfis: Perfil[] | undefine
   if (usuario.perfil === 'engenheiro_obra') {
     // Engenharia (as obras dele, conferidas no servidor) e os contratos e medições dessas obras.
     if (/^\/sup\/(contratos|medicoes|patrimonio)(\/|$)/.test(caminho)) return true;
+    // Suprimentos (módulo liberado): solicitações, pedidos e estoque das obras dele (o servidor confere a obra).
+    if (/^\/sup\/(solicitacoes|solicitacoes-servico|pedidos|estoque)(\/|$)/.test(caminho)) return temModulo(usuario, 'suprimentos');
     return modulo === 'engenharia' && temModulo(usuario, 'engenharia');
   }
   if (modulo === 'financeiro' && !PERFIS_FINANCEIRO.includes(usuario.perfil)) return false;

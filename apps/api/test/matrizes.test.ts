@@ -31,9 +31,9 @@ const ROTA: Record<string, string> = {
 /** Onde cada perfil entra com os módulos padrão (MODULOS_PADRAO e as regras de acessoPermitido). */
 const ESPERADO: Record<PerfilEmpresa, string[]> = {
   dono: ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
-  gestor: ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo'],
+  gestor: ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
   orcamentista: ['engenharia', 'comercial'],
-  engenheiro_obra: ['engenharia'],
+  engenheiro_obra: ['engenharia', 'suprimentos'],
   mestre_obra: ['engenharia'],
   comprador: ['suprimentos'],
   financeiro: ['financeiro', 'gerencial'],

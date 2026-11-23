@@ -1,4 +1,4 @@
-// Mural de avisos: comunicação interna, aniversariantes do mês e ranking de produção (configurados pelo dono).
+// Mural de avisos: comunicação interna, aniversariantes do mês (configurados pelo dono).
 import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatarData, formatarDataHora, formatarMoeda, formatarNumero, hojeLocal, NOMES_PERFIL, nomeMes, type Perfil } from '../api';
@@ -13,12 +13,6 @@ type Painel = {
   aniversariantes: { nome: string; cargo: string | null; dia: number; hoje: boolean }[]; rankings: Ranking[];
 };
 
-const RANKINGS: [string, string][] = [
-  ['motoristas_m3', 'Motoristas · m³ entregues'],
-  ['bomba_m3', 'Operadores de bomba · m³ bombeados'],
-  ['vendedores_m3', 'Vendedores · m³ entregues'],
-  ['vendedores_valor', 'Vendedores · valor vendido'],
-];
 const PERFIS: Perfil[] = ['gestor', 'orcamentista', 'engenheiro_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor'];
 const MEDALHA = ['1º', '2º', '3º'];
 
@@ -192,7 +186,7 @@ export function MuralAvisos() {
       <div className="cabecalho">
         <div className="titulo">
           <h1>Mural de avisos</h1>
-          <span className="muted">Comunicação interna da equipe, aniversariantes do mês e ranking de produção.</span>
+          <span className="muted">Comunicação interna da equipe e aniversariantes do mês.</span>
         </div>
         {d?.podePublicar && !form && (
           <button className="btn btn-primario" type="button" onClick={() => setForm({ titulo: '', texto: '', perfis: [], fixado: false, ate: '' })}>
@@ -303,31 +297,6 @@ export function MuralAvisos() {
             <input type="checkbox" checked={cfg.aniversariantes} onChange={(e) => setCfg({ ...cfg, aniversariantes: e.target.checked })} />
             Mostrar os aniversariantes do mês
           </label>
-          <label className="marcar">
-            <input type="checkbox" checked={cfg.ranking} onChange={(e) => setCfg({ ...cfg, ranking: e.target.checked })} />
-            Mostrar o ranking de produção do mês
-          </label>
-          {cfg.ranking && (
-            <>
-              <fieldset className="campo">
-                <legend>Rankings</legend>
-                {RANKINGS.map(([k, t]) => (
-                  <label key={k} className="marcar">
-                    <input type="checkbox" checked={cfg.rankings.includes(k)} onChange={(e) => setCfg({ ...cfg, rankings: e.target.checked ? [...cfg.rankings, k] : cfg.rankings.filter((x) => x !== k) })} />
-                    {t}
-                  </label>
-                ))}
-              </fieldset>
-              <div className="campo" style={{ maxWidth: 220 }}>
-                <label htmlFor="c-pos">Posições em cada ranking</label>
-                <select id="c-pos" value={cfg.posicoes} onChange={(e) => setCfg({ ...cfg, posicoes: Number(e.target.value) })}>
-                  {[3, 5, 10].map((n) => (
-                    <option key={n} value={n}>{n}</option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
           <div className="acoes">
             <button className="btn btn-primario" type="submit">Salvar configuração</button>
           </div>

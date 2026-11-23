@@ -101,7 +101,7 @@ export function exigir(banco: Banco, ...perfis: Perfil[]) {
     // Token emitido antes da última troca de senha não vale mais (P20).
     if ((req.sessao.ver ?? 0) !== (u.sessao_versao ?? 0)) throw naoAutenticado();
     if (u.empresa_id && !u.empresa_ativa) throw new ErroHttp(403, 'O acesso desta empresa está suspenso.');
-    const administrador = u.perfil === 'dono' || !!u.administrador;
+    const administrador = u.perfil === 'dono' || u.perfil === 'gestor' || !!u.administrador;
     const lista = listaDoUsuario(u.perfil, u.modulos, administrador);
     // Sem empresa (administrador do sistema) não há contrato; com empresa, vale o que foi vendido.
     const contratados = u.empresa_id ? contratoComBase(u.modulos_contratados) : undefined;

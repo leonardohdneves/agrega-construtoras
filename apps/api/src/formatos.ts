@@ -15,11 +15,11 @@ export function usuarioPublico(r: Record<string, any>, contratados?: readonly st
     ativo: r.ativo,
     ultimoAcesso: r.ultimo_acesso ?? null,
     criadoEm: r.criado_em,
-    administrador: r.perfil === 'dono' || !!r.administrador,
+    administrador: r.perfil === 'dono' || r.perfil === 'gestor' || !!r.administrador,
     senhaProvisoria: !!r.senha_provisoria,
     // null = segue o padrão do perfil
     modulos: r.perfil === 'dono' ? null : (r.modulos ?? null),
-    modulosEfetivos: r.perfil === 'admin_sistema' ? [] : modulosEfetivos(r.perfil, listaDoUsuario(r.perfil, r.modulos, r.perfil === 'dono' || !!r.administrador), contratados ? contratoComBase(contratados) : undefined),
+    modulosEfetivos: r.perfil === 'admin_sistema' ? [] : modulosEfetivos(r.perfil, listaDoUsuario(r.perfil, r.modulos, r.perfil === 'dono' || r.perfil === 'gestor' || !!r.administrador), contratados ? contratoComBase(contratados) : undefined),
   };
 }
 
