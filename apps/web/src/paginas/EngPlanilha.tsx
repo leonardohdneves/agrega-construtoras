@@ -200,6 +200,8 @@ type EscolhaProjeto = { marcado: boolean; composicaoId: string; quantidade: stri
 
 const ROTULO_SERVICO: Record<string, string> = { forma: 'Forma', armacao: 'Armação', concreto: 'Concreto', outro: 'Outro' };
 
+const ehHtml = (arquivo: File | null) => !!arquivo && /\.html?$/i.test(arquivo.name);
+
 function lerArquivoBase64(arquivo: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const leitor = new FileReader();
@@ -232,14 +234,16 @@ function LeituraProjeto({ obra, linhas, itens, setErro, aoLancar, aoMudarItens }
   }
 
   async function analisar() {
-    if (!arquivo) return setErro('Escolha o PDF do projeto.');
+    if (!arquivo) return setErro('Escolha o arquivo do projeto (PDF ou HTML).');
     setErro('');
     setFeito('');
     setAnalisando(true);
     setLidos(null);
     try {
       const base64 = await lerArquivoBase64(arquivo);
-      const r = await api<{ itens: LidoProjeto[]; pendencias: string[] }>(`/eng/obras/${obra.id}/leitura-projeto`, { corpo: { arquivo: base64, nome: arquivo.name } });
+      // HTML com tabelas de quantitativo: leitura direta das tabelas (sem IA). PDF: leitura pela IA.
+      const rota = ehHtml(arquivo) ? 'leitura-html' : 'leitura-projeto';
+      const r = await api<{ itens: LidoProjeto[]; pendencias: string[] }>(`/eng/obras/${obra.id}/${rota}`, { corpo: { arquivo: base64, nome: arquivo.name } });
       setLidos(r.itens);
       setPendencias(r.pendencias);
       setEscolhas(
@@ -306,21 +310,21 @@ function LeituraProjeto({ obra, linhas, itens, setErro, aoLancar, aoMudarItens }
     <div style={{ marginBottom: 12 }}>
       <div className="acoes" style={{ marginBottom: 8 }}>
         <button className="btn" type="button" onClick={() => setAberto(!aberto)} aria-expanded={aberto}>
-          {aberto ? 'Fechar leitura do projeto' : 'Ler projeto com IA'}
+          {aberto ? 'Fechar leitura do projeto' : 'Ler projeto (PDF ou HTML)'}
         </button>
       </div>
       {aberto && (
         <div className="card form">
           <h2 style={{ margin: 0 }}>Leitura do projeto</h2>
           <p className="ajuda" style={{ margin: 0 }}>
-            A IA lista os quantitativos de forma, armação e concreto do PDF. As composições sugeridas são só as já cadastradas nas suas tabelas. Nada entra na planilha antes da sua confirmação.
+            PDF: a IA lista os quantitativos de forma, armação e concreto. HTML: o Agrega lê as tabelas com unidade e quantidade (ex.: quantitativos exportados do projeto) e concilia cada linha com as composições cadastradas nas suas tabelas. Nada entra na planilha antes da sua confirmação.
           </p>
           <div className="campo">
-            <label htmlFor="lp-arquivo">Projeto estrutural (PDF)</label>
+            <label htmlFor="lp-arquivo">Projeto (PDF) ou quantitativos (HTML com tabelas)</label>
             <input
               id="lp-arquivo"
               type="file"
-              accept="application/pdf,.pdf"
+              accept="application/pdf,.pdf,text/html,.html,.htm"
               onChange={(e) => {
                 setArquivo(e.target.files?.[0] ?? null);
                 setLidos(null);
@@ -330,13 +334,29 @@ function LeituraProjeto({ obra, linhas, itens, setErro, aoLancar, aoMudarItens }
           </div>
           <div className="acoes">
             <button className="btn btn-primario" type="button" onClick={analisar} disabled={!arquivo || analisando}>
-              {analisando ? 'Lendo o projeto…' : 'Ler com IA'}
+              {analisando ? 'Lendo o arquivo…' : ehHtml(arquivo) ? 'Ler tabelas do HTML' : 'Ler com IA'}
             </button>
           </div>
           {feito && <p className="ajuda" role="status" style={{ margin: 0 }}>{feito}</p>}
-          {lidos && lidos.length === 0 && <p className="muted" style={{ margin: 0 }}>Não encontrei quantitativos de forma, armação ou concreto neste arquivo.</p>}
+          {lidos && lidos.length === 0 && (
+            <>
+              <p className="muted" style={{ margin: 0 }}>
+                {ehHtml(arquivo) ? 'Não encontrei tabelas de quantitativo (com colunas de unidade e quantidade) neste arquivo.' : 'Não encontrei quantitativos de forma, armação ou concreto neste arquivo.'}
+              </p>
+              {pendencias.length > 0 && (
+                <ul className="ajuda" style={{ margin: '4px 0 0' }}>
+                  {pendencias.map((p, k) => (
+                    <li key={k}>{p}</li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
           {lidos && lidos.length > 0 && (
             <>
+              <p className="ajuda" style={{ margin: 0 }}>
+                {lidos.filter((x) => x.candidatas.length > 0).length} de {lidos.length} linhas com composição sugerida. As demais ficam sem lançamento até haver uma composição cadastrada.
+              </p>
               <div style={{ overflowX: 'auto' }}>
                 <table className="tabela">
                   <thead>
@@ -387,7 +407,7 @@ function LeituraProjeto({ obra, linhas, itens, setErro, aoLancar, aoMudarItens }
               </div>
               {pendencias.length > 0 && (
                 <div className="ajuda">
-                  <b>Não consegui ler pela IA:</b>
+                  <b>Avisos da leitura:</b>
                   <ul style={{ margin: '4px 0 0' }}>
                     {pendencias.map((p, k) => (
                       <li key={k}>{p}</li>
