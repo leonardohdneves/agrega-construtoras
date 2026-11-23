@@ -1,11 +1,31 @@
 // Engenharia · Planilha orçamentária: EAP e orçamento construídos juntos.
 // Cada linha tem um nível (1 Obra, 2 Etapa, 3 Sub Etapa, 4 Tarefa) e uma descrição editável;
 // a Tarefa recebe um serviço da obra com quantidade. As linhas acima somam o que está abaixo delas.
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
 import { SeletorBusca } from '../componentes/SeletorBusca';
 import type { ItemObra, Obra } from './EngObras';
+
+/**
+ * Altura da divisão da planilha: o espaço que sobra na janela a partir de onde ela começa (nunca menos de 480 px), para o
+ * painel de baixo (lançamento e leitura do projeto) ficar sempre à vista, sem rolar a página nem cobrir a planilha.
+ */
+function useAlturaRestante<T extends HTMLElement>(dependencia: unknown) {
+  const ref = useRef<T>(null);
+  useLayoutEffect(() => {
+    const ajustar = () => {
+      const el = ref.current;
+      if (!el) return;
+      const topoNoDocumento = el.getBoundingClientRect().top + window.scrollY;
+      el.style.height = `${Math.max(480, window.innerHeight - topoNoDocumento - 16)}px`;
+    };
+    ajustar();
+    window.addEventListener('resize', ajustar);
+    return () => window.removeEventListener('resize', ajustar);
+  }, [dependencia]);
+  return ref;
+}
 
 export type NivelPlanilha = 'obra' | 'etapa' | 'subetapa' | 'tarefa';
 export const NIVEIS: NivelPlanilha[] = ['obra', 'etapa', 'subetapa', 'tarefa'];
@@ -62,6 +82,7 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
     }
   }
 
+  const divisao = useAlturaRestante<HTMLDivElement>(p);
   if (!p) return <p className="muted">Carregando…</p>;
   return (
     <>
@@ -72,7 +93,9 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
         </div>
       </div>
 
-      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+      {/* Duas áreas separadas: a planilha rola no painel de cima; embaixo ficam o lançamento e a leitura do projeto. */}
+      <div className="planilha-dividida" ref={divisao}>
+      <div className="card planilha-rolagem">
         <table className="tabela planilha-orc">
           <thead>
             <tr>
@@ -123,8 +146,11 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
         </table>
       </div>
 
-      <LeituraProjeto obra={obra} linhas={p.linhas} itens={itensAtuais} setErro={setErro} aoLancar={carregar} aoMudarItens={setItensAtuais} />
-      <NovaLinha obraId={obra.id} linhas={p.linhas} servicos={servicos} setErro={setErro} aoIncluir={carregar} />
+      <div className="planilha-dock">
+        <LeituraProjeto obra={obra} linhas={p.linhas} itens={itensAtuais} setErro={setErro} aoLancar={carregar} aoMudarItens={setItensAtuais} />
+        <NovaLinha obraId={obra.id} linhas={p.linhas} servicos={servicos} setErro={setErro} aoIncluir={carregar} />
+      </div>
+      </div>
     </>
   );
 }
@@ -490,11 +516,9 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
   }
 
   const podeIncluir = descricao.trim().length >= 2 || (nivel === 'tarefa' && !!itemId);
-  // Barra fixa embaixo da tela: o lançamento fica sempre à mão, sem rolar até o fim da planilha.
+  // Fica no painel de baixo da divisão (planilha-dock): sempre à vista, sem cobrir a planilha.
   return (
-    <>
-    <div className="lancamento-espaco" aria-hidden="true" />
-    <form className="card form lancamento-fixo" onSubmit={incluir} aria-label="Adicionar linha">
+    <form className="card form lancamento-compacto" onSubmit={incluir} aria-label="Adicionar linha">
       <h2 className="lancamento-titulo">Adicionar linha</h2>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <div className="campo">
@@ -546,6 +570,5 @@ function NovaLinha({ obraId, linhas, servicos, setErro, aoIncluir }: { obraId: s
         <button className="btn btn-primario" type="submit" disabled={ocupado || !podeIncluir}>{ocupado ? 'Adicionando…' : '+ Adicionar linha'}</button>
       </div>
     </form>
-    </>
   );
 }
