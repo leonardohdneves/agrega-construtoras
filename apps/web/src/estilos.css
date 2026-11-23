@@ -893,6 +893,24 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .kanban-acoes { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
 .kanban-acoes select { padding: 4px 6px; font-size: 13px; }
 .kanban-atrasada { color: #c62828; font-weight: 600; }
+
+/* OS na EAP: o botão tem a cor da prioridade; o status muda o preenchimento. Cores mantidas na impressão. */
+.os-botao, .os-cor { --cor: #888; --fundo: #f1f1f1; --texto: #fff; }
+.os-botao.prioridade-alta, .os-cor.prioridade-alta { --cor: #c62828; --fundo: #fdecea; --texto: #fff; }
+.os-botao.prioridade-media, .os-cor.prioridade-media { --cor: #f2a900; --fundo: #fff6dd; --texto: #222; }
+.os-botao.prioridade-baixa, .os-cor.prioridade-baixa { --cor: #2e7d32; --fundo: #e8f5e9; --texto: #fff; }
+.os-botao { border: 2px solid var(--cor); border-radius: 999px; padding: 3px 10px; font-size: 12px; font-weight: 600; cursor: pointer; background: #fff; color: #222; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.os-botao.estado-planejada { border-style: dashed; background: transparent; color: var(--ink-muted); }
+.os-botao.estado-liberada { background: var(--fundo); }
+.os-botao.estado-em_execucao { background: var(--cor); color: var(--texto); }
+.os-botao.estado-concluida { background: var(--cor); color: var(--texto); opacity: .6; }
+.os-botao.atrasada { outline: 3px solid #5d0000; outline-offset: 2px; }
+.os-cor { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--cor); margin-right: 4px; vertical-align: -1px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.os-botoes { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.os-eap-resumo, .os-eap-legenda, .os-eap-filtros { display: flex; flex-wrap: wrap; gap: 6px 18px; margin: 10px 0; align-items: center; font-size: 14px; }
+.os-eap-atrasadas { color: #c62828; font-weight: 600; }
+.os-eap-filtros label { display: flex; flex-direction: column; gap: 2px; font-size: 13px; font-weight: 600; }
+.os-eap-detalhe td { background: var(--surface-sunken); }
 .kanban-os-form { display: flex; flex-direction: column; gap: 6px; font-size: 13px; border-top: 1px dashed var(--border); padding-top: 6px; }
 .kanban-os-form label { display: flex; flex-direction: column; gap: 2px; font-weight: 600; }
 .kanban-os-form input { padding: 4px 6px; font-size: 13px; font-weight: 400; }

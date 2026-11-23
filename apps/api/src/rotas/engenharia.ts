@@ -23,7 +23,22 @@ import { conciliarLinha, type LinhaPlanilha, type RefComposicao } from '../lib/c
 import { curvaS, percentualDeQuantidade, previstoXExecutado, somarDias, valorExecutadoEm, type Medicao, type AtividadePlan, type NoEap } from '../lib/acompanhamento.ts';
 import { CENTRAIS, NOMES_CENTRAL, PERIODICIDADE_PADRAO, montarItensBoletim, proximoPeriodo, type TipoCentral } from '../lib/canteiro.ts';
 import { recursoDaRotaCanteiro, recursosEfetivos, NOMES_RECURSO } from '../lib/recursos.ts';
-import { COLUNAS_KANBAN, NOMES_COLUNA, PRIORIDADES, STATUS_OS, colunaDoCard, osAberta, osAtrasada, transicaoPermitida } from '../lib/canteiro-kanban.ts';
+import {
+  COLUNAS_KANBAN,
+  NOMES_COLUNA,
+  PRIORIDADES,
+  STATUS_OS,
+  cadeiaDePredecessoras,
+  codigoOs,
+  colunaDoCard,
+  osAberta,
+  osAtrasada,
+  predecessorasPendentes,
+  situacaoDaTarefa,
+  transicaoPermitida,
+  type AtividadePlano,
+  type PredecessoraTarefa,
+} from '../lib/canteiro-kanban.ts';
 import { ETAPAS_CICLO, EQUIPAMENTOS_VERTICAIS, conflitoAgenda, resumirCiclo, totalConcreto, type EtapaCiclo } from '../lib/canteiro-vertical.ts';
 import {
   abcInsumos,
@@ -1916,13 +1931,58 @@ export function rotasEngenharia(banco: Banco) {
       prazo: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Informe o prazo no formato AAAA-MM-DD.').nullable().optional(),
     };
     const esquemaNovaOs = z.object(esquemaDadosOs);
-    const esquemaStatusOs = z.object({ status: z.enum(STATUS_OS, { errorMap: () => ({ message: 'Status de OS inválido.' }) }).optional(), ...esquemaDadosOs });
+    const esquemaStatusOs = z.object({
+      status: z.enum(STATUS_OS, { errorMap: () => ({ message: 'Status de OS inválido.' }) }).optional(),
+      // Iniciar com predecessora pendente só avisa: o engenheiro confirma e a OS segue.
+      confirmarPredecessoras: z.boolean().optional(),
+      ...esquemaDadosOs,
+    });
+
+    /**
+     * Predecessoras de cada tarefa da EAP, pelo planejamento (a atividade da tarefa e a cadeia de predecessoras dela),
+     * com a situação da OS de cada predecessora. Chave: id do nó da EAP.
+     */
+    async function predecessorasPorTarefa(c: Cliente, obraId: string): Promise<Map<string, PredecessoraTarefa[]>> {
+      const ativs = (await c.query('SELECT id, numero, descricao, eap_no_id, predecessora_id FROM obra_atividades WHERE obra_id = $1', [obraId])).rows;
+      const atividades = new Map<string, AtividadePlano>(
+        ativs.map((a) => [a.id as string, { id: a.id as string, numero: Number(a.numero), descricao: a.descricao as string, eapNoId: (a.eap_no_id as string | null) ?? null, predecessoraId: (a.predecessora_id as string | null) ?? null }]),
+      );
+      const situacoes = new Map<string, { naCentral: boolean; os: { numero: number; status: string } | null }>();
+      const centrais = await c.query(
+        `SELECT cs.eap_no_id,
+                (SELECT json_build_object('numero', o.numero, 'status', o.status) FROM canteiro_frentes f JOIN canteiro_os o ON o.frente_id = f.id
+                  WHERE f.eap_no_id = cs.eap_no_id AND o.status <> 'cancelada' ORDER BY o.criado_em DESC LIMIT 1) AS os
+           FROM canteiro_servicos cs WHERE cs.obra_id = $1`,
+        [obraId],
+      );
+      for (const x of centrais.rows) situacoes.set(x.eap_no_id as string, { naCentral: true, os: x.os ? { numero: Number(x.os.numero), status: x.os.status as string } : null });
+      const mapa = new Map<string, PredecessoraTarefa[]>();
+      for (const a of atividades.values()) {
+        if (!a.eapNoId) continue;
+        const lista = mapa.get(a.eapNoId) ?? [];
+        cadeiaDePredecessoras(a.id, atividades).forEach((p, i) => {
+          if (lista.some((x) => x.atividade === p.numero)) return;
+          const s = p.eapNoId ? situacoes.get(p.eapNoId) : undefined;
+          lista.push({
+            atividade: p.numero,
+            descricao: p.descricao,
+            eapNoId: p.eapNoId,
+            nivel: i + 1,
+            situacao: situacaoDaTarefa(!!s?.naCentral, s?.os ?? null),
+            codigoOs: s?.os ? codigoOs(s.os.numero) : null,
+          });
+        });
+        mapa.set(a.eapNoId, lista);
+      }
+      return mapa;
+    }
 
     /** Kanban da central: colunas com as frentes na ordem do planejamento. Cada frente mostra a OS mais recente. */
     app.get<{ Params: { id: string; tipo: string } }>('/obras/:id/canteiro/centrais/:tipo/kanban', async (req) => {
       const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
       const tipo = centralValida(req.params.tipo);
       await emTransacao(banco, (c) => sincronizarFrentes(c, obra.id, tipo));
+      const predecessoras = await predecessorasPorTarefa(banco, obra.id);
       const r = await banco.query(
         `SELECT f.id, f.eap_no_id, f.prioridade, f.ordem, n.codigo, n.descricao,
                 (SELECT json_build_object('id', o.id, 'numero', o.numero, 'status', o.status, 'equipe', o.equipe, 'quantidade', o.quantidade, 'unidade', o.unidade,
@@ -1951,6 +2011,7 @@ export function rotasEngenharia(banco: Banco) {
           ? {
               id: f.os.id as string,
               numero: Number(f.os.numero),
+              codigo: codigoOs(Number(f.os.numero)),
               status: f.os.status as string,
               equipe: (f.os.equipe as string) ?? '',
               quantidade: f.os.quantidade === null ? null : Number(f.os.quantidade),
@@ -1959,6 +2020,7 @@ export function rotasEngenharia(banco: Banco) {
               atrasada: osAtrasada({ status: f.os.status, prazo: f.os.prazo ?? null }, hoje()),
             }
           : null,
+        predecessoras: predecessoras.get(f.eap_no_id as string) ?? [],
         sugestao: {
           equipe: (f.equipe_prevista as string | null) ?? '',
           quantidade: f.previsto ? Number(f.previsto.quantidade) : null,
@@ -2021,7 +2083,7 @@ export function rotasEngenharia(banco: Banco) {
           )
         ).rows[0];
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'canteiro_os', entidadeId: nova.id, depois: { frente: f.id, numero: nova.numero, ...d } });
-        return { id: nova.id as string, numero: Number(nova.numero), status: 'liberada' };
+        return { id: nova.id as string, numero: Number(nova.numero), codigo: codigoOs(Number(nova.numero)), status: 'liberada' };
       });
       reply.code(201);
       return { os };
@@ -2036,14 +2098,23 @@ export function rotasEngenharia(banco: Banco) {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
         const o = (
           await c.query(
-            'SELECT o.id, o.status, o.numero FROM canteiro_os o JOIN canteiro_frentes f ON f.id = o.frente_id WHERE o.id = $1 AND o.obra_id = $2 AND f.central = $3 FOR UPDATE',
+            'SELECT o.id, o.status, o.numero, f.eap_no_id FROM canteiro_os o JOIN canteiro_frentes f ON f.id = o.frente_id WHERE o.id = $1 AND o.obra_id = $2 AND f.central = $3 FOR UPDATE',
             [req.params.oid, obra.id, tipo],
           )
         ).rows[0];
         if (!o) throw naoEncontrado('OS');
-        if (d.status && !transicaoPermitida(o.status, d.status)) throw new ErroHttp(409, `Não dá para mudar a OS ${o.numero} de ${o.status} para ${d.status}.`);
+        if (d.status && !transicaoPermitida(o.status, d.status)) throw new ErroHttp(409, `Não dá para mudar a ${codigoOs(o.numero)} de ${o.status} para ${d.status}.`);
+        // Iniciar com predecessora pendente: avisa e só segue se o engenheiro confirmar.
+        if (d.status === 'em_execucao' && !d.confirmarPredecessoras) {
+          const pendentes = predecessorasPendentes((await predecessorasPorTarefa(c, obra.id)).get(o.eap_no_id as string) ?? []);
+          if (pendentes.length)
+            throw new ErroHttp(409, `A ${codigoOs(o.numero)} tem predecessoras que ainda não terminaram: ${pendentes.map((p) => `${p.atividade} ${p.descricao}${p.codigoOs ? ` (${p.codigoOs})` : ' (sem OS)'}`).join('; ')}.`, {
+              codigo: 'predecessoras_pendentes',
+              predecessoras: pendentes,
+            });
+        }
         const mudaDados = d.equipe !== undefined || d.quantidade !== undefined || d.unidade !== undefined || d.prazo !== undefined;
-        if (mudaDados && !osAberta(o.status)) throw new ErroHttp(409, `A OS ${o.numero} já foi encerrada: equipe, quantidade e prazo não mudam mais.`);
+        if (mudaDados && !osAberta(o.status)) throw new ErroHttp(409, `A ${codigoOs(o.numero)} já foi encerrada: equipe, quantidade e prazo não mudam mais.`);
         await c.query(
           `UPDATE canteiro_os SET status = coalesce($2, status), equipe = coalesce($3, equipe), unidade = coalesce($4, unidade),
                   quantidade = CASE WHEN $5 THEN $6::numeric ELSE quantidade END, prazo = CASE WHEN $7 THEN $8::date ELSE prazo END, atualizado_em = now()
@@ -2053,6 +2124,74 @@ export function rotasEngenharia(banco: Banco) {
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'alterar', entidade: 'canteiro_os', entidadeId: o.id, antes: { status: o.status }, depois: d });
       });
       return { ok: true };
+    });
+
+    /**
+     * EAP com as OS: cada tarefa de uma central mostra as OS dela (e a frente sem OS), na cor da prioridade, com as
+     * predecessoras do planejamento. Só entram os nós que têm frente e os pais deles.
+     */
+    app.get<{ Params: { id: string } }>('/obras/:id/canteiro/os-eap', async (req) => {
+      const obra = await obraDaEmpresa(banco, empresaDo(req), req.params.id);
+      for (const tipo of CENTRAIS) await emTransacao(banco, (c) => sincronizarFrentes(c, obra.id, tipo));
+      const nos = (await banco.query('SELECT id, pai_id, nivel, codigo, descricao FROM eap_nos WHERE obra_id = $1', [obra.id])).rows;
+      const frentes = (
+        await banco.query(
+          `SELECT f.id, f.eap_no_id, f.central, f.prioridade FROM canteiro_frentes f
+             JOIN canteiro_servicos cs ON cs.eap_no_id = f.eap_no_id AND cs.tipo = f.central WHERE f.obra_id = $1`,
+          [obra.id],
+        )
+      ).rows;
+      const oss = (
+        await banco.query(
+          `SELECT o.id, o.frente_id, o.numero, o.status, o.equipe, o.quantidade, o.unidade, to_char(o.prazo, 'YYYY-MM-DD') AS prazo
+             FROM canteiro_os o WHERE o.obra_id = $1 AND o.status <> 'cancelada' ORDER BY o.numero`,
+          [obra.id],
+        )
+      ).rows;
+      const predecessoras = await predecessorasPorTarefa(banco, obra.id);
+      const dia = hoje();
+      const porNo = new Map<string, Record<string, unknown>>();
+      const contagem = { planejadas: 0, liberadas: 0, emExecucao: 0, concluidas: 0, atrasadas: 0 };
+      for (const f of frentes) {
+        const lista = oss
+          .filter((o) => o.frente_id === f.id)
+          .map((o) => ({
+            id: o.id as string,
+            numero: Number(o.numero),
+            codigo: codigoOs(Number(o.numero)),
+            status: o.status as string,
+            equipe: (o.equipe as string) ?? '',
+            quantidade: o.quantidade === null ? null : Number(o.quantidade),
+            unidade: (o.unidade as string) ?? '',
+            prazo: (o.prazo as string | null) ?? null,
+            atrasada: osAtrasada({ status: o.status, prazo: o.prazo ?? null }, dia),
+          }));
+        if (!lista.some((o) => osAberta(o.status))) contagem.planejadas += lista.length ? 0 : 1;
+        for (const o of lista) {
+          if (o.status === 'liberada') contagem.liberadas++;
+          else if (o.status === 'em_execucao') contagem.emExecucao++;
+          else if (o.status === 'concluida') contagem.concluidas++;
+          if (o.atrasada) contagem.atrasadas++;
+        }
+        porNo.set(f.eap_no_id as string, {
+          id: f.id as string,
+          central: f.central as string,
+          centralNome: NOMES_CENTRAL[f.central as TipoCentral] ?? (f.central as string),
+          prioridade: f.prioridade as string,
+          os: lista,
+          predecessoras: predecessoras.get(f.eap_no_id as string) ?? [],
+        });
+      }
+      const pais = new Map<string, string | null>(nos.map((n) => [n.id as string, (n.pai_id as string | null) ?? null]));
+      const mantidos = new Set<string>();
+      for (const id of porNo.keys()) for (let atual: string | null = id; atual && !mantidos.has(atual); atual = pais.get(atual) ?? null) mantidos.add(atual);
+      return {
+        resumo: contagem,
+        nos: nos
+          .filter((n) => mantidos.has(n.id as string))
+          .sort((a, b) => compararCodigo(a.codigo as string, b.codigo as string))
+          .map((n) => ({ id: n.id as string, paiId: (n.pai_id as string | null) ?? null, nivel: n.nivel as string, codigo: n.codigo as string, descricao: n.descricao as string, frente: porNo.get(n.id as string) ?? null })),
+      };
     });
 
     app.get<{ Params: { id: string } }>('/obras/:id/canteiro', async (req) => {

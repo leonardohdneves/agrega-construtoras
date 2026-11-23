@@ -16,6 +16,7 @@ test('recursos: cada rota do canteiro pede o recurso certo', () => {
   assert.equal(recursoDaRotaCanteiro(base), 'canteiro_horizontal');
   assert.equal(recursoDaRotaCanteiro(`${base}/centrais/argamassa`), 'centrais');
   assert.equal(recursoDaRotaCanteiro(`${base}/boletins/123`), 'centrais');
+  assert.equal(recursoDaRotaCanteiro(`${base}/os-eap`), 'centrais');
   assert.equal(recursoDaRotaCanteiro(`${base}/vertical/agenda`), 'canteiro_vertical');
   assert.equal(recursoDaRotaCanteiro('/api/eng/obras/abc/itens'), null);
 });
