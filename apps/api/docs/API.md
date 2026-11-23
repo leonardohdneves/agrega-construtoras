@@ -76,8 +76,8 @@ Total: 417 rotas, 10 públicas, 4 do legado da concreteira.
 | `GET /api/eng/obras/{id}/canteiro/centrais/{tipo}/kanban` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `prioridade`, `ordem` |
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}/kanban/ordem` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `frentes`* |
-| `POST /api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}/os` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
-| `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/os/{oid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `status`* |
+| `POST /api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}/os` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `equipe`, `quantidade`, `unidade`, `prazo` |
+| `PATCH /api/eng/obras/{id}/canteiro/centrais/{tipo}/os/{oid}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `status`, `equipe`, `quantidade`, `unidade`, `prazo` |
 | `GET /api/eng/obras/{id}/canteiro` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `GET /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}/canteiro/centrais/{tipo}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `periodicidadeDias`, `servicos` |

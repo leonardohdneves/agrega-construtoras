@@ -37,3 +37,8 @@ export function transicaoPermitida(de: string, para: string): boolean {
 
 /** OS aberta é a que ainda não foi concluída nem cancelada: a frente só tem uma por vez. */
 export const osAberta = (status: string) => status === 'liberada' || status === 'em_execucao';
+
+/** OS em aberto com o prazo vencido (o prazo é o último dia: vence no dia seguinte). */
+export function osAtrasada(os: { status: string; prazo: string | null }, hoje: string): boolean {
+  return osAberta(os.status) && !!os.prazo && os.prazo < hoje;
+}
