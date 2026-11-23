@@ -396,6 +396,8 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .doc-meta strong { color: var(--ink); font-size: 14px; }
 .doc-logo { width: 4cm; height: 4cm; object-fit: contain; margin-bottom: 4px; }
 .doc-cabecalho-logo-direita .doc-logo { width: 2cm; height: 2cm; }
+/* Logo da empresa na faixa de cima (no lugar da marca): fundo branco, para logo escura aparecer no fundo escuro. */
+.doc-logo-faixa { height: 34px; width: auto; max-width: 180px; object-fit: contain; background: #fff; border-radius: 6px; padding: 4px 8px; }
 .logo-previa { max-height: 72px; max-width: 220px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
 .doc-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
 @media (max-width: 760px) { .doc-corpo { grid-template-columns: 1fr; } .doc-meta { align-items: flex-start; text-align: left; } .doc-titulo h1 { font-size: 22px; } }
