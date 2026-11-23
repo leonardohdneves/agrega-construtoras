@@ -312,76 +312,76 @@ Total: 411 rotas, 10 públicas, 4 do legado da concreteira.
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
 | `GET /api/fin/contas` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `POST /api/fin/contas` |  | Dono, Financeiro |  | `nome`*, `tipo`, `banco`, `agencia`, `conta`, `saldoInicial`, `dataSaldoInicial`, `ativo` |
-| `PATCH /api/fin/contas/{id}` |  | Dono, Financeiro |  | `nome`, `tipo`, `banco`, `agencia`, `conta`, `saldoInicial`, `dataSaldoInicial`, `ativo` |
-| `GET /api/fin/contas/{id}/extrato` | Extrato de uma conta: pagamentos, recebimentos e transferências com saldo acumulado. | Dono, Financeiro | `de`, `ate` |  |
-| `GET /api/fin/transferencias` |  | Dono, Financeiro | `de`, `ate` |  |
-| `POST /api/fin/transferencias` |  | Dono, Financeiro |  | `origemId`*, `destinoId`*, `data`*, `valor`*, `descricao` |
-| `DELETE /api/fin/transferencias/{id}` |  | Dono, Financeiro |  |  |
+| `POST /api/fin/contas` |  | Dono, Gestor, Financeiro |  | `nome`*, `tipo`, `banco`, `agencia`, `conta`, `saldoInicial`, `dataSaldoInicial`, `ativo` |
+| `PATCH /api/fin/contas/{id}` |  | Dono, Gestor, Financeiro |  | `nome`, `tipo`, `banco`, `agencia`, `conta`, `saldoInicial`, `dataSaldoInicial`, `ativo` |
+| `GET /api/fin/contas/{id}/extrato` | Extrato de uma conta: pagamentos, recebimentos e transferências com saldo acumulado. | Dono, Gestor, Financeiro | `de`, `ate` |  |
+| `GET /api/fin/transferencias` |  | Dono, Gestor, Financeiro | `de`, `ate` |  |
+| `POST /api/fin/transferencias` |  | Dono, Gestor, Financeiro |  | `origemId`*, `destinoId`*, `data`*, `valor`*, `descricao` |
+| `DELETE /api/fin/transferencias/{id}` |  | Dono, Gestor, Financeiro |  |  |
 | `GET /api/fin/plano-contas` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `POST /api/fin/plano-contas` |  | Dono, Financeiro |  | `codigo`*, `nome`*, `tipo`*, `linhaDre`*, `aceitaLancamento` |
-| `PATCH /api/fin/plano-contas/{id}` |  | Dono, Financeiro |  | `nome`, `linhaDre`, `tipo`, `ativo` |
-| `POST /api/fin/plano-contas/padrao` | Aplica o plano padrão de construtora e os centros de custo padrão (só cria o que falta). | Dono, Financeiro |  |  |
+| `POST /api/fin/plano-contas` |  | Dono, Gestor, Financeiro |  | `codigo`*, `nome`*, `tipo`*, `linhaDre`*, `aceitaLancamento` |
+| `PATCH /api/fin/plano-contas/{id}` |  | Dono, Gestor, Financeiro |  | `nome`, `linhaDre`, `tipo`, `ativo` |
+| `POST /api/fin/plano-contas/padrao` | Aplica o plano padrão de construtora e os centros de custo padrão (só cria o que falta). | Dono, Gestor, Financeiro |  |  |
 | `GET /api/fin/centros-custo` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `POST /api/fin/centros-custo` |  | Dono, Financeiro |  | `nome`*, `ativo` |
-| `PATCH /api/fin/centros-custo/{id}` |  | Dono, Financeiro |  | `nome`, `ativo` |
-| `GET /api/fin/lancamentos` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/lancamentos` |  | Dono, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`, `clienteId`, `fornecedorId`, `observacoes`, `valorTotal`*, `apropriacoes`*, `parcelas`*, `baixa`, `recorrencia`, `repeticoes`, `estoque`, `pedidoId` |
-| `GET /api/fin/lancamentos/leitura` | Pedidos de compra aprovados (ou já em andamento) que ainda não viraram despesa: para preencher o lançamento. A IA só sugere os campos; o lançamento só é salvo depois de conferido no formulário. | Dono, Financeiro |  |  |
-| `POST /api/fin/lancamentos/leitura` |  | Dono, Financeiro |  | `arquivo`*, `tipo`*, `tipoLancamento`* |
-| `GET /api/fin/lancamentos/pedidos-disponiveis` |  | Dono, Financeiro |  |  |
-| `GET /api/fin/lancamentos/pedidos-disponiveis/{id}/estoque` | Itens de estoque sugeridos pelo pedido: obra, insumo da obra e etapa vêm da solicitação de compra que originou o pedido; quantidade, unidade e valor são os comprados (do pedido). | Dono, Financeiro |  |  |
-| `GET /api/fin/lancamentos/{id}` |  | Dono, Financeiro |  |  |
-| `PUT /api/fin/lancamentos/{id}` | Edição: as parcelas pagas ficam como estão; "parcelas" traz só as parcelas em aberto (substituídas). | Dono, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`*, `clienteId`*, `fornecedorId`*, `observacoes`*, `valorTotal`*, `apropriacoes`*, `parcelas`* |
-| `POST /api/fin/lancamentos/{id}/cancelar` |  | Dono, Financeiro |  | `seguintes` |
-| `GET /api/fin/parcelas` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/parcelas/{id}/baixar` |  | Dono, Financeiro |  | `data`*, `contaId`*, `forma`, `juros`, `desconto`, `observacoes` |
-| `GET /api/fin/parcelas/{id}/recibo` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/parcelas/baixar-lote` |  | Dono, Financeiro |  | `data`*, `contaId`*, `forma`, `observacoes`, `ids`* |
-| `POST /api/fin/parcelas/{id}/estornar` |  | Dono, Financeiro |  |  |
-| `PATCH /api/fin/parcelas/{id}` |  | Dono, Financeiro |  | `vencimento`, `observacoes` |
+| `POST /api/fin/centros-custo` |  | Dono, Gestor, Financeiro |  | `nome`*, `ativo` |
+| `PATCH /api/fin/centros-custo/{id}` |  | Dono, Gestor, Financeiro |  | `nome`, `ativo` |
+| `GET /api/fin/lancamentos` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/lancamentos` |  | Dono, Gestor, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`, `clienteId`, `fornecedorId`, `observacoes`, `valorTotal`*, `apropriacoes`*, `parcelas`*, `baixa`, `recorrencia`, `repeticoes`, `estoque`, `pedidoId` |
+| `GET /api/fin/lancamentos/leitura` | Pedidos de compra aprovados (ou já em andamento) que ainda não viraram despesa: para preencher o lançamento. A IA só sugere os campos; o lançamento só é salvo depois de conferido no formulário. | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/lancamentos/leitura` |  | Dono, Gestor, Financeiro |  | `arquivo`*, `tipo`*, `tipoLancamento`* |
+| `GET /api/fin/lancamentos/pedidos-disponiveis` |  | Dono, Gestor, Financeiro |  |  |
+| `GET /api/fin/lancamentos/pedidos-disponiveis/{id}/estoque` | Itens de estoque sugeridos pelo pedido: obra, insumo da obra e etapa vêm da solicitação de compra que originou o pedido; quantidade, unidade e valor são os comprados (do pedido). | Dono, Gestor, Financeiro |  |  |
+| `GET /api/fin/lancamentos/{id}` |  | Dono, Gestor, Financeiro |  |  |
+| `PUT /api/fin/lancamentos/{id}` | Edição: as parcelas pagas ficam como estão; "parcelas" traz só as parcelas em aberto (substituídas). | Dono, Gestor, Financeiro |  | `tipo`*, `competencia`*, `descricao`*, `documento`*, `clienteId`*, `fornecedorId`*, `observacoes`*, `valorTotal`*, `apropriacoes`*, `parcelas`* |
+| `POST /api/fin/lancamentos/{id}/cancelar` |  | Dono, Gestor, Financeiro |  | `seguintes` |
+| `GET /api/fin/parcelas` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/parcelas/{id}/baixar` |  | Dono, Gestor, Financeiro |  | `data`*, `contaId`*, `forma`, `juros`, `desconto`, `observacoes` |
+| `GET /api/fin/parcelas/{id}/recibo` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/parcelas/baixar-lote` |  | Dono, Gestor, Financeiro |  | `data`*, `contaId`*, `forma`, `observacoes`, `ids`* |
+| `POST /api/fin/parcelas/{id}/estornar` |  | Dono, Gestor, Financeiro |  |  |
+| `PATCH /api/fin/parcelas/{id}` |  | Dono, Gestor, Financeiro |  | `vencimento`, `observacoes` |
 | `GET /api/fin/resumo` |  | Dono, Gestor, Orçamentista, Comprador, Financeiro, Administrativo, Comercial |  |  |
-| `GET /api/fin/notas` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/notas` |  | Dono, Financeiro |  | `direcao`, `modelo`, `numero`, `serie`, `chaveAcesso`, `dataEmissao`*, `competencia`, `fornecedorId`, `clienteId`, `frete`, `desconto`, `outras`, `formaPagamento`, `observacoes`, `itens`*, `duplicatas` |
-| `GET /api/fin/notas/{id}` |  | Dono, Financeiro |  |  |
-| `PATCH /api/fin/notas/{id}` |  | Dono, Financeiro |  | `competencia`, `observacoes`, `fornecedorId`, `clienteId`, `formaPagamento`, `duplicatas`, `modelo`, `numero`, `serie`, `dataEmissao`, `frete`, `desconto`, `outras` |
-| `DELETE /api/fin/notas/{id}` | Exclusão do rascunho (importou errado): libera a chave para importar de novo. | Dono, Financeiro |  |  |
-| `PUT /api/fin/notas/{id}/pedido` |  | Dono, Financeiro |  | `itens`*, `pedidoId`* |
-| `GET /api/fin/notas/{id}/pedidos-candidatos` | Pedidos de compra do mesmo fornecedor que podem receber esta nota, com o cruzamento sugerido dos itens. | Dono, Financeiro |  |  |
-| `GET /api/fin/notas/{id}/xml` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/notas/xml` |  | Dono, Financeiro |  | `xml`* |
-| `GET /api/fin/notas/{id}/arquivo` |  | Dono, Financeiro |  |  |
-| `GET /api/fin/notas/leitura` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/notas/pdf` |  | Dono, Financeiro |  | `arquivo`*, `nome`, `tipo`, `chave`, `usarIa` |
-| `POST /api/fin/notas/{id}/reler` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/notas/chave` |  | Dono, Financeiro |  | `chave`* |
-| `POST /api/fin/notas/{id}/itens` |  | Dono, Financeiro |  | `descricao`*, `unidade`, `quantidade`, `valor`*, `planoContaId`, `centroCustoId`, `veiculoId` |
-| `POST /api/fin/notas/itens/{id}/dividir` |  | Dono, Financeiro |  | `quantidade`* |
-| `PATCH /api/fin/notas/itens/{id}` |  | Dono, Financeiro |  | `planoContaId`, `centroCustoId`, `veiculoId`, `obraId`, `obraItemId`, `eapNoId`, `obraEstoqueId`, `insumoId`, `fatorEstoque`, `descricao`, `unidade`, `quantidade`, `valor`, `pedidoItemId`, `quantidadePedido` |
-| `DELETE /api/fin/notas/itens/{id}` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/notas/{id}/apropriar` |  | Dono, Financeiro |  | `planoContaId`*, `centroCustoId`, `veiculoId`, `somenteSemCategoria` |
-| `GET /api/fin/notas/itens/{id}/candidatos` |  | Dono, Financeiro |  |  |
-| `PUT /api/fin/notas/itens/{id}/vinculos` |  | Dono, Financeiro |  | `abastecimentoIds`, `osItemIds` |
-| `POST /api/fin/notas/{id}/confirmar` |  | Dono, Financeiro |  | `vencimento`, `baixa`, `aprender` |
-| `POST /api/fin/notas/{id}/reabrir` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/notas/{id}/cancelar` | Cancelamento: a nota foi cancelada pelo emitente. Fica no histórico, sem valor. | Dono, Financeiro |  |  |
-| `GET /api/fin/regras-apropriacao` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/regras-apropriacao` |  | Dono, Financeiro |  | `fornecedorId`, `textoContem`, `ncm`, `planoContaId`*, `centroCustoId`, `veiculoId` |
-| `PATCH /api/fin/regras-apropriacao/{id}` |  | Dono, Financeiro |  | `ativo`* |
-| `GET /api/fin/conciliacao/resumo` | Situação de cada conta: linhas pendentes e comparação do saldo do banco com o do Agrega. | Dono, Financeiro |  |  |
-| `GET /api/fin/conciliacao/extratos` |  | Dono, Financeiro | `contaId` |  |
-| `POST /api/fin/conciliacao/ofx` |  | Dono, Financeiro |  | `contaId`*, `conteudo`*, `arquivo` |
-| `GET /api/fin/conciliacao/linhas` |  | Dono, Financeiro |  |  |
-| `GET /api/fin/conciliacao/linhas/{id}/candidatos` | Parcelas e transferências que podem corresponder à linha. | Dono, Financeiro | `busca` |  |
-| `POST /api/fin/conciliacao/linhas/{id}/conciliar` |  | Dono, Financeiro |  | `parcelaId`, `transferenciaId` |
-| `POST /api/fin/conciliacao/aceitar-sugestoes` |  | Dono, Financeiro |  | `contaId`*, `ids` |
-| `POST /api/fin/conciliacao/linhas/{id}/lancamento` |  | Dono, Financeiro |  | `planoContaId`*, `centroCustoId`, `veiculoId`, `fornecedorId`, `clienteId`, `descricao` |
-| `POST /api/fin/conciliacao/linhas/{id}/transferencia` |  | Dono, Financeiro |  | `outraContaId`* |
-| `POST /api/fin/conciliacao/linhas/{id}/ignorar` |  | Dono, Financeiro |  |  |
-| `POST /api/fin/conciliacao/linhas/{id}/desfazer` | Desfaz o que a conciliação fez: estorna a baixa, cancela o lançamento criado ou exclui a transferência criada. | Dono, Financeiro |  |  |
-| `POST /api/fin/conciliacao/sugerir` |  | Dono, Financeiro |  | `contaId`* |
-| `DELETE /api/fin/conciliacao/extratos/{id}` | Remove um extrato importado por engano (só se nenhuma linha dele estiver conciliada). | Dono, Financeiro |  |  |
-| `GET /api/rel/financeiro` |  | Dono, Financeiro |  |  |
+| `GET /api/fin/notas` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/notas` |  | Dono, Gestor, Financeiro |  | `direcao`, `modelo`, `numero`, `serie`, `chaveAcesso`, `dataEmissao`*, `competencia`, `fornecedorId`, `clienteId`, `frete`, `desconto`, `outras`, `formaPagamento`, `observacoes`, `itens`*, `duplicatas` |
+| `GET /api/fin/notas/{id}` |  | Dono, Gestor, Financeiro |  |  |
+| `PATCH /api/fin/notas/{id}` |  | Dono, Gestor, Financeiro |  | `competencia`, `observacoes`, `fornecedorId`, `clienteId`, `formaPagamento`, `duplicatas`, `modelo`, `numero`, `serie`, `dataEmissao`, `frete`, `desconto`, `outras` |
+| `DELETE /api/fin/notas/{id}` | Exclusão do rascunho (importou errado): libera a chave para importar de novo. | Dono, Gestor, Financeiro |  |  |
+| `PUT /api/fin/notas/{id}/pedido` |  | Dono, Gestor, Financeiro |  | `itens`*, `pedidoId`* |
+| `GET /api/fin/notas/{id}/pedidos-candidatos` | Pedidos de compra do mesmo fornecedor que podem receber esta nota, com o cruzamento sugerido dos itens. | Dono, Gestor, Financeiro |  |  |
+| `GET /api/fin/notas/{id}/xml` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/notas/xml` |  | Dono, Gestor, Financeiro |  | `xml`* |
+| `GET /api/fin/notas/{id}/arquivo` |  | Dono, Gestor, Financeiro |  |  |
+| `GET /api/fin/notas/leitura` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/notas/pdf` |  | Dono, Gestor, Financeiro |  | `arquivo`*, `nome`, `tipo`, `chave`, `usarIa` |
+| `POST /api/fin/notas/{id}/reler` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/notas/chave` |  | Dono, Gestor, Financeiro |  | `chave`* |
+| `POST /api/fin/notas/{id}/itens` |  | Dono, Gestor, Financeiro |  | `descricao`*, `unidade`, `quantidade`, `valor`*, `planoContaId`, `centroCustoId`, `veiculoId` |
+| `POST /api/fin/notas/itens/{id}/dividir` |  | Dono, Gestor, Financeiro |  | `quantidade`* |
+| `PATCH /api/fin/notas/itens/{id}` |  | Dono, Gestor, Financeiro |  | `planoContaId`, `centroCustoId`, `veiculoId`, `obraId`, `obraItemId`, `eapNoId`, `obraEstoqueId`, `insumoId`, `fatorEstoque`, `descricao`, `unidade`, `quantidade`, `valor`, `pedidoItemId`, `quantidadePedido` |
+| `DELETE /api/fin/notas/itens/{id}` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/notas/{id}/apropriar` |  | Dono, Gestor, Financeiro |  | `planoContaId`*, `centroCustoId`, `veiculoId`, `somenteSemCategoria` |
+| `GET /api/fin/notas/itens/{id}/candidatos` |  | Dono, Gestor, Financeiro |  |  |
+| `PUT /api/fin/notas/itens/{id}/vinculos` |  | Dono, Gestor, Financeiro |  | `abastecimentoIds`, `osItemIds` |
+| `POST /api/fin/notas/{id}/confirmar` |  | Dono, Gestor, Financeiro |  | `vencimento`, `baixa`, `aprender` |
+| `POST /api/fin/notas/{id}/reabrir` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/notas/{id}/cancelar` | Cancelamento: a nota foi cancelada pelo emitente. Fica no histórico, sem valor. | Dono, Gestor, Financeiro |  |  |
+| `GET /api/fin/regras-apropriacao` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/regras-apropriacao` |  | Dono, Gestor, Financeiro |  | `fornecedorId`, `textoContem`, `ncm`, `planoContaId`*, `centroCustoId`, `veiculoId` |
+| `PATCH /api/fin/regras-apropriacao/{id}` |  | Dono, Gestor, Financeiro |  | `ativo`* |
+| `GET /api/fin/conciliacao/resumo` | Situação de cada conta: linhas pendentes e comparação do saldo do banco com o do Agrega. | Dono, Gestor, Financeiro |  |  |
+| `GET /api/fin/conciliacao/extratos` |  | Dono, Gestor, Financeiro | `contaId` |  |
+| `POST /api/fin/conciliacao/ofx` |  | Dono, Gestor, Financeiro |  | `contaId`*, `conteudo`*, `arquivo` |
+| `GET /api/fin/conciliacao/linhas` |  | Dono, Gestor, Financeiro |  |  |
+| `GET /api/fin/conciliacao/linhas/{id}/candidatos` | Parcelas e transferências que podem corresponder à linha. | Dono, Gestor, Financeiro | `busca` |  |
+| `POST /api/fin/conciliacao/linhas/{id}/conciliar` |  | Dono, Gestor, Financeiro |  | `parcelaId`, `transferenciaId` |
+| `POST /api/fin/conciliacao/aceitar-sugestoes` |  | Dono, Gestor, Financeiro |  | `contaId`*, `ids` |
+| `POST /api/fin/conciliacao/linhas/{id}/lancamento` |  | Dono, Gestor, Financeiro |  | `planoContaId`*, `centroCustoId`, `veiculoId`, `fornecedorId`, `clienteId`, `descricao` |
+| `POST /api/fin/conciliacao/linhas/{id}/transferencia` |  | Dono, Gestor, Financeiro |  | `outraContaId`* |
+| `POST /api/fin/conciliacao/linhas/{id}/ignorar` |  | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/conciliacao/linhas/{id}/desfazer` | Desfaz o que a conciliação fez: estorna a baixa, cancela o lançamento criado ou exclui a transferência criada. | Dono, Gestor, Financeiro |  |  |
+| `POST /api/fin/conciliacao/sugerir` |  | Dono, Gestor, Financeiro |  | `contaId`* |
+| `DELETE /api/fin/conciliacao/extratos/{id}` | Remove um extrato importado por engano (só se nenhuma linha dele estiver conciliada). | Dono, Gestor, Financeiro |  |  |
+| `GET /api/rel/financeiro` |  | Dono, Gestor, Financeiro |  |  |
 
 ## Gerencial
 
@@ -390,7 +390,7 @@ Total: 411 rotas, 10 públicas, 4 do legado da concreteira.
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
 | `GET /api/ger/dre` |  | Dono, Gestor, Financeiro | `visao`, `impostos` |  |
-| `GET /api/ger/fluxo` |  | Dono, Financeiro | `semanas` |  |
+| `GET /api/ger/fluxo` |  | Dono, Gestor, Financeiro | `semanas` |  |
 | `GET /api/rel/gerencial` |  | Dono, Gestor, Financeiro |  |  |
 | `GET /api/rel/comercial` | Comercial mês a mês: vendas aprovadas (pela data de entrega) e propostas emitidas × fechadas (pela data de criação). | Dono, Gestor, Financeiro |  |  |
 | `GET /api/rel/indicadores` |  | Dono, Gestor, Financeiro |  |  |

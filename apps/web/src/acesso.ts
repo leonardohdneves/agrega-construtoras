@@ -8,8 +8,8 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
   dono: ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo', 'configuracoes'],
   // Almoxarife: só Suprimentos › Estoque (entradas, etiquetas, saídas e funcionários).
   almoxarife: ['suprimentos'],
-  // Saldos e contas são do dono e do perfil Financeiro: o gestor não tem o módulo Financeiro.
-  gestor: ['engenharia', 'suprimentos', 'gerencial', 'comercial', 'incorporacao', 'laudos', 'administrativo'],
+  // O gestor tem o módulo Financeiro, com saldos e contas, como o dono e o perfil Financeiro.
+  gestor: ['engenharia', 'suprimentos', 'financeiro', 'gerencial', 'comercial', 'incorporacao', 'laudos', 'administrativo'],
   orcamentista: ['engenharia', 'comercial'],
   // Só as obras atribuídas a ele; administra também os contratos e as medições dessas obras.
   engenheiro_obra: ['engenharia'],
@@ -29,7 +29,7 @@ export const MODULOS_PADRAO: Record<Perfil, Modulo[]> = {
 export const PERFIS_CONSTRUTORA = ['dono', 'gestor', 'orcamentista', 'engenheiro_obra', 'mestre_obra', 'comprador', 'financeiro', 'administrativo', 'vendedor', 'almoxarife'] as const;
 
 /** Só o dono e o perfil Financeiro veem saldo bancário, contas a pagar e a receber. */
-export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'financeiro'];
+export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'gestor', 'financeiro'];
 /** Perfis cujo acesso é definido só pelos módulos que têm. */
 export const PERFIS_POR_MODULO: Perfil[] = ['financeiro', 'administrativo', 'vendedor', 'orcamentista', 'comprador'];
 

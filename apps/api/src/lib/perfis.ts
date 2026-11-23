@@ -21,8 +21,8 @@ export const NOMES_PERFIL: Record<Perfil, string> = {
   financeiro: 'Financeiro',
 };
 
-/** Só o dono e o perfil Financeiro veem saldo bancário, contas a pagar e contas a receber. */
-export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'financeiro'];
+/** O dono, o gestor e o perfil Financeiro veem saldo bancário, contas a pagar e contas a receber. */
+export const PERFIS_FINANCEIRO: Perfil[] = ['dono', 'gestor', 'financeiro'];
 export function acessaFinanceiro(perfil: Perfil): boolean {
   return PERFIS_FINANCEIRO.includes(perfil);
 }

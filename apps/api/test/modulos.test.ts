@@ -16,7 +16,7 @@ test('módulos efetivos', () => {
   assert.deepEqual(modulosEfetivos('operador_usina', null), []);
   // módulos da concreteira gravados num usuário antigo não valem mais
   assert.deepEqual(modulosEfetivos('gestor', ['financeiro', 'frota']), ['financeiro']);
-  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'gerencial', 'administrativo']);
+  assert.deepEqual(modulosEfetivos('gestor', null), ['engenharia', 'comercial', 'incorporacao', 'laudos', 'suprimentos', 'financeiro', 'gerencial', 'administrativo']);
   assert.deepEqual(modulosEfetivos('orcamentista', null), ['engenharia', 'comercial']);
   assert.deepEqual(modulosEfetivos('engenheiro_obra', null), ['engenharia']);
   assert.deepEqual(modulosEfetivos('comprador', null), ['suprimentos']);
@@ -24,9 +24,9 @@ test('módulos efetivos', () => {
 
 test('regras de acesso', () => {
   const g = (perfil: any, modulos: string[] | null, perfisRota: any[], url: string, metodo = 'GET') => acessoPermitido({ perfil, modulos, perfisRota, url, metodo });
-  // padrão: o Financeiro é só do dono e do perfil Financeiro
+  // padrão: o Financeiro é do dono, do gestor e do perfil Financeiro
   assert.equal(g('dono', null, ['dono', 'gestor'], '/api/fin/lancamentos'), true);
-  assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/fin/lancamentos'), false);
+  assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/fin/lancamentos'), true);
   assert.equal(g('financeiro', null, ['dono', 'gestor'], '/api/fin/lancamentos', 'POST'), true);
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/fin/resumo'), true);
   assert.equal(g('gestor', null, ['dono', 'gestor'], '/api/fin/contas'), true);
