@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { blocoDoArquivo, lerComposicoesIa } from '../src/lib/composicoes-leitura.ts';
+import { blocoDoArquivo, lerComposicoesIa, tipoDoArquivo } from '../src/lib/composicoes-leitura.ts';
 import { lerZip, xlsxParaTexto } from '../src/lib/xlsx-leitura.ts';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
 
@@ -71,24 +71,39 @@ test('arquivo: PDF e foto vão como documento ou imagem; planilha, HTML e CSV v�
   assert.throws(() => blocoDoArquivo('dados.docx', Buffer.from('x')), /Formato não aceito/);
 });
 
-test('resposta da IA: coeficiente com vírgula, componente sem coeficiente e item sem descrição', () => {
+test("resposta da IA: o tipo vem da marca do arquivo (C é composição, I é insumo) e a quantidade vira coeficiente", () => {
   const r = lerComposicoesIa({
-    itens: [
-      { tipo: 'composicao', codigo: 'S1', descricao: 'Emboço interno', unidade: 'm2', componentes: [
-        { tipo: 'insumo', descricao: 'Cimento', unidade: 'kg', coeficiente: 1.5 },
-        { tipo: 'composicao', descricao: 'Argamassa traço 1:3', unidade: 'm3', coeficiente: '0,02' },
-        { tipo: 'insumo', descricao: 'Pedreiro', coeficiente: 'x' },
-      ] },
-      { tipo: 'insumo', descricao: 'A', unidade: 'kg' },
-      { tipo: 'insumo', descricao: 'Areia média', unidade: 'm3' },
+    servicos: [
+      {
+        codigo: "100764", descricao: "VIGA METÁLICA", unidade: "KG",
+        linhas: [
+          { tipo_no_arquivo: "C", codigo: "88278", descricao: "MONTADOR", unidade: "H", quantidade: 0.0123 },
+          { tipo_no_arquivo: "I", codigo: "43082", descricao: "PERFIL I", unidade: "KG", quantidade: "1,05" },
+          { tipo_no_arquivo: "?", descricao: "Estranho", unidade: "UN", quantidade: 2 },
+          { tipo_no_arquivo: "I", descricao: "Sem número", unidade: "UN", quantidade: "x" },
+        ],
+      },
     ],
-    pendencias: ['Tabela cortada na página 2.'],
+    avulsos: [{ tipo_no_arquivo: "Insumo", codigo: "4777", descricao: "CANTONEIRA", unidade: "KG" }],
+    pendencias: ["Tabela cortada."],
   });
-  assert.equal(r.itens.length, 2, 'o item sem descrição (uma letra) sai');
-  assert.deepEqual(r.itens[0].componentes.map((k) => [k.descricao, k.tipo, k.coeficiente]), [['Cimento', 'insumo', 1.5], ['Argamassa traço 1:3', 'composicao', 0.02]]);
-  assert.ok(r.pendencias.some((p) => /Pedreiro/.test(p)), 'componente sem coeficiente válido é avisado');
-  assert.ok(r.pendencias.includes('Tabela cortada na página 2.'));
-  assert.equal(r.itens[1].componentes.length, 0, 'insumo não tem componentes');
+  const principal = r.itens[0];
+  assert.deepEqual([principal.tipo, principal.codigo, principal.componentes.length], ["composicao", "100764", 3]);
+  assert.deepEqual(principal.componentes.map((k) => [k.tipo, k.codigo, k.coeficiente]), [["composicao", "88278", 0.0123], ["insumo", "43082", 1.05], ["insumo", "", 2]]);
+  const tipos = Object.fromEntries(r.itens.map((x) => [x.descricao, x.tipo]));
+  assert.deepEqual(tipos, { "VIGA METÁLICA": "composicao", MONTADOR: "composicao", "PERFIL I": "insumo", Estranho: "insumo", CANTONEIRA: "insumo" });
+  assert.ok(r.pendencias.some((p) => /Estranho/.test(p)), "tipo desconhecido é avisado");
+  assert.ok(r.pendencias.some((p) => /Sem número/.test(p)), "linha sem quantidade é avisada");
+  assert.ok(r.pendencias.includes("Tabela cortada."));
+});
+
+test("marca de tipo do arquivo", () => {
+  assert.equal(tipoDoArquivo("C"), "composicao");
+  assert.equal(tipoDoArquivo("Composição"), "composicao");
+  assert.equal(tipoDoArquivo("I"), "insumo");
+  assert.equal(tipoDoArquivo("Mão de obra"), "insumo");
+  assert.equal(tipoDoArquivo("Equipamento"), "insumo");
+  assert.equal(tipoDoArquivo("X"), null);
 });
 
 // ----- Com banco: lançamento em lote, reaproveitamento, ciclo e importação com serviço dentro de serviço.

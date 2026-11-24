@@ -729,6 +729,7 @@ type ItemBusca = { id: string; tipo: string; codigo: string; descricao: string; 
 type Existente = { onde: 'obra' | 'tabela'; codigo: string; descricao: string } | null;
 type ItemLidoTabela = {
   existente?: Existente;
+  sugestoes?: NonNullable<Existente>[];
   tipo: 'insumo' | 'composicao';
   codigo: string;
   descricao: string;
@@ -857,6 +858,8 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
   const [lidos, setLidos] = useState<ItemLidoTabela[] | null>(null);
   const [pendencias, setPendencias] = useState<string[]>([]);
   const [marcados, setMarcados] = useState<boolean[]>([]);
+  // Conciliação manual: o item novo é trocado por um já cadastrado (índice da sugestão escolhida, por linha).
+  const [usar, setUsar] = useState<Record<number, number>>({});
   const [erro, setErro] = useState('');
 
   async function ler() {
@@ -870,6 +873,7 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
       setLidos(r.itens);
       setPendencias(r.pendencias);
       setMarcados(r.itens.map((x) => !x.existente));
+      setUsar({});
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -879,7 +883,13 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
 
   async function lancar() {
     if (!lidos) return;
-    const escolhidos = lidos.filter((_, i) => marcados[i]);
+    // Item conciliado com um cadastrado não é criado: os serviços que o usam passam a apontar para o cadastrado.
+    const troca = new Map<string, NonNullable<Existente>>();
+    lidos.forEach((x, i) => {
+      const s = usar[i] !== undefined ? x.sugestoes?.[usar[i]] : undefined;
+      if (s) troca.set(`${x.tipo}|${x.descricao}`, s);
+    });
+    const escolhidos = lidos.filter((x, i) => marcados[i] && !troca.has(`${x.tipo}|${x.descricao}`));
     if (escolhidos.length === 0) return setErro('Marque ao menos um item.');
     setErro('');
     setLancando(true);
@@ -891,7 +901,10 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
             codigo: x.codigo,
             descricao: x.descricao,
             unidade: x.unidade,
-            componentes: x.componentes.map((k) => ({ tipo: k.tipo, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: k.coeficiente })),
+            componentes: x.componentes.map((k) => {
+              const s = troca.get(`${k.tipo}|${k.descricao}`);
+              return { tipo: k.tipo, codigo: s ? s.codigo : k.codigo, descricao: s ? s.descricao : k.descricao, unidade: k.unidade, coeficiente: k.coeficiente };
+            }),
           })),
         },
       });
@@ -953,7 +966,17 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
                     <td>{x.descricao}</td>
                     <td>{x.unidade}</td>
                     <td className="small">
-                      {x.existente ? `Já cadastrado ${x.existente.onde === 'obra' ? 'na obra' : 'na tabela'} (${x.existente.codigo})` : 'Novo'}
+                      {x.existente ? `Já cadastrado ${x.existente.onde === 'obra' ? 'na obra' : 'na tabela'} (${x.existente.codigo})` : (
+                        <>
+                          <div>Novo: entra na tabela de referência</div>
+                          {!!x.sugestoes?.length && (
+                            <select aria-label={`Conciliar ${x.descricao}`} value={usar[i] ?? ''} onChange={(e) => setUsar({ ...usar, [i]: e.target.value === '' ? undefined! : Number(e.target.value) })} style={{ maxWidth: 260 }}>
+                              <option value="">Cadastrar como novo</option>
+                              {x.sugestoes.map((s, n) => <option key={n} value={n}>Usar {s.codigo} · {s.descricao}</option>)}
+                            </select>
+                          )}
+                        </>
+                      )}
                     </td>
                     <td className="small muted">
                       {x.componentes.length ? x.componentes.map((k) => `${k.existente ? '✓ ' : '+ '}${k.descricao} × ${k.coeficiente.toLocaleString('pt-BR', { maximumFractionDigits: 6 })}`).join('; ') : '—'}
@@ -971,7 +994,7 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
             </ul>
           )}
           <div className="acoes">
-            <button className="btn btn-primario" type="button" onClick={lancar} disabled={lancando}>{lancando ? 'Lançando…' : 'Lançar selecionados na tabela'}</button>
+            <button className="btn btn-primario" type="button" onClick={lancar} disabled={lancando}>{lancando ? 'Lançando…' : 'Lançar na tabela de referência'}</button>
           </div>
         </>
       )}

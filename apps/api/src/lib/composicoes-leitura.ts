@@ -32,86 +32,126 @@ export function blocoDoArquivo(nome: string, buf: Buffer): BlocoDocumento {
   return { type: 'text', text: `Conteúdo do arquivo ${nome}:\n\n${texto.slice(0, 180_000)}` };
 }
 
-const esquemaTipo = { type: 'string', enum: ['insumo', 'composicao'] };
+const linhaSchema = {
+  type: 'object',
+  properties: {
+    tipo_no_arquivo: { type: 'string', description: 'Exatamente como aparece na coluna de tipo do arquivo: "C" (composição auxiliar) ou "I" (insumo), ou o nome do tipo por extenso.' },
+    codigo: { type: 'string', description: 'Código da linha no arquivo; vazio se não houver.' },
+    descricao: { type: 'string' },
+    unidade: { type: 'string' },
+    quantidade: { type: 'number', description: 'Valor da coluna Quantidade (ou Coeficiente/Consumo) desta linha, com ponto decimal.' },
+  },
+  required: ['tipo_no_arquivo', 'descricao', 'quantidade'],
+};
+
 export const FERRAMENTA_COMPOSICOES = {
   name: 'lancar_composicoes',
-  description: 'Lista os insumos e os serviços (composições) do arquivo, com os coeficientes de cada serviço.',
+  description: 'Devolve cada serviço (composição) principal do arquivo com todas as linhas que o compõem, e os itens avulsos.',
   input_schema: {
     type: 'object',
     properties: {
-      itens: {
+      servicos: {
         type: 'array',
+        description: 'Serviços principais do arquivo, cada um com as linhas (insumos e composições auxiliares) que o compõem.',
         items: {
           type: 'object',
           properties: {
-            tipo: esquemaTipo,
-            codigo: { type: 'string', description: 'Código que aparece no arquivo; vazio se não houver.' },
+            codigo: { type: 'string' },
             descricao: { type: 'string' },
             unidade: { type: 'string' },
-            componentes: {
-              type: 'array',
-              description: 'Só para serviços: os insumos e os outros serviços usados, com o coeficiente por unidade do serviço.',
-              items: {
-                type: 'object',
-                properties: {
-                  tipo: esquemaTipo,
-                  codigo: { type: 'string' },
-                  descricao: { type: 'string' },
-                  unidade: { type: 'string' },
-                  coeficiente: { type: 'number' },
-                },
-                required: ['tipo', 'descricao', 'coeficiente'],
-              },
-            },
+            linhas: { type: 'array', items: linhaSchema },
           },
-          required: ['tipo', 'descricao', 'unidade'],
+          required: ['descricao', 'unidade', 'linhas'],
+        },
+      },
+      avulsos: {
+        type: 'array',
+        description: 'Insumos ou serviços listados sem pertencer a um serviço principal (sem quantidade).',
+        items: {
+          type: 'object',
+          properties: {
+            tipo_no_arquivo: { type: 'string' },
+            codigo: { type: 'string' },
+            descricao: { type: 'string' },
+            unidade: { type: 'string' },
+          },
+          required: ['tipo_no_arquivo', 'descricao'],
         },
       },
       pendencias: { type: 'array', items: { type: 'string' }, description: 'O que não ficou claro ou não foi possível ler.' },
     },
-    required: ['itens'],
+    required: ['servicos'],
   },
 };
 
 export const instrucaoComposicoes = (nome: string) =>
-  `Leia o arquivo "${nome}" e liste os insumos (materiais, mão de obra, equipamentos) e os serviços (composições) nele, chamando a ferramenta lancar_composicoes.
+  `Leia o arquivo "${nome}" e chame a ferramenta lancar_composicoes.
 Regras:
-- Insumo: tipo "insumo", com descrição e unidade. Não invente preço: preços não entram aqui.
-- Serviço: tipo "composicao", com a lista de componentes (insumos ou outros serviços) e o coeficiente de cada um por unidade do serviço.
-- O coeficiente de cada componente é a coluna chamada "Quantidade", "Coeficiente", "Consumo" ou "Qtd" (use sempre esse número, com ponto decimal).
-- Em relatórios analíticos do SINAPI: a primeira linha é o serviço principal; as linhas seguintes com tipo "C" (composição auxiliar) ou "I" (insumo) são os COMPONENTES dele, cada um com sua quantidade. Não liste esses componentes como itens soltos: coloque-os em componentes do serviço principal (tipo C = "composicao", tipo I = "insumo"), e também liste cada um como item para cadastro.
-- Se um componente for outro serviço do arquivo, marque tipo "composicao" nele.
-- Mantenha os códigos e as unidades como aparecem. Se não houver código, deixe vazio.
-- Não invente itens que não estão no arquivo. Se algo estiver ilegível ou ambíguo, diga em pendencias.`;
+- Cada serviço (composição) principal do arquivo é um item de "servicos", com código, descrição e unidade, e TODAS as linhas que o compõem em "linhas".
+- Em cada linha, copie o tipo exatamente como está na coluna de tipo do arquivo (por exemplo "C" ou "I") em tipo_no_arquivo. Não interprete: o sistema decide pelo que está escrito. No SINAPI, "C" é composição auxiliar e "I" é insumo.
+- A quantidade de cada linha é o valor da coluna "Quantidade" (ou "Coeficiente", "Consumo", "Qtd"). Copie o número como está.
+- Mantenha códigos, descrições e unidades como aparecem. Sem código no arquivo, deixe vazio.
+- Itens que aparecem sem pertencer a um serviço principal vão em "avulsos".
+- Não invente itens nem números. Se algo estiver ilegível ou ambíguo, diga em pendencias.`;
 
 const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '');
 
-/** Confere o que a IA devolveu: descarta o que não tem descrição, normaliza tipos e coeficientes. */
+/** Tipo pela marca do arquivo: C/composição/serviço é composição; I/insumo/material/mão de obra/equipamento é insumo. */
+export function tipoDoArquivo(marca: string): TipoItemLido | null {
+  const m = marca.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  if (!m) return null;
+  if (m === 'c' || /^(comp|serv)/.test(m)) return 'composicao';
+  if (m === 'i' || /^(ins|mat|mao|m\.o|equip|mo$)/.test(m)) return 'insumo';
+  return null;
+}
+
+/**
+ * Monta os itens a partir do que a IA devolveu: o tipo vem da marca do arquivo (C ou I), as linhas de cada serviço
+ * viram componentes com a quantidade como coeficiente, e cada linha também vira um item para conciliar e cadastrar.
+ */
 export function lerComposicoesIa(r: Record<string, unknown>): { itens: ItemLido[]; pendencias: string[] } {
   const pendencias = Array.isArray(r.pendencias) ? r.pendencias.filter((p): p is string => typeof p === 'string').map((p) => p.slice(0, 300)) : [];
-  const tipoDe = (v: unknown): TipoItemLido => (v === 'composicao' ? 'composicao' : 'insumo');
-  const brutos = Array.isArray(r.itens) ? (r.itens as Record<string, unknown>[]) : [];
-  const itens: ItemLido[] = [];
-  for (const b of brutos) {
-    const descricao = texto(b.descricao, 300);
+  const itens = new Map<string, ItemLido>();
+  const chave = (tipo: TipoItemLido, codigo: string, descricao: string) => `${tipo}|${codigo || descricao.toLowerCase()}`;
+  const juntar = (novo: ItemLido) => {
+    const k = chave(novo.tipo, novo.codigo, novo.descricao);
+    const atual = itens.get(k);
+    if (!atual) itens.set(k, novo);
+    else if (atual.componentes.length === 0 && novo.componentes.length > 0) itens.set(k, { ...atual, componentes: novo.componentes });
+  };
+  const tipoDe = (marca: unknown, descricao: string): TipoItemLido => {
+    const t = tipoDoArquivo(texto(marca, 40));
+    if (t) return t;
+    pendencias.push(`Não reconheci o tipo de "${descricao}" (${texto(marca, 40) || 'em branco'}): ficou como insumo. Confira.`);
+    return 'insumo';
+  };
+  for (const s of Array.isArray(r.servicos) ? (r.servicos as Record<string, unknown>[]) : []) {
+    const descricao = texto(s.descricao, 300);
     if (descricao.length < 2) {
-      pendencias.push('Um item sem descrição foi ignorado.');
+      pendencias.push('Um serviço sem descrição foi ignorado.');
       continue;
     }
-    const tipo = tipoDe(b.tipo);
     const componentes: ComponenteLido[] = [];
-    if (tipo === 'composicao' && Array.isArray(b.componentes)) {
-      for (const k of b.componentes as Record<string, unknown>[]) {
-        const d = texto(k.descricao, 300);
-        const coef = typeof k.coeficiente === 'number' ? k.coeficiente : Number(String(k.coeficiente ?? '').replace(',', '.'));
-        if (d.length < 2 || !Number.isFinite(coef) || coef < 0) {
-          pendencias.push(`Componente "${d || 'sem descrição'}" de ${descricao} ficou sem coeficiente válido e foi ignorado.`);
-          continue;
-        }
-        componentes.push({ tipo: tipoDe(k.tipo), codigo: texto(k.codigo, 40), descricao: d, unidade: texto(k.unidade, 20), coeficiente: coef });
+    const dasLinhas: ItemLido[] = [];
+    for (const l of Array.isArray(s.linhas) ? (s.linhas as Record<string, unknown>[]) : []) {
+      const d = texto(l.descricao, 300);
+      const coef = typeof l.quantidade === 'number' ? l.quantidade : Number(String(l.quantidade ?? '').replace(',', '.'));
+      if (d.length < 2 || !Number.isFinite(coef) || coef < 0) {
+        pendencias.push(`Linha "${d || 'sem descrição'}" de ${descricao} ficou sem quantidade válida e foi ignorada.`);
+        continue;
       }
+      const tipo = tipoDe(l.tipo_no_arquivo, d);
+      const k: ComponenteLido = { tipo, codigo: texto(l.codigo, 40), descricao: d, unidade: texto(l.unidade, 20), coeficiente: coef };
+      componentes.push(k);
+      dasLinhas.push({ tipo, codigo: k.codigo, descricao: d, unidade: k.unidade, componentes: [] });
     }
-    itens.push({ tipo, codigo: texto(b.codigo, 40), descricao, unidade: texto(b.unidade, 20), componentes });
+    juntar({ tipo: 'composicao', codigo: texto(s.codigo, 40), descricao, unidade: texto(s.unidade, 20), componentes });
+    dasLinhas.forEach(juntar);
   }
-  return { itens, pendencias };
+  for (const a of Array.isArray(r.avulsos) ? (r.avulsos as Record<string, unknown>[]) : []) {
+    const d = texto(a.descricao, 300);
+    if (d.length < 2) continue;
+    juntar({ tipo: tipoDe(a.tipo_no_arquivo, d), codigo: texto(a.codigo, 40), descricao: d, unidade: texto(a.unidade, 20), componentes: [] });
+  }
+  return { itens: [...itens.values()], pendencias };
 }
