@@ -109,14 +109,14 @@ h2 { font-weight: 700; font-size: 20px; line-height: 1.3; }
 /* EAP do orçamento: só a tabela rola (com o cabeçalho fixo), a página não cresce com a planilha. */
 .planilha-eap-rolagem { max-height: max(320px, calc(100vh - 220px)); overflow-y: auto; }
 .planilha-eap-rolagem thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-card); }
-/* Cores por nível na EAP: obra, etapa e sub etapa se distinguem de relance; a tarefa fica no fundo normal. */
-:root { --eap-obra: #d6e4f5; --eap-etapa: #dff0e4; --eap-subetapa: #fbecc8; --eap-borda: #1f5fad; }
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --eap-obra: #1d3550; --eap-etapa: #1b3a2a; --eap-subetapa: #3d2f14; --eap-borda: #5b92d6; } }
-:root[data-theme="dark"] { --eap-obra: #1d3550; --eap-etapa: #1b3a2a; --eap-subetapa: #3d2f14; --eap-borda: #5b92d6; }
-.planilha-orc tr.nivel-obra td { background: var(--eap-obra); font-weight: 700; }
-.planilha-orc tr.nivel-etapa td { background: var(--eap-etapa); font-weight: 600; }
-.planilha-orc tr.nivel-subetapa td { background: var(--eap-subetapa); font-weight: 600; }
-.planilha-orc tr.nivel-obra td:first-child, .planilha-orc tr.nivel-etapa td:first-child, .planilha-orc tr.nivel-subetapa td:first-child { box-shadow: inset 4px 0 0 var(--eap-borda); }
+/* Níveis da EAP em tons de cinza: obra é o mais escuro, etapa vem depois e sub etapa é o mais claro. A tarefa fica no fundo normal. */
+:root { --eap-obra: #4a4d53; --eap-obra-texto: #ffffff; --eap-etapa: #9ea2a9; --eap-etapa-texto: #1f2328; --eap-subetapa: #e1e3e6; --eap-subetapa-texto: #1f2328; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --eap-obra: #2f3339; --eap-obra-texto: #f2f1ee; --eap-etapa: #565c64; --eap-etapa-texto: #f2f1ee; --eap-subetapa: #7c838c; --eap-subetapa-texto: #ffffff; } }
+:root[data-theme="dark"] { --eap-obra: #2f3339; --eap-obra-texto: #f2f1ee; --eap-etapa: #565c64; --eap-etapa-texto: #f2f1ee; --eap-subetapa: #7c838c; --eap-subetapa-texto: #ffffff; }
+.planilha-orc tr.nivel-obra td { background: var(--eap-obra); color: var(--eap-obra-texto); font-weight: 700; }
+.planilha-orc tr.nivel-etapa td { background: var(--eap-etapa); color: var(--eap-etapa-texto); font-weight: 600; }
+.planilha-orc tr.nivel-subetapa td { background: var(--eap-subetapa); color: var(--eap-subetapa-texto); font-weight: 600; }
+.planilha-orc tr.nivel-obra .btn-link, .planilha-orc tr.nivel-etapa .btn-link, .planilha-orc tr.nivel-subetapa .btn-link { color: inherit; text-decoration: underline; }
 
 @media (max-width: 899px) {
   .lateral { display: none; }
