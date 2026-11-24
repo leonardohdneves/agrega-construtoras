@@ -632,9 +632,9 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Lê insumos e serviços de um arquivo pela IA (PDF, foto, HTML, XLSX, CSV ou TXT). Não grava nada: o usuário confere e lança. */
-    const corpoLeituraComposicoes = z.object({ arquivo: z.string().min(1), nome: z.string().max(2000).optional().transform((v) => v?.slice(-200)) });
+    const corpoLeituraComposicoes = z.object({ obraId: z.string().regex(UUID).optional(), arquivo: z.string().min(1), nome: z.string().max(2000).optional().transform((v) => v?.slice(-200)) });
     app.post<{ Params: { id: string } }>('/tabelas/:id/composicoes-leitura', { config: LIMITE_IA, bodyLimit: 24 * 1024 * 1024, schema: { body: corpoLeituraComposicoes } }, async (req) => {
-      const { arquivo, nome } = corpoLeituraComposicoes.parse(req.body);
+      const { arquivo, nome, obraId } = corpoLeituraComposicoes.parse(req.body);
       const empresaId = empresaDo(req);
       const t = await tabelaDaEmpresa(banco, empresaId, req.params.id);
       if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A leitura só lança em tabela própria. As tabelas SINAPI não são alteradas.');
@@ -649,7 +649,23 @@ export function rotasEngenharia(banco: Banco) {
         throw new ErroHttp(400, (e as Error).message);
       }
       const r = await chamarIaComFerramenta({ bloco, instrucao: instrucaoComposicoes(nomeArquivo), ferramenta: FERRAMENTA_COMPOSICOES, maxTokens: 8000 });
-      return lerComposicoesIa(r);
+      const lido = lerComposicoesIa(r);
+      // Conciliação antes do lançamento: o que já está cadastrado na obra ou na tabela (por código ou por descrição).
+      const catalogo: { onde: 'obra' | 'tabela'; tipo: string; codigo: string; descricao: string }[] = [];
+      if (obraId) {
+        await obraDaEmpresa(banco, empresaId, obraId);
+        for (const x of (await banco.query('SELECT tipo, codigo, descricao FROM obra_itens WHERE obra_id = $1', [obraId])).rows) catalogo.push({ onde: 'obra', tipo: x.tipo, codigo: x.codigo, descricao: x.descricao });
+      }
+      for (const x of (await banco.query('SELECT tipo, codigo, descricao FROM ref_itens WHERE tabela_id = $1', [t.id])).rows) catalogo.push({ onde: 'tabela', tipo: x.tipo, codigo: x.codigo, descricao: x.descricao });
+      const acha = (tipo: string, codigo: string, descricao: string) => {
+        const nd = normalizarTexto(descricao);
+        const x = (codigo && catalogo.find((k) => k.tipo === tipo && k.codigo === codigo)) || catalogo.find((k) => k.tipo === tipo && normalizarTexto(k.descricao) === nd);
+        return x ? { onde: x.onde, codigo: x.codigo, descricao: x.descricao } : null;
+      };
+      return {
+        pendencias: lido.pendencias,
+        itens: lido.itens.map((i) => ({ ...i, existente: acha(i.tipo, i.codigo, i.descricao), componentes: i.componentes.map((k) => ({ ...k, existente: acha(k.tipo, k.codigo, k.descricao) })) })),
+      };
     });
 
     const esquemaLoteComposicoes = z.object({
@@ -721,7 +737,8 @@ export function rotasEngenharia(banco: Banco) {
         const resolver = async (chave: string, pilha: string[]): Promise<string> => {
           const ja = resolvidos.get(chave);
           if (ja) return ja;
-          const existente = porDescricao.get(chave);
+          const itemLote = lote.get(chave);
+          const existente = (itemLote?.codigo ? porCodigo.get(`${itemLote.tipo}|${itemLote.codigo}`) : undefined) ?? porDescricao.get(chave);
           if (existente) {
             resolvidos.set(chave, existente);
             return existente;
