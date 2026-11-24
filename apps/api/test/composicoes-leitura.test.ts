@@ -185,3 +185,10 @@ test('tabela própria: um serviço novo pode usar outro serviço como componente
   });
   assert.equal(inexistente.status, 400);
 });
+
+test("lote: arquivo com nome muito longo (como os do SINAPI) não é recusado pelo tamanho do nome", { skip: semBanco }, async () => {
+  const tabela = await tabelaPropria("Nome longo");
+  const nome = "SINAPI 100764_ " + "VIGA METÁLICA ".repeat(30) + ".pdf";
+  const r = await ctx.pedir("dono", "POST", `/api/eng/tabelas/${tabela}/composicoes-leitura`, { corpo: { arquivo: Buffer.from("%PDF-1.4").toString("base64"), nome } });
+  assert.notEqual(r.status, 400, JSON.stringify(r.corpo));
+});
