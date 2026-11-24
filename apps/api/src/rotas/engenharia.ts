@@ -662,9 +662,30 @@ export function rotasEngenharia(banco: Banco) {
         const x = (codigo && catalogo.find((k) => k.tipo === tipo && k.codigo === codigo)) || catalogo.find((k) => k.tipo === tipo && normalizarTexto(k.descricao) === nd);
         return x ? { onde: x.onde, codigo: x.codigo, descricao: x.descricao } : null;
       };
+      // Sem igual exato, sugere os mais parecidos (palavras em comum) para o operador conciliar à mão.
+      const palavras = (t: string) => new Set(normalizarTexto(t).split(/[^a-z0-9]+/).filter((p) => p.length > 2));
+      const sugerir = (tipo: string, descricao: string) => {
+        const a = palavras(descricao);
+        if (!a.size) return [];
+        return catalogo
+          .filter((k) => k.tipo === tipo)
+          .map((k) => {
+            const b = palavras(k.descricao);
+            let comum = 0;
+            for (const p of a) if (b.has(p)) comum++;
+            return { onde: k.onde, codigo: k.codigo, descricao: k.descricao, pontos: comum / Math.max(a.size, b.size, 1) };
+          })
+          .filter((k) => k.pontos >= 0.4)
+          .sort((x, y) => y.pontos - x.pontos)
+          .slice(0, 4)
+          .map(({ onde, codigo, descricao: d }) => ({ onde, codigo, descricao: d }));
+      };
       return {
         pendencias: lido.pendencias,
-        itens: lido.itens.map((i) => ({ ...i, existente: acha(i.tipo, i.codigo, i.descricao), componentes: i.componentes.map((k) => ({ ...k, existente: acha(k.tipo, k.codigo, k.descricao) })) })),
+        itens: lido.itens.map((i) => {
+          const existente = acha(i.tipo, i.codigo, i.descricao);
+          return { ...i, existente, sugestoes: existente ? [] : sugerir(i.tipo, i.descricao), componentes: i.componentes.map((k) => ({ ...k, existente: acha(k.tipo, k.codigo, k.descricao) })) };
+        }),
       };
     });
 
