@@ -78,6 +78,8 @@ export const instrucaoComposicoes = (nome: string) =>
 Regras:
 - Insumo: tipo "insumo", com descrição e unidade. Não invente preço: preços não entram aqui.
 - Serviço: tipo "composicao", com a lista de componentes (insumos ou outros serviços) e o coeficiente de cada um por unidade do serviço.
+- O coeficiente de cada componente é a coluna chamada "Quantidade", "Coeficiente", "Consumo" ou "Qtd" (use sempre esse número, com ponto decimal).
+- Em relatórios analíticos do SINAPI: a primeira linha é o serviço principal; as linhas seguintes com tipo "C" (composição auxiliar) ou "I" (insumo) são os COMPONENTES dele, cada um com sua quantidade. Não liste esses componentes como itens soltos: coloque-os em componentes do serviço principal (tipo C = "composicao", tipo I = "insumo"), e também liste cada um como item para cadastro.
 - Se um componente for outro serviço do arquivo, marque tipo "composicao" nele.
 - Mantenha os códigos e as unidades como aparecem. Se não houver código, deixe vazio.
 - Não invente itens que não estão no arquivo. Se algo estiver ilegível ou ambíguo, diga em pendencias.`;

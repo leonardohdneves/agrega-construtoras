@@ -726,12 +726,14 @@ export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | '
 /** Linha da composição em edição: insumo ou serviço escolhido na busca, com o coeficiente digitado. */
 type ComponenteEdit = { tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: string };
 type ItemBusca = { id: string; tipo: string; codigo: string; descricao: string; unidade: string };
+type Existente = { onde: 'obra' | 'tabela'; codigo: string; descricao: string } | null;
 type ItemLidoTabela = {
+  existente?: Existente;
   tipo: 'insumo' | 'composicao';
   codigo: string;
   descricao: string;
   unidade: string;
-  componentes: { tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: number }[];
+  componentes: { tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: number; existente?: Existente }[];
 };
 
 /** Campo de código com busca ao vivo na tabela (insumos ou serviços), conforme digita. */
@@ -848,7 +850,7 @@ function lerEmBase64(arquivo: File): Promise<string> {
 }
 
 /** Importação por IA: lê o arquivo, mostra os itens para conferir e lança os marcados na tabela própria. */
-function ImportarPorIa({ tabelaId, aoLancar, aoFechar }: { tabelaId: string; aoLancar: (itens: { id: string; tipo: string }[], mensagem: string) => void; aoFechar: () => void }) {
+function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: string; obraId?: string; aoLancar: (itens: { id: string; tipo: string }[], mensagem: string) => void; aoFechar: () => void }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [lendo, setLendo] = useState(false);
   const [lancando, setLancando] = useState(false);
@@ -864,10 +866,10 @@ function ImportarPorIa({ tabelaId, aoLancar, aoFechar }: { tabelaId: string; aoL
     setLendo(true);
     try {
       const base64 = await lerEmBase64(arquivo);
-      const r = await api<{ itens: ItemLidoTabela[]; pendencias: string[] }>(`/eng/tabelas/${tabelaId}/composicoes-leitura`, { corpo: { arquivo: base64, nome: arquivo.name } });
+      const r = await api<{ itens: ItemLidoTabela[]; pendencias: string[] }>(`/eng/tabelas/${tabelaId}/composicoes-leitura`, { corpo: { arquivo: base64, nome: arquivo.name, obraId } });
       setLidos(r.itens);
       setPendencias(r.pendencias);
-      setMarcados(r.itens.map(() => true));
+      setMarcados(r.itens.map((x) => !x.existente));
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -926,7 +928,7 @@ function ImportarPorIa({ tabelaId, aoLancar, aoFechar }: { tabelaId: string; aoL
       {lidos && lidos.length === 0 && <p className="muted" style={{ margin: 0 }}>Não encontrei insumos nem serviços neste arquivo.</p>}
       {lidos && lidos.length > 0 && (
         <>
-          <p className="ajuda" style={{ margin: 0 }}>{lidos.length} itens lidos. Desmarque o que não deve entrar.</p>
+          <p className="ajuda" style={{ margin: 0 }}>{lidos.length} itens lidos; os já cadastrados vêm desmarcados e serão reaproveitados. Nos itens do serviço, ✓ já existe e + será criado.</p>
           <div style={{ overflowX: 'auto' }}>
             <table className="tabela tabela-compacta">
               <thead>
@@ -936,7 +938,8 @@ function ImportarPorIa({ tabelaId, aoLancar, aoFechar }: { tabelaId: string; aoL
                   <th>Código</th>
                   <th>Descrição</th>
                   <th>Un.</th>
-                  <th>Itens do serviço</th>
+                  <th>Situação</th>
+                  <th>Itens do serviço (coeficiente)</th>
                 </tr>
               </thead>
               <tbody>
@@ -949,8 +952,11 @@ function ImportarPorIa({ tabelaId, aoLancar, aoFechar }: { tabelaId: string; aoL
                     <td className="mono small">{x.codigo || '—'}</td>
                     <td>{x.descricao}</td>
                     <td>{x.unidade}</td>
+                    <td className="small">
+                      {x.existente ? `Já cadastrado ${x.existente.onde === 'obra' ? 'na obra' : 'na tabela'} (${x.existente.codigo})` : 'Novo'}
+                    </td>
                     <td className="small muted">
-                      {x.componentes.length ? x.componentes.map((k) => `${k.descricao} × ${k.coeficiente.toLocaleString('pt-BR', { maximumFractionDigits: 6 })}`).join('; ') : '—'}
+                      {x.componentes.length ? x.componentes.map((k) => `${k.existente ? '✓ ' : '+ '}${k.descricao} × ${k.coeficiente.toLocaleString('pt-BR', { maximumFractionDigits: 6 })}`).join('; ') : '—'}
                     </td>
                   </tr>
                 ))}
@@ -1074,6 +1080,7 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo, obraId, aoLote }: { tabelaId: 
           {importando && (
             <ImportarPorIa
               tabelaId={tabelaId}
+              obraId={obraId}
               aoLancar={(itens, mensagem) => {
                 setImportando(false);
                 aoLote(itens, mensagem);
