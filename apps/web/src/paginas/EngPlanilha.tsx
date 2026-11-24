@@ -80,6 +80,10 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
   // Linhas marcadas para copiar ou excluir de uma vez (só as que aparecem na tela).
   const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
   const [lote, setLote] = useState(false);
+  // Área de transferência: as linhas copiadas. Colando, a próxima linha escolhida recebe as cópias logo acima dela.
+  const [area, setArea] = useState<string[]>([]);
+  const [colando, setColando] = useState(false);
+  const [aviso, setAviso] = useState('');
   const visiveis = p ? p.linhas.filter((l) => visivelNaEap(l, p.linhas, recolhidas)) : [];
   const todasMarcadas = visiveis.length > 0 && visiveis.every((l) => marcadas.has(l.id));
 
@@ -92,12 +96,36 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
     });
   }
 
-  async function operarLote(acao: 'copiar-lote' | 'excluir-lote') {
+  function copiarMarcadas() {
+    const n = marcadas.size;
+    setArea([...marcadas]);
+    setMarcadas(new Set());
+    setColando(false);
+    setAviso(`${n} ${n === 1 ? 'linha copiada' : 'linhas copiadas'}. Clique em Colar e depois em "Colar acima" na linha de destino.`);
+  }
+
+  async function colarAcima(antesDeId: string, codigo: string) {
+    setErro('');
+    setLote(true);
+    try {
+      const r = await api<{ coladas: number }>(`/eng/obras/${obra.id}/planilha/colar`, { corpo: { ids: area, antesDeId } });
+      setColando(false);
+      setAviso(`${r.coladas} ${r.coladas === 1 ? 'linha colada' : 'linhas coladas'} acima de ${codigo}.`);
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setLote(false);
+    }
+  }
+
+  async function operarLote(acao: 'excluir-lote') {
     setErro('');
     setLote(true);
     try {
       await api(`/eng/obras/${obra.id}/planilha/${acao}`, { corpo: { ids: [...marcadas] } });
       setMarcadas(new Set());
+      setAviso('');
       await carregar();
     } catch (e) {
       setErro((e as Error).message);
@@ -124,12 +152,25 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
         </div>
       </div>
 
-      {marcadas.size > 0 && (
-        <div className="card nao-imprimir" role="region" aria-label="Linhas marcadas" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 16px' }}>
-          <b>{marcadas.size} {marcadas.size === 1 ? 'linha marcada' : 'linhas marcadas'}</b>
-          <button className="btn" type="button" onClick={() => void operarLote('copiar-lote')} disabled={lote}>Copiar</button>
-          <button className="btn" type="button" onClick={excluirMarcadas} disabled={lote}>Excluir</button>
-          <button className="btn btn-link" type="button" onClick={() => setMarcadas(new Set())} disabled={lote}>Limpar seleção</button>
+      {(marcadas.size > 0 || area.length > 0 || colando) && (
+        <div className="card nao-imprimir" role="region" aria-label="Seleção e colagem da planilha" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 16px' }}>
+          {marcadas.size > 0 && (
+            <>
+              <b>{marcadas.size} {marcadas.size === 1 ? 'linha marcada' : 'linhas marcadas'}</b>
+              <button className="btn" type="button" onClick={copiarMarcadas} disabled={lote}>Copiar</button>
+              <button className="btn" type="button" onClick={excluirMarcadas} disabled={lote}>Excluir</button>
+              <button className="btn btn-link" type="button" onClick={() => setMarcadas(new Set())} disabled={lote}>Limpar seleção</button>
+            </>
+          )}
+          {marcadas.size === 0 && area.length > 0 && <span className="small muted">Área de transferência: {area.length} {area.length === 1 ? 'linha' : 'linhas'}</span>}
+          <button className="btn" type="button" onClick={() => { setAviso(''); setColando(true); }} disabled={lote || area.length === 0 || colando}>Colar</button>
+          {colando && (
+            <>
+              <span className="small">Clique em "Colar acima" na linha de destino: o copiado entra logo acima dela.</span>
+              <button className="btn btn-link" type="button" onClick={() => setColando(false)} disabled={lote}>Cancelar colagem</button>
+            </>
+          )}
+          {aviso && !colando && <span className="small muted">{aviso}</span>}
         </div>
       )}
       <div className="card planilha-eap-rolagem" style={{ padding: 0, overflowX: 'auto' }}>
@@ -160,7 +201,7 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
               editando === l.id ? (
                 <EditarLinha key={l.id} obraId={obra.id} linha={l} linhas={p.linhas} servicos={servicos} setErro={setErro} aoFechar={async (salvou) => { setEditando(null); if (salvou) await carregar(); }} />
               ) : (
-                <tr key={l.id} className={`nivel-${l.nivel}`} style={l.nivel !== 'tarefa' ? { fontWeight: l.nivel === 'obra' ? 700 : 600, background: 'var(--surface-sunken)' } : undefined}>
+                <tr key={l.id} className={`nivel-${l.nivel}`}>
                   <td className="nao-imprimir"><input type="checkbox" aria-label={`Marcar ${l.codigo}`} checked={marcadas.has(l.id)} onChange={() => alternarMarcada(l.id)} /></td>
                   <td className="mono">{l.codigo}</td>
                   <td className="small">{ROTULO[l.nivel]}</td>
@@ -187,6 +228,9 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
                   <td className="num">{l.servico || l.nivel !== 'tarefa' ? formatarMoeda(l.precoTotal) : <span className="small muted">sem serviço</span>}</td>
                   <td className="acoes-celula nao-imprimir">
                     <div className="acoes-linha">
+                    {colando && (
+                      <button className="btn btn-primario" type="button" aria-label={`Colar acima de ${l.codigo} ${l.descricao}`} onClick={() => colarAcima(l.id, l.codigo)} disabled={lote}>Colar acima</button>
+                    )}
                     <span className="setas" style={{ display: 'inline-flex', gap: 2, marginRight: 4 }}>
                       <button className="btn btn-link" type="button" title="Subir (leva junto as linhas de baixo)" aria-label={`Subir ${l.codigo}`} disabled={movendo || irmas(l)[0]?.id === l.id} onClick={() => mover(l, 'cima')} style={{ padding: '0 6px' }}>▲</button>
                       <button className="btn btn-link" type="button" title="Descer (leva junto as linhas de baixo)" aria-label={`Descer ${l.codigo}`} disabled={movendo || irmas(l).at(-1)?.id === l.id} onClick={() => mover(l, 'baixo')} style={{ padding: '0 6px' }}>▼</button>

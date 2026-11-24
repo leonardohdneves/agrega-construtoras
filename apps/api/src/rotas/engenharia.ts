@@ -49,7 +49,7 @@ import {
   curvaAbc,
   LIMITES_ABC,
   moverLinha,
-  planejarCopia,
+  planejarColagem,
   renumerar,
   reposicionarLinha,
   subarvore,
@@ -3367,20 +3367,34 @@ export function rotasEngenharia(banco: Banco) {
     // Linhas marcadas na planilha: copiar (cada cópia entra logo depois da original, com o que está abaixo dela) e excluir.
     const corpoLotePlanilha = z.object({ ids: z.array(z.string().regex(UUID)).min(1, 'Marque ao menos uma linha.').max(500) });
 
-    app.post<{ Params: { id: string } }>('/obras/:id/planilha/copiar-lote', { schema: { body: corpoLotePlanilha } }, async (req) => {
-      const d = corpoLotePlanilha.parse(req.body);
+    /** Cola as linhas da área de transferência logo acima da linha escolhida (no mesmo pai dela). */
+    const corpoColarPlanilha = z.object({
+      ids: z.array(z.string().regex(UUID)).min(1, 'Copie ao menos uma linha.').max(500),
+      antesDeId: z.string().regex(UUID),
+    });
+    app.post<{ Params: { id: string } }>('/obras/:id/planilha/colar', { schema: { body: corpoColarPlanilha } }, async (req) => {
+      const d = corpoColarPlanilha.parse(req.body);
       const empresaId = empresaDo(req);
       return emTransacao(banco, async (c) => {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
         await c.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`planilha:${obra.id}`]);
         const nos = (await c.query('SELECT id, pai_id, codigo, nivel, descricao FROM eap_nos WHERE obra_id = $1', [obra.id])).rows as { id: string; pai_id: string | null; codigo: string; nivel: NivelPlanilha; descricao: string }[];
         const porId = new Map(nos.map((n) => [n.id, n]));
-        if (d.ids.some((id) => !porId.has(id))) throw naoEncontrado('Linha da planilha');
-        const { copias, codigos } = planejarCopia(
+        const alvo = porId.get(d.antesDeId);
+        if (!alvo || d.ids.some((id) => !porId.has(id))) throw naoEncontrado('Linha da planilha');
+        const paiNivel = alvo.pai_id ? porId.get(alvo.pai_id)!.nivel : null;
+        const { copias, codigos } = planejarColagem(
           nos.map((n) => ({ id: n.id, paiId: n.pai_id, codigo: n.codigo, nivel: n.nivel })),
           d.ids,
+          d.antesDeId,
           () => randomUUID(),
         );
+        // Só as cópias de topo ficam no pai da linha de destino: elas precisam de um nível mais baixo que o dele.
+        for (const k of copias) {
+          if (k.paiId !== alvo.pai_id) continue;
+          const erro = erroPaiPlanilha(paiNivel, k.nivel);
+          if (erro) throw new ErroHttp(400, erro);
+        }
         const servicos = (await c.query('SELECT eap_no_id, obra_item_id, quantidade FROM orcamento_itens WHERE obra_id = $1 ORDER BY ordem', [obra.id])).rows as { eap_no_id: string; obra_item_id: string; quantidade: number }[];
         const servicoDe = new Map(servicos.map((x) => [x.eap_no_id, x]));
         let ordem = Number((await c.query('SELECT coalesce(max(ordem), 0) AS n FROM orcamento_itens WHERE obra_id = $1', [obra.id])).rows[0].n);
@@ -3393,7 +3407,7 @@ export function rotasEngenharia(banco: Banco) {
           }
         }
         await gravarCodigos(c, obra.id, codigos);
-        return { copiadas: copias.length };
+        return { coladas: copias.length };
       });
     });
 
