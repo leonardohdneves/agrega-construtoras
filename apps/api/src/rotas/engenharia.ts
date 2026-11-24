@@ -632,14 +632,14 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Lê insumos e serviços de um arquivo pela IA (PDF, foto, HTML, XLSX, CSV ou TXT). Não grava nada: o usuário confere e lança. */
-    const corpoLeituraComposicoes = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    const corpoLeituraComposicoes = z.object({ arquivo: z.string().min(1), nome: z.string().max(2000).optional().transform((v) => v?.slice(-200)) });
     app.post<{ Params: { id: string } }>('/tabelas/:id/composicoes-leitura', { config: LIMITE_IA, bodyLimit: 24 * 1024 * 1024, schema: { body: corpoLeituraComposicoes } }, async (req) => {
       const { arquivo, nome } = corpoLeituraComposicoes.parse(req.body);
       const empresaId = empresaDo(req);
       const t = await tabelaDaEmpresa(banco, empresaId, req.params.id);
       if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A leitura só lança em tabela própria. As tabelas SINAPI não são alteradas.');
       if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Cadastre os itens manualmente.');
-      const nomeArquivo = (nome ?? 'arquivo').slice(0, 200);
+      const nomeArquivo = (nome ?? 'arquivo').slice(-200);
       const bytes = Buffer.from(base64Puro(arquivo), 'base64');
       if (!bytes.length || bytes.length > LIMITE_ARQUIVO_COMPOSICOES) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 15 MB).');
       let bloco;
@@ -3308,7 +3308,7 @@ export function rotasEngenharia(banco: Banco) {
      * Lê as tabelas de um HTML estático (quantitativos de projeto exportados) e sugere composições já cadastradas, pela
      * mesma conciliação da leitura por IA. Não executa script e não grava nada: o usuário confirma na planilha.
      */
-    const corpoPostObrasLeituraHtml = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    const corpoPostObrasLeituraHtml = z.object({ arquivo: z.string().min(1), nome: z.string().max(2000).optional().transform((v) => v?.slice(-200)) });
     app.post<{ Params: { id: string } }>('/obras/:id/leitura-html', { bodyLimit: 12 * 1024 * 1024, schema: { body: corpoPostObrasLeituraHtml } }, async (req) => {
       const { arquivo } = corpoPostObrasLeituraHtml.parse(req.body);
       const empresaId = empresaDo(req);
@@ -3331,7 +3331,7 @@ export function rotasEngenharia(banco: Banco) {
     });
 
     /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */
-    const corpoPostObrasLeituraProjeto = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    const corpoPostObrasLeituraProjeto = z.object({ arquivo: z.string().min(1), nome: z.string().max(2000).optional().transform((v) => v?.slice(-200)) });
     app.post<{ Params: { id: string } }>('/obras/:id/leitura-projeto', { config: LIMITE_IA, bodyLimit: 24 * 1024 * 1024, schema: { body: corpoPostObrasLeituraProjeto } }, async (req) => {
       const { arquivo, nome } = corpoPostObrasLeituraProjeto.parse(req.body);
       const empresaId = empresaDo(req);

@@ -21757,7 +21757,7 @@
                   },
                   "nome": {
                     "type": "string",
-                    "maxLength": 200
+                    "maxLength": 2000
                   }
                 },
                 "required": [
@@ -27376,7 +27376,7 @@
                   },
                   "nome": {
                     "type": "string",
-                    "maxLength": 200
+                    "maxLength": 2000
                   }
                 },
                 "required": [
@@ -27449,7 +27449,7 @@
                   },
                   "nome": {
                     "type": "string",
-                    "maxLength": 200
+                    "maxLength": 2000
                   }
                 },
                 "required": [
