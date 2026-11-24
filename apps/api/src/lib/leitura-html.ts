@@ -66,7 +66,11 @@ export function classificarServico(descricao: string): ServicoLeitura {
 const CABECALHO_UNIDADE = /^(un|unid|und|unidade)\.?$/i;
 const CABECALHO_QUANTIDADE_DIRETO = /^(quantidade|quant|qtd|qtde)\.?$/i;
 const CABECALHO_QUANTIDADE_TOTAL = /^total\b/i;
-const CABECALHO_DESCRICAO = /^(item|descri|material|servi[cç]o|pe[cç]a|insumo)/i;
+const CABECALHO_DESCRICAO = /^(item|descri|material|servi[cç]o|pe[cç]a|insumo|o que|especifica)/i;
+const CABECALHO_CODIGO = /^(c[oó]d|c[oó]digo|ref)\b/i;
+const CABECALHO_COMPOSICAO = /composi[cç][aã]o|sinapi|refer[eê]ncia/i;
+const CABECALHO_NUMERACAO = /^(eap|n[ºo°.]?|#|it\.?|seq)$/i;
+const CABECALHO_VALOR = /(custo|pre[cç]o|valor|r\$|bdi)/i;
 
 export const LIMITE_ITENS_HTML = 1000;
 
@@ -87,12 +91,19 @@ export function quantitativosDasTabelas(tabelas: TabelaHtml[]): { itens: Quantit
     const cab = t.linhas[iCab].map((c) => c.trim());
     const colUn = cab.findIndex((c) => CABECALHO_UNIDADE.test(c));
     const colQtd = cab.findIndex((c) => CABECALHO_QUANTIDADE_DIRETO.test(c)) >= 0 ? cab.findIndex((c) => CABECALHO_QUANTIDADE_DIRETO.test(c)) : cab.findIndex((c) => CABECALHO_QUANTIDADE_TOTAL.test(c));
-    const colDesc = cab.findIndex((c, i) => i !== colUn && i !== colQtd && CABECALHO_DESCRICAO.test(c)) >= 0 ? cab.findIndex((c, i) => i !== colUn && i !== colQtd && CABECALHO_DESCRICAO.test(c)) : 0;
+    const livre = (i: number) => i !== colUn && i !== colQtd;
+    const colCodigo = cab.findIndex((c, i) => livre(i) && CABECALHO_CODIGO.test(c));
+    const colComp = cab.findIndex((c, i) => livre(i) && i !== colCodigo && CABECALHO_COMPOSICAO.test(c) && !CABECALHO_DESCRICAO.test(c));
+    // Descrição: a coluna com nome de descrição; senão a primeira que não seja numeração, código, composição sugerida ou valor.
+    let colDesc = cab.findIndex((c, i) => livre(i) && i !== colComp && CABECALHO_DESCRICAO.test(c));
+    if (colDesc < 0) colDesc = cab.findIndex((c, i) => livre(i) && i !== colCodigo && i !== colComp && !CABECALHO_NUMERACAO.test(c) && !CABECALHO_VALOR.test(c));
+    if (colDesc < 0) colDesc = 0;
     const exigidas = Math.max(colUn, colQtd, colDesc) + 1;
     let grupo = '';
     for (const l of t.linhas.slice(iCab + 1)) {
       if (l.length < exigidas) {
-        if (l.length === 1 && l[0]) grupo = l[0];
+        // Título de grupo: uma célula, ou numeração + título ("1 | CONTENÇÃO"). Linha de observação começa vazia.
+        if (l.length >= 1 && l.length <= 2 && l[0]) grupo = l.filter(Boolean).join(' ');
         continue;
       }
       const descricao = l[colDesc].replace(/^[·•\-–]\s*/, '').trim();
@@ -103,8 +114,12 @@ export function quantitativosDasTabelas(tabelas: TabelaHtml[]): { itens: Quantit
         continue;
       }
       if (itens.length >= LIMITE_ITENS_HTML) break;
+      const codigoSugerido = colCodigo >= 0 ? (l[colCodigo] ?? '').trim().slice(0, 40) : '';
+      const composicaoSugerida = colComp >= 0 ? (l[colComp] ?? '').trim().slice(0, 300) : '';
       itens.push({
-        servico: classificarServico(descricao),
+        ...(codigoSugerido ? { codigoSugerido } : {}),
+        ...(composicaoSugerida ? { composicaoSugerida } : {}),
+        servico: classificarServico(composicaoSugerida || descricao),
         descricao: descricao.slice(0, 200),
         unidade: l[colUn].trim().slice(0, 20),
         quantidade,
