@@ -1,6 +1,6 @@
 // Engenharia · Seções do menu: insumos e serviços, EAP e orçamento. O planejamento está em EngPlanejamento.tsx.
 // Cada seção escolhe a obra (seletor, ou ?obra= na URL) e carrega os dados dela.
-import { useEffect, useState, type FormEvent, type ReactNode } from 'react';
+import { useEffect, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { api, formatarMoeda, lerNumero } from '../api';
 import { AbaInsumos, ROTULO_NIVEL, type ItemObra, type No, type Obra, type Orcamento } from './EngObras';
@@ -336,20 +336,54 @@ const ABAS_CUSTO: { id: AbaCusto; texto: string }[] = [
   { id: 'lucro', texto: 'Lucratividade' },
 ];
 
+/** Tamanho da fonte do orçamento (EAP e orçamento): padrão, limites e chave de guarda neste navegador. */
+const FONTE_ORC_PADRAO = 15;
+const FONTE_ORC_MIN = 11;
+const FONTE_ORC_MAX = 22;
+const FONTE_ORC_CHAVE = 'agrega.fonteOrcamento';
+
+function lerFonteOrcamento(): number {
+  try {
+    const v = Number(localStorage.getItem(FONTE_ORC_CHAVE));
+    return v >= FONTE_ORC_MIN && v <= FONTE_ORC_MAX ? v : FONTE_ORC_PADRAO;
+  } catch {
+    return FONTE_ORC_PADRAO;
+  }
+}
+
 /** Abas da planilha: custo direto (EAP e orçamento) e a formação do preço de venda. */
 function AbasCustos({ obra, itens, setErro }: { obra: Obra; itens: ItemObra[]; setErro: (m: string) => void }) {
   const [aba, setAba] = useState<AbaCusto>('direto');
+  const [fonte, setFonte] = useState<number>(lerFonteOrcamento);
+  useEffect(() => {
+    try {
+      localStorage.setItem(FONTE_ORC_CHAVE, String(fonte));
+    } catch {
+      // Sem armazenamento (navegação privada): o ajuste vale só nesta tela.
+    }
+  }, [fonte]);
   return (
     <>
-      <div className="abas" role="tablist" aria-label="Planilhas de custo" style={{ marginBottom: 12 }}>
-        {ABAS_CUSTO.map((a) => (
-          <button key={a.id} type="button" role="tab" aria-selected={aba === a.id} className={aba === a.id ? 'ativa' : ''} onClick={() => setAba(a.id)}>
-            {a.texto}
-          </button>
-        ))}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 12 }}>
+        <div className="abas" role="tablist" aria-label="Planilhas de custo" style={{ flex: 1, minWidth: 0 }}>
+          {ABAS_CUSTO.map((a) => (
+            <button key={a.id} type="button" role="tab" aria-selected={aba === a.id} className={aba === a.id ? 'ativa' : ''} onClick={() => setAba(a.id)}>
+              {a.texto}
+            </button>
+          ))}
+        </div>
+        {aba === 'direto' && (
+          <div className="acoes" role="group" aria-label="Tamanho da fonte do orçamento" style={{ gap: 6, alignItems: 'center' }}>
+            <button className="btn" type="button" aria-label="Diminuir fonte do orçamento" disabled={fonte <= FONTE_ORC_MIN} onClick={() => setFonte((f) => Math.max(FONTE_ORC_MIN, f - 1))}>A−</button>
+            <span className="small muted" style={{ minWidth: 40, textAlign: 'center' }}>{fonte}px</span>
+            <button className="btn" type="button" aria-label="Aumentar fonte do orçamento" disabled={fonte >= FONTE_ORC_MAX} onClick={() => setFonte((f) => Math.min(FONTE_ORC_MAX, f + 1))}>A+</button>
+          </div>
+        )}
       </div>
       {aba === 'direto' ? (
-        <EapComBotao obra={obra} itens={itens} setErro={setErro} />
+        <div className="orcamento-fonte" style={{ ['--tam-orc' as string]: `${fonte}px` } as CSSProperties}>
+          <EapComBotao obra={obra} itens={itens} setErro={setErro} />
+        </div>
       ) : (
         <ComposicaoPreco obra={obra} aba={aba} setErro={setErro} />
       )}
