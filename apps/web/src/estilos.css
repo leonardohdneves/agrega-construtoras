@@ -990,3 +990,8 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .canteiro-ramos::before, .canteiro-central::before, .canteiro-raiz::after { display: none; }
   .canteiro-raiz { margin-bottom: 12px; }
 }
+
+/* Tamanho da fonte do orçamento (A−/A+ nas abas da EAP e orçamento). Vem depois das regras de .tabela para vencer. */
+.orcamento-fonte td, .orcamento-fonte input, .orcamento-fonte select, .orcamento-fonte .btn { font-size: var(--tam-orc, 15px); }
+.orcamento-fonte th { font-size: calc(var(--tam-orc, 15px) - 2px); }
+.orcamento-fonte .small { font-size: calc(var(--tam-orc, 15px) - 1px); }
