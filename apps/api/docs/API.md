@@ -117,7 +117,7 @@ Total: 421 rotas, 10 públicas, 4 do legado da concreteira.
 | `PUT /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `nivel`, `paiId`, `itemId`, `quantidade` |
 | `DELETE /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `POST /api/eng/obras/{id}/planilha/{noId}/mover` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `direcao`* |
-| `POST /api/eng/obras/{id}/planilha/copiar-lote` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `ids`* |
+| `POST /api/eng/obras/{id}/planilha/colar` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `ids`*, `antesDeId`* |
 | `POST /api/eng/obras/{id}/planilha/excluir-lote` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `ids`* |
 | `GET /api/eng/obras/{id}/composicao` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}/composicao` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `administracao`*, `imprevistos`*, `cdi`*, `lucro`*, `indiretos`*, `impostos`* |

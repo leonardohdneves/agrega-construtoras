@@ -109,6 +109,14 @@ h2 { font-weight: 700; font-size: 20px; line-height: 1.3; }
 /* EAP do orçamento: só a tabela rola (com o cabeçalho fixo), a página não cresce com a planilha. */
 .planilha-eap-rolagem { max-height: max(320px, calc(100vh - 220px)); overflow-y: auto; }
 .planilha-eap-rolagem thead th { position: sticky; top: 0; z-index: 1; background: var(--surface-card); }
+/* Cores por nível na EAP: obra, etapa e sub etapa se distinguem de relance; a tarefa fica no fundo normal. */
+:root { --eap-obra: #d6e4f5; --eap-etapa: #dff0e4; --eap-subetapa: #fbecc8; --eap-borda: #1f5fad; }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --eap-obra: #1d3550; --eap-etapa: #1b3a2a; --eap-subetapa: #3d2f14; --eap-borda: #5b92d6; } }
+:root[data-theme="dark"] { --eap-obra: #1d3550; --eap-etapa: #1b3a2a; --eap-subetapa: #3d2f14; --eap-borda: #5b92d6; }
+.planilha-orc tr.nivel-obra td { background: var(--eap-obra); font-weight: 700; }
+.planilha-orc tr.nivel-etapa td { background: var(--eap-etapa); font-weight: 600; }
+.planilha-orc tr.nivel-subetapa td { background: var(--eap-subetapa); font-weight: 600; }
+.planilha-orc tr.nivel-obra td:first-child, .planilha-orc tr.nivel-etapa td:first-child, .planilha-orc tr.nivel-subetapa td:first-child { box-shadow: inset 4px 0 0 var(--eap-borda); }
 
 @media (max-width: 899px) {
   .lateral { display: none; }

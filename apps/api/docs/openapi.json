@@ -27513,7 +27513,7 @@
         "x-fonte": "src/rotas/engenharia.ts:3335"
       }
     },
-    "/api/eng/obras/{id}/planilha/copiar-lote": {
+    "/api/eng/obras/{id}/planilha/colar": {
       "post": {
         "requestBody": {
           "required": true,
@@ -27530,10 +27530,15 @@
                     },
                     "minItems": 1,
                     "maxItems": 500
+                  },
+                  "antesDeId": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
                   }
                 },
                 "required": [
-                  "ids"
+                  "ids",
+                  "antesDeId"
                 ],
                 "additionalProperties": false
               }
@@ -27568,7 +27573,7 @@
         "tags": [
           "Engenharia"
         ],
-        "operationId": "post_eng_obras_id_planilha_copiar_lote",
+        "operationId": "post_eng_obras_id_planilha_colar",
         "security": [
           {
             "sessao": []
@@ -27584,7 +27589,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3370"
+        "x-fonte": "src/rotas/engenharia.ts:3375"
       }
     },
     "/api/eng/obras/{id}/planilha/excluir-lote": {
@@ -27658,7 +27663,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3400"
+        "x-fonte": "src/rotas/engenharia.ts:3414"
       }
     },
     "/api/eng/obras/{id}/composicao": {
@@ -27708,7 +27713,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3499"
+        "x-fonte": "src/rotas/engenharia.ts:3513"
       },
       "put": {
         "requestBody": {
@@ -27841,7 +27846,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3505"
+        "x-fonte": "src/rotas/engenharia.ts:3519"
       }
     },
     "/api/eng/obras/{id}/relatorio-abc": {
@@ -27899,7 +27904,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3532"
+        "x-fonte": "src/rotas/engenharia.ts:3546"
       }
     },
     "/api/eng/obras/{id}/relatorio-orcamento": {
@@ -27957,7 +27962,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3546"
+        "x-fonte": "src/rotas/engenharia.ts:3560"
       }
     },
     "/api/eng/obras/{id}/versoes": {
@@ -28007,7 +28012,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3597"
+        "x-fonte": "src/rotas/engenharia.ts:3611"
       },
       "post": {
         "requestBody": {
@@ -28080,7 +28085,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3616"
+        "x-fonte": "src/rotas/engenharia.ts:3630"
       }
     },
     "/api/eng/obras/{id}/versoes/{versaoId}": {
@@ -28137,7 +28142,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3640"
+        "x-fonte": "src/rotas/engenharia.ts:3654"
       }
     },
     "/api/eng/obras/{id}/comparacao": {
@@ -28203,7 +28208,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3651"
+        "x-fonte": "src/rotas/engenharia.ts:3665"
       }
     },
     "/api/eng/obras/{obraId}/rdos": {

@@ -2,7 +2,7 @@
 // As funções puras são testadas aqui; o fluxo pela rota (com banco) fica no fim, e pula sem TEST_DATABASE_URL.
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { planejarCopia, reposicionarLinha, subarvore } from '../src/lib/engenharia.ts';
+import { planejarColagem, reposicionarLinha, subarvore } from '../src/lib/engenharia.ts';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
 
 const ARVORE = [
@@ -29,9 +29,9 @@ test('planilha: mover uma linha para outro pai leva o que está abaixo dela e re
   assert.equal(r.get('s1'), '2.1');
 });
 
-test('planilha: copiar linhas marcadas põe cada cópia logo depois da original, com o que está abaixo', () => {
+test('planilha: colar acima de uma linha põe a cópia entre as irmãs, com o que está abaixo', () => {
   let n = 0;
-  const { copias, codigos } = planejarCopia(ARVORE, ['e1'], () => `c${++n}`);
+  const { copias, codigos } = planejarColagem(ARVORE, ['e1'], 'e2', () => `c${++n}`);
   assert.deepEqual(
     copias.map((c) => [c.id, c.origemId, c.paiId, c.nivel]),
     [
@@ -45,18 +45,26 @@ test('planilha: copiar linhas marcadas põe cada cópia logo depois da original,
 
 test('planilha: linha marcada dentro de outra marcada não é copiada duas vezes', () => {
   let n = 0;
-  const { copias } = planejarCopia(ARVORE, ['e1', 's1', 't1'], () => `c${++n}`);
+  const { copias } = planejarColagem(ARVORE, ['e1', 's1', 't1'], 'e2', () => `c${++n}`);
   assert.equal(copias.length, 3, 'só a cópia da etapa e do que está abaixo dela');
 });
 
-test('planilha: copiar duas tarefas irmãs mantém a ordem delas', () => {
+test('planilha: colar uma tarefa acima de outra, dentro de uma etapa, fica no mesmo pai da de destino', () => {
+  let n = 0;
+  const { copias, paiId, codigos } = planejarColagem(ARVORE, ['t1'], 's1', () => `c${++n}`);
+  assert.equal(paiId, 'e1', 'o pai da cópia é o pai de s1');
+  assert.equal(copias[0].paiId, 'e1');
+  assert.deepEqual(Object.fromEntries(codigos), { obra: '1', e1: '1.1', c1: '1.1.1', s1: '1.1.2', t1: '1.1.2.1', e2: '1.2' });
+});
+
+test('planilha: colar duas tarefas irmãs mantém a ordem delas', () => {
   const nos = [
     { id: 'obra', paiId: null, codigo: '1', nivel: 'obra' as const },
     { id: 'a', paiId: 'obra', codigo: '1.1', nivel: 'tarefa' as const },
     { id: 'b', paiId: 'obra', codigo: '1.2', nivel: 'tarefa' as const },
   ];
   let n = 0;
-  const { codigos } = planejarCopia(nos, ['a'], () => `c${++n}`);
+  const { codigos } = planejarColagem(nos, ['a'], 'b', () => `c${++n}`);
   assert.deepEqual(Object.fromEntries(codigos), { obra: '1', a: '1.1', c1: '1.2', b: '1.3' });
 });
 
@@ -103,14 +111,14 @@ test('rota: tarefa muda de subetapa; não se põe uma linha dentro dela mesma', 
   assert.equal(dentro.status, 400);
 });
 
-test('rota: copiar e excluir linhas marcadas em lote', { skip: semBanco }, async () => {
+test('rota: colar acima de uma linha e excluir em lote', { skip: semBanco }, async () => {
   const obra = (await ctx.pedir('dono', 'POST', '/api/eng/obras', { corpo: { nome: 'Obra de lote' } })).corpo.obra.id as string;
   const e1 = (await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha`, { corpo: { nivel: 'etapa', paiId: null, descricao: 'Etapa D' } })).corpo.id as string;
   await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha`, { corpo: { nivel: 'subetapa', paiId: e1, descricao: 'Sub D1' } });
   const antes = (await linhasDaObra(obra)).length;
-  const copia = await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha/copiar-lote`, { corpo: { ids: [e1] } });
+  const copia = await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha/colar`, { corpo: { ids: [e1], antesDeId: e1 } });
   assert.equal(copia.status, 200, JSON.stringify(copia.corpo));
-  assert.equal(copia.corpo.copiadas, 2);
+  assert.equal(copia.corpo.coladas, 2);
   const depois = await linhasDaObra(obra);
   assert.equal(depois.length, antes + 2);
   const novaEtapa = depois.find((l) => l.descricao === 'Etapa D' && l.id !== e1)!;
@@ -119,4 +127,13 @@ test('rota: copiar e excluir linhas marcadas em lote', { skip: semBanco }, async
   assert.equal(apaga.status, 200, JSON.stringify(apaga.corpo));
   assert.equal(apaga.corpo.excluidas, 2, 'a cópia e a subetapa dela');
   assert.equal((await linhasDaObra(obra)).length, antes);
+});
+
+test('rota: não se cola etapa dentro de sub etapa ou tarefa', { skip: semBanco }, async () => {
+  const obra = (await ctx.pedir('dono', 'POST', '/api/eng/obras', { corpo: { nome: 'Obra de colar' } })).corpo.obra.id as string;
+  const e = (await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha`, { corpo: { nivel: 'etapa', paiId: null, descricao: 'Etapa E' } })).corpo.id as string;
+  const sub = (await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha`, { corpo: { nivel: 'subetapa', paiId: e, descricao: 'Sub E' } })).corpo.id as string;
+  const t = (await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha`, { corpo: { nivel: 'tarefa', paiId: sub, descricao: 'Tarefa E' } })).corpo.id as string;
+  const r = await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/planilha/colar`, { corpo: { ids: [e], antesDeId: t } });
+  assert.equal(r.status, 400, JSON.stringify(r.corpo));
 });
