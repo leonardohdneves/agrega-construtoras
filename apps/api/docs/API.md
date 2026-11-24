@@ -14,11 +14,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 421 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 423 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
-126 rotas.
+128 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -35,6 +35,8 @@ Total: 421 rotas, 10 públicas, 4 do legado da concreteira.
 | `GET /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista |  | `descricao`, `unidade`, `grupo`, `preco`, `precoOrigem`, `unidadesCompra`, `componentes` |
 | `DELETE /api/eng/tabelas/{id}/itens/{itemId}` |  | Dono, Gestor, Orçamentista |  |  |
+| `POST /api/eng/tabelas/{id}/composicoes-leitura` |  | Dono, Gestor, Orçamentista |  | `arquivo`*, `nome` |
+| `POST /api/eng/tabelas/{id}/itens/lote` |  | Dono, Gestor, Orçamentista |  | `itens`* |
 | `POST /api/eng/tabelas/{id}/itens/{itemId}/preco-ultima-compra` |  | Dono, Gestor, Orçamentista |  |  |
 | `GET /api/eng/obras` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra, Financeiro, Almoxarife |  |  |
 | `POST /api/eng/obras` |  | Dono, Gestor, Orçamentista |  | `codigo`, `nome`, `endereco`, `cidade`, `uf`, `responsavel`, `contatoObraNome`, `contatoObraTelefone`, `referenciaEntrega`, `status`, `tipo`, `tipoCanteiro`, `eapPadrao`, `dataInicio`, `dataPrevisao`, `nivelApropriacao`, `bdiModo`, `bdiPercentual`, `horasDia`, `empresaGrupoId`, `responsaveis`, `bdiParametros` |

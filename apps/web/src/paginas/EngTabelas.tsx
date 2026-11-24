@@ -525,6 +525,11 @@ export function EngTabelaDetalhe() {
             setNovo(false);
             await Promise.all([carregarTabela(), carregarItens()]);
           }}
+          aoLote={async (_itens, mensagem) => {
+            setNovo(false);
+            setMsg(mensagem);
+            await Promise.all([carregarTabela(), carregarItens()]);
+          }}
         />
       )}
       <div className="filtros">
@@ -678,6 +683,19 @@ export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | '
     }
   }
 
+  /** Itens criados em lote pela importação: quando há obra aberta, já são incluídos nela. */
+  async function loteCriado(itens: { id: string; tipo: string }[], mensagem: string) {
+    if (!obraId) return aoSalvar(mensagem);
+    try {
+      await api(`/eng/obras/${obraId}/importar`, {
+        corpo: { tabelaId, insumoIds: itens.filter((i) => i.tipo === 'insumo').map((i) => i.id), composicaoIds: itens.filter((i) => i.tipo === 'composicao').map((i) => i.id) },
+      });
+      aoSalvar(`${mensagem} Incluídos nesta obra.`);
+    } catch (err) {
+      aoSalvar(`${mensagem} Não foram incluídos na obra: ${(err as Error).message}`);
+    }
+  }
+
   if (erro && proprias === null) return <div className="alerta alerta-erro" role="alert">{erro}</div>;
   if (proprias === null) return <p className="muted">Carregando…</p>;
   if (proprias.length === 0)
@@ -700,16 +718,267 @@ export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | '
           </select>
         </div>
       )}
-      <NovoItem key={`${tabelaId}-${tipo}`} tabelaId={tabelaId} tipoFixo={tipo} aoSalvar={salvo} />
+      <NovoItem key={`${tabelaId}-${tipo}`} tabelaId={tabelaId} tipoFixo={tipo} aoSalvar={salvo} obraId={obraId} aoLote={loteCriado} />
+    </div>
+  );
+}
+
+/** Linha da composição em edição: insumo ou serviço escolhido na busca, com o coeficiente digitado. */
+type ComponenteEdit = { tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: string };
+type ItemBusca = { id: string; tipo: string; codigo: string; descricao: string; unidade: string };
+type ItemLidoTabela = {
+  tipo: 'insumo' | 'composicao';
+  codigo: string;
+  descricao: string;
+  unidade: string;
+  componentes: { tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: number }[];
+};
+
+/** Campo de código com busca ao vivo na tabela (insumos ou serviços), conforme digita. */
+function BuscaComponente({ tabelaId, tipo, valor, onEscolher, rotulo }: { tabelaId: string; tipo: 'insumo' | 'composicao'; valor: string; onEscolher: (item: ItemBusca) => void; rotulo: string }) {
+  const [texto, setTexto] = useState(valor);
+  const [achados, setAchados] = useState<ItemBusca[]>([]);
+  const [aberto, setAberto] = useState(false);
+  useEffect(() => setTexto(valor), [valor]);
+  useEffect(() => {
+    const termo = texto.trim();
+    if (!aberto || termo.length < 1) {
+      setAchados([]);
+      return;
+    }
+    const t = setTimeout(() => {
+      api<{ itens: ItemBusca[] }>(`/eng/tabelas/${tabelaId}/itens?tipo=${tipo}&busca=${encodeURIComponent(termo)}`)
+        .then((r) => setAchados(r.itens.slice(0, 8)))
+        .catch(() => setAchados([]));
+    }, 200);
+    return () => clearTimeout(t);
+  }, [texto, aberto, tabelaId, tipo]);
+  return (
+    <div style={{ position: 'relative' }}>
+      <input
+        aria-label={rotulo}
+        autoComplete="off"
+        placeholder={tipo === 'insumo' ? 'código ou nome do insumo' : 'código ou nome do serviço'}
+        value={texto}
+        onChange={(e) => {
+          setTexto(e.target.value);
+          setAberto(true);
+        }}
+        onFocus={() => setAberto(true)}
+        onBlur={() => setTimeout(() => setAberto(false), 150)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && achados.length) {
+            e.preventDefault();
+            onEscolher(achados[0]);
+            setAberto(false);
+          }
+        }}
+      />
+      {aberto && achados.length > 0 && (
+        <ul role="listbox" aria-label={`Resultados para ${rotulo}`} style={{ position: 'absolute', zIndex: 5, left: 0, right: 0, top: '100%', margin: '4px 0 0', padding: 4, listStyle: 'none', maxHeight: 260, overflowY: 'auto', background: 'var(--surface-card)', border: '1px solid var(--border)', borderRadius: 8, boxShadow: '0 6px 18px rgba(0,0,0,.12)' }}>
+          {achados.map((i) => (
+            <li key={i.id}>
+              <button
+                type="button"
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  onEscolher(i);
+                  setAberto(false);
+                }}
+                style={{ width: '100%', textAlign: 'left', background: 'none', border: 0, padding: '6px 8px', cursor: 'pointer', color: 'var(--ink)', font: 'inherit' }}
+              >
+                <span className="mono small">{i.codigo}</span> · {i.descricao} <span className="small muted">({i.unidade})</span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+/** Itens da composição: código (com busca), descrição (preenchida pela escolha) e coeficiente, na mesma linha. */
+function EditorComponentes({ tabelaId, valor, onMudar }: { tabelaId: string; valor: ComponenteEdit[]; onMudar: (v: ComponenteEdit[]) => void }) {
+  const grade = { display: 'grid', gridTemplateColumns: 'minmax(180px, 1.1fr) minmax(200px, 2fr) 130px 32px', gap: 8, alignItems: 'center' } as const;
+  const atualizar = (n: number, campo: Partial<ComponenteEdit>) => onMudar(valor.map((x, i) => (i === n ? { ...x, ...campo } : x)));
+  const adicionar = (tipo: 'insumo' | 'composicao') => onMudar([...valor, { tipo, codigo: '', descricao: '', unidade: '', coeficiente: '' }]);
+  return (
+    <div className="campo">
+      <span className="rotulo">Itens da composição</span>
+      {valor.length > 0 && (
+        <div className="small muted" style={{ ...grade, marginBottom: 2 }}>
+          <span>Código</span>
+          <span>Descrição</span>
+          <span>Coeficiente</span>
+          <span />
+        </div>
+      )}
+      {valor.map((c, n) => (
+        <div key={n} style={{ ...grade, marginBottom: 6 }}>
+          <BuscaComponente
+            tabelaId={tabelaId}
+            tipo={c.tipo}
+            valor={c.codigo}
+            rotulo={`Código do ${c.tipo === 'insumo' ? 'insumo' : 'serviço'} ${n + 1}`}
+            onEscolher={(item) => atualizar(n, { codigo: item.codigo, descricao: item.descricao, unidade: item.unidade })}
+          />
+          <input aria-label={`Descrição ${n + 1}`} readOnly value={c.descricao} placeholder="escolha pelo código" style={{ background: 'var(--surface-sunken)' }} />
+          <input aria-label={`Coeficiente ${n + 1}`} inputMode="decimal" placeholder="coeficiente" value={c.coeficiente} onChange={(e) => atualizar(n, { coeficiente: e.target.value })} />
+          <button className="btn btn-link" type="button" aria-label={`Remover item ${n + 1}`} onClick={() => onMudar(valor.filter((_, i) => i !== n))} style={{ padding: 0 }}>
+            ×
+          </button>
+        </div>
+      ))}
+      <div className="acoes" style={{ gap: 16 }}>
+        <button className="btn btn-link" type="button" onClick={() => adicionar('insumo')}>+ insumo</button>
+        <button className="btn btn-link" type="button" onClick={() => adicionar('composicao')}>+ serviço</button>
+      </div>
+      <span className="ajuda">Insumo ou serviço da tabela própria, escolhido pelo código ou pelo nome. O preço do serviço é a soma dos itens × coeficiente; um serviço pode usar outros serviços.</span>
+    </div>
+  );
+}
+
+function lerEmBase64(arquivo: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const leitor = new FileReader();
+    leitor.onload = () => resolve(String(leitor.result).split(',')[1] ?? '');
+    leitor.onerror = () => reject(new Error('Não consegui ler o arquivo.'));
+    leitor.readAsDataURL(arquivo);
+  });
+}
+
+/** Importação por IA: lê o arquivo, mostra os itens para conferir e lança os marcados na tabela própria. */
+function ImportarPorIa({ tabelaId, aoLancar, aoFechar }: { tabelaId: string; aoLancar: (itens: { id: string; tipo: string }[], mensagem: string) => void; aoFechar: () => void }) {
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [lendo, setLendo] = useState(false);
+  const [lancando, setLancando] = useState(false);
+  const [lidos, setLidos] = useState<ItemLidoTabela[] | null>(null);
+  const [pendencias, setPendencias] = useState<string[]>([]);
+  const [marcados, setMarcados] = useState<boolean[]>([]);
+  const [erro, setErro] = useState('');
+
+  async function ler() {
+    if (!arquivo) return;
+    setErro('');
+    setLidos(null);
+    setLendo(true);
+    try {
+      const base64 = await lerEmBase64(arquivo);
+      const r = await api<{ itens: ItemLidoTabela[]; pendencias: string[] }>(`/eng/tabelas/${tabelaId}/composicoes-leitura`, { corpo: { arquivo: base64, nome: arquivo.name } });
+      setLidos(r.itens);
+      setPendencias(r.pendencias);
+      setMarcados(r.itens.map(() => true));
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setLendo(false);
+    }
+  }
+
+  async function lancar() {
+    if (!lidos) return;
+    const escolhidos = lidos.filter((_, i) => marcados[i]);
+    if (escolhidos.length === 0) return setErro('Marque ao menos um item.');
+    setErro('');
+    setLancando(true);
+    try {
+      const r = await api<{ criados: number; itens: { id: string; tipo: string }[]; pendencias: string[] }>(`/eng/tabelas/${tabelaId}/itens/lote`, {
+        corpo: {
+          itens: escolhidos.map((x) => ({
+            tipo: x.tipo,
+            codigo: x.codigo,
+            descricao: x.descricao,
+            unidade: x.unidade,
+            componentes: x.componentes.map((k) => ({ tipo: k.tipo, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: k.coeficiente })),
+          })),
+        },
+      });
+      const aviso = r.pendencias.length ? ` ${r.pendencias.length} ${r.pendencias.length === 1 ? 'ponto precisa' : 'pontos precisam'} de conferência depois.` : '';
+      aoLancar(r.itens, `${r.criados} ${r.criados === 1 ? 'item criado' : 'itens criados'} na tabela própria a partir do arquivo.${aviso}`);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setLancando(false);
+    }
+  }
+
+  return (
+    <div style={{ border: '1px solid var(--border)', borderRadius: 12, padding: 12, marginBottom: 12, display: 'grid', gap: 10 }}>
+      <div className="campo" style={{ margin: 0 }}>
+        <label htmlFor="ia-arquivo">Arquivo com insumos e serviços</label>
+        <input
+          id="ia-arquivo"
+          type="file"
+          accept=".pdf,.png,.jpg,.jpeg,.webp,.html,.htm,.xlsx,.csv,.txt,application/pdf,image/png,image/jpeg,image/webp,text/html,text/csv"
+          onChange={(e) => {
+            setArquivo(e.target.files?.[0] ?? null);
+            setLidos(null);
+            setErro('');
+          }}
+        />
+        <span className="ajuda">PDF, foto (PNG, JPG, WEBP), HTML, XLSX, CSV ou TXT. Nada entra na tabela antes da sua confirmação.</span>
+      </div>
+      <div className="acoes">
+        <button className="btn btn-primario" type="button" onClick={ler} disabled={!arquivo || lendo}>{lendo ? 'Lendo o arquivo…' : 'Ler com IA'}</button>
+        <button className="btn btn-link" type="button" onClick={aoFechar}>Fechar</button>
+      </div>
+      {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
+      {lidos && lidos.length === 0 && <p className="muted" style={{ margin: 0 }}>Não encontrei insumos nem serviços neste arquivo.</p>}
+      {lidos && lidos.length > 0 && (
+        <>
+          <p className="ajuda" style={{ margin: 0 }}>{lidos.length} itens lidos. Desmarque o que não deve entrar.</p>
+          <div style={{ overflowX: 'auto' }}>
+            <table className="tabela tabela-compacta">
+              <thead>
+                <tr>
+                  <th aria-label="Lançar" />
+                  <th>Tipo</th>
+                  <th>Código</th>
+                  <th>Descrição</th>
+                  <th>Un.</th>
+                  <th>Itens do serviço</th>
+                </tr>
+              </thead>
+              <tbody>
+                {lidos.map((x, i) => (
+                  <tr key={i}>
+                    <td>
+                      <input type="checkbox" aria-label={`Lançar ${x.descricao}`} checked={!!marcados[i]} onChange={(e) => setMarcados(marcados.map((m, k) => (k === i ? e.target.checked : m)))} />
+                    </td>
+                    <td>{x.tipo === 'insumo' ? 'Insumo' : 'Serviço'}</td>
+                    <td className="mono small">{x.codigo || '—'}</td>
+                    <td>{x.descricao}</td>
+                    <td>{x.unidade}</td>
+                    <td className="small muted">
+                      {x.componentes.length ? x.componentes.map((k) => `${k.descricao} × ${k.coeficiente.toLocaleString('pt-BR', { maximumFractionDigits: 6 })}`).join('; ') : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          {pendencias.length > 0 && (
+            <ul className="ajuda" style={{ margin: 0 }}>
+              {pendencias.map((p, k) => (
+                <li key={k}>{p}</li>
+              ))}
+            </ul>
+          )}
+          <div className="acoes">
+            <button className="btn btn-primario" type="button" onClick={lancar} disabled={lancando}>{lancando ? 'Lançando…' : 'Lançar selecionados na tabela'}</button>
+          </div>
+        </>
+      )}
     </div>
   );
 }
 
 type UnidadeCompraEdit = { unidade: string; fator: string };
-function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar: (itemId: string) => void; tipoFixo?: 'insumo' | 'composicao' }) {
+function NovoItem({ tabelaId, aoSalvar, tipoFixo, obraId, aoLote }: { tabelaId: string; aoSalvar: (itemId: string) => void; tipoFixo?: 'insumo' | 'composicao'; obraId?: string; aoLote: (itens: { id: string; tipo: string }[], mensagem: string) => void }) {
   const [d, setD] = useState({ tipo: (tipoFixo ?? 'insumo') as 'insumo' | 'composicao', descricao: '', unidade: '', grupo: '', precoOrigem: 'nao_informado' as 'nao_informado' | 'informado', preco: '' });
   const [unidades, setUnidades] = useState<UnidadeCompraEdit[]>([]);
-  const [comp, setComp] = useState([{ insumoCodigo: '', coeficiente: '' }]);
+  const [comp, setComp] = useState<ComponenteEdit[]>([]);
+  const [importando, setImportando] = useState(false);
   const [erro, setErro] = useState('');
   const base = d.unidade.trim() || 'unidade';
   const eInsumo = d.tipo === 'insumo';
@@ -717,7 +986,8 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
   async function salvar(e: FormEvent) {
     e.preventDefault();
     setErro('');
-    const componentes = comp.filter((c) => c.insumoCodigo.trim()).map((c) => ({ insumoCodigo: c.insumoCodigo.trim(), coeficiente: lerNumero(c.coeficiente) ?? -1 }));
+    const componentes = comp.map((c) => ({ tipo: c.tipo, insumoCodigo: c.codigo.trim(), coeficiente: lerNumero(c.coeficiente) ?? -1 }));
+    if (componentes.some((c) => !c.insumoCodigo)) return setErro('Escolha o item de cada linha pelo código, ou remova a linha.');
     if (d.tipo === 'composicao' && componentes.some((c) => c.coeficiente < 0)) return setErro('Confira os coeficientes dos insumos.');
     try {
       const r = await api<{ id: string; codigo: string }>(`/eng/tabelas/${tabelaId}/itens`, {
@@ -734,7 +1004,7 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
       });
       setD({ tipo: d.tipo, descricao: '', unidade: '', grupo: '', precoOrigem: 'nao_informado', preco: '' });
       setUnidades([]);
-      setComp([{ insumoCodigo: '', coeficiente: '' }]);
+      setComp([]);
       aoSalvar(r.id);
     } catch (err) {
       setErro((err as Error).message);
@@ -795,17 +1065,24 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo }: { tabelaId: string; aoSalvar
         </>
       )}
       {d.tipo === 'composicao' && (
-        <div className="campo">
-          <span className="rotulo">Insumos da composição</span>
-          {comp.map((c, n) => (
-            <div key={n} style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-              <input aria-label={`Código do insumo ${n + 1}`} placeholder="código do insumo" value={c.insumoCodigo} onChange={(e) => setComp(comp.map((x, i) => (i === n ? { ...x, insumoCodigo: e.target.value } : x)))} />
-              <input aria-label={`Coeficiente ${n + 1}`} placeholder="coeficiente" inputMode="decimal" value={c.coeficiente} onChange={(e) => setComp(comp.map((x, i) => (i === n ? { ...x, coeficiente: e.target.value } : x)))} />
-            </div>
-          ))}
-          <button className="btn btn-link" type="button" onClick={() => setComp([...comp, { insumoCodigo: '', coeficiente: '' }])}>+ insumo</button>
-          <span className="ajuda">Informe o código de cada insumo e a quantidade por unidade do serviço. Os insumos precisam existir na tabela própria (crie-os em Insumos › Novo insumo). O preço do serviço é a soma dos insumos × coeficiente.</span>
-        </div>
+        <>
+          <div className="acoes" style={{ marginBottom: 8 }}>
+            <button className="btn" type="button" onClick={() => setImportando(!importando)} aria-expanded={importando}>
+              {importando ? 'Fechar importação' : 'Importar composições por IA'}
+            </button>
+          </div>
+          {importando && (
+            <ImportarPorIa
+              tabelaId={tabelaId}
+              aoLancar={(itens, mensagem) => {
+                setImportando(false);
+                aoLote(itens, mensagem);
+              }}
+              aoFechar={() => setImportando(false)}
+            />
+          )}
+          <EditorComponentes tabelaId={tabelaId} valor={comp} onMudar={setComp} />
+        </>
       )}
       <div className="acoes">
         <button className="btn btn-primario" type="submit" disabled={d.descricao.trim().length < 2 || d.unidade.trim() === '' || (eInsumo && d.precoOrigem === 'informado' && d.preco.trim() === '')}>Adicionar</button>
