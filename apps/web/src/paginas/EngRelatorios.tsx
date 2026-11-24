@@ -172,6 +172,7 @@ export function EngRelatorios() {
     <div className={`relatorio${tipo === 'sintetico' || tipo === 'analitico' ? ' relatorio-retrato' : ''}`}>
       <CabecalhoDocumento
         modulo="Engenharia"
+        minimalista
         titulo={TIPOS.find((t) => t.id === tipo)!.titulo}
         descricao={obraRel ? `Obra ${obraRel.codigo} · ${obraRel.nome}` : obraAtual ? `Obra ${obraAtual.codigo} · ${obraAtual.nome}` : undefined}
         filtros={obraRel ? [local, obraRel.responsavel ? `Responsável técnico: ${obraRel.responsavel}` : ''] : []}
