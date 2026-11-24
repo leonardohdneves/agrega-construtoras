@@ -14,8 +14,9 @@ import { ehRestritoAObras, regraEngenheiroEngenharia } from '../lib/obras-acesso
 import { ErroIa, iaDisponivel } from '../lib/ia-nota.ts';
 import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColunasIa, type Externos } from '../lib/ia-sinapi.ts';
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
-import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, pontuarCandidatas, type ComposicaoRef } from '../lib/leitura-projeto.ts';
+import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, normalizarTexto, pontuarCandidatas, type ComposicaoRef } from '../lib/leitura-projeto.ts';
 import { geraTabelasPorScript, quantitativosDasTabelas, tabelasDoHtml } from '../lib/leitura-html.ts';
+import { FERRAMENTA_COMPOSICOES, LIMITE_ARQUIVO_COMPOSICOES, blocoDoArquivo, instrucaoComposicoes, lerComposicoesIa } from '../lib/composicoes-leitura.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
@@ -166,7 +167,7 @@ const esquemaItemRef = z.object({
   preco: z.union([z.number(), z.string()]).optional().nullable(),
   precoOrigem: z.enum(['nao_informado', 'informado']).optional(),
   unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
-  componentes: z.array(z.object({ insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
+  componentes: z.array(z.object({ tipo: z.enum(['insumo', 'composicao']).optional(), insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
 });
 
 // Sem valores padrão aqui: no PUT, campo ausente significa "não mexer". Os padrões ficam no POST.
@@ -630,6 +631,144 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true, id: id.id, codigo: id.codigo };
     });
 
+    /** Lê insumos e serviços de um arquivo pela IA (PDF, foto, HTML, XLSX, CSV ou TXT). Não grava nada: o usuário confere e lança. */
+    const corpoLeituraComposicoes = z.object({ arquivo: z.string().min(1), nome: z.string().max(200).optional() });
+    app.post<{ Params: { id: string } }>('/tabelas/:id/composicoes-leitura', { config: LIMITE_IA, bodyLimit: 24 * 1024 * 1024, schema: { body: corpoLeituraComposicoes } }, async (req) => {
+      const { arquivo, nome } = corpoLeituraComposicoes.parse(req.body);
+      const empresaId = empresaDo(req);
+      const t = await tabelaDaEmpresa(banco, empresaId, req.params.id);
+      if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A leitura só lança em tabela própria. As tabelas SINAPI não são alteradas.');
+      if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Cadastre os itens manualmente.');
+      const nomeArquivo = (nome ?? 'arquivo').slice(0, 200);
+      const bytes = Buffer.from(base64Puro(arquivo), 'base64');
+      if (!bytes.length || bytes.length > LIMITE_ARQUIVO_COMPOSICOES) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 15 MB).');
+      let bloco;
+      try {
+        bloco = blocoDoArquivo(nomeArquivo, bytes);
+      } catch (e) {
+        throw new ErroHttp(400, (e as Error).message);
+      }
+      const r = await chamarIaComFerramenta({ bloco, instrucao: instrucaoComposicoes(nomeArquivo), ferramenta: FERRAMENTA_COMPOSICOES, maxTokens: 8000 });
+      return lerComposicoesIa(r);
+    });
+
+    const esquemaLoteComposicoes = z.object({
+      itens: z
+        .array(
+          z.object({
+            tipo: z.enum(['insumo', 'composicao']),
+            codigo: z.string().trim().max(40).optional().default(''),
+            descricao: z.string().trim().min(2, 'Descreva o item.').max(300),
+            unidade: z.string().trim().max(20).optional().default(''),
+            componentes: z
+              .array(
+                z.object({
+                  tipo: z.enum(['insumo', 'composicao']).optional().default('insumo'),
+                  codigo: z.string().trim().max(40).optional().default(''),
+                  descricao: z.string().trim().min(2, 'Descreva o componente.').max(300),
+                  unidade: z.string().trim().max(20).optional().default(''),
+                  coeficiente: z.number().min(0),
+                }),
+              )
+              .optional()
+              .default([]),
+          }),
+        )
+        .min(1, 'Nada para lançar.')
+        .max(300),
+    });
+
+    /**
+     * Lança em lote, na tabela própria, os itens lidos. Item que já existe (mesmo tipo e descrição) é reaproveitado;
+     * componente sem cadastro vira insumo novo; serviço usado dentro de outro é criado antes dele, e o ciclo é recusado.
+     */
+    app.post<{ Params: { id: string } }>('/tabelas/:id/itens/lote', { schema: { body: esquemaLoteComposicoes } }, async (req) => {
+      const d = esquemaLoteComposicoes.parse(req.body);
+      const empresaId = empresaDo(req);
+      return emTransacao(banco, async (c) => {
+        const t = await tabelaDaEmpresa(c, empresaId, req.params.id);
+        if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A tabela SINAPI é imutável. Para outra versão, importe uma nova tabela.');
+        const existentes = (await c.query('SELECT id, tipo, codigo, descricao FROM ref_itens WHERE tabela_id = $1', [t.id])).rows as { id: string; tipo: string; codigo: string; descricao: string }[];
+        const porDescricao = new Map<string, string>();
+        const porCodigo = new Map<string, string>();
+        for (const x of existentes) {
+          if (!porDescricao.has(`${x.tipo}|${normalizarTexto(x.descricao)}`)) porDescricao.set(`${x.tipo}|${normalizarTexto(x.descricao)}`, x.id);
+          porCodigo.set(`${x.tipo}|${x.codigo}`, x.id);
+        }
+        const lote = new Map<string, (typeof d.itens)[number]>();
+        for (const it of d.itens) {
+          const k = `${it.tipo}|${normalizarTexto(it.descricao)}`;
+          if (!lote.has(k)) lote.set(k, it);
+        }
+        const resolvidos = new Map<string, string>();
+        const criados: { id: string; tipo: string; codigo: string; descricao: string }[] = [];
+        const pendencias: string[] = [];
+
+        const criar = async (tipo: 'insumo' | 'composicao', codigo: string, descricao: string, unidade: string): Promise<string> => {
+          const cod = codigo && !porCodigo.has(`${tipo}|${codigo}`) ? codigo : tipo === 'composicao' ? await proximoCodigoServico(c, t.id) : await proximoCodigoInsumo(c, t.id);
+          const r = await c.query(
+            'INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, preco_origem) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, codigo',
+            [t.id, tipo, cod, descricao, unidade || 'un', tipo === 'insumo' ? 'nao_informado' : null],
+          );
+          const id = r.rows[0].id as string;
+          const codigoNovo = r.rows[0].codigo as string;
+          porCodigo.set(`${tipo}|${codigoNovo}`, id);
+          if (!porDescricao.has(`${tipo}|${normalizarTexto(descricao)}`)) porDescricao.set(`${tipo}|${normalizarTexto(descricao)}`, id);
+          criados.push({ id, tipo, codigo: codigoNovo, descricao });
+          return id;
+        };
+
+        const resolver = async (chave: string, pilha: string[]): Promise<string> => {
+          const ja = resolvidos.get(chave);
+          if (ja) return ja;
+          const existente = porDescricao.get(chave);
+          if (existente) {
+            resolvidos.set(chave, existente);
+            return existente;
+          }
+          const item = lote.get(chave);
+          if (!item) throw new ErroHttp(400, 'Item de composição não encontrado no lote.');
+          const id = await criar(item.tipo, item.codigo, item.descricao, item.unidade);
+          resolvidos.set(chave, id);
+          if (item.tipo === 'composicao') {
+            for (const k of item.componentes) {
+              const tipoK = k.tipo ?? 'insumo';
+              const ck = `${tipoK}|${normalizarTexto(k.descricao)}`;
+              let cid: string;
+              if (lote.has(ck)) {
+                if ([...pilha, chave].includes(ck)) throw new ErroHttp(400, `O serviço ${k.descricao} usa a si mesmo. Isso criaria um ciclo na composição.`);
+                cid = await resolver(ck, [...pilha, chave]);
+              } else if (k.codigo && porCodigo.has(`${tipoK}|${k.codigo}`)) cid = porCodigo.get(`${tipoK}|${k.codigo}`)!;
+              else if (porDescricao.has(ck)) cid = porDescricao.get(ck)!;
+              else if (tipoK === 'insumo') cid = await criar('insumo', k.codigo, k.descricao, k.unidade);
+              else {
+                cid = await criar('composicao', '', k.descricao, k.unidade);
+                pendencias.push(`O serviço "${k.descricao}" entrou sem composição: monte-o depois.`);
+              }
+              await c.query(
+                `INSERT INTO ref_composicao_insumos (composicao_id, insumo_id, coeficiente) VALUES ($1,$2,$3)
+                 ON CONFLICT (composicao_id, insumo_id) DO UPDATE SET coeficiente = excluded.coeficiente`,
+                [id, cid, k.coeficiente],
+              );
+            }
+          }
+          return id;
+        };
+
+        const topo: string[] = [];
+        for (const it of d.itens) topo.push(await resolver(`${it.tipo}|${normalizarTexto(it.descricao)}`, []));
+        const itens = (await c.query('SELECT id, tipo, codigo, descricao FROM ref_itens WHERE id = ANY($1::uuid[])', [[...new Set(topo)]])).rows as { id: string; tipo: string; codigo: string; descricao: string }[];
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'ref_itens', entidadeId: t.id, depois: { tabela: t.nome, lote: d.itens.length, criados: criados.length } });
+        return {
+          criados: criados.length,
+          insumos: criados.filter((x) => x.tipo === 'insumo').length,
+          composicoes: criados.filter((x) => x.tipo === 'composicao').length,
+          itens: itens.map((x) => ({ id: x.id, tipo: x.tipo, codigo: x.codigo, descricao: x.descricao })),
+          pendencias,
+        };
+      });
+    });
+
     const corpoPutTabelasItens = z
     .object({
       descricao: z.string().trim().min(2).max(300).optional(),
@@ -638,7 +777,7 @@ export function rotasEngenharia(banco: Banco) {
       preco: z.union([z.number(), z.string()]).optional().nullable(),
       precoOrigem: z.enum(['nao_informado', 'informado']).optional(),
       unidadesCompra: z.array(esquemaUnidadeCompra).max(10).optional(),
-      componentes: z.array(z.object({ insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
+      componentes: z.array(z.object({ tipo: z.enum(['insumo', 'composicao']).optional(), insumoCodigo: z.string().trim().min(1), coeficiente: z.number().min(0) })).optional(),
     });
     app.put<{ Params: { id: string; itemId: string } }>('/tabelas/:id/itens/:itemId', { schema: { body: corpoPutTabelasItens } }, async (req) => {
       const d = corpoPutTabelasItens
@@ -725,11 +864,26 @@ export function rotasEngenharia(banco: Banco) {
       return { ok: true };
     });
 
-    /** Insere os componentes de uma composição da tabela (código do insumo na mesma tabela). */
-    async function gravarComponentes(c: Cliente, tabelaId: string, composicaoId: string, componentes: { insumoCodigo: string; coeficiente: number }[]) {
+    /** Serviços que uma composição usa, direta ou indiretamente (para recusar ciclo). */
+    async function usaComposicao(c: Cliente, origemId: string, alvoId: string): Promise<boolean> {
+      const r = await c.query(
+        `WITH RECURSIVE arvore AS (
+           SELECT insumo_id FROM ref_composicao_insumos WHERE composicao_id = $1
+           UNION SELECT rc.insumo_id FROM ref_composicao_insumos rc JOIN arvore a ON rc.composicao_id = a.insumo_id)
+         SELECT 1 FROM arvore WHERE insumo_id = $2 LIMIT 1`,
+        [origemId, alvoId],
+      );
+      return !!r.rowCount;
+    }
+
+    /** Insere os componentes de uma composição da tabela: insumos ou outros serviços, pelo código, na mesma tabela. */
+    async function gravarComponentes(c: Cliente, tabelaId: string, composicaoId: string, componentes: { tipo?: 'insumo' | 'composicao'; insumoCodigo: string; coeficiente: number }[]) {
       for (const k of componentes) {
-        const ins = (await c.query(`SELECT id FROM ref_itens WHERE tabela_id = $1 AND tipo = 'insumo' AND codigo = $2`, [tabelaId, k.insumoCodigo])).rows[0];
-        if (!ins) throw new ErroHttp(400, `Insumo ${k.insumoCodigo} não existe nesta tabela.`);
+        const tipo = k.tipo ?? 'insumo';
+        const ins = (await c.query('SELECT id FROM ref_itens WHERE tabela_id = $1 AND tipo = $2 AND codigo = $3', [tabelaId, tipo, k.insumoCodigo])).rows[0];
+        if (!ins) throw new ErroHttp(400, tipo === 'composicao' ? `Serviço ${k.insumoCodigo} não existe nesta tabela.` : `Insumo ${k.insumoCodigo} não existe nesta tabela.`);
+        if (tipo === 'composicao' && (ins.id === composicaoId || (await usaComposicao(c, ins.id, composicaoId))))
+          throw new ErroHttp(400, `O serviço ${k.insumoCodigo} já usa este serviço. Isso criaria um ciclo na composição.`);
         await c.query(
           `INSERT INTO ref_composicao_insumos (composicao_id, insumo_id, coeficiente) VALUES ($1,$2,$3)
            ON CONFLICT (composicao_id, insumo_id) DO UPDATE SET coeficiente = excluded.coeficiente`,
@@ -1347,8 +1501,17 @@ export function rotasEngenharia(banco: Banco) {
         const obra = await obraDaEmpresa(c, empresaId, req.params.id);
         const tabela = await tabelaDaEmpresa(c, empresaId, d.tabelaId);
         const versao = [tabela.fonte === 'sinapi' ? 'SINAPI' : 'Própria', tabela.mes_referencia, tabela.uf, tabela.fonte === 'sinapi' ? (tabela.desonerado ? 'desonerado' : 'não desonerado') : null].filter(Boolean).join(' ');
+        // Serviços usados dentro dos escolhidos entram junto: sem eles a obra não tem o custo completo.
         const comps = d.composicaoIds.length
-          ? (await c.query(`SELECT * FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao' AND id = ANY($2::uuid[])`, [tabela.id, d.composicaoIds])).rows
+          ? (await c.query(
+              `WITH RECURSIVE fecho AS (
+                 SELECT id FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao' AND id = ANY($2::uuid[])
+                 UNION
+                 SELECT rc.insumo_id FROM ref_composicao_insumos rc JOIN fecho f ON rc.composicao_id = f.id JOIN ref_itens r ON r.id = rc.insumo_id AND r.tipo = 'composicao'
+               )
+               SELECT * FROM ref_itens WHERE id IN (SELECT id FROM fecho)`,
+              [tabela.id, d.composicaoIds],
+            )).rows
           : [];
         const pares = comps.length
           ? (await c.query(`SELECT rc.composicao_id, rc.insumo_id, rc.coeficiente FROM ref_composicao_insumos rc WHERE rc.composicao_id = ANY($1::uuid[])`, [comps.map((x) => x.id)])).rows
