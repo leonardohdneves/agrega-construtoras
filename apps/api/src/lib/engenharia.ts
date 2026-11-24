@@ -471,6 +471,76 @@ export function moverLinha(nos: NoOrdem[], id: string, direcao: 'cima' | 'baixo'
   return renumerar(nos, filhos);
 }
 
+/** A própria linha e tudo o que está abaixo dela (todos os níveis). */
+export function subarvore(nos: NoOrdem[], ids: string[]): Set<string> {
+  const filhos = new Map<string, string[]>();
+  for (const n of nos) if (n.paiId) filhos.set(n.paiId, [...(filhos.get(n.paiId) ?? []), n.id]);
+  const saida = new Set<string>();
+  const pilha = [...ids];
+  while (pilha.length) {
+    const id = pilha.pop()!;
+    if (saida.has(id)) continue;
+    saida.add(id);
+    pilha.push(...(filhos.get(id) ?? []));
+  }
+  return saida;
+}
+
+/** Irmãs de cada pai (chave null é a raiz), na ordem da planilha. */
+function ordemDosFilhos(nos: NoOrdem[]): Map<string | null, string[]> {
+  const ordem = new Map<string | null, string[]>();
+  for (const n of [...nos].sort((a, b) => compararCodigo(a.codigo, b.codigo))) ordem.set(n.paiId, [...(ordem.get(n.paiId) ?? []), n.id]);
+  return ordem;
+}
+
+/** Leva a linha (com o que está abaixo dela) para o fim das linhas do novo pai, ou para a raiz. Devolve a nova numeração. */
+export function reposicionarLinha(nos: NoOrdem[], id: string, novoPaiId: string | null): Map<string, string> {
+  const ordem = ordemDosFilhos(nos);
+  const atual = nos.find((n) => n.id === id);
+  if (!atual) throw new Error('Linha inexistente na planilha.');
+  ordem.set(atual.paiId, (ordem.get(atual.paiId) ?? []).filter((x) => x !== id));
+  ordem.set(novoPaiId, [...(ordem.get(novoPaiId) ?? []), id]);
+  return renumerar(nos, ordem);
+}
+
+/** Uma cópia a ser gravada: a linha nova, a de origem e o pai (de origem para a raiz da cópia, ou a cópia do pai). */
+export type NoCopia = { id: string; origemId: string; paiId: string | null; nivel: NivelPlanilha };
+
+/**
+ * Cópia das linhas selecionadas, com tudo o que está abaixo delas. Cada cópia entra logo depois da original, entre as
+ * mesmas irmãs. Linhas selecionadas dentro de outra selecionada não são copiadas à parte (já vêm com a de cima).
+ * Devolve as cópias (pai antes do filho, para gravar em ordem) e a numeração nova de toda a planilha.
+ */
+export function planejarCopia(nos: (NoOrdem & { nivel: NivelPlanilha })[], selecionados: string[], novoId: () => string): { copias: NoCopia[]; codigos: Map<string, string> } {
+  const porId = new Map(nos.map((n) => [n.id, n]));
+  const sel = new Set(selecionados);
+  const selecionadoAcima = (n: NoOrdem) => {
+    for (let p = n.paiId; p; p = porId.get(p)?.paiId ?? null) if (sel.has(p)) return true;
+    return false;
+  };
+  const ordem = ordemDosFilhos(nos);
+  const topo = [...nos].sort((a, b) => compararCodigo(a.codigo, b.codigo)).filter((n) => sel.has(n.id) && !selecionadoAcima(n));
+  const novo = new Map<string, string>();
+  const copias: NoCopia[] = [];
+  const copiar = (origemId: string, paiId: string | null) => {
+    const id = novoId();
+    novo.set(origemId, id);
+    copias.push({ id, origemId, paiId, nivel: porId.get(origemId)!.nivel });
+    for (const f of ordem.get(origemId) ?? []) copiar(f, id);
+  };
+  for (const n of topo) copiar(n.id, n.paiId);
+  // Irmãs: cada cópia de topo entra logo depois da original.
+  for (const n of topo) {
+    const irmas = [...(ordem.get(n.paiId) ?? [])];
+    irmas.splice(irmas.indexOf(n.id) + 1, 0, novo.get(n.id)!);
+    ordem.set(n.paiId, irmas);
+  }
+  // Filhos da cópia: os mesmos da origem, já copiados, na mesma ordem.
+  for (const c of copias) ordem.set(c.id, (ordem.get(c.origemId) ?? []).map((f) => novo.get(f)!));
+  const todos = [...nos, ...copias.map((c) => ({ id: c.id, paiId: c.paiId, codigo: '', nivel: c.nivel }))];
+  return { copias, codigos: renumerar(todos, ordem) };
+}
+
 // Formação do preço: administração, imprevistos e custo financeiro incidem sobre custo direto + indireto;
 // impostos e lucratividade incidem sobre essa base somada àqueles três.
 export type PercentuaisPreco = { administracao: number; imprevistos: number; financeiro: number; lucro: number };

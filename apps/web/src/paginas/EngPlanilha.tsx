@@ -77,6 +77,41 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
     }
   }
 
+  // Linhas marcadas para copiar ou excluir de uma vez (só as que aparecem na tela).
+  const [marcadas, setMarcadas] = useState<Set<string>>(new Set());
+  const [lote, setLote] = useState(false);
+  const visiveis = p ? p.linhas.filter((l) => visivelNaEap(l, p.linhas, recolhidas)) : [];
+  const todasMarcadas = visiveis.length > 0 && visiveis.every((l) => marcadas.has(l.id));
+
+  function alternarMarcada(id: string) {
+    setMarcadas((atual) => {
+      const proxima = new Set(atual);
+      if (proxima.has(id)) proxima.delete(id);
+      else proxima.add(id);
+      return proxima;
+    });
+  }
+
+  async function operarLote(acao: 'copiar-lote' | 'excluir-lote') {
+    setErro('');
+    setLote(true);
+    try {
+      await api(`/eng/obras/${obra.id}/planilha/${acao}`, { corpo: { ids: [...marcadas] } });
+      setMarcadas(new Set());
+      await carregar();
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setLote(false);
+    }
+  }
+
+  function excluirMarcadas() {
+    const n = marcadas.size;
+    if (!window.confirm(`Excluir ${n} ${n === 1 ? 'linha marcada' : 'linhas marcadas'}? O que estiver abaixo delas também sai.`)) return;
+    void operarLote('excluir-lote');
+  }
+
   if (!p) return <p className="muted">Carregando…</p>;
   return (
     <>
@@ -89,10 +124,21 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
         </div>
       </div>
 
+      {marcadas.size > 0 && (
+        <div className="card nao-imprimir" role="region" aria-label="Linhas marcadas" style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', padding: '10px 16px' }}>
+          <b>{marcadas.size} {marcadas.size === 1 ? 'linha marcada' : 'linhas marcadas'}</b>
+          <button className="btn" type="button" onClick={() => void operarLote('copiar-lote')} disabled={lote}>Copiar</button>
+          <button className="btn" type="button" onClick={excluirMarcadas} disabled={lote}>Excluir</button>
+          <button className="btn btn-link" type="button" onClick={() => setMarcadas(new Set())} disabled={lote}>Limpar seleção</button>
+        </div>
+      )}
       <div className="card planilha-eap-rolagem" style={{ padding: 0, overflowX: 'auto' }}>
         <table className="tabela planilha-orc">
           <thead>
             <tr>
+              <th className="nao-imprimir" style={{ width: 36 }}>
+                <input type="checkbox" aria-label="Marcar todas as linhas visíveis" checked={todasMarcadas} onChange={() => setMarcadas(todasMarcadas ? new Set() : new Set(visiveis.map((l) => l.id)))} />
+              </th>
               <th>Item</th>
               <th>Nível</th>
               <th style={{ minWidth: 220 }}>Descrição</th>
@@ -107,14 +153,15 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
           <tbody>
             {p.linhas.length === 0 && (
               <tr>
-                <td colSpan={9} className="muted">Planilha vazia. Comece pela linha de Obra ou de Etapa, logo abaixo.</td>
+                <td colSpan={10} className="muted">Planilha vazia. Comece pela linha de Obra ou de Etapa, logo abaixo.</td>
               </tr>
             )}
             {p.linhas.filter((l) => visivelNaEap(l, p.linhas, recolhidas)).map((l) =>
               editando === l.id ? (
-                <EditarLinha key={l.id} obraId={obra.id} linha={l} servicos={servicos} setErro={setErro} aoFechar={async (salvou) => { setEditando(null); if (salvou) await carregar(); }} />
+                <EditarLinha key={l.id} obraId={obra.id} linha={l} linhas={p.linhas} servicos={servicos} setErro={setErro} aoFechar={async (salvou) => { setEditando(null); if (salvou) await carregar(); }} />
               ) : (
                 <tr key={l.id} className={`nivel-${l.nivel}`} style={l.nivel !== 'tarefa' ? { fontWeight: l.nivel === 'obra' ? 700 : 600, background: 'var(--surface-sunken)' } : undefined}>
+                  <td className="nao-imprimir"><input type="checkbox" aria-label={`Marcar ${l.codigo}`} checked={marcadas.has(l.id)} onChange={() => alternarMarcada(l.id)} /></td>
                   <td className="mono">{l.codigo}</td>
                   <td className="small">{ROTULO[l.nivel]}</td>
                   <td className="descricao-linha" style={{ paddingLeft: 12 + profundidade(l.codigo) * 16 }}>
@@ -162,23 +209,54 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
 }
 
 /** Edição na própria linha: descrição sempre; na Tarefa, serviço e quantidade. */
-function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: string; linha: Linha; servicos: ItemObra[]; setErro: (m: string) => void; aoFechar: (salvou: boolean) => void }) {
+/** Linhas acima desta (o pai, o pai do pai…), do mais próximo para a raiz. */
+function ancestrais(linhas: Linha[], id: string | null): Linha[] {
+  const porId = new Map(linhas.map((l) => [l.id, l]));
+  const saida: Linha[] = [];
+  for (let atual = id; atual; atual = porId.get(atual)?.paiId ?? null) {
+    const l = porId.get(atual);
+    if (!l) break;
+    saida.push(l);
+  }
+  return saida;
+}
+
+/** Pai que a linha pode ter num certo nível: o mais próximo acima dela que seja de nível mais alto. Null é a raiz. */
+function paiPermitido(linhas: Linha[], paiId: string | null, nivel: NivelPlanilha): string | null {
+  return ancestrais(linhas, paiId).find((a) => POSICAO[a.nivel] < POSICAO[nivel])?.id ?? null;
+}
+
+/** Edição na própria linha: descrição, nível, em qual linha de cima ela fica (mover) e, na Tarefa, serviço e quantidade. */
+function EditarLinha({ obraId, linha, linhas, servicos, setErro, aoFechar }: { obraId: string; linha: Linha; linhas: Linha[]; servicos: ItemObra[]; setErro: (m: string) => void; aoFechar: (salvou: boolean) => void }) {
   const [descricao, setDescricao] = useState(linha.descricao);
   const [itemId, setItemId] = useState(linha.servico?.itemId ?? '');
   const [quantidade, setQuantidade] = useState(linha.servico ? String(linha.servico.quantidade).replace('.', ',') : '');
   const [nivel, setNivel] = useState<NivelPlanilha>(linha.nivel);
+  const [pai, setPai] = useState<string>(linha.paiId ?? 'raiz');
+  const [erroLinha, setErroLinha] = useState('');
   const tarefa = nivel === 'tarefa';
+  // Onde a linha pode ficar: linhas de nível mais alto que o novo nível, fora dela e do que está abaixo dela.
+  const destinos = linhas.filter((d) => d.id !== linha.id && POSICAO[d.nivel] < POSICAO[nivel] && !ancestrais(linhas, d.id).some((a) => a.id === linha.id));
+
+  function mudarNivel(novo: NivelPlanilha) {
+    setNivel(novo);
+    setErroLinha('');
+    setPai(paiPermitido(linhas, pai === 'raiz' ? null : pai, novo) ?? 'raiz');
+  }
 
   async function salvar(e?: FormEvent) {
     e?.preventDefault();
     setErro('');
+    setErroLinha('');
+    const novoPai = pai === 'raiz' ? null : pai;
     const corpo: Record<string, unknown> = { descricao: descricao.trim() };
     if (nivel !== linha.nivel) corpo.nivel = nivel;
+    if (novoPai !== linha.paiId) corpo.paiId = novoPai;
     if (!tarefa && linha.servico) corpo.itemId = null;
     if (tarefa) {
       if (itemId) {
         const q = lerNumero(quantidade);
-        if (q === null || q <= 0) return setErro('Informe a quantidade do serviço.');
+        if (q === null || q <= 0) return setErroLinha('Informe a quantidade do serviço.');
         corpo.itemId = itemId;
         corpo.quantidade = q;
       } else if (linha.servico) {
@@ -189,21 +267,30 @@ function EditarLinha({ obraId, linha, servicos, setErro, aoFechar }: { obraId: s
       await api(`/eng/obras/${obraId}/planilha/${linha.id}`, { metodo: 'PUT', corpo });
       aoFechar(true);
     } catch (err) {
-      setErro((err as Error).message);
+      setErroLinha((err as Error).message);
     }
   }
 
   return (
     <tr style={{ background: 'var(--surface-sunken)' }}>
+      <td />
       <td className="mono">{linha.codigo}</td>
       <td>
-        <select aria-label="Nível" value={nivel} onChange={(e) => setNivel(e.target.value as NivelPlanilha)}>
+        <select aria-label="Nível" value={nivel} onChange={(e) => mudarNivel(e.target.value as NivelPlanilha)}>
           {NIVEIS.map((n) => <option key={n} value={n}>{POSICAO[n]} · {ROTULO[n]}</option>)}
         </select>
+        <div style={{ marginTop: 6 }}>
+          <label htmlFor="ed-pai" className="small muted">Dentro de </label>
+          <select id="ed-pai" aria-label="Dentro de" value={pai} onChange={(e) => setPai(e.target.value)} style={{ maxWidth: 260 }}>
+            <option value="raiz">Raiz (sem linha acima)</option>
+            {destinos.map((d) => <option key={d.id} value={d.id}>{d.codigo} · {ROTULO[d.nivel]} · {d.descricao}</option>)}
+          </select>
+        </div>
         {nivel !== 'tarefa' && linha.servico && <div className="small tom-aviso">O serviço sai da linha.</div>}
       </td>
       <td>
         <input aria-label="Descrição" maxLength={200} value={descricao} onChange={(e) => setDescricao(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && salvar()} style={{ width: '100%', minWidth: 200 }} autoFocus />
+        {erroLinha && <div className="alerta alerta-erro small" role="alert" style={{ marginTop: 6 }}>{erroLinha}</div>}
       </td>
       <td colSpan={2}>
         {tarefa ? (

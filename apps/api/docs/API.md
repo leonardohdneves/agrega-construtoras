@@ -14,11 +14,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 419 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 421 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
-124 rotas.
+126 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -114,9 +114,11 @@ Total: 419 rotas, 10 públicas, 4 do legado da concreteira.
 | `POST /api/eng/obras/{id}/planilha` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `nivel`*, `paiId`, `descricao`, `itemId`, `quantidade` |
 | `POST /api/eng/obras/{id}/leitura-html` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `POST /api/eng/obras/{id}/leitura-projeto` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
-| `PUT /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `nivel`, `itemId`, `quantidade` |
+| `PUT /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `nivel`, `paiId`, `itemId`, `quantidade` |
 | `DELETE /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
 | `POST /api/eng/obras/{id}/planilha/{noId}/mover` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `direcao`* |
+| `POST /api/eng/obras/{id}/planilha/copiar-lote` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `ids`* |
+| `POST /api/eng/obras/{id}/planilha/excluir-lote` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `ids`* |
 | `GET /api/eng/obras/{id}/composicao` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `PUT /api/eng/obras/{id}/composicao` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `administracao`*, `imprevistos`*, `cdi`*, `lucro`*, `indiretos`*, `impostos`* |
 | `GET /api/eng/obras/{id}/relatorio-abc` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra | `tipo` |  |
