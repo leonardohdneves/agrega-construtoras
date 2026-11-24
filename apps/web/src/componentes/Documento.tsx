@@ -104,6 +104,7 @@ export function CabecalhoDocumento({
   acoes,
   aoImprimir,
   logoDireita,
+  minimalista,
 }: {
   modulo: string;
   titulo: string;
@@ -114,6 +115,8 @@ export function CabecalhoDocumento({
   aoImprimir?: () => void;
   /** Logo pequena (2 cm) à direita do título, mesmo na impressão em retrato. */
   logoDireita?: boolean;
+  /** Sem a faixa escura: logo à esquerda, na linha do título, que fica à direita dela. */
+  minimalista?: boolean;
 }) {
   const { usuario, empresa } = useSessao();
   const [painel, setPainel] = useState(false);
@@ -124,20 +127,35 @@ export function CabecalhoDocumento({
     .filter(Boolean)
     .join(' · ');
   return (
-    <header className={`doc-cabecalho${logoDireita ? ' doc-cabecalho-logo-direita' : ''}`}>
-      <div className="doc-faixa">
-        {empresa?.temLogo ? (
-          <img className="doc-logo-faixa" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt={`Logo de ${empresa.nomeFantasia || empresa.razaoSocial}`} />
-        ) : (
-          <span className="doc-marca">
-            <Simbolo tamanho={22} escuro />
-            <span>agrega</span>
-          </span>
-        )}
-        <span className="doc-modulo">{modulo}</span>
-      </div>
+    <header className={`doc-cabecalho${logoDireita ? ' doc-cabecalho-logo-direita' : ''}${minimalista ? ' doc-cabecalho-minimo' : ''}`}>
+      {!minimalista && (
+        <div className="doc-faixa">
+          {empresa?.temLogo ? (
+            <img className="doc-logo-faixa" src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt={`Logo de ${empresa.nomeFantasia || empresa.razaoSocial}`} />
+          ) : (
+            <span className="doc-marca">
+              <Simbolo tamanho={22} escuro />
+              <span>agrega</span>
+            </span>
+          )}
+          <span className="doc-modulo">{modulo}</span>
+        </div>
+      )}
       <div className="doc-corpo">
+        {minimalista && (
+          <div className="doc-logo-minimo">
+            {empresa?.temLogo ? (
+              <img src={`/api/empresa/logo?v=${empresa.logoVersao ?? 0}`} alt={`Logo de ${empresa.nomeFantasia || empresa.razaoSocial}`} />
+            ) : (
+              <span className="doc-marca">
+                <Simbolo tamanho={40} />
+                <span>agrega</span>
+              </span>
+            )}
+          </div>
+        )}
         <div className="doc-titulo">
+          {minimalista && <span className="doc-modulo-minimo">{modulo}</span>}
           <h1>{titulo}</h1>
           {descricao && <p className="doc-descricao">{descricao}</p>}
           {(periodo || filtros.length > 0) && (

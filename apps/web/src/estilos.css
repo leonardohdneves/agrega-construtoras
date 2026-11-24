@@ -410,6 +410,14 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 /* Logo da empresa na faixa de cima (no lugar da marca): fundo branco, para logo escura aparecer no fundo escuro. */
 .doc-logo-faixa { height: 34px; width: auto; max-width: 180px; object-fit: contain; background: #fff; border-radius: 6px; padding: 4px 8px; }
 .logo-previa { max-height: 72px; max-width: 220px; object-fit: contain; background: #fff; border: 1px solid var(--border); border-radius: 8px; padding: 6px; }
+/* Cabeçalho minimalista: sem faixa escura; logo à esquerda e títulos à direita dela, na mesma linha. */
+.doc-cabecalho-minimo { border: 0; border-bottom: 2px solid var(--brand-orange); border-radius: 0; background: transparent; }
+.doc-cabecalho-minimo .doc-corpo { display: flex; align-items: center; gap: 22px; padding: 6px 0 14px; }
+.doc-cabecalho-minimo .doc-logo-minimo { flex: none; display: flex; align-items: center; }
+.doc-cabecalho-minimo .doc-logo-minimo img { height: 88px; width: auto; max-width: 240px; object-fit: contain; }
+.doc-cabecalho-minimo .doc-titulo { min-width: 0; flex: 1; }
+.doc-modulo-minimo { display: block; font: 600 11px/1 var(--font-sans); text-transform: uppercase; letter-spacing: .1em; color: var(--ink-muted); margin-bottom: 6px; }
+.doc-cabecalho-minimo .doc-acoes { padding: 8px 0 0; }
 .doc-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
 @media (max-width: 760px) { .doc-corpo { grid-template-columns: 1fr; } .doc-meta { align-items: flex-start; text-align: left; } .doc-titulo h1 { font-size: 22px; } }
 .relatorio h2 { border-left: 4px solid var(--brand-orange); padding-left: 10px; }
@@ -476,6 +484,8 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
   .doc-corpo { padding: 4mm 0 2mm; }
   .doc-titulo h1 { font-size: 17pt; }
   .doc-logo { width: 40mm; height: 40mm; }
+  .doc-cabecalho-minimo .doc-corpo { padding: 0 0 3mm; gap: 6mm; }
+  .doc-cabecalho-minimo .doc-logo-minimo img { height: 22mm; max-width: 60mm; }
   .doc-cabecalho-logo-direita .doc-corpo { grid-template-columns: minmax(0, 1fr) auto !important; }
   .doc-cabecalho-logo-direita .doc-logo { width: 2cm; height: 2cm; }
   .card, .ind-bloco { border: 0 !important; padding: 0 !important; border-radius: 0 !important; background: transparent !important; }
