@@ -1,6 +1,7 @@
 // Leitura de quantitativos em HTML estático: tabelas, números brasileiros, grupos de itens e classificação do serviço.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { pontuarCandidatas } from '../src/lib/leitura-projeto.ts';
 import { classificarServico, geraTabelasPorScript, numeroBrasileiro, quantitativosDasTabelas, tabelasDoHtml, textoDoHtml } from '../src/lib/leitura-html.ts';
 
 const CONTENCAO = `
@@ -129,4 +130,37 @@ test('rota: visualizador por script e arquivo que não é HTML', { skip: semBanc
   assert.match(r.corpo.pendencias[0], /monta as tabelas por script/);
   assert.equal((await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/leitura-html`, { corpo: { arquivo: b64('{"json": true}') } })).status, 400);
   assert.equal((await ctx.pedir('dono', 'POST', `/api/eng/obras/${obra}/leitura-html`, { empresa: 'b', corpo: { arquivo: b64(CONTENCAO) } })).status, 404, 'obra de outra empresa');
+});
+
+const PACOTE = `
+<h2>Planilha de serviços</h2>
+<table><tr><th>EAP</th><th>O que é, no nosso modelo</th><th>Cód.</th><th>Composição SINAPI</th><th>Un</th><th class="n">Quantidade</th><th class="n">Custo ref.</th></tr>
+<tr class="tot"><td>1</td><td colspan="6">CONTENÇÃO (parede diafragma)</td></tr>
+<tr><td class="c">1.1</td><td>Parede diafragma de 40 cm, L01 a L58</td><td class="c">98641</td><td class="s">CONTENÇÃO EM PAREDE DIAFRAGMA COM 40 CM DE ESPESSURA E PROFUNDIDADE ATÉ 25 METROS. AF_02/2025</td><td class="c">m³</td><td class="n"><b>1.172,40</b></td><td class="n">R$ 1.584.558,98</td></tr>
+<tr class="ob"><td></td><td colspan="6" class="s">Volume medido no Revit.</td></tr>
+<tr><td class="c">1.2</td><td>Armadura das lamelas, CA-50 Ø8,0 mm</td><td class="c">95576</td><td class="s">MONTAGEM DE ARMADURA DE ESTACAS, DIÂMETRO = 8,0 MM. AF_08/2026_PS</td><td class="c">kg</td><td class="n"><b>19.102</b></td><td class="n">R$ 255.966,80</td></tr>
+</table>`;
+
+test('html: pacote com EAP, descrição do modelo, código e composição sugerida', () => {
+  const { itens } = quantitativosDasTabelas(tabelasDoHtml(PACOTE));
+  assert.equal(itens.length, 2);
+  assert.equal(itens[0].descricao, 'Parede diafragma de 40 cm, L01 a L58', 'a descrição não é a numeração da EAP');
+  assert.equal(itens[0].codigoSugerido, '98641');
+  assert.match(itens[0].composicaoSugerida ?? '', /^CONTENÇÃO EM PAREDE DIAFRAGMA/);
+  assert.equal(itens[0].unidade, 'm³');
+  assert.equal(itens[0].quantidade, 1172.4);
+  assert.equal(itens[0].origem, 'Planilha de serviços · 1 CONTENÇÃO (parede diafragma)');
+  assert.equal(itens[1].quantidade, 19102);
+});
+
+test('html: a composição sugerida pelo arquivo vem primeiro (código e nome)', () => {
+  const { itens } = quantitativosDasTabelas(tabelasDoHtml(PACOTE));
+  const ref = (id: string, codigo: string, descricao: string, unidade = 'm³') => ({ id, tabelaId: 't', tabela: 'SINAPI', fonte: 'sinapi', codigo, descricao, unidade });
+  const base = [
+    ref('a', '11111', 'CONCRETO USINADO PARA PAREDE DIAFRAGMA'),
+    ref('b', '98641', 'Contencao parede diafragma 40 cm'),
+    ref('c', '95576', 'MONTAGEM DE ARMADURA DE ESTACAS, DIAMETRO = 8,0 MM. AF_08/2026_PS', 'kg'),
+  ];
+  assert.equal(pontuarCandidatas(itens[0], base)[0].id, 'b', 'mesmo código primeiro');
+  assert.equal(pontuarCandidatas(itens[1], base)[0].id, 'c', 'mesmo nome (sem acento) primeiro');
 });

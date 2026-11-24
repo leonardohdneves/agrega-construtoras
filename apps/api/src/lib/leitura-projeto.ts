@@ -6,7 +6,16 @@
 export const SERVICOS_LEITURA = ['forma', 'armacao', 'concreto', 'outro'] as const;
 export type ServicoLeitura = (typeof SERVICOS_LEITURA)[number];
 
-export type QuantitativoLido = { servico: ServicoLeitura; descricao: string; unidade: string; quantidade: number; origem: string };
+export type QuantitativoLido = {
+  servico: ServicoLeitura;
+  descricao: string;
+  unidade: string;
+  quantidade: number;
+  origem: string;
+  /** Código e nome da composição que o próprio arquivo sugere (por exemplo, a coluna "Composição SINAPI"). */
+  codigoSugerido?: string;
+  composicaoSugerida?: string;
+};
 
 /** Composição cadastrada numa tabela da empresa (SINAPI ou própria). */
 export type ComposicaoRef = { id: string; tabelaId: string; tabela: string; fonte: string; codigo: string; descricao: string; unidade: string };
@@ -39,12 +48,23 @@ function tokens(t: string): string[] {
 }
 
 /** Pontua as composições para um quantitativo: palavra do serviço (3), termos da descrição (1 cada) e mesma unidade (2). */
-export function pontuarCandidatas(q: Pick<QuantitativoLido, 'servico' | 'descricao' | 'unidade'>, composicoes: ComposicaoRef[], limite = 5): Candidata[] {
+export function pontuarCandidatas(q: Pick<QuantitativoLido, 'servico' | 'descricao' | 'unidade' | 'codigoSugerido' | 'composicaoSugerida'>, composicoes: ComposicaoRef[], limite = 5): Candidata[] {
   const palavras = PALAVRAS[q.servico];
   const termos = [...new Set(tokens(q.descricao))].filter((t) => t.length >= 4 && !STOP.has(t));
   const unidade = normalizarTexto(q.unidade).trim();
   const out: Candidata[] = [];
+  // O que o arquivo sugere vem primeiro: mesmo código (pontos 1000) ou mesmo nome da composição (900).
+  const codigo = (q.codigoSugerido ?? '').trim().toLowerCase();
+  const nomeSug = normalizarTexto(q.composicaoSugerida ?? '').replace(/\s+/g, ' ').trim();
+  const sugeridas = new Map<string, Candidata>();
   for (const c of composicoes) {
+    const porCodigo = codigo !== '' && c.codigo.trim().toLowerCase() === codigo;
+    const nomeC = normalizarTexto(c.descricao).replace(/\s+/g, ' ').trim();
+    const porNome = nomeSug !== '' && (nomeC === nomeSug || nomeC.startsWith(nomeSug) || nomeSug.startsWith(nomeC));
+    if (porCodigo || porNome) sugeridas.set(c.id, { ...c, pontos: porCodigo ? 1000 : 900 });
+  }
+  for (const c of composicoes) {
+    if (sugeridas.has(c.id)) continue;
     const tc = new Set(tokens(c.descricao));
     if (EXCLUIR[q.servico].some((p) => tc.has(p))) continue;
     const temPalavra = palavras.some((p) => tc.has(p));
@@ -55,7 +75,8 @@ export function pontuarCandidatas(q: Pick<QuantitativoLido, 'servico' | 'descric
     const pontos = (temPalavra ? 3 : 0) + termosIguais + (mesmaUnidade ? 2 : 0);
     out.push({ ...c, pontos });
   }
-  return out.sort((a, b) => b.pontos - a.pontos || a.descricao.localeCompare(b.descricao, 'pt-BR')).slice(0, limite);
+  const ordenar = (a: Candidata, b: Candidata) => b.pontos - a.pontos || a.descricao.localeCompare(b.descricao, 'pt-BR');
+  return [...[...sugeridas.values()].sort(ordenar), ...out.sort(ordenar)].slice(0, limite);
 }
 
 /** Confere se o texto base64 é mesmo um PDF (cabeçalho %PDF-). Aceita também o formato data:...;base64,. */
