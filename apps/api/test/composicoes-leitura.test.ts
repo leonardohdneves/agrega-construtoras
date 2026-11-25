@@ -245,3 +245,20 @@ test('lote: o preço lido vira o preço do insumo novo', { skip: semBanco }, asy
   const lista = await ctx.pedir('dono', 'GET', `/api/eng/tabelas/${tabela}/itens?tipo=insumo`);
   assert.equal(lista.corpo.itens.find((x: { codigo: string }) => x.codigo === 'P1').preco, 12.52);
 });
+
+test('coeficiente minúsculo de equipamento caro não vira zero (precisão da composição)', { skip: semBanco }, async () => {
+  const csv = [
+    'tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente',
+    'insumo;E1;CAMINHAO TOCO;UN;800000.00;EQUIPAMENTO;;',
+    'insumo;M1;AREIA;M3;100.00;MATERIAL;;',
+    'composicao;S1;SERVICO COM EQUIPAMENTO;M3;;Teste;;',
+    'componente;S1;;;;;E1;0.0000001234',
+    'componente;S1;;;;;M1;1',
+  ].join('\n');
+  const r = await ctx.pedir('dono', 'POST', '/api/eng/tabelas', { corpo: { fonte: 'proprio', nome: 'Precisão', uf: null, mesReferencia: null, desonerado: false, csv } });
+  assert.equal(r.status, 201, JSON.stringify(r.corpo));
+  const lista = await ctx.pedir('dono', 'GET', `/api/eng/tabelas/${r.corpo.tabela.id}/itens?tipo=composicao`);
+  const s1 = lista.corpo.itens.find((i: { codigo: string }) => i.codigo === 'S1');
+  // 800000 × 0,0000001234 = 0,0987 do equipamento + 100 da areia = 100,10 (com 6 casas, o equipamento valia zero: 100,00).
+  assert.equal(s1.preco, 100.1);
+});
