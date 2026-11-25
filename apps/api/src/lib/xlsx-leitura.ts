@@ -98,3 +98,27 @@ export function xlsxParaTexto(buf: Buffer, limite = 200_000): string {
   }
   return partes.join('\n').slice(0, limite);
 }
+
+export type AbaXlsx = { nome: string; linhas: string[][] };
+
+/** Todas as abas do .xlsx com o nome que aparece no Excel e as linhas com cada célula na sua coluna (linhas vazias saem). */
+export function lerAbasXlsx(buf: Buffer): AbaXlsx[] {
+  const arquivos = lerZip(buf);
+  const compartilhadas = arquivos.get('xl/sharedStrings.xml') ? textosCompartilhados(arquivos.get('xl/sharedStrings.xml')!.toString('utf8')) : [];
+  const livro = arquivos.get('xl/workbook.xml')?.toString('utf8') ?? '';
+  const rels = arquivos.get('xl/_rels/workbook.xml.rels')?.toString('utf8') ?? '';
+  const destino = new Map<string, string>();
+  for (const m of rels.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+    const id = /\bId="([^"]+)"/.exec(m[1])?.[1];
+    const alvo = /\bTarget="([^"]+)"/.exec(m[1])?.[1];
+    if (id && alvo) destino.set(id, alvo.replace(/^\/?(xl\/)?/, 'xl/'));
+  }
+  const abas: AbaXlsx[] = [];
+  for (const m of livro.matchAll(/<sheet\b([^>]*)\/?>/g)) {
+    const nome = decodificar(/\bname="([^"]*)"/.exec(m[1])?.[1] ?? '');
+    const rid = /\br:id="([^"]+)"/.exec(m[1])?.[1] ?? '';
+    const arq = arquivos.get(destino.get(rid) ?? '');
+    if (nome && arq) abas.push({ nome, linhas: linhasDaAba(arq.toString('utf8'), compartilhadas) });
+  }
+  return abas;
+}
