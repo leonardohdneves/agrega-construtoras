@@ -426,8 +426,8 @@ export function rotasEngenharia(banco: Banco) {
       const id = await emTransacao(banco, async (c) => {
         const t = (
           await c.query(
-            `INSERT INTO ref_tabelas (empresa_id, fonte, nome, uf, mes_referencia, desonerado) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
-            [empresaId, d.fonte, d.nome, d.uf, d.mesReferencia, d.desonerado],
+            `INSERT INTO ref_tabelas (empresa_id, fonte, nome, uf, mes_referencia, desonerado, regra_custo) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+            [empresaId, d.fonte, d.nome, d.uf, d.mesReferencia, d.desonerado, d.fonte === 'sinapi' ? 'sinapi' : 'exata'],
           )
         ).rows[0];
         const contagem = leitura ? await gravarItensRef(c, t.id, leitura) : null;
@@ -1520,11 +1520,13 @@ export function rotasEngenharia(banco: Banco) {
       await obraDaEmpresa(banco, empresaId, req.params.id);
       const tabela = await tabelaDaEmpresa(banco, empresaId, d.tabelaId);
       const r = await banco.query(
-        `SELECT id, codigo, descricao, unidade, custo_ref_item(id)::bigint AS preco FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao'`,
+        `SELECT id, codigo, descricao, unidade FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao'`,
         [tabela.id],
       );
-      const referencias: RefComposicao[] = r.rows.map((x) => ({ id: x.id as string, codigo: x.codigo as string, descricao: x.descricao as string, unidade: x.unidade as string, precoCentavos: Number(x.preco ?? 0) }));
-      const linhas = d.linhas.map((l, i) => {
+      // O preço não entra na comparação: é calculado depois, só para as composições escolhidas ou sugeridas
+      // (calcular o custo de todas as composições de uma tabela SINAPI inteira demora).
+      const referencias: RefComposicao[] = r.rows.map((x) => ({ id: x.id as string, codigo: x.codigo as string, descricao: x.descricao as string, unidade: x.unidade as string, precoCentavos: 0 }));
+      const conciliadas = d.linhas.map((l, i) => {
         const linha: LinhaPlanilha = {
           eap: l.eap ?? null,
           codigo: l.codigo ?? null,
@@ -1533,8 +1535,24 @@ export function rotasEngenharia(banco: Banco) {
           quantidade: l.quantidade,
           precoUnitarioCentavos: Math.round(l.precoUnitario * 100),
         };
-        return { linha: i + 1, eap: linha.eap, codigo: linha.codigo, descricao: linha.descricao, unidade: linha.unidade, quantidade: linha.quantidade, precoUnitario: l.precoUnitario, ...conciliarLinha(linha, referencias) };
+        return { dados: { linha: i + 1, eap: linha.eap, codigo: linha.codigo, descricao: linha.descricao, unidade: linha.unidade, quantidade: linha.quantidade, precoUnitario: l.precoUnitario }, linha, resultado: conciliarLinha(linha, referencias) };
       });
+      const usadas = new Set<string>();
+      for (const { resultado } of conciliadas) {
+        if (resultado.status === 'associado') usadas.add(resultado.referencia.id);
+        else for (const sug of resultado.sugestoes) usadas.add(sug.referencia.id);
+      }
+      const precos = new Map<string, number>(
+        usadas.size
+          ? (await banco.query('SELECT id, custo_ref_item(id)::bigint AS preco FROM ref_itens WHERE id = ANY($1::uuid[])', [[...usadas]])).rows.map((x) => [x.id as string, Number(x.preco ?? 0)])
+          : [],
+      );
+      const comPreco = (ref: RefComposicao): RefComposicao => ({ ...ref, precoCentavos: precos.get(ref.id) ?? 0 });
+      const linhas = conciliadas.map(({ dados, linha, resultado }) =>
+        resultado.status === 'associado'
+          ? { ...dados, ...resultado, referencia: comPreco(resultado.referencia), diferencaPrecoCentavos: linha.precoUnitarioCentavos - comPreco(resultado.referencia).precoCentavos }
+          : { ...dados, ...resultado, sugestoes: resultado.sugestoes.map((sug) => ({ ...sug, referencia: comPreco(sug.referencia) })) },
+      );
       const associados = linhas.filter((l) => l.status === 'associado').length;
       return {
         tabela: { id: tabela.id, nome: tabela.nome },
@@ -1554,12 +1572,17 @@ export function rotasEngenharia(banco: Banco) {
         const tabela = await tabelaDaEmpresa(c, empresaId, d.tabelaId);
         const versao = [tabela.fonte === 'sinapi' ? 'SINAPI' : 'Própria', tabela.mes_referencia, tabela.uf, tabela.fonte === 'sinapi' ? (tabela.desonerado ? 'desonerado' : 'não desonerado') : null].filter(Boolean).join(' ');
         // Serviços usados dentro dos escolhidos entram junto: sem eles a obra não tem o custo completo.
+        // Tabela com a regra de custo da Caixa: os serviços auxiliares vêm pela estrutura direta (o desdobramento só tem insumos).
+        const regraSinapi = tabela.regra_custo === 'sinapi';
         const comps = d.composicaoIds.length
           ? (await c.query(
-              `WITH RECURSIVE fecho AS (
+              `WITH RECURSIVE ligacoes AS (
+                 SELECT composicao_id, insumo_id AS filho FROM ref_composicao_insumos
+                 ${regraSinapi ? 'UNION ALL SELECT composicao_id, item_id FROM ref_composicao_estrutura' : ''}
+               ), fecho AS (
                  SELECT id FROM ref_itens WHERE tabela_id = $1 AND tipo = 'composicao' AND id = ANY($2::uuid[])
                  UNION
-                 SELECT rc.insumo_id FROM ref_composicao_insumos rc JOIN fecho f ON rc.composicao_id = f.id JOIN ref_itens r ON r.id = rc.insumo_id AND r.tipo = 'composicao'
+                 SELECT l.filho FROM ligacoes l JOIN fecho f ON l.composicao_id = f.id JOIN ref_itens r ON r.id = l.filho AND r.tipo = 'composicao'
                )
                SELECT * FROM ref_itens WHERE id IN (SELECT id FROM fecho)`,
               [tabela.id, d.composicaoIds],
@@ -1588,9 +1611,9 @@ export function rotasEngenharia(banco: Banco) {
           for (const x of linhas) {
             const grupo = (x.grupo || (tipo === 'insumo' ? classeInsumo.get(x.codigo) : null)) ?? null;
             const r = await c.query(
-              `INSERT INTO obra_itens (obra_id, tipo, codigo, descricao, unidade, grupo, preco_centavos, origem_tabela_id, origem_fonte, origem_versao, preco_referencia_centavos)
-               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT (obra_id, tipo, codigo) DO NOTHING RETURNING id`,
-              [obra.id, tipo, x.codigo, x.descricao, x.unidade, grupo, tipo === 'insumo' ? x.preco_centavos : null, tabela.id, tabela.fonte, versao, tipo === 'insumo' ? x.preco_centavos : null],
+              `INSERT INTO obra_itens (obra_id, tipo, codigo, descricao, unidade, grupo, preco_centavos, origem_tabela_id, origem_fonte, origem_versao, preco_referencia_centavos, regra_custo)
+               VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (obra_id, tipo, codigo) DO NOTHING RETURNING id`,
+              [obra.id, tipo, x.codigo, x.descricao, x.unidade, grupo, tipo === 'insumo' ? x.preco_centavos : null, tabela.id, tabela.fonte, versao, tipo === 'insumo' ? x.preco_centavos : null, tipo === 'composicao' && regraSinapi ? 'sinapi' : 'exata'],
             );
             novos += r.rowCount ?? 0;
             if (tipo === 'insumo' && r.rowCount) await c.query('INSERT INTO obra_insumo_unidades (obra_item_id, unidade, fator) SELECT $1, unidade, fator FROM ref_insumo_unidades WHERE item_id = $2', [r.rows[0].id, x.id]);
@@ -1614,6 +1637,18 @@ export function rotasEngenharia(banco: Banco) {
               `INSERT INTO obra_composicao_insumos (composicao_id, insumo_id, coeficiente) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
               [idDoRef.get(comp.id), insumoObra, p.coeficiente],
             );
+          }
+          // Estrutura direta (insumos e serviços auxiliares com o coeficiente exato): é ela que dá o custo da Caixa na obra.
+          if (regraSinapi) {
+            const est = (await c.query('SELECT item_id, coeficiente FROM ref_composicao_estrutura WHERE composicao_id = $1', [comp.id])).rows;
+            for (const e of est) {
+              const itemObra = idDoRef.get(e.item_id);
+              if (!itemObra) continue;
+              await c.query(
+                `INSERT INTO obra_composicao_estrutura (composicao_id, item_id, coeficiente) VALUES ($1,$2,$3) ON CONFLICT DO NOTHING`,
+                [idDoRef.get(comp.id), itemObra, e.coeficiente],
+              );
+            }
           }
         }
         await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'importar', entidade: 'obras', entidadeId: obra.id, depois: { tabela: tabela.nome, insumos: novosInsumos, composicoes: novasComps } });
@@ -1677,7 +1712,9 @@ export function rotasEngenharia(banco: Banco) {
         for (const k of d.componentes) {
           await c.query(`INSERT INTO obra_composicao_insumos (composicao_id, insumo_id, coeficiente) VALUES ($1,$2,$3)`, [i.id, k.insumoId, k.coeficiente]);
         }
-        await c.query('UPDATE obra_itens SET editado = true WHERE id = $1', [i.id]);
+        // Composição editada na obra deixa de seguir a estrutura da tabela: o custo passa a ser a soma exata dos componentes.
+        await c.query('DELETE FROM obra_composicao_estrutura WHERE composicao_id = $1', [i.id]);
+        await c.query(`UPDATE obra_itens SET editado = true, regra_custo = 'exata' WHERE id = $1`, [i.id]);
       });
       return { ok: true };
     });
@@ -1766,6 +1803,8 @@ export function rotasEngenharia(banco: Banco) {
           obraItemId = origem.id as string;
         }
         await c.query('DELETE FROM obra_composicao_insumos WHERE composicao_id = $1', [obraItemId]);
+        await c.query('DELETE FROM obra_composicao_estrutura WHERE composicao_id = $1', [obraItemId]);
+        await c.query(`UPDATE obra_itens SET regra_custo = 'exata' WHERE id = $1`, [obraItemId]);
         for (const k of d.componentes) {
           await c.query('INSERT INTO obra_composicao_insumos (composicao_id, insumo_id, coeficiente) VALUES ($1,$2,$3)', [obraItemId, k.insumoId, k.coeficiente]);
         }
