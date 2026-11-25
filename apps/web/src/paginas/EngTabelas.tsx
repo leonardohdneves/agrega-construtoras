@@ -735,6 +735,7 @@ type ComponenteEdit = { tipo: 'insumo' | 'composicao'; codigo: string; descricao
 type ItemBusca = { id: string; tipo: string; codigo: string; descricao: string; unidade: string };
 type Existente = { onde: 'obra' | 'tabela'; codigo: string; descricao: string } | null;
 type ItemLidoTabela = {
+  preco?: number;
   existente?: Existente;
   sugestoes?: NonNullable<Existente>[];
   tipo: 'insumo' | 'composicao';
@@ -908,6 +909,7 @@ function ImportarPorIa({ tabelaId, tabelaNome, obraId, aoLancar, aoFechar }: { t
             codigo: x.codigo,
             descricao: x.descricao,
             unidade: x.unidade,
+            preco: x.preco,
             componentes: x.componentes.map((k) => {
               const s = troca.get(`${k.tipo}|${k.descricao}`);
               return { tipo: k.tipo, codigo: s ? s.codigo : k.codigo, descricao: s ? s.descricao : k.descricao, unidade: k.unidade, coeficiente: k.coeficiente };

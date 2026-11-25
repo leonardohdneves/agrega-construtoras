@@ -16,7 +16,7 @@ import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColu
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, normalizarTexto, pontuarCandidatas, type ComposicaoRef } from '../lib/leitura-projeto.ts';
 import { geraTabelasPorScript, quantitativosDasTabelas, tabelasDoHtml } from '../lib/leitura-html.ts';
-import { FERRAMENTA_COMPOSICOES, LIMITE_ARQUIVO_COMPOSICOES, blocoDoArquivo, instrucaoComposicoes, lerComposicoesIa } from '../lib/composicoes-leitura.ts';
+import { FERRAMENTA_COMPOSICOES, LIMITE_ARQUIVO_COMPOSICOES, blocoDoArquivo, ehCsvPadrao, instrucaoComposicoes, lerComposicoesIa, lerCsvPadraoComposicoes, type ItemLido } from '../lib/composicoes-leitura.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
 import { compararVersoes, criarSnapshot, relatorioDaVersao, type SnapshotVersao } from '../lib/versoes.ts';
@@ -638,18 +638,29 @@ export function rotasEngenharia(banco: Banco) {
       const empresaId = empresaDo(req);
       const t = await tabelaDaEmpresa(banco, empresaId, req.params.id);
       if (t.fonte !== 'proprio') throw new ErroHttp(409, 'A leitura só lança em tabela própria. As tabelas SINAPI não são alteradas.');
-      if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Cadastre os itens manualmente.');
       const nomeArquivo = (nome ?? 'arquivo').slice(-200);
       const bytes = Buffer.from(base64Puro(arquivo), 'base64');
       if (!bytes.length || bytes.length > LIMITE_ARQUIVO_COMPOSICOES) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 15 MB).');
-      let bloco;
-      try {
-        bloco = blocoDoArquivo(nomeArquivo, bytes);
-      } catch (e) {
-        throw new ErroHttp(400, (e as Error).message);
+      let lido: { itens: ItemLido[]; pendencias: string[] };
+      const textoCsv = /\.(csv|txt)$/i.test(nomeArquivo) ? bytes.toString('utf8') : '';
+      if (textoCsv && ehCsvPadrao(textoCsv)) {
+        // CSV no formato padrão do Agrega: o tipo de cada linha já vem no arquivo, não precisa de IA.
+        try {
+          lido = lerCsvPadraoComposicoes(textoCsv);
+        } catch (e) {
+          throw new ErroHttp(400, (e as Error).message);
+        }
+      } else {
+        if (!iaDisponivel()) throw new ErroHttp(503, 'A leitura por IA não está configurada. Cadastre os itens manualmente.');
+        let bloco;
+        try {
+          bloco = blocoDoArquivo(nomeArquivo, bytes);
+        } catch (e) {
+          throw new ErroHttp(400, (e as Error).message);
+        }
+        const r = await chamarIaComFerramenta({ bloco, instrucao: instrucaoComposicoes(nomeArquivo), ferramenta: FERRAMENTA_COMPOSICOES, maxTokens: 8000 });
+        lido = lerComposicoesIa(r);
       }
-      const r = await chamarIaComFerramenta({ bloco, instrucao: instrucaoComposicoes(nomeArquivo), ferramenta: FERRAMENTA_COMPOSICOES, maxTokens: 8000 });
-      const lido = lerComposicoesIa(r);
       // Conciliação antes do lançamento: o que já está cadastrado na obra ou na tabela (por código ou por descrição).
       const catalogo: { onde: 'obra' | 'tabela'; tipo: string; codigo: string; descricao: string }[] = [];
       if (obraId) {
@@ -697,6 +708,8 @@ export function rotasEngenharia(banco: Banco) {
             codigo: z.string().trim().max(40).optional().default(''),
             descricao: z.string().trim().min(2, 'Descreva o item.').max(300),
             unidade: z.string().trim().max(20).optional().default(''),
+            /** Preço do insumo novo, em reais (o arquivo padrão traz). */
+            preco: z.number().min(0).optional(),
             componentes: z
               .array(
                 z.object({
@@ -741,11 +754,12 @@ export function rotasEngenharia(banco: Banco) {
         const criados: { id: string; tipo: string; codigo: string; descricao: string }[] = [];
         const pendencias: string[] = [];
 
-        const criar = async (tipo: 'insumo' | 'composicao', codigo: string, descricao: string, unidade: string): Promise<string> => {
+        const criar = async (tipo: 'insumo' | 'composicao', codigo: string, descricao: string, unidade: string, preco?: number): Promise<string> => {
           const cod = codigo && !porCodigo.has(`${tipo}|${codigo}`) ? codigo : tipo === 'composicao' ? await proximoCodigoServico(c, t.id) : await proximoCodigoInsumo(c, t.id);
+          const comPreco = tipo === 'insumo' && preco !== undefined;
           const r = await c.query(
-            'INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, preco_origem) VALUES ($1,$2,$3,$4,$5,$6) RETURNING id, codigo',
-            [t.id, tipo, cod, descricao, unidade || 'un', tipo === 'insumo' ? 'nao_informado' : null],
+            'INSERT INTO ref_itens (tabela_id, tipo, codigo, descricao, unidade, preco_origem, preco_centavos) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id, codigo',
+            [t.id, tipo, cod, descricao, unidade || 'un', tipo === 'insumo' ? (comPreco ? 'informado' : 'nao_informado') : null, comPreco ? Math.round(preco * 100) : null],
           );
           const id = r.rows[0].id as string;
           const codigoNovo = r.rows[0].codigo as string;
@@ -766,7 +780,7 @@ export function rotasEngenharia(banco: Banco) {
           }
           const item = lote.get(chave);
           if (!item) throw new ErroHttp(400, 'Item de composição não encontrado no lote.');
-          const id = await criar(item.tipo, item.codigo, item.descricao, item.unidade);
+          const id = await criar(item.tipo, item.codigo, item.descricao, item.unidade, item.preco);
           resolvidos.set(chave, id);
           if (item.tipo === 'composicao') {
             for (const k of item.componentes) {

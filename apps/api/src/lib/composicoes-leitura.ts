@@ -3,10 +3,11 @@
 import { blocoDocumento, type BlocoDocumento } from './ia-documento.ts';
 import { textoDoHtml, tabelasDoHtml } from './leitura-html.ts';
 import { xlsxParaTexto } from './xlsx-leitura.ts';
+import { lerCsvReferencia } from './engenharia.ts';
 
 export type TipoItemLido = 'insumo' | 'composicao';
 export type ComponenteLido = { tipo: TipoItemLido; codigo: string; descricao: string; unidade: string; coeficiente: number };
-export type ItemLido = { tipo: TipoItemLido; codigo: string; descricao: string; unidade: string; componentes: ComponenteLido[] };
+export type ItemLido = { tipo: TipoItemLido; codigo: string; descricao: string; unidade: string; componentes: ComponenteLido[]; /** Preço do insumo, em reais, quando o arquivo traz (CSV padrão). */ preco?: number };
 
 const IMAGENS: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif' };
 export const LIMITE_ARQUIVO_COMPOSICOES = 15 * 1024 * 1024;
@@ -98,7 +99,8 @@ const texto = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().sli
 
 /** Tipo pela marca do arquivo: C/composição/serviço é composição; I/insumo/material/mão de obra/equipamento é insumo. */
 export function tipoDoArquivo(marca: string): TipoItemLido | null {
-  const m = marca.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+  // "item_composicao" e "item_insumo" (CSV padrão do Agrega) valem como composição e insumo.
+  const m = marca.trim().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/^item[\s_-]+/, '');
   if (!m) return null;
   if (m === 'c' || /^(comp|serv)/.test(m)) return 'composicao';
   if (m === 'i' || /^(ins|mat|mao|m\.o|equip|mo$)/.test(m)) return 'insumo';
@@ -155,3 +157,53 @@ export function lerComposicoesIa(r: Record<string, unknown>): { itens: ItemLido[
   }
   return { itens: [...itens.values()], pendencias };
 }
+
+const COLUNAS_PADRAO = ['tipo', 'codigo', 'descricao', 'unidade', 'preco', 'grupo', 'insumo', 'coeficiente'];
+
+/** O texto é o CSV padrão das tabelas do Agrega (cabeçalho tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente). */
+export function ehCsvPadrao(texto: string): boolean {
+  const cab = (texto.replace(/^﻿/, '').split(/\r?\n/, 1)[0] ?? '').toLowerCase().split(';').map((c) => c.trim());
+  return COLUNAS_PADRAO.every((c) => cab.includes(c));
+}
+
+/**
+ * Lê o CSV padrão direto, sem IA: o tipo vem da própria linha (insumo ou composicao), cada serviço traz os itens diretos
+ * da estrutura (insumos e serviços auxiliares) com o coeficiente e o insumo traz o preço. Serviços no topo vêm primeiro.
+ */
+export function lerCsvPadraoComposicoes(texto: string): { itens: ItemLido[]; pendencias: string[] } {
+  const l = lerCsvReferencia(texto);
+  if (l.erros.length) throw new Error(`O arquivo tem erros: ${l.erros.slice(0, 5).join(' ')}`);
+  const insumos = new Map(l.insumos.map((i) => [i.codigo, i]));
+  const servicos = new Map(l.composicoes.map((c) => [c.codigo, c]));
+  const diretos = new Map<string, Map<string, ComponenteLido>>();
+  const juntar = (composicao: string, k: ComponenteLido) => {
+    const m = diretos.get(composicao) ?? new Map<string, ComponenteLido>();
+    const chave = `${k.tipo}|${k.codigo}`;
+    const atual = m.get(chave);
+    if (atual) atual.coeficiente += k.coeficiente;
+    else m.set(chave, k);
+    diretos.set(composicao, m);
+  };
+  for (const e of l.estrutura) {
+    const ref = e.tipoItem === 'insumo' ? insumos.get(e.item) : servicos.get(e.item);
+    if (ref) juntar(e.composicao, { tipo: e.tipoItem, codigo: ref.codigo, descricao: ref.descricao, unidade: ref.unidade, coeficiente: e.coeficiente });
+  }
+  // Serviço sem estrutura no arquivo: usa os insumos já desdobrados (componente).
+  const comEstrutura = new Set(l.estrutura.map((e) => e.composicao));
+  for (const k of l.componentes) {
+    const ins = insumos.get(k.insumo);
+    if (ins && !comEstrutura.has(k.composicao)) juntar(k.composicao, { tipo: 'insumo', codigo: ins.codigo, descricao: ins.descricao, unidade: ins.unidade, coeficiente: k.coeficiente });
+  }
+  const usados = new Set<string>();
+  for (const m of diretos.values()) for (const k of m.values()) if (k.tipo === 'composicao') usados.add(k.codigo);
+  const doServico = (c: (typeof l.composicoes)[number]): ItemLido => ({ tipo: 'composicao', codigo: c.codigo, descricao: c.descricao.slice(0, 300), unidade: c.unidade, componentes: [...(diretos.get(c.codigo)?.values() ?? [])].map((k) => ({ ...k, descricao: k.descricao.slice(0, 300) })) });
+  const topo = l.composicoes.filter((c) => !usados.has(c.codigo)).map(doServico);
+  const auxiliares = l.composicoes.filter((c) => usados.has(c.codigo)).map(doServico);
+  const itensInsumo: ItemLido[] = l.insumos.map((i) => ({ tipo: 'insumo', codigo: i.codigo, descricao: i.descricao.slice(0, 300), unidade: i.unidade, componentes: [], preco: i.precoCentavos / 100 }));
+  const itens = [...topo, ...auxiliares, ...itensInsumo];
+  const pendencias = [`Arquivo no formato padrão do Agrega, lido direto (sem IA): ${topo.length + auxiliares.length} serviços e ${itensInsumo.length} insumos.`];
+  const vazios = itens.filter((i) => i.tipo === 'composicao' && i.componentes.length === 0).length;
+  if (vazios) pendencias.push(`${vazios} serviços vieram sem itens no arquivo: monte-os depois.`);
+  return { itens, pendencias };
+}
+
