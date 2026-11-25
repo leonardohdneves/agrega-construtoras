@@ -3,7 +3,7 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { deflateRawSync } from 'node:zlib';
-import { blocoDoArquivo, lerComposicoesIa, tipoDoArquivo } from '../src/lib/composicoes-leitura.ts';
+import { blocoDoArquivo, ehCsvPadrao, lerComposicoesIa, lerCsvPadraoComposicoes, tipoDoArquivo } from '../src/lib/composicoes-leitura.ts';
 import { lerZip, xlsxParaTexto } from '../src/lib/xlsx-leitura.ts';
 import { prepararAppTeste, semBanco, type ContextoTeste } from './apoio/app-teste.ts';
 
@@ -104,6 +104,34 @@ test("marca de tipo do arquivo", () => {
   assert.equal(tipoDoArquivo("Mão de obra"), "insumo");
   assert.equal(tipoDoArquivo("Equipamento"), "insumo");
   assert.equal(tipoDoArquivo("X"), null);
+  // Marcas do CSV padrão do Agrega.
+  assert.equal(tipoDoArquivo("item_composicao"), "composicao");
+  assert.equal(tipoDoArquivo("item_insumo"), "insumo");
+  assert.equal(tipoDoArquivo("Item Composição"), "composicao");
+});
+
+const CSV_PADRAO = [
+  'tipo;codigo;descricao;unidade;preco;grupo;insumo;coeficiente',
+  'insumo;1;CIMENTO;KG;1.50;MATERIAL;;',
+  'insumo;2;PERFIL H;KG;12.52;MATERIAL;;',
+  'composicao;10;ARGAMASSA;m³;;Argamassas;;',
+  'componente;10;;;;;1;300',
+  'item_insumo;10;;;;;1;300',
+  'composicao;20;PILAR METALICO;KG;;Estruturas;;',
+  'componente;20;;;;;1;6',
+  'componente;20;;;;;2;1.091',
+  'item_composicao;20;;;;;10;0.02',
+  'item_insumo;20;;;;;2;1.091',
+].join('\n');
+
+test('csv padrão: lido sem IA, com tipo certo, estrutura direta e preço do insumo', () => {
+  assert.equal(ehCsvPadrao(CSV_PADRAO), true);
+  assert.equal(ehCsvPadrao('Item;Un;Quantidade\nA;m;1'), false);
+  const { itens } = lerCsvPadraoComposicoes(CSV_PADRAO);
+  assert.deepEqual(itens.map((i) => `${i.tipo}:${i.codigo}`), ['composicao:20', 'composicao:10', 'insumo:1', 'insumo:2'], 'serviço do topo primeiro, depois o auxiliar e os insumos');
+  const pilar = itens[0];
+  assert.deepEqual(pilar.componentes.map((k) => `${k.tipo}:${k.codigo}:${k.coeficiente}`).sort(), ['composicao:10:0.02', 'insumo:2:1.091']);
+  assert.equal(itens.find((i) => i.codigo === '2')!.preco, 12.52);
 });
 
 // ----- Com banco: lançamento em lote, reaproveitamento, ciclo e importação com serviço dentro de serviço.
@@ -206,4 +234,14 @@ test("lote: arquivo com nome muito longo (como os do SINAPI) não é recusado pe
   const nome = "SINAPI 100764_ " + "VIGA METÁLICA ".repeat(30) + ".pdf";
   const r = await ctx.pedir("dono", "POST", `/api/eng/tabelas/${tabela}/composicoes-leitura`, { corpo: { arquivo: Buffer.from("%PDF-1.4").toString("base64"), nome } });
   assert.notEqual(r.status, 400, JSON.stringify(r.corpo));
+});
+
+test('lote: o preço lido vira o preço do insumo novo', { skip: semBanco }, async () => {
+  const tabela = await tabelaPropria('Preço do lote');
+  const r = await ctx.pedir('dono', 'POST', `/api/eng/tabelas/${tabela}/itens/lote`, {
+    corpo: { itens: [{ tipo: 'insumo', codigo: 'P1', descricao: 'Perfil H estimado', unidade: 'kg', preco: 12.52 }] },
+  });
+  assert.equal(r.status, 200, JSON.stringify(r.corpo));
+  const lista = await ctx.pedir('dono', 'GET', `/api/eng/tabelas/${tabela}/itens?tipo=insumo`);
+  assert.equal(lista.corpo.itens.find((x: { codigo: string }) => x.codigo === 'P1').preco, 12.52);
 });

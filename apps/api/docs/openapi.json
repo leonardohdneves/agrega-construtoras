@@ -21685,7 +21685,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:820"
+        "x-fonte": "src/rotas/engenharia.ts:834"
       },
       "delete": {
         "parameters": [
@@ -21739,7 +21739,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:893"
+        "x-fonte": "src/rotas/engenharia.ts:907"
       }
     },
     "/api/eng/tabelas/{id}/composicoes-leitura": {
@@ -21854,6 +21854,10 @@
                           "maxLength": 20,
                           "default": ""
                         },
+                        "preco": {
+                          "type": "number",
+                          "minimum": 0
+                        },
                         "componentes": {
                           "type": "array",
                           "items": {
@@ -21957,7 +21961,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:722"
+        "x-fonte": "src/rotas/engenharia.ts:735"
       }
     },
     "/api/eng/tabelas/{id}/itens/{itemId}/preco-ultima-compra": {
@@ -22013,7 +22017,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:857"
+        "x-fonte": "src/rotas/engenharia.ts:871"
       }
     },
     "/api/eng/obras": {
@@ -22055,7 +22059,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:935"
+        "x-fonte": "src/rotas/engenharia.ts:949"
       },
       "post": {
         "requestBody": {
@@ -22267,7 +22271,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1292"
+        "x-fonte": "src/rotas/engenharia.ts:1306"
       }
     },
     "/api/eng/panorama": {
@@ -22307,7 +22311,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:955"
+        "x-fonte": "src/rotas/engenharia.ts:969"
       }
     },
     "/api/eng/insumo-grupos": {
@@ -22345,7 +22349,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1030"
+        "x-fonte": "src/rotas/engenharia.ts:1044"
       },
       "post": {
         "requestBody": {
@@ -22407,7 +22411,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1041"
+        "x-fonte": "src/rotas/engenharia.ts:1055"
       }
     },
     "/api/eng/insumo-grupos/sugeridos": {
@@ -22445,7 +22449,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1075"
+        "x-fonte": "src/rotas/engenharia.ts:1089"
       }
     },
     "/api/eng/insumo-grupos/{id}": {
@@ -22516,7 +22520,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1090"
+        "x-fonte": "src/rotas/engenharia.ts:1104"
       },
       "delete": {
         "parameters": [
@@ -22563,7 +22567,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1105"
+        "x-fonte": "src/rotas/engenharia.ts:1119"
       }
     },
     "/api/eng/obras/{id}/insumos/grupo": {
@@ -22643,7 +22647,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1124"
+        "x-fonte": "src/rotas/engenharia.ts:1138"
       }
     },
     "/api/eng/servico-grupos": {
@@ -22681,7 +22685,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1155"
+        "x-fonte": "src/rotas/engenharia.ts:1169"
       },
       "post": {
         "requestBody": {
@@ -22743,7 +22747,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1166"
+        "x-fonte": "src/rotas/engenharia.ts:1180"
       }
     },
     "/api/eng/servico-grupos/sugeridos": {
@@ -22781,7 +22785,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1200"
+        "x-fonte": "src/rotas/engenharia.ts:1214"
       }
     },
     "/api/eng/servico-grupos/{id}": {
@@ -22852,7 +22856,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1215"
+        "x-fonte": "src/rotas/engenharia.ts:1229"
       },
       "delete": {
         "parameters": [
@@ -22899,7 +22903,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1230"
+        "x-fonte": "src/rotas/engenharia.ts:1244"
       }
     },
     "/api/eng/obras/{id}/servicos/grupo": {
@@ -22979,7 +22983,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1249"
+        "x-fonte": "src/rotas/engenharia.ts:1263"
       }
     },
     "/api/eng/obras/{id}/adotar-datas-planejamento": {
@@ -23029,7 +23033,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1267"
+        "x-fonte": "src/rotas/engenharia.ts:1281"
       }
     },
     "/api/eng/obras/{id}": {
@@ -23079,7 +23083,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1341"
+        "x-fonte": "src/rotas/engenharia.ts:1355"
       },
       "put": {
         "requestBody": {
@@ -23286,7 +23290,7 @@
             "orcamentista"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1345"
+        "x-fonte": "src/rotas/engenharia.ts:1359"
       }
     },
     "/api/eng/obras/{id}/itens": {
@@ -23354,7 +23358,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1397"
+        "x-fonte": "src/rotas/engenharia.ts:1411"
       }
     },
     "/api/eng/obras/{id}/itens/{itemId}": {
@@ -23412,7 +23416,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1456"
+        "x-fonte": "src/rotas/engenharia.ts:1470"
       },
       "patch": {
         "requestBody": {
@@ -23529,7 +23533,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1618"
+        "x-fonte": "src/rotas/engenharia.ts:1632"
       },
       "delete": {
         "parameters": [
@@ -23584,7 +23588,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1795"
+        "x-fonte": "src/rotas/engenharia.ts:1809"
       }
     },
     "/api/eng/obras/{id}/orcamento-importacao/previa": {
@@ -23699,7 +23703,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1503"
+        "x-fonte": "src/rotas/engenharia.ts:1517"
       }
     },
     "/api/eng/obras/{id}/importar": {
@@ -23784,7 +23788,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1534"
+        "x-fonte": "src/rotas/engenharia.ts:1548"
       }
     },
     "/api/eng/obras/{id}/itens/{itemId}/composicao": {
@@ -23878,7 +23882,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1651"
+        "x-fonte": "src/rotas/engenharia.ts:1665"
       }
     },
     "/api/eng/obras/{id}/servicos/salvar": {
@@ -24012,7 +24016,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1688"
+        "x-fonte": "src/rotas/engenharia.ts:1702"
       }
     },
     "/api/eng/obras/{id}/eap": {
@@ -24064,7 +24068,7 @@
             "almoxarife"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1810"
+        "x-fonte": "src/rotas/engenharia.ts:1824"
       }
     },
     "/api/eng/obras/{id}/canteiro/vertical/pavimentos": {
@@ -24114,7 +24118,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1927"
+        "x-fonte": "src/rotas/engenharia.ts:1941"
       },
       "post": {
         "requestBody": {
@@ -24187,7 +24191,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1947"
+        "x-fonte": "src/rotas/engenharia.ts:1961"
       }
     },
     "/api/eng/obras/{id}/canteiro/vertical/pavimentos/{pid}": {
@@ -24244,7 +24248,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1964"
+        "x-fonte": "src/rotas/engenharia.ts:1978"
       }
     },
     "/api/eng/obras/{id}/canteiro/vertical/pavimentos/{pid}/ciclo": {
@@ -24350,7 +24354,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1976"
+        "x-fonte": "src/rotas/engenharia.ts:1990"
       }
     },
     "/api/eng/obras/{id}/canteiro/vertical/agenda": {
@@ -24416,7 +24420,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:1993"
+        "x-fonte": "src/rotas/engenharia.ts:2007"
       },
       "post": {
         "requestBody": {
@@ -24511,7 +24515,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2018"
+        "x-fonte": "src/rotas/engenharia.ts:2032"
       }
     },
     "/api/eng/obras/{id}/canteiro/vertical/agenda/{aid}": {
@@ -24568,7 +24572,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2046"
+        "x-fonte": "src/rotas/engenharia.ts:2060"
       }
     },
     "/api/eng/obras/{id}/canteiro/vertical/concretagens": {
@@ -24626,7 +24630,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2058"
+        "x-fonte": "src/rotas/engenharia.ts:2072"
       },
       "post": {
         "requestBody": {
@@ -24715,7 +24719,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2081"
+        "x-fonte": "src/rotas/engenharia.ts:2095"
       }
     },
     "/api/eng/obras/{id}/canteiro/vertical/concretagens/{cid}": {
@@ -24772,7 +24776,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2099"
+        "x-fonte": "src/rotas/engenharia.ts:2113"
       }
     },
     "/api/eng/obras/{id}/canteiro/centrais/{tipo}/kanban": {
@@ -24830,7 +24834,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2187"
+        "x-fonte": "src/rotas/engenharia.ts:2201"
       }
     },
     "/api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}": {
@@ -24921,7 +24925,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2243"
+        "x-fonte": "src/rotas/engenharia.ts:2257"
       }
     },
     "/api/eng/obras/{id}/canteiro/centrais/{tipo}/kanban/ordem": {
@@ -25002,7 +25006,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2258"
+        "x-fonte": "src/rotas/engenharia.ts:2272"
       }
     },
     "/api/eng/obras/{id}/canteiro/centrais/{tipo}/frentes/{fid}/os": {
@@ -25100,7 +25104,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2274"
+        "x-fonte": "src/rotas/engenharia.ts:2288"
       }
     },
     "/api/eng/obras/{id}/canteiro/centrais/{tipo}/os/{oid}": {
@@ -25210,7 +25214,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2299"
+        "x-fonte": "src/rotas/engenharia.ts:2313"
       }
     },
     "/api/eng/obras/{id}/canteiro/os-eap": {
@@ -25260,7 +25264,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2339"
+        "x-fonte": "src/rotas/engenharia.ts:2353"
       }
     },
     "/api/eng/obras/{id}/canteiro": {
@@ -25310,7 +25314,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2403"
+        "x-fonte": "src/rotas/engenharia.ts:2417"
       }
     },
     "/api/eng/obras/{id}/canteiro/centrais/{tipo}": {
@@ -25368,7 +25372,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2429"
+        "x-fonte": "src/rotas/engenharia.ts:2443"
       },
       "put": {
         "requestBody": {
@@ -25449,7 +25453,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2439"
+        "x-fonte": "src/rotas/engenharia.ts:2453"
       }
     },
     "/api/eng/obras/{id}/canteiro/centrais/{tipo}/boletins": {
@@ -25527,7 +25531,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2472"
+        "x-fonte": "src/rotas/engenharia.ts:2486"
       }
     },
     "/api/eng/obras/{id}/canteiro/boletins/{bId}": {
@@ -25585,7 +25589,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2516"
+        "x-fonte": "src/rotas/engenharia.ts:2530"
       },
       "delete": {
         "parameters": [
@@ -25640,7 +25644,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2546"
+        "x-fonte": "src/rotas/engenharia.ts:2560"
       }
     },
     "/api/eng/obras/{id}/planejamento": {
@@ -25690,7 +25694,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2560"
+        "x-fonte": "src/rotas/engenharia.ts:2574"
       },
       "post": {
         "requestBody": {
@@ -25779,7 +25783,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2596"
+        "x-fonte": "src/rotas/engenharia.ts:2610"
       }
     },
     "/api/eng/obras/{id}/planejamento/{atId}": {
@@ -25873,7 +25877,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2617"
+        "x-fonte": "src/rotas/engenharia.ts:2631"
       },
       "delete": {
         "parameters": [
@@ -25928,7 +25932,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2679"
+        "x-fonte": "src/rotas/engenharia.ts:2693"
       }
     },
     "/api/eng/obras/{id}/planejamento/gerar-da-eap": {
@@ -25977,7 +25981,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2653"
+        "x-fonte": "src/rotas/engenharia.ts:2667"
       }
     },
     "/api/eng/obras/{id}/relatorios-planejamento/gantt": {
@@ -26035,7 +26039,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2740"
+        "x-fonte": "src/rotas/engenharia.ts:2754"
       }
     },
     "/api/eng/obras/{id}/relatorios-planejamento/equipes": {
@@ -26093,7 +26097,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2751"
+        "x-fonte": "src/rotas/engenharia.ts:2765"
       }
     },
     "/api/eng/obras/{id}/relatorios-planejamento/calendario": {
@@ -26151,7 +26155,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2785"
+        "x-fonte": "src/rotas/engenharia.ts:2799"
       }
     },
     "/api/eng/obras/{id}/relatorios-planejamento/compras": {
@@ -26209,7 +26213,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2797"
+        "x-fonte": "src/rotas/engenharia.ts:2811"
       }
     },
     "/api/eng/obras/{id}/acompanhamento/planilha": {
@@ -26259,7 +26263,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2874"
+        "x-fonte": "src/rotas/engenharia.ts:2888"
       }
     },
     "/api/eng/obras/{id}/acompanhamento/medicoes": {
@@ -26366,7 +26370,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2921"
+        "x-fonte": "src/rotas/engenharia.ts:2935"
       }
     },
     "/api/eng/obras/{id}/acompanhamento/medicoes/{medId}": {
@@ -26424,7 +26428,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2959"
+        "x-fonte": "src/rotas/engenharia.ts:2973"
       },
       "delete": {
         "parameters": [
@@ -26479,7 +26483,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2968"
+        "x-fonte": "src/rotas/engenharia.ts:2982"
       }
     },
     "/api/eng/obras/{id}/relatorios-gerenciais/curva-s": {
@@ -26529,7 +26533,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:2979"
+        "x-fonte": "src/rotas/engenharia.ts:2993"
       }
     },
     "/api/eng/obras/{id}/relatorios-gerenciais/previsto-realizado": {
@@ -26587,7 +26591,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3004"
+        "x-fonte": "src/rotas/engenharia.ts:3018"
       }
     },
     "/api/eng/obras/{id}/producao-equipe": {
@@ -26645,7 +26649,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3057"
+        "x-fonte": "src/rotas/engenharia.ts:3071"
       }
     },
     "/api/eng/obras/{id}/equipes-servicos": {
@@ -26695,7 +26699,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3094"
+        "x-fonte": "src/rotas/engenharia.ts:3108"
       },
       "put": {
         "requestBody": {
@@ -26772,7 +26776,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3129"
+        "x-fonte": "src/rotas/engenharia.ts:3143"
       }
     },
     "/api/eng/obras/{id}/equipes-servicos/{noId}": {
@@ -26829,7 +26833,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3150"
+        "x-fonte": "src/rotas/engenharia.ts:3164"
       }
     },
     "/api/eng/obras/{id}/necessidades": {
@@ -26879,7 +26883,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3163"
+        "x-fonte": "src/rotas/engenharia.ts:3177"
       },
       "post": {
         "requestBody": {
@@ -26967,7 +26971,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3188"
+        "x-fonte": "src/rotas/engenharia.ts:3202"
       }
     },
     "/api/eng/obras/{id}/necessidades/{necId}": {
@@ -27064,7 +27068,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3208"
+        "x-fonte": "src/rotas/engenharia.ts:3222"
       },
       "delete": {
         "parameters": [
@@ -27119,7 +27123,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3233"
+        "x-fonte": "src/rotas/engenharia.ts:3247"
       }
     },
     "/api/eng/obras/{id}/relatorio-custos": {
@@ -27169,7 +27173,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3246"
+        "x-fonte": "src/rotas/engenharia.ts:3260"
       }
     },
     "/api/eng/obras/{id}/orcamento": {
@@ -27219,7 +27223,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3254"
+        "x-fonte": "src/rotas/engenharia.ts:3268"
       }
     },
     "/api/eng/obras/{id}/planilha": {
@@ -27269,7 +27273,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3315"
+        "x-fonte": "src/rotas/engenharia.ts:3329"
       },
       "post": {
         "requestBody": {
@@ -27362,7 +27366,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3413"
+        "x-fonte": "src/rotas/engenharia.ts:3427"
       }
     },
     "/api/eng/obras/{id}/leitura-html": {
@@ -27435,7 +27439,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3350"
+        "x-fonte": "src/rotas/engenharia.ts:3364"
       }
     },
     "/api/eng/obras/{id}/leitura-projeto": {
@@ -27508,7 +27512,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3373"
+        "x-fonte": "src/rotas/engenharia.ts:3387"
       }
     },
     "/api/eng/obras/{id}/planilha/{noId}": {
@@ -27607,7 +27611,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3458"
+        "x-fonte": "src/rotas/engenharia.ts:3472"
       },
       "delete": {
         "parameters": [
@@ -27662,7 +27666,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3551"
+        "x-fonte": "src/rotas/engenharia.ts:3565"
       }
     },
     "/api/eng/obras/{id}/planilha/{noId}/mover": {
@@ -27742,7 +27746,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3536"
+        "x-fonte": "src/rotas/engenharia.ts:3550"
       }
     },
     "/api/eng/obras/{id}/planilha/colar": {
@@ -27821,7 +27825,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3576"
+        "x-fonte": "src/rotas/engenharia.ts:3590"
       }
     },
     "/api/eng/obras/{id}/planilha/excluir-lote": {
@@ -27895,7 +27899,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3615"
+        "x-fonte": "src/rotas/engenharia.ts:3629"
       }
     },
     "/api/eng/obras/{id}/composicao": {
@@ -27945,7 +27949,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3714"
+        "x-fonte": "src/rotas/engenharia.ts:3728"
       },
       "put": {
         "requestBody": {
@@ -28078,7 +28082,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3720"
+        "x-fonte": "src/rotas/engenharia.ts:3734"
       }
     },
     "/api/eng/obras/{id}/relatorio-abc": {
@@ -28136,7 +28140,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3747"
+        "x-fonte": "src/rotas/engenharia.ts:3761"
       }
     },
     "/api/eng/obras/{id}/relatorio-orcamento": {
@@ -28194,7 +28198,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3761"
+        "x-fonte": "src/rotas/engenharia.ts:3775"
       }
     },
     "/api/eng/obras/{id}/versoes": {
@@ -28244,7 +28248,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3812"
+        "x-fonte": "src/rotas/engenharia.ts:3826"
       },
       "post": {
         "requestBody": {
@@ -28317,7 +28321,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3831"
+        "x-fonte": "src/rotas/engenharia.ts:3845"
       }
     },
     "/api/eng/obras/{id}/versoes/{versaoId}": {
@@ -28374,7 +28378,7 @@
             "engenheiro_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3855"
+        "x-fonte": "src/rotas/engenharia.ts:3869"
       }
     },
     "/api/eng/obras/{id}/comparacao": {
@@ -28440,7 +28444,7 @@
             "mestre_obra"
           ]
         },
-        "x-fonte": "src/rotas/engenharia.ts:3866"
+        "x-fonte": "src/rotas/engenharia.ts:3880"
       }
     },
     "/api/eng/obras/{obraId}/rdos": {
