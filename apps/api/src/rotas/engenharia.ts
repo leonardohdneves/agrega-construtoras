@@ -354,7 +354,7 @@ export function rotasEngenharia(banco: Banco) {
         await c.query(
           `INSERT INTO ref_composicao_insumos (composicao_id, insumo_id, coeficiente)
            SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::numeric[]) ON CONFLICT (composicao_id, insumo_id) DO UPDATE SET coeficiente = excluded.coeficiente`,
-          [lote.map((k) => k.composicaoId), lote.map((k) => k.insumoId), lote.map((k) => Math.round(k.coeficiente * 1e6) / 1e6)],
+          [lote.map((k) => k.composicaoId), lote.map((k) => k.insumoId), lote.map((k) => Number(k.coeficiente.toPrecision(15)))],
         );
       }
       // Estrutura para conferência: itens diretos (insumos e serviços auxiliares) das composições compostas agora.
@@ -375,7 +375,7 @@ export function rotasEngenharia(banco: Banco) {
         await c.query(
           `INSERT INTO ref_composicao_estrutura (composicao_id, item_id, coeficiente)
            SELECT * FROM unnest($1::uuid[], $2::uuid[], $3::numeric[]) ON CONFLICT (composicao_id, item_id) DO UPDATE SET coeficiente = excluded.coeficiente`,
-          [lote.map((k) => k.composicaoId), lote.map((k) => k.itemId), lote.map((k) => Math.round(k.coeficiente * 1e7) / 1e7)],
+          [lote.map((k) => k.composicaoId), lote.map((k) => k.itemId), lote.map((k) => Number(k.coeficiente.toPrecision(15)))],
         );
       }
       return {
