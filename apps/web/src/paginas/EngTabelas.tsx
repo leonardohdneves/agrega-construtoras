@@ -1,5 +1,5 @@
 // Engenharia · Tabelas de referência: SINAPI (importada, imutável) e tabela própria da empresa (editável).
-import { Fragment, useEffect, useState, type FormEvent } from 'react';
+import { Fragment, useEffect, useState, type FormEvent, type ReactNode } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { api, formatarData, formatarMoeda, lerNumero, type ErroApi } from '../api';
 import { abrirXlsx, linhasParaTexto, type Planilha } from '../lib/xlsx';
@@ -640,6 +640,7 @@ export function EngTabelaDetalhe() {
  */
 export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | 'composicao'; obraId?: string; aoSalvar: (mensagem: string) => void }) {
   const [proprias, setProprias] = useState<Tabela[] | null>(null);
+  const [somenteLeitura, setSomenteLeitura] = useState<Tabela[]>([]);
   const [tabelaId, setTabelaId] = useState('');
   const [erro, setErro] = useState('');
   const [criando, setCriando] = useState(false);
@@ -647,6 +648,7 @@ export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | '
     api<{ tabelas: Tabela[] }>('/eng/tabelas')
       .then((r) => {
         const p = r.tabelas.filter((t) => t.fonte === 'proprio' && t.editavel);
+        setSomenteLeitura(r.tabelas.filter((t) => !(t.fonte === 'proprio' && t.editavel)));
         setProprias(p);
         setTabelaId((atual) => (p.some((t) => t.id === atual) ? atual : (p[0]?.id ?? '')));
       })
@@ -708,19 +710,24 @@ export function NovoItemProprio({ tipo, obraId, aoSalvar }: { tipo: 'insumo' | '
         <button className="btn btn-primario" type="button" onClick={criarTabelaPropria} disabled={criando}>{criando ? 'Criando…' : 'Criar a tabela própria'}</button>
       </div>
     );
-  return (
-    <div>
-      {(
-        <div className="campo" style={{ maxWidth: 360, marginBottom: 8 }}>
-          <label htmlFor="np-tabela">Tabela que recebe o item</label>
-          <select id="np-tabela" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
-            {proprias.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
-          </select>
-        </div>
-      )}
-      <NovoItem key={`${tabelaId}-${tipo}`} tabelaId={tabelaId} tipoFixo={tipo} aoSalvar={salvo} obraId={obraId} aoLote={loteCriado} />
+  const nomeTabela = proprias.find((t) => t.id === tabelaId)?.nome ?? '';
+  const seletorTabela = (
+    <div className="campo" style={{ maxWidth: 460 }}>
+      <label htmlFor="np-tabela">Tabela que recebe {tipo === 'insumo' ? 'o insumo' : 'o serviço'}</label>
+      <select id="np-tabela" value={tabelaId} onChange={(e) => setTabelaId(e.target.value)}>
+        <optgroup label="Tabelas próprias">
+          {proprias.map((t) => <option key={t.id} value={t.id}>{t.nome}</option>)}
+        </optgroup>
+        {somenteLeitura.length > 0 && (
+          <optgroup label="Somente leitura (não recebem itens novos)">
+            {somenteLeitura.map((t) => <option key={t.id} value={t.id} disabled>{t.nome}{t.fonte === 'sinapi' ? ' · SINAPI' : ''}</option>)}
+          </optgroup>
+        )}
+      </select>
+      {somenteLeitura.length > 0 && <span className="ajuda">Tabelas SINAPI não recebem itens novos. Para acrescentar itens a uma delas, abra a tabela e use Importar arquivo.</span>}
     </div>
   );
+  return <NovoItem key={`${tabelaId}-${tipo}`} tabelaId={tabelaId} tabelaNome={nomeTabela} seletorTabela={seletorTabela} tipoFixo={tipo} aoSalvar={salvo} obraId={obraId} aoLote={loteCriado} />;
 }
 
 /** Linha da composição em edição: insumo ou serviço escolhido na busca, com o coeficiente digitado. */
@@ -851,7 +858,7 @@ function lerEmBase64(arquivo: File): Promise<string> {
 }
 
 /** Importação por IA: lê o arquivo, mostra os itens para conferir e lança os marcados na tabela própria. */
-function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: string; obraId?: string; aoLancar: (itens: { id: string; tipo: string }[], mensagem: string) => void; aoFechar: () => void }) {
+function ImportarPorIa({ tabelaId, tabelaNome, obraId, aoLancar, aoFechar }: { tabelaId: string; tabelaNome?: string; obraId?: string; aoLancar: (itens: { id: string; tipo: string }[], mensagem: string) => void; aoFechar: () => void }) {
   const [arquivo, setArquivo] = useState<File | null>(null);
   const [lendo, setLendo] = useState(false);
   const [lancando, setLancando] = useState(false);
@@ -994,7 +1001,7 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
             </ul>
           )}
           <div className="acoes">
-            <button className="btn btn-primario" type="button" onClick={lancar} disabled={lancando}>{lancando ? 'Lançando…' : 'Lançar na tabela de referência'}</button>
+            <button className="btn btn-primario" type="button" onClick={lancar} disabled={lancando}>{lancando ? 'Lançando…' : tabelaNome ? `Lançar na tabela ${tabelaNome}` : 'Lançar na tabela de referência'}</button>
           </div>
         </>
       )}
@@ -1003,7 +1010,7 @@ function ImportarPorIa({ tabelaId, obraId, aoLancar, aoFechar }: { tabelaId: str
 }
 
 type UnidadeCompraEdit = { unidade: string; fator: string };
-function NovoItem({ tabelaId, aoSalvar, tipoFixo, obraId, aoLote }: { tabelaId: string; aoSalvar: (itemId: string) => void; tipoFixo?: 'insumo' | 'composicao'; obraId?: string; aoLote: (itens: { id: string; tipo: string }[], mensagem: string) => void }) {
+function NovoItem({ tabelaId, tabelaNome, seletorTabela, aoSalvar, tipoFixo, obraId, aoLote }: { tabelaId: string; tabelaNome?: string; seletorTabela?: ReactNode; aoSalvar: (itemId: string) => void; tipoFixo?: 'insumo' | 'composicao'; obraId?: string; aoLote: (itens: { id: string; tipo: string }[], mensagem: string) => void }) {
   const [d, setD] = useState({ tipo: (tipoFixo ?? 'insumo') as 'insumo' | 'composicao', descricao: '', unidade: '', grupo: '', precoOrigem: 'nao_informado' as 'nao_informado' | 'informado', preco: '' });
   const [unidades, setUnidades] = useState<UnidadeCompraEdit[]>([]);
   const [comp, setComp] = useState<ComponenteEdit[]>([]);
@@ -1042,6 +1049,7 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo, obraId, aoLote }: { tabelaId: 
   return (
     <form className="card form" onSubmit={salvar}>
       <h2 style={{ margin: 0 }}>{tipoFixo === 'insumo' ? 'Novo insumo' : tipoFixo === 'composicao' ? 'Novo serviço' : 'Novo item'}</h2>
+      {seletorTabela}
       {erro && <div className="alerta alerta-erro" role="alert">{erro}</div>}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12 }}>
         {!tipoFixo && (
@@ -1103,6 +1111,7 @@ function NovoItem({ tabelaId, aoSalvar, tipoFixo, obraId, aoLote }: { tabelaId: 
           {importando && (
             <ImportarPorIa
               tabelaId={tabelaId}
+              tabelaNome={tabelaNome}
               obraId={obraId}
               aoLancar={(itens, mensagem) => {
                 setImportando(false);
