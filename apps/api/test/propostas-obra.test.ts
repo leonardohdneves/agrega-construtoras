@@ -89,3 +89,11 @@ test('serviços técnicos: entrada na aceitação e saldo na entrega, como os la
   assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Entrada na aceitação', 1500], ['Saldo na entrega dos laudos', 1500]]);
   assert.throws(() => calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', entradaPct: 50, prazoEntregaDias: 30 }, [], null), /serviço técnico/);
 });
+
+
+test('preço global por medição: valor dividido em medições mensais', () => {
+  const r = calcularProposta('preco_global', 'informado', { dataInicio: '2026-11-05', valorInformado: 1000, formaPagamento: 'medicao', numeroMedicoes: 3 }, [], null);
+  assert.equal(r.valorTotal, 1000);
+  assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Medição 1/3', 333.33], ['Medição 2/3', 333.33], ['Medição 3/3', 333.34]]);
+  assert.throws(() => calcularProposta('preco_global', 'informado', { dataInicio: '2026-11-05', valorInformado: 1000, formaPagamento: 'medicao' }, [], null), /medições/);
+});
