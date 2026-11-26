@@ -80,3 +80,12 @@ test('laudo com 100% na aceitação gera uma parcela só, sem prazo', () => {
 test('orçamento sem obra escolhida é recusado', () => {
   assert.throws(() => calcularProposta('preco_global', 'orcamento', { dataInicio: '2026-11-05', marcos: [{ descricao: 'x', percentual: 100, dias: 1 }] }, [], null), /Escolha a obra/);
 });
+
+
+test('serviços técnicos: entrada na aceitação e saldo na entrega, como os laudos', () => {
+  const itens = [{ descricao: 'Vistoria', unidade: 'un', quantidade: 2, precoUnitario: 1500 }];
+  const r = calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', entradaPct: 50, prazoEntregaDias: 30 }, itens, null);
+  assert.equal(r.valorTotal, 3000);
+  assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Entrada na aceitação', 1500], ['Saldo na entrega dos laudos', 1500]]);
+  assert.throws(() => calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', entradaPct: 50, prazoEntregaDias: 30 }, [], null), /serviço técnico/);
+});

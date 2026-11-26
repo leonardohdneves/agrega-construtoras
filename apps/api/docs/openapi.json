@@ -19296,7 +19296,8 @@
                       "administracao",
                       "preco_global",
                       "preco_unitario",
-                      "laudo"
+                      "laudo",
+                      "servicos_tecnicos"
                     ]
                   },
                   "clienteId": {
@@ -19703,7 +19704,8 @@
                       "administracao",
                       "preco_global",
                       "preco_unitario",
-                      "laudo"
+                      "laudo",
+                      "servicos_tecnicos"
                     ]
                   },
                   "obraId": {
@@ -19972,7 +19974,8 @@
                       "administracao",
                       "preco_global",
                       "preco_unitario",
-                      "laudo"
+                      "laudo",
+                      "servicos_tecnicos"
                     ]
                   },
                   "clienteId": {
