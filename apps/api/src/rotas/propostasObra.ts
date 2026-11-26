@@ -49,6 +49,11 @@ const esquemaProposta = z.object({
     baseAdm: z.enum(['custo_direto', 'valor_obra']).optional(),
     valorBaseInformado: numOpc,
     valorInformado: numOpc,
+    // Forma de pagamento do preço global (marcos ou medição) e dos serviços técnicos (entrada e saldo, intermediários ou cronograma).
+    formaPagamento: z.enum(['marcos', 'medicao']).optional(),
+    numeroMedicoes: numOpc,
+    modoPagamento: z.enum(['entrada_saldo', 'intermediarios', 'cronograma']).optional(),
+    numeroIntermediarios: numOpc,
     marcos: z.array(esquemaMarco).max(30).optional(),
     numeroParcelas: numOpc,
     entradaPct: numOpc,

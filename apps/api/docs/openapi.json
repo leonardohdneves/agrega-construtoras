@@ -19191,7 +19191,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:205"
+        "x-fonte": "src/rotas/propostasObra.ts:210"
       }
     },
     "/api/com/obra-propostas/servicos": {
@@ -19230,7 +19230,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:230",
+        "x-fonte": "src/rotas/propostasObra.ts:235",
         "parameters": [
           {
             "name": "obraId",
@@ -19279,7 +19279,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:239"
+        "x-fonte": "src/rotas/propostasObra.ts:244"
       },
       "post": {
         "requestBody": {
@@ -19385,6 +19385,29 @@
                         "nullable": true
                       },
                       "valorInformado": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "formaPagamento": {
+                        "type": "string",
+                        "enum": [
+                          "marcos",
+                          "medicao"
+                        ]
+                      },
+                      "numeroMedicoes": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "modoPagamento": {
+                        "type": "string",
+                        "enum": [
+                          "entrada_saldo",
+                          "intermediarios",
+                          "cronograma"
+                        ]
+                      },
+                      "numeroIntermediarios": {
                         "type": "number",
                         "nullable": true
                       },
@@ -19538,7 +19561,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:447"
+        "x-fonte": "src/rotas/propostasObra.ts:452"
       }
     },
     "/api/com/contratos-cliente/relatorio": {
@@ -19578,7 +19601,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:246",
+        "x-fonte": "src/rotas/propostasObra.ts:251",
         "parameters": [
           {
             "name": "de",
@@ -19646,7 +19669,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:280"
+        "x-fonte": "src/rotas/propostasObra.ts:285"
       }
     },
     "/api/com/contratos-cliente": {
@@ -19685,7 +19708,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:308"
+        "x-fonte": "src/rotas/propostasObra.ts:313"
       }
     },
     "/api/com/obra-propostas/calcular": {
@@ -19762,6 +19785,29 @@
                         "nullable": true
                       },
                       "valorInformado": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "formaPagamento": {
+                        "type": "string",
+                        "enum": [
+                          "marcos",
+                          "medicao"
+                        ]
+                      },
+                      "numeroMedicoes": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "modoPagamento": {
+                        "type": "string",
+                        "enum": [
+                          "entrada_saldo",
+                          "intermediarios",
+                          "cronograma"
+                        ]
+                      },
+                      "numeroIntermediarios": {
                         "type": "number",
                         "nullable": true
                       },
@@ -19908,7 +19954,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:341"
+        "x-fonte": "src/rotas/propostasObra.ts:346"
       }
     },
     "/api/com/obra-propostas/{id}": {
@@ -19957,7 +20003,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:348"
+        "x-fonte": "src/rotas/propostasObra.ts:353"
       },
       "put": {
         "requestBody": {
@@ -20063,6 +20109,29 @@
                         "nullable": true
                       },
                       "valorInformado": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "formaPagamento": {
+                        "type": "string",
+                        "enum": [
+                          "marcos",
+                          "medicao"
+                        ]
+                      },
+                      "numeroMedicoes": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "modoPagamento": {
+                        "type": "string",
+                        "enum": [
+                          "entrada_saldo",
+                          "intermediarios",
+                          "cronograma"
+                        ]
+                      },
+                      "numeroIntermediarios": {
                         "type": "number",
                         "nullable": true
                       },
@@ -20226,7 +20295,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:453"
+        "x-fonte": "src/rotas/propostasObra.ts:458"
       }
     },
     "/api/com/obra-propostas/{id}/revisar-ia": {
@@ -20275,7 +20344,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:378"
+        "x-fonte": "src/rotas/propostasObra.ts:383"
       }
     },
     "/api/com/obra-propostas/{id}/enviar": {
@@ -20324,7 +20393,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:487"
+        "x-fonte": "src/rotas/propostasObra.ts:492"
       }
     },
     "/api/com/obra-propostas/{id}/recusar": {
@@ -20371,7 +20440,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:492"
+        "x-fonte": "src/rotas/propostasObra.ts:497"
       }
     },
     "/api/com/obra-propostas/{id}/cancelar": {
@@ -20420,7 +20489,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:499"
+        "x-fonte": "src/rotas/propostasObra.ts:504"
       }
     },
     "/api/com/obra-propostas/{id}/aceitar": {
@@ -20467,7 +20536,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:509"
+        "x-fonte": "src/rotas/propostasObra.ts:514"
       }
     },
     "/api/com/incorporacao/estudos-disponiveis": {
