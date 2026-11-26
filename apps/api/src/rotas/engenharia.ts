@@ -567,7 +567,7 @@ export function rotasEngenharia(banco: Banco) {
       if (!i) throw naoEncontrado('Item');
       const comp = (
         await banco.query(
-          `SELECT ri.tipo, ri.codigo, ri.descricao, ri.unidade, rc.coeficiente, ri.preco_centavos FROM ref_composicao_insumos rc JOIN ref_itens ri ON ri.id = rc.insumo_id WHERE rc.composicao_id = $1 ORDER BY ri.codigo`,
+          `SELECT ri.id, ri.tipo, ri.codigo, ri.descricao, ri.unidade, rc.coeficiente, ${precoRef('ri')} AS preco FROM ref_composicao_insumos rc JOIN ref_itens ri ON ri.id = rc.insumo_id WHERE rc.composicao_id = $1 ORDER BY ri.codigo`,
           [i.id],
         )
       ).rows;
@@ -587,7 +587,7 @@ export function rotasEngenharia(banco: Banco) {
           precoOrigem: i.preco_origem ?? null,
           unidadesCompra: unidades.map((u) => ({ unidade: u.unidade as string, fator: Number(u.fator) })),
         },
-        componentes: comp.map((k) => ({ tipo: k.tipo as 'insumo' | 'composicao', codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco_centavos) })),
+        componentes: comp.map((k) => ({ id: k.id as string, tipo: k.tipo as 'insumo' | 'composicao', codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: reais(k.preco) })),
         estrutura: est.map((k) => ({ id: k.id, tipo: k.tipo, codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: Number(k.coeficiente), precoUnitario: k.preco === null ? null : Number(k.preco) / 100 })),
       };
     });

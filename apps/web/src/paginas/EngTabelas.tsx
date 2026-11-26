@@ -10,7 +10,7 @@ export type Tabela = {
 type Item = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo: string | null; preco: number | null; componentes: number; unidadesCompra?: { unidade: string; fator: number }[] };
 type EdicaoInsumo = { item: Item; descricao: string; unidade: string; comPreco: boolean; preco: string; linhas: { unidade: string; fator: string }[] };
 type EdicaoComposicao = { item: Item; descricao: string; unidade: string; comps: ComponenteEdit[] };
-type Componente = { tipo?: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null };
+type Componente = { id?: string; tipo?: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null };
 type ItemEstrutura = Componente & { id: string; tipo: 'insumo' | 'composicao' };
 export type DetalheComposicao = {
   item: { id: string; codigo: string; descricao: string; unidade: string; preco: number | null };
@@ -1260,7 +1260,7 @@ export function ConferenciaComposicao({ inicial, carregar, aoFechar }: { inicial
   const atual = pilha[pilha.length - 1];
   const temEstrutura = !!atual?.estrutura?.length;
   const linhas: ItemEstrutura[] =
-    visao === 'estrutura' && temEstrutura ? atual!.estrutura! : (atual?.componentes ?? []).map((k) => ({ ...k, id: '', tipo: 'insumo' as const }));
+    visao === 'estrutura' && temEstrutura ? atual!.estrutura! : (atual?.componentes ?? []).map((k) => ({ ...k, id: k.id ?? '', tipo: k.tipo ?? ('insumo' as const) }));
   const total = linhas.reduce((soma, k) => soma + (k.precoUnitario ?? 0) * k.coeficiente, 0);
   const num = (n: number) => n.toLocaleString('pt-BR', { maximumFractionDigits: 7 });
 
