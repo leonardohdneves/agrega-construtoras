@@ -88,6 +88,7 @@ type Form = {
   tipo: Tipo; clienteId: string; obraId: string; titulo: string; objeto: string; endereco: string; prazoDias: string; validadeDias: string;
   origemPreco: Origem; dataInicio: string; meses: string; modo: 'valor_mensal' | 'percentual_obra'; honorarioMensal: string; percentualObra: string;
   taxaPct: string; baseAdm: 'custo_direto' | 'valor_obra'; valorBaseInformado: string; valorInformado: string; marcos: Marco[];
+  formaPagamento: 'marcos' | 'medicao'; numeroMedicoes: string;
   numeroParcelas: string; entradaPct: string; prazoEntregaDias: string; itens: Linha[]; condicoes: string;
   campos: Record<string, string>;
 };
@@ -104,6 +105,7 @@ const FORM_VAZIO: Form = {
   tipo: 'acompanhamento', clienteId: '', obraId: '', titulo: '', objeto: '', endereco: '', prazoDias: '', validadeDias: '30',
   origemPreco: 'informado', dataInicio: '', meses: '', modo: 'valor_mensal', honorarioMensal: '', percentualObra: '', taxaPct: '',
   baseAdm: 'custo_direto', valorBaseInformado: '', valorInformado: '', marcos: [{ descricao: '', percentual: '', dias: '' }],
+  formaPagamento: 'marcos', numeroMedicoes: '',
   numeroParcelas: '', entradaPct: '50', prazoEntregaDias: '', itens: [], condicoes: '', campos: {},
 };
 
@@ -130,6 +132,8 @@ function deProposta(p: Detalhe): Form {
     valorBaseInformado: campo(q.valorBaseInformado),
     valorInformado: campo(q.valorInformado),
     marcos: Array.isArray(q.marcos) ? q.marcos.map((m: any) => ({ descricao: m.descricao, percentual: campo(m.percentual), dias: campo(m.dias) })) : FORM_VAZIO.marcos,
+    formaPagamento: q.formaPagamento ?? 'marcos',
+    numeroMedicoes: campo(q.numeroMedicoes),
     numeroParcelas: campo(q.numeroParcelas),
     entradaPct: campo(q.entradaPct),
     prazoEntregaDias: campo(q.prazoEntregaDias),
@@ -163,7 +167,9 @@ function corpoDe(f: Form) {
       valorBaseInformado: n(f.valorBaseInformado),
       valorInformado: n(f.valorInformado),
       // Marcos só valem para preço global; nos outros tipos a linha vazia não deve travar a prévia.
-      marcos: f.tipo === 'preco_global' ? f.marcos.map((m) => ({ descricao: m.descricao, percentual: n(m.percentual) ?? 0, dias: n(m.dias) ?? 0 })) : undefined,
+      marcos: f.tipo === 'preco_global' && f.formaPagamento === 'marcos' ? f.marcos.map((m) => ({ descricao: m.descricao, percentual: n(m.percentual) ?? 0, dias: n(m.dias) ?? 0 })) : undefined,
+      formaPagamento: f.tipo === 'preco_global' ? f.formaPagamento : undefined,
+      numeroMedicoes: f.tipo === 'preco_global' ? n(f.numeroMedicoes) : undefined,
       numeroParcelas: n(f.numeroParcelas),
       entradaPct: n(f.entradaPct),
       prazoEntregaDias: n(f.prazoEntregaDias),
@@ -508,14 +514,29 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
             )}
 
             {f.tipo === 'preco_global' && (
-              <div className="campo">
-                <label htmlFor="p-valor">Valor do contrato (R$)</label>
-                {usaOrcamento ? (
-                  <input id="p-valor" value={obra ? formatarMoeda(obra.valorObra) : ''} disabled />
-                ) : (
-                  <input id="p-valor" inputMode="decimal" value={f.valorInformado} onChange={(e) => set('valorInformado', e.target.value)} />
+              <>
+                <div className="campo">
+                  <label htmlFor="p-valor">Valor do contrato (R$)</label>
+                  {usaOrcamento ? (
+                    <input id="p-valor" value={obra ? formatarMoeda(obra.valorObra) : ''} disabled />
+                  ) : (
+                    <input id="p-valor" inputMode="decimal" value={f.valorInformado} onChange={(e) => set('valorInformado', e.target.value)} />
+                  )}
+                </div>
+                <div className="campo" style={{ gridColumn: '1 / -1' }}>
+                  <span className="small muted">Forma de pagamento</span>
+                  <div className="segmentado" role="group" aria-label="Forma de pagamento" style={{ maxWidth: 480 }}>
+                    <button type="button" aria-pressed={f.formaPagamento === 'marcos'} className={f.formaPagamento === 'marcos' ? 'ativo' : ''} onClick={() => set('formaPagamento', 'marcos')}>Marcos de pagamento</button>
+                    <button type="button" aria-pressed={f.formaPagamento === 'medicao'} className={f.formaPagamento === 'medicao' ? 'ativo' : ''} onClick={() => set('formaPagamento', 'medicao')}>Medição</button>
+                  </div>
+                </div>
+                {f.formaPagamento === 'medicao' && (
+                  <div className="campo">
+                    <label htmlFor="p-nmed">Número de medições mensais</label>
+                    <input id="p-nmed" inputMode="numeric" value={f.numeroMedicoes} onChange={(e) => set('numeroMedicoes', e.target.value)} />
+                  </div>
                 )}
-              </div>
+              </>
             )}
 
             {f.tipo === 'preco_unitario' && (
@@ -560,7 +581,7 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
             </div>
           )}
 
-          {f.tipo === 'preco_global' && (
+          {f.tipo === 'preco_global' && f.formaPagamento === 'marcos' && (
             <>
               <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>Marcos de pagamento</h3>
               {f.marcos.map((m, i) => (

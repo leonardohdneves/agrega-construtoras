@@ -30,6 +30,9 @@ export type Parametros = {
   valorBaseInformado?: number;
   // preço global: valor informado (quando não vem do orçamento) e marcos de pagamento
   valorInformado?: number;
+  // forma de pagamento do preço global: marcos (percentuais e dias) ou medição (mensal, valor dividido igualmente)
+  formaPagamento?: 'marcos' | 'medicao';
+  numeroMedicoes?: number;
   marcos?: Marco[];
   // preço unitário: número de parcelas mensais do total estimado
   numeroParcelas?: number;
@@ -98,6 +101,12 @@ export function calcularProposta(tipo: TipoProposta, origemPreco: 'orcamento' | 
     else {
       exigir(dec(p.valorInformado) !== null && p.valorInformado! > 0, 'Informe o valor do contrato.');
       total = p.valorInformado!;
+    }
+    if (p.formaPagamento === 'medicao') {
+      const n = Math.trunc(dec(p.numeroMedicoes ?? null) ?? 0);
+      exigir(n >= 1 && n <= 120, 'Informe o número de medições (1 a 120).');
+      const parcelas = dividir(cent(total), n).map((c, i) => ({ descricao: `Medição ${i + 1}/${n}`, vencimento: somarMeses(p.dataInicio, i), valor: reais(c) }));
+      return { valorTotal: reais(cent(total)), parcelas, itens: [] };
     }
     const marcos = p.marcos ?? [];
     exigir(marcos.length >= 1, 'Informe ao menos um marco de pagamento.');
