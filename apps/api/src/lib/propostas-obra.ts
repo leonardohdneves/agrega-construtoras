@@ -3,7 +3,7 @@
 import { ErroHttp } from './erros.ts';
 import { somarDias, somarMeses } from './financeiro.ts';
 
-export const TIPOS_PROPOSTA = ['acompanhamento', 'administracao', 'preco_global', 'preco_unitario', 'laudo'] as const;
+export const TIPOS_PROPOSTA = ['acompanhamento', 'administracao', 'preco_global', 'preco_unitario', 'laudo', 'servicos_tecnicos'] as const;
 export type TipoProposta = (typeof TIPOS_PROPOSTA)[number];
 
 export const NOMES_TIPO: Record<TipoProposta, string> = {
@@ -12,6 +12,7 @@ export const NOMES_TIPO: Record<TipoProposta, string> = {
   preco_global: 'Contrato de preço global',
   preco_unitario: 'Contrato de preços unitários',
   laudo: 'Laudos técnicos',
+  servicos_tecnicos: 'Serviços técnicos',
 };
 
 export type ItemProposta = { descricao: string; unidade: string; quantidade: number; precoUnitario: number; obraItemId?: string | null };
@@ -108,8 +109,8 @@ export function calcularProposta(tipo: TipoProposta, origemPreco: 'orcamento' | 
     return { valorTotal: reais(cent(total)), parcelas, itens: [] };
   }
 
-  // preço unitário e laudos: total = soma das quantidades estimadas × preço unitário
-  exigir(itens.length >= 1, tipo === 'laudo' ? 'Inclua ao menos um laudo.' : 'Inclua ao menos um item.');
+  // preço unitário, laudos e serviços técnicos: total = soma das quantidades estimadas × preço unitário
+  exigir(itens.length >= 1, tipo === 'laudo' ? 'Inclua ao menos um laudo.' : tipo === 'servicos_tecnicos' ? 'Inclua ao menos um serviço técnico.' : 'Inclua ao menos um item.');
   for (const it of itens) {
     exigir(it.descricao.trim(), 'Descreva cada item.');
     exigir(it.quantidade > 0, `Quantidade inválida em "${it.descricao}".`);
@@ -125,7 +126,7 @@ export function calcularProposta(tipo: TipoProposta, origemPreco: 'orcamento' | 
     return { valorTotal: reais(totalC), parcelas, itens: itensCalc };
   }
 
-  // laudo: entrada na aceitação e saldo na entrega
+  // laudo e serviços técnicos: entrada na aceitação e saldo na entrega
   const entradaPct = dec(p.entradaPct ?? null) ?? 0;
   exigir(entradaPct >= 0 && entradaPct <= 100, 'A entrada deve estar entre 0 e 100%.');
   const prazo = Math.trunc(dec(p.prazoEntregaDias ?? null) ?? 0);

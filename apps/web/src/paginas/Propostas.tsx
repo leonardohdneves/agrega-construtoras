@@ -8,7 +8,7 @@ import { CabecalhoDocumento } from '../componentes/Documento';
 import { valorExtenso } from '../componentes/extenso';
 import { Assinatura } from '../componentes/Suprimentos';
 
-type Tipo = 'acompanhamento' | 'administracao' | 'preco_global' | 'preco_unitario' | 'laudo';
+type Tipo = 'acompanhamento' | 'administracao' | 'preco_global' | 'preco_unitario' | 'laudo' | 'servicos_tecnicos';
 type Origem = 'orcamento' | 'informado';
 type Status = 'rascunho' | 'enviada' | 'aceita' | 'recusada' | 'cancelada';
 
@@ -45,6 +45,13 @@ const TIPOS: { id: Tipo; nome: string; ajuda: string; origens: Origem[]; dataLab
     id: 'laudo',
     nome: 'Laudos técnicos',
     ajuda: 'Laudos avulsos com preço informado: uma entrada na aceitação e o saldo na entrega dos laudos.',
+    origens: ['informado'],
+    dataLabel: 'Data da aceitação (entrada)',
+  },
+  {
+    id: 'servicos_tecnicos',
+    nome: 'Serviços técnicos',
+    ajuda: 'Serviços técnicos avulsos com preço informado: uma entrada na aceitação e o saldo na entrega dos serviços.',
     origens: ['informado'],
     dataLabel: 'Data da aceitação (entrada)',
   },
@@ -347,7 +354,7 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
     }
   }
 
-  const mostraItens = f.tipo === 'preco_unitario' || f.tipo === 'laudo';
+  const mostraItens = f.tipo === 'preco_unitario' || f.tipo === 'laudo' || f.tipo === 'servicos_tecnicos';
   const precoDoOrcamento = usaOrcamento && f.tipo === 'preco_unitario';
 
   return (
@@ -427,7 +434,7 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
               </button>
             </div>
           ) : (
-            <p className="muted small" style={{ margin: 0 }}>Laudos técnicos têm preço informado pelo usuário.</p>
+            <p className="muted small" style={{ margin: 0 }}>Este tipo tem preço informado pelo usuário.</p>
           )}
           {usaOrcamento && (
             <div className="alerta" style={{ marginTop: 10 }}>
@@ -518,20 +525,20 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
               </div>
             )}
 
-            {f.tipo === 'laudo' && (
+            {(f.tipo === 'laudo' || f.tipo === 'servicos_tecnicos') && (
               <>
                 <div className="campo">
                   <label htmlFor="p-entrada">Entrada na aceitação (%)</label>
                   <input id="p-entrada" inputMode="decimal" value={f.entradaPct} onChange={(e) => set('entradaPct', e.target.value)} />
                 </div>
                 <div className="campo">
-                  <label htmlFor="p-prazoent">Prazo de entrega dos laudos (dias)</label>
+                  <label htmlFor="p-prazoent">{f.tipo === 'laudo' ? 'Prazo de entrega dos laudos (dias)' : 'Prazo de entrega dos serviços (dias)'}</label>
                   <input id="p-prazoent" inputMode="numeric" value={f.prazoEntregaDias} onChange={(e) => set('prazoEntregaDias', e.target.value)} />
                 </div>
                 <p className="small muted" style={{ gridColumn: '1 / -1', margin: 0 }}>
                   {(() => {
                     const ent = Math.min(100, Math.max(0, lerNumero(f.entradaPct) ?? 0));
-                    return `Pagamento: ${ent.toLocaleString('pt-BR')}% na aceitação e ${(100 - ent).toLocaleString('pt-BR')}% na entrega dos laudos. Padrão: 50% + 50%.`;
+                    return `Pagamento: ${ent.toLocaleString('pt-BR')}% na aceitação e ${(100 - ent).toLocaleString('pt-BR')}% na entrega. Padrão: 50% + 50%.`;
                   })()}
                 </p>
               </>
