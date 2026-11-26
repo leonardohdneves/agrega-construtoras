@@ -709,9 +709,9 @@ export function EngTabelaDetalhe() {
                           </div>
                         ))}
                         <span className="rotulo">Incluir insumo</span>
-                        <BuscaComponente tabelaId={id} tipo="insumo" valor="" rotulo="Buscar insumo" onEscolher={incluirComponente} />
+                        <BuscaComponente tabelaId={id ?? ''} tipo="insumo" valor="" rotulo="Buscar insumo" onEscolher={incluirComponente} />
                         <span className="rotulo">Incluir serviço desta tabela</span>
-                        <BuscaComponente tabelaId={id} tipo="composicao" valor="" rotulo="Buscar serviço" onEscolher={incluirComponente} />
+                        <BuscaComponente tabelaId={id ?? ''} tipo="composicao" valor="" rotulo="Buscar serviço" onEscolher={incluirComponente} />
                         <div className="acoes">
                           <button className="btn" type="button" onClick={() => setEdicaoComp(null)}>Cancelar</button>
                           <button className="btn btn-primario" type="button" onClick={salvarEdicaoComposicao}>Salvar serviço</button>
