@@ -51,7 +51,7 @@ const TIPOS: { id: Tipo; nome: string; ajuda: string; origens: Origem[]; dataLab
   {
     id: 'servicos_tecnicos',
     nome: 'Serviços técnicos',
-    ajuda: 'Serviços técnicos avulsos com preço informado: uma entrada na aceitação e o saldo na entrega dos serviços.',
+    ajuda: 'Serviços técnicos com preço informado: entrada na aceitação e saldo na entrega dos trabalhos, com pagamentos intermediários ou cronograma próprio.',
     origens: ['informado'],
     dataLabel: 'Data da aceitação (entrada)',
   },
@@ -89,6 +89,7 @@ type Form = {
   origemPreco: Origem; dataInicio: string; meses: string; modo: 'valor_mensal' | 'percentual_obra'; honorarioMensal: string; percentualObra: string;
   taxaPct: string; baseAdm: 'custo_direto' | 'valor_obra'; valorBaseInformado: string; valorInformado: string; marcos: Marco[];
   formaPagamento: 'marcos' | 'medicao'; numeroMedicoes: string;
+  modoPagamento: 'entrada_saldo' | 'intermediarios' | 'cronograma'; numeroIntermediarios: string;
   numeroParcelas: string; entradaPct: string; prazoEntregaDias: string; itens: Linha[]; condicoes: string;
   campos: Record<string, string>;
 };
@@ -106,6 +107,7 @@ const FORM_VAZIO: Form = {
   origemPreco: 'informado', dataInicio: '', meses: '', modo: 'valor_mensal', honorarioMensal: '', percentualObra: '', taxaPct: '',
   baseAdm: 'custo_direto', valorBaseInformado: '', valorInformado: '', marcos: [{ descricao: '', percentual: '', dias: '' }],
   formaPagamento: 'marcos', numeroMedicoes: '',
+  modoPagamento: 'entrada_saldo', numeroIntermediarios: '',
   numeroParcelas: '', entradaPct: '50', prazoEntregaDias: '', itens: [], condicoes: '', campos: {},
 };
 
@@ -134,6 +136,8 @@ function deProposta(p: Detalhe): Form {
     marcos: Array.isArray(q.marcos) ? q.marcos.map((m: any) => ({ descricao: m.descricao, percentual: campo(m.percentual), dias: campo(m.dias) })) : FORM_VAZIO.marcos,
     formaPagamento: q.formaPagamento ?? 'marcos',
     numeroMedicoes: campo(q.numeroMedicoes),
+    modoPagamento: q.modoPagamento ?? 'entrada_saldo',
+    numeroIntermediarios: campo(q.numeroIntermediarios),
     numeroParcelas: campo(q.numeroParcelas),
     entradaPct: campo(q.entradaPct),
     prazoEntregaDias: campo(q.prazoEntregaDias),
@@ -167,7 +171,9 @@ function corpoDe(f: Form) {
       valorBaseInformado: n(f.valorBaseInformado),
       valorInformado: n(f.valorInformado),
       // Marcos só valem para preço global; nos outros tipos a linha vazia não deve travar a prévia.
-      marcos: f.tipo === 'preco_global' && f.formaPagamento === 'marcos' ? f.marcos.map((m) => ({ descricao: m.descricao, percentual: n(m.percentual) ?? 0, dias: n(m.dias) ?? 0 })) : undefined,
+      marcos: (f.tipo === 'preco_global' && f.formaPagamento === 'marcos') || (f.tipo === 'servicos_tecnicos' && f.modoPagamento === 'cronograma') ? f.marcos.map((m) => ({ descricao: m.descricao, percentual: n(m.percentual) ?? 0, dias: n(m.dias) ?? 0 })) : undefined,
+      modoPagamento: f.tipo === 'servicos_tecnicos' ? f.modoPagamento : undefined,
+      numeroIntermediarios: f.tipo === 'servicos_tecnicos' ? n(f.numeroIntermediarios) : undefined,
       formaPagamento: f.tipo === 'preco_global' ? f.formaPagamento : undefined,
       numeroMedicoes: f.tipo === 'preco_global' ? n(f.numeroMedicoes) : undefined,
       numeroParcelas: n(f.numeroParcelas),
@@ -546,19 +552,40 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
               </div>
             )}
 
-            {(f.tipo === 'laudo' || f.tipo === 'servicos_tecnicos') && (
+            {f.tipo === 'servicos_tecnicos' && (
+              <>
+                <div className="campo" style={{ gridColumn: '1 / -1' }}>
+                  <span className="small muted">Forma de pagamento</span>
+                  <div className="segmentado" role="group" aria-label="Forma de pagamento dos serviços" style={{ maxWidth: 560 }}>
+                    <button type="button" aria-pressed={f.modoPagamento === 'entrada_saldo'} className={f.modoPagamento === 'entrada_saldo' ? 'ativo' : ''} onClick={() => set('modoPagamento', 'entrada_saldo')}>Entrada e saldo</button>
+                    <button type="button" aria-pressed={f.modoPagamento === 'intermediarios'} className={f.modoPagamento === 'intermediarios' ? 'ativo' : ''} onClick={() => set('modoPagamento', 'intermediarios')}>Com pagamentos intermediários</button>
+                    <button type="button" aria-pressed={f.modoPagamento === 'cronograma'} className={f.modoPagamento === 'cronograma' ? 'ativo' : ''} onClick={() => set('modoPagamento', 'cronograma')}>Conforme cronograma</button>
+                  </div>
+                </div>
+                {f.modoPagamento === 'intermediarios' && (
+                  <div className="campo">
+                    <label htmlFor="p-nint">Pagamentos intermediários previstos</label>
+                    <input id="p-nint" inputMode="numeric" value={f.numeroIntermediarios} onChange={(e) => set('numeroIntermediarios', e.target.value)} />
+                  </div>
+                )}
+              </>
+            )}
+            {(f.tipo === 'laudo' || (f.tipo === 'servicos_tecnicos' && f.modoPagamento !== 'cronograma')) && (
               <>
                 <div className="campo">
                   <label htmlFor="p-entrada">Entrada na aceitação (%)</label>
                   <input id="p-entrada" inputMode="decimal" value={f.entradaPct} onChange={(e) => set('entradaPct', e.target.value)} />
                 </div>
                 <div className="campo">
-                  <label htmlFor="p-prazoent">{f.tipo === 'laudo' ? 'Prazo de entrega dos laudos (dias)' : 'Prazo de entrega dos serviços (dias)'}</label>
+                  <label htmlFor="p-prazoent">{f.tipo === 'laudo' ? 'Prazo de entrega dos laudos (dias)' : 'Prazo de entrega dos trabalhos (dias)'}</label>
                   <input id="p-prazoent" inputMode="numeric" value={f.prazoEntregaDias} onChange={(e) => set('prazoEntregaDias', e.target.value)} />
                 </div>
                 <p className="small muted" style={{ gridColumn: '1 / -1', margin: 0 }}>
                   {(() => {
                     const ent = Math.min(100, Math.max(0, lerNumero(f.entradaPct) ?? 0));
+                    if (f.tipo === 'servicos_tecnicos' && f.modoPagamento === 'intermediarios') {
+                      return `Pagamento: ${ent.toLocaleString('pt-BR')}% na aceitação, o restante dividido em ${lerNumero(f.numeroIntermediarios) ?? 0} pagamentos intermediários iguais e o saldo na entrega dos trabalhos.`;
+                    }
                     return `Pagamento: ${ent.toLocaleString('pt-BR')}% na aceitação e ${(100 - ent).toLocaleString('pt-BR')}% na entrega. Padrão: 50% + 50%.`;
                   })()}
                 </p>
@@ -581,9 +608,9 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
             </div>
           )}
 
-          {f.tipo === 'preco_global' && f.formaPagamento === 'marcos' && (
+          {((f.tipo === 'preco_global' && f.formaPagamento === 'marcos') || (f.tipo === 'servicos_tecnicos' && f.modoPagamento === 'cronograma')) && (
             <>
-              <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>Marcos de pagamento</h3>
+              <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>{f.tipo === 'servicos_tecnicos' ? 'Cronograma de pagamento' : 'Marcos de pagamento'}</h3>
               {f.marcos.map((m, i) => (
                 <div key={i} className="editor-linha" style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 110px 120px auto', gap: 8, alignItems: 'end', marginBottom: 8 }}>
                   <div className="campo">

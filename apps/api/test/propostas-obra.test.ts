@@ -86,7 +86,7 @@ test('serviços técnicos: entrada na aceitação e saldo na entrega, como os la
   const itens = [{ descricao: 'Vistoria', unidade: 'un', quantidade: 2, precoUnitario: 1500 }];
   const r = calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', entradaPct: 50, prazoEntregaDias: 30 }, itens, null);
   assert.equal(r.valorTotal, 3000);
-  assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Entrada na aceitação', 1500], ['Saldo na entrega dos laudos', 1500]]);
+  assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Entrada na aceitação', 1500], ['Saldo na entrega dos trabalhos', 1500]]);
   assert.throws(() => calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', entradaPct: 50, prazoEntregaDias: 30 }, [], null), /serviço técnico/);
 });
 
@@ -96,4 +96,21 @@ test('preço global por medição: valor dividido em medições mensais', () => 
   assert.equal(r.valorTotal, 1000);
   assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Medição 1/3', 333.33], ['Medição 2/3', 333.33], ['Medição 3/3', 333.34]]);
   assert.throws(() => calcularProposta('preco_global', 'informado', { dataInicio: '2026-11-05', valorInformado: 1000, formaPagamento: 'medicao' }, [], null), /medições/);
+});
+
+
+test('serviços técnicos: pagamentos intermediários iguais entre a aceitação e a entrega', () => {
+  const itens = [{ descricao: 'Vistoria', unidade: 'un', quantidade: 1, precoUnitario: 1000 }];
+  const r = calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', entradaPct: 30, prazoEntregaDias: 100, modoPagamento: 'intermediarios', numeroIntermediarios: 2 }, itens, null);
+  assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Entrada na aceitação', 300], ['Pagamento intermediário 1/2', 233.33], ['Pagamento intermediário 2/2', 233.33], ['Saldo na entrega dos trabalhos', 233.34]]);
+  assert.ok(fechaParcelas(r.valorTotal, r.parcelas));
+  assert.ok(r.parcelas[1].vencimento < r.parcelas[2].vencimento && r.parcelas[2].vencimento < r.parcelas[3].vencimento);
+});
+
+test('serviços técnicos: cronograma próprio com parcelas que somam 100%', () => {
+  const itens = [{ descricao: 'Vistoria', unidade: 'un', quantidade: 1, precoUnitario: 1000 }];
+  const marcos = [{ descricao: 'Mobilização', percentual: 20, dias: 0 }, { descricao: 'Conclusão', percentual: 80, dias: 60 }];
+  const r = calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', modoPagamento: 'cronograma', marcos }, itens, null);
+  assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Mobilização', 200], ['Conclusão', 800]]);
+  assert.throws(() => calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', modoPagamento: 'cronograma', marcos: [{ descricao: 'x', percentual: 50, dias: 0 }] }, itens, null), /somam 50%/);
 });
