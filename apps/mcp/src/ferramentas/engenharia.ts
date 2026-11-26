@@ -621,7 +621,7 @@ ferramenta({
   ferramenta({
     name: 'criar_item_tabela_referencia',
     description:
-      'Cadastra um insumo ou uma composição (serviço) numa tabela PRÓPRIA; tabelas SINAPI são imutáveis e respondem erro. Insumo: informe unidade e preço em reais. Composição: informe os componentes, cada um com o código de um insumo que já exista na mesma tabela e o coeficiente por unidade do serviço; o preço da composição é calculado. O código é gerado pela API, na sequência da tabela: a resposta é { ok, id, codigo }, e é esse codigo que se usa nos componentes de uma composição. Para usar o item numa obra, chame adicionar_itens_tabela_na_obra. O tabelaId vem de listar_tabelas_referencia ou criar_tabela_propria.',
+      'Cadastra um insumo ou uma composição (serviço) numa tabela PRÓPRIA; tabelas SINAPI são imutáveis e respondem erro. Insumo: informe unidade e preço em reais. Composição: informe os componentes, cada um com o código de um insumo OU de um serviço (composição) que já exista na mesma tabela e o coeficiente por unidade do serviço; o preço da composição é calculado a partir dos componentes, inclusive dos serviços usados dentro dela. Em cada componente, tipo indica "insumo" ou "composicao" (padrão: insumo). Um serviço não pode usar a si mesmo nem um serviço que já o use. O código é gerado pela API, na sequência da tabela: a resposta é { ok, id, codigo }, e é esse codigo que se usa nos componentes de uma composição. Para usar o item numa obra, chame adicionar_itens_tabela_na_obra. O tabelaId vem de listar_tabelas_referencia ou criar_tabela_propria.',
     inputSchema: z.object({
       tabelaId: id('Id da tabela própria (vem de listar_tabelas_referencia ou criar_tabela_propria).'),
       tipo: z.enum(['insumo', 'composicao']).describe('insumo (material, mão de obra, equipamento) ou composicao (serviço formado por insumos).'),
@@ -632,13 +632,47 @@ ferramenta({
       componentes: z
         .array(
           z.object({
-            insumoCodigo: z.string().min(1).describe('Código de um insumo da mesma tabela (o devolvido ao criar o insumo, ou veja em listar_itens_tabela_referencia).'),
-            coeficiente: z.number().min(0).describe('Quantidade do insumo consumida por unidade do serviço.'),
+            tipo: z.enum(['insumo', 'composicao']).optional().describe('insumo (padrão) ou composicao, quando o componente é outro serviço da mesma tabela.'),
+            insumoCodigo: z.string().min(1).describe('Código do insumo ou do serviço da mesma tabela (o devolvido ao criar o item, ou veja em listar_itens_tabela_referencia).'),
+            coeficiente: z.number().min(0).describe('Quantidade do componente consumida por unidade do serviço.'),
           }),
         )
         .optional()
-        .describe('Só para composição: insumos que formam o serviço.'),
+        .describe('Só para composição: insumos e/ou serviços que formam o serviço.'),
     }),
     handler: async ({ tabelaId, ...corpo }, api) => ({ success: true, data: await api.post(`/eng/tabelas/${tabelaId}/itens`, corpo) }),
+  }),
+  ferramenta({
+    name: 'atualizar_item_tabela_referencia',
+    description:
+      'Corrige um insumo ou uma composição (serviço) de uma tabela PRÓPRIA: descrição, unidade, preço (só insumo) e componentes (só composição). Envie só os campos que mudam. Em componentes, a lista enviada SUBSTITUI a lista atual inteira (quem não estiver na lista sai do serviço). O custo do serviço é recalculado. Tabelas SINAPI respondem erro. Os itens já copiados para obras não mudam sozinhos. Devolve { ok: true }.',
+    inputSchema: z.object({
+      tabelaId: id('Id da tabela própria (vem de listar_tabelas_referencia).'),
+      itemId: id('Id do item a corrigir (vem de listar_itens_tabela_referencia ou buscar_item_tabela_referencia).'),
+      descricao: z.string().min(2).max(300).optional().describe('Nova descrição.'),
+      unidade: z.string().min(1).max(20).optional().describe('Nova unidade de medida.'),
+      preco: z.number().min(0).optional().describe('Novo preço unitário em reais. Só para insumo.'),
+      componentes: z
+        .array(
+          z.object({
+            tipo: z.enum(['insumo', 'composicao']).optional().describe('insumo (padrão) ou composicao.'),
+            insumoCodigo: z.string().min(1).describe('Código do insumo ou serviço da mesma tabela.'),
+            coeficiente: z.number().min(0).describe('Quantidade do componente por unidade do serviço.'),
+          }),
+        )
+        .optional()
+        .describe('Só para composição. Lista completa dos componentes, que substitui a atual.'),
+    }),
+    handler: async ({ tabelaId, itemId, ...corpo }, api) => ({ success: true, data: await api.put(`/eng/tabelas/${tabelaId}/itens/${itemId}`, corpo) }),
+  }),
+  ferramenta({
+    name: 'remover_item_tabela_referencia',
+    description:
+      'Apaga um insumo ou uma composição (serviço) de uma tabela PRÓPRIA. A API recusa se o item fizer parte de alguma composição; nesse caso, tire-o dessas composições antes (com atualizar_item_tabela_referencia). Tabelas SINAPI respondem erro. Devolve { ok: true }.',
+    inputSchema: z.object({
+      tabelaId: id('Id da tabela própria (vem de listar_tabelas_referencia).'),
+      itemId: id('Id do item a apagar (vem de listar_itens_tabela_referencia ou buscar_item_tabela_referencia).'),
+    }),
+    handler: async (args, api) => ({ success: true, data: await api.delete(`/eng/tabelas/${args.tabelaId}/itens/${args.itemId}`) }),
   }),
 );

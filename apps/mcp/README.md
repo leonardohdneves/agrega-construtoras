@@ -70,7 +70,7 @@ O build do serviço do MCP roda a mesma checagem da API (`npm run check`), que c
 
 ### Catálogo menor (grupos)
 
-O catálogo inteiro tem 159 ferramentas e pesa uns 176 KB, enviados a cada conexão. Para expor só algumas áreas, acrescente `?grupos=` ao endereço do conector:
+O catálogo inteiro tem 161 ferramentas e pesa uns 176 KB, enviados a cada conexão. Para expor só algumas áreas, acrescente `?grupos=` ao endereço do conector:
 
 | Área | Ferramentas | Tamanho |
 |---|---|---|
