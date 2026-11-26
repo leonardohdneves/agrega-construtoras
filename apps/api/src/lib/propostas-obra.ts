@@ -33,6 +33,9 @@ export type Parametros = {
   // forma de pagamento do preço global: marcos (percentuais e dias) ou medição (mensal, valor dividido igualmente)
   formaPagamento?: 'marcos' | 'medicao';
   numeroMedicoes?: number;
+  // serviços técnicos: entrada e saldo; pagamentos intermediários iguais entre a aceitação e a entrega; ou cronograma próprio (marcos)
+  modoPagamento?: 'entrada_saldo' | 'intermediarios' | 'cronograma';
+  numeroIntermediarios?: number;
   marcos?: Marco[];
   // preço unitário: número de parcelas mensais do total estimado
   numeroParcelas?: number;
@@ -135,6 +138,33 @@ export function calcularProposta(tipo: TipoProposta, origemPreco: 'orcamento' | 
     return { valorTotal: reais(totalC), parcelas, itens: itensCalc };
   }
 
+  if (tipo === 'servicos_tecnicos' && p.modoPagamento === 'cronograma') {
+    const marcos = p.marcos ?? [];
+    exigir(marcos.length >= 1, 'Informe ao menos uma parcela no cronograma.');
+    const soma = marcos.reduce((s, m) => s + m.percentual, 0);
+    exigir(Math.abs(soma - 100) < 0.001, `As parcelas do cronograma somam ${soma.toLocaleString('pt-BR')}%; precisam somar 100%.`);
+    const valores = marcos.map((m) => Math.round(totalC * (m.percentual / 100)));
+    valores[valores.length - 1] += totalC - valores.reduce((s, v) => s + v, 0);
+    const parcelas = marcos.map((m, i) => ({ descricao: m.descricao, vencimento: somarDias(p.dataInicio, m.dias), valor: reais(valores[i]) }));
+    return { valorTotal: reais(totalC), parcelas, itens: itensCalc };
+  }
+  if (tipo === 'servicos_tecnicos' && p.modoPagamento === 'intermediarios') {
+    const n = Math.trunc(dec(p.numeroIntermediarios ?? null) ?? 0);
+    exigir(n >= 1 && n <= 24, 'Informe o número de pagamentos intermediários (1 a 24).');
+    const entradaPct = dec(p.entradaPct ?? null) ?? 0;
+    exigir(entradaPct >= 0 && entradaPct < 100, 'A entrada deve estar entre 0 e 100%, sem chegar a 100%.');
+    const prazo = Math.trunc(dec(p.prazoEntregaDias ?? null) ?? 0);
+    exigir(prazo >= 1, 'Informe o prazo de entrega dos serviços.');
+    const entrada = Math.round(totalC * (entradaPct / 100));
+    // O restante é dividido em n intermediários iguais mais o saldo final, na entrega; os intermediários são espaçados igualmente entre a aceitação e a entrega.
+    const partes = dividir(totalC - entrada, n + 1);
+    const parcelas: Parcela[] = [];
+    if (entrada > 0) parcelas.push({ descricao: 'Entrada na aceitação', vencimento: p.dataInicio, valor: reais(entrada) });
+    for (let i = 0; i < n; i++) parcelas.push({ descricao: `Pagamento intermediário ${i + 1}/${n}`, vencimento: somarDias(p.dataInicio, Math.round((prazo * (i + 1)) / (n + 1))), valor: reais(partes[i]) });
+    parcelas.push({ descricao: 'Saldo na entrega dos trabalhos', vencimento: somarDias(p.dataInicio, prazo), valor: reais(partes[n]) });
+    return { valorTotal: reais(totalC), parcelas, itens: itensCalc };
+  }
+
   // laudo e serviços técnicos: entrada na aceitação e saldo na entrega
   const entradaPct = dec(p.entradaPct ?? null) ?? 0;
   exigir(entradaPct >= 0 && entradaPct <= 100, 'A entrada deve estar entre 0 e 100%.');
@@ -143,7 +173,7 @@ export function calcularProposta(tipo: TipoProposta, origemPreco: 'orcamento' | 
   const entrada = Math.round(totalC * (entradaPct / 100));
   const parcelas: Parcela[] = [];
   if (entrada > 0) parcelas.push({ descricao: 'Entrada na aceitação', vencimento: p.dataInicio, valor: reais(entrada) });
-  if (totalC - entrada > 0) parcelas.push({ descricao: 'Saldo na entrega dos laudos', vencimento: somarDias(p.dataInicio, prazo), valor: reais(totalC - entrada) });
+  if (totalC - entrada > 0) parcelas.push({ descricao: tipo === 'laudo' ? 'Saldo na entrega dos laudos' : 'Saldo na entrega dos trabalhos', vencimento: somarDias(p.dataInicio, prazo), valor: reais(totalC - entrada) });
   return { valorTotal: reais(totalC), parcelas, itens: itensCalc };
 }
 
