@@ -9,7 +9,8 @@ export type Tabela = {
 };
 type Item = { id: string; tipo: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; grupo: string | null; preco: number | null; componentes: number; unidadesCompra?: { unidade: string; fator: number }[] };
 type EdicaoInsumo = { item: Item; descricao: string; unidade: string; comPreco: boolean; preco: string; linhas: { unidade: string; fator: string }[] };
-type Componente = { codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null };
+type EdicaoComposicao = { item: Item; descricao: string; unidade: string; comps: ComponenteEdit[] };
+type Componente = { tipo?: 'insumo' | 'composicao'; codigo: string; descricao: string; unidade: string; coeficiente: number; precoUnitario: number | null };
 type ItemEstrutura = Componente & { id: string; tipo: 'insumo' | 'composicao' };
 export type DetalheComposicao = {
   item: { id: string; codigo: string; descricao: string; unidade: string; preco: number | null };
@@ -388,6 +389,7 @@ export function EngTabelaDetalhe() {
   const [busca, setBusca] = useState('');
   const [aberto, setAberto] = useState<{ item: { id: string } } | null>(null);
   const [edicao, setEdicao] = useState<EdicaoInsumo | null>(null);
+  const [edicaoComp, setEdicaoComp] = useState<EdicaoComposicao | null>(null);
   const [novo, setNovo] = useState(false);
   const [importar, setImportar] = useState(false);
   const [msg, setMsg] = useState('');
@@ -435,6 +437,56 @@ export function EngTabelaDetalhe() {
       preco: item.preco === null ? '' : String(item.preco).replace('.', ','),
       linhas: (item.unidadesCompra ?? []).map((u) => ({ unidade: u.unidade, fator: String(u.fator).replace('.', ',') })),
     });
+  }
+
+  /** Abre a edição de um serviço (composição) da tabela própria, com a lista atual de componentes. */
+  function abrirEdicaoComposicao(item: Item) {
+    setErro('');
+    setMsg('');
+    api<DetalheComposicao>(`/eng/tabelas/${id}/itens/${item.id}`)
+      .then((r) =>
+        setEdicaoComp({
+          item,
+          descricao: r.item.descricao,
+          unidade: r.item.unidade,
+          comps: r.componentes.map((k) => ({ tipo: (k.tipo ?? 'insumo') as 'insumo' | 'composicao', codigo: k.codigo, descricao: k.descricao, unidade: k.unidade, coeficiente: String(k.coeficiente).replace('.', ',') })),
+        }),
+      )
+      .catch((e) => setErro((e as Error).message));
+  }
+
+  /** Inclui insumo ou serviço da própria tabela na composição em edição (coeficiente inicial 1). */
+  function incluirComponente(x: ItemBusca) {
+    if (!edicaoComp) return;
+    if (x.tipo === 'composicao' && x.codigo === edicaoComp.item.codigo) return setErro('Um serviço não pode entrar na própria composição.');
+    if (edicaoComp.comps.some((k) => k.codigo === x.codigo && k.tipo === x.tipo)) return setErro(`${x.codigo} já está na composição.`);
+    setErro('');
+    const tipo = x.tipo === 'composicao' ? 'composicao' : 'insumo';
+    setEdicaoComp((ec) => ec && { ...ec, comps: [...ec.comps, { tipo, codigo: x.codigo, descricao: x.descricao, unidade: x.unidade, coeficiente: '1' }] });
+  }
+
+  /** Salva descrição, unidade e componentes do serviço. O custo é recalculado pela API. */
+  async function salvarEdicaoComposicao() {
+    if (!edicaoComp) return;
+    setErro('');
+    const descricao = edicaoComp.descricao.trim();
+    const unidade = edicaoComp.unidade.trim();
+    if (descricao.length < 2) return setErro('Informe a descrição do serviço.');
+    if (!unidade) return setErro('Informe a unidade do serviço.');
+    const componentes: { tipo: 'insumo' | 'composicao'; insumoCodigo: string; coeficiente: number }[] = [];
+    for (const k of edicaoComp.comps) {
+      const c = lerNumero(k.coeficiente);
+      if (c === null || c < 0) return setErro(`Coeficiente inválido em ${k.descricao}.`);
+      componentes.push({ tipo: k.tipo, insumoCodigo: k.codigo, coeficiente: c });
+    }
+    try {
+      await api(`/eng/tabelas/${id}/itens/${edicaoComp.item.id}`, { metodo: 'PUT', corpo: { descricao, unidade, componentes } });
+      setMsg(`${edicaoComp.item.codigo} atualizado.`);
+      setEdicaoComp(null);
+      await carregarItens();
+    } catch (e) {
+      setErro((e as Error).message);
+    }
   }
 
   /** Salva descrição, unidade, preço e unidades de compra do insumo da tabela própria. */
@@ -575,6 +627,9 @@ export function EngTabelaDetalhe() {
                     {tabela?.editavel && i.tipo === 'insumo' && (
                       <button className="btn btn-link" type="button" onClick={() => usarUltimaCompra(i)}>Usar última compra</button>
                     )}
+                    {tabela?.editavel && i.tipo === 'composicao' && (
+                      <button className="btn btn-link" type="button" onClick={() => abrirEdicaoComposicao(i)}>Editar</button>
+                    )}
                     {tabela?.editavel && <button className="btn btn-link" type="button" onClick={() => excluir(i)}>Excluir</button>}
                   </td>
                 </tr>
@@ -617,6 +672,49 @@ export function EngTabelaDetalhe() {
                         <div className="acoes">
                           <button className="btn" type="button" onClick={() => setEdicao(null)}>Cancelar</button>
                           <button className="btn btn-primario" type="button" onClick={salvarEdicao}>Salvar insumo</button>
+                        </div>
+                      </div>
+                    </td>
+                  </tr>
+                )}
+                {edicaoComp?.item.id === i.id && (
+                  <tr>
+                    <td colSpan={6} style={{ background: 'var(--surface-sunken)' }}>
+                      <div className="form" style={{ padding: 8 }}>
+                        <b>Editar serviço {i.codigo}</b>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
+                          <div className="campo" style={{ gridColumn: 'span 2' }}>
+                            <label htmlFor="ec-desc">Descrição</label>
+                            <input id="ec-desc" value={edicaoComp.descricao} onChange={(e) => setEdicaoComp({ ...edicaoComp, descricao: e.target.value })} />
+                          </div>
+                          <div className="campo">
+                            <label htmlFor="ec-un">Unidade</label>
+                            <input id="ec-un" value={edicaoComp.unidade} onChange={(e) => setEdicaoComp({ ...edicaoComp, unidade: e.target.value })} />
+                          </div>
+                        </div>
+                        <span className="rotulo">Componentes</span>
+                        {edicaoComp.comps.length === 0 && <p className="small muted" style={{ margin: 0 }}>Este serviço não tem componentes.</p>}
+                        {edicaoComp.comps.map((k, n) => (
+                          <div key={`${k.tipo}-${k.codigo}`} style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                            <span className="mono small">{k.codigo}</span>
+                            <span className="small">{k.tipo === 'composicao' ? 'Serviço' : 'Insumo'} · {k.descricao} ({k.unidade})</span>
+                            <input
+                              aria-label={`Coeficiente de ${k.descricao}`}
+                              inputMode="decimal"
+                              value={k.coeficiente}
+                              style={{ maxWidth: 120 }}
+                              onChange={(e) => setEdicaoComp({ ...edicaoComp, comps: edicaoComp.comps.map((x, m) => (m === n ? { ...x, coeficiente: e.target.value } : x)) })}
+                            />
+                            <button className="btn btn-link" type="button" onClick={() => setEdicaoComp({ ...edicaoComp, comps: edicaoComp.comps.filter((_, m) => m !== n) })}>Remover</button>
+                          </div>
+                        ))}
+                        <span className="rotulo">Incluir insumo</span>
+                        <BuscaComponente tabelaId={id} tipo="insumo" valor="" rotulo="Buscar insumo" onEscolher={incluirComponente} />
+                        <span className="rotulo">Incluir serviço desta tabela</span>
+                        <BuscaComponente tabelaId={id} tipo="composicao" valor="" rotulo="Buscar serviço" onEscolher={incluirComponente} />
+                        <div className="acoes">
+                          <button className="btn" type="button" onClick={() => setEdicaoComp(null)}>Cancelar</button>
+                          <button className="btn btn-primario" type="button" onClick={salvarEdicaoComposicao}>Salvar serviço</button>
                         </div>
                       </div>
                     </td>
