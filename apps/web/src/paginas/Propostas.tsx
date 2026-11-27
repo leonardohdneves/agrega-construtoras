@@ -1006,7 +1006,9 @@ function LaudoImpressao({ p, nomeEmpresa }: { p: Detalhe; nomeEmpresa: string })
   return (
     <div className="pagina romaneio">
       <CabecalhoDocumento
-        modulo="Comercial"
+        modulo="Engenharia"
+        minimalista
+        linhaTopo
         titulo={`Proposta técnica nº ${numeroFmt(p.numero)} · ${p.titulo}`}
         descricao="Laudos técnicos"
         filtros={[`Cliente: ${p.clienteNome ?? '—'}`, `CPF/CNPJ: ${c.documentoCliente?.trim() || ' '.repeat(20)}`, p.obraCodigo ? `Obra: ${p.obraCodigo}` : 'Sem obra vinculada', `Emissão: ${formatarData(p.criadoEm)}`, `Validade: ${p.validadeDias} dias`]}
@@ -1096,7 +1098,9 @@ export function PropostaImprimir() {
   return (
     <div className="pagina romaneio">
       <CabecalhoDocumento
-        modulo="Comercial"
+        modulo="Engenharia"
+        minimalista
+        linhaTopo
         titulo={`Proposta nº ${numeroFmt(p.numero)} · ${p.titulo}`}
         descricao={p.tipoNome}
         filtros={[
