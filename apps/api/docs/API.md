@@ -14,11 +14,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 423 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 424 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
-128 rotas.
+129 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -115,6 +115,7 @@ Total: 423 rotas, 10 públicas, 4 do legado da concreteira.
 | `GET /api/eng/obras/{id}/planilha` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `POST /api/eng/obras/{id}/planilha` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `nivel`*, `paiId`, `descricao`, `itemId`, `quantidade` |
 | `POST /api/eng/obras/{id}/leitura-html` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
+| `POST /api/eng/obras/{id}/leitura-ifc` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `POST /api/eng/obras/{id}/leitura-projeto` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `PUT /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `nivel`, `paiId`, `itemId`, `quantidade` |
 | `DELETE /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |

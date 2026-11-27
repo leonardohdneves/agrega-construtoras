@@ -7,16 +7,28 @@ import type { ItemObra, Obra } from './EngObras';
 import { POSICAO, ROTULO, type Linha } from './EngPlanilha';
 
 type CandidataProjeto = { id: string; tabelaId: string; tabela: string; fonte: string; codigo: string; descricao: string; unidade: string; pontos: number };
-type LidoProjeto = { servico: string; descricao: string; unidade: string; quantidade: number; origem: string; candidatas: CandidataProjeto[] };
+/** Quantitativo lido: no IFC vem com o pavimento e o tipo do elemento (a EAP segue os dois). */
+type LidoProjeto = { servico: string; descricao: string; unidade: string; quantidade: number; origem: string; candidatas: CandidataProjeto[]; pavimento?: string; tipo?: string };
 /** Composição escolhida para a linha: 'cand' = sugerida pelas tabelas da empresa; 'obra' = já na tabela própria da obra. */
 type EscolhaProjeto = { marcado: boolean; fonte: 'cand' | 'obra' | ''; refId: string; quantidade: string; descricao: string };
 
 /** Linha marcada para lançar: vem da tabela própria da obra (item) ou de uma sugestão das tabelas (cand). */
-type Escolhida = { item: ItemObra | null; cand: CandidataProjeto | null; quantidade: number; descricao: string };
+type Escolhida = { item: ItemObra | null; cand: CandidataProjeto | null; quantidade: number; descricao: string; ifc: { pavimento: string; tipo: string } | null };
 
 const ROTULO_SERVICO: Record<string, string> = { forma: 'Forma', armacao: 'Armação', concreto: 'Concreto', outro: 'Outro' };
 
 const ehHtml = (arquivo: File | null) => !!arquivo && /\.html?$/i.test(arquivo.name);
+const ehIfc = (arquivo: File | null) => !!arquivo && /\.ifc$/i.test(arquivo.name);
+const ROTULO_TIPO_IFC: Record<string, string> = { parede: 'Paredes', laje: 'Lajes', pilar: 'Pilares', viga: 'Vigas', porta: 'Portas', janela: 'Janelas' };
+
+/** Cria a linha da EAP uma vez por chave (pavimento ou tipo dentro do pavimento) e devolve o id dela. */
+async function garantirNoIfc(cache: Map<string, string>, obraId: string, chave: string, nivel: 'etapa' | 'subetapa', descricao: string, paiId: string | null): Promise<string> {
+  const ja = cache.get(chave);
+  if (ja) return ja;
+  const r = await api<{ id: string }>(`/eng/obras/${obraId}/planilha`, { corpo: { nivel, descricao, paiId } });
+  cache.set(chave, r.id);
+  return r.id;
+}
 
 function lerArquivoBase64(arquivo: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -167,16 +179,16 @@ function LeituraProjeto({
   }
 
   async function analisar() {
-    if (!arquivo) return setErro('Escolha o arquivo do projeto (PDF ou HTML).');
+    if (!arquivo) return setErro('Escolha o arquivo do projeto (PDF, HTML ou IFC).');
     setErro('');
     setFeito('');
     setAnalisando(true);
     setLidos(null);
-    setLidoDeHtml(ehHtml(arquivo));
+    setLidoDeHtml(ehHtml(arquivo) || ehIfc(arquivo));
     try {
       const base64 = await lerArquivoBase64(arquivo);
-      // HTML com tabelas de quantitativo: leitura direta das tabelas (sem IA). PDF: leitura pela IA.
-      const rota = ehHtml(arquivo) ? 'leitura-html' : 'leitura-projeto';
+      // IFC: volumes por pavimento e tipo (sem IA). HTML: tabelas diretas. PDF: leitura pela IA.
+      const rota = ehIfc(arquivo) ? 'leitura-ifc' : ehHtml(arquivo) ? 'leitura-html' : 'leitura-projeto';
       const r = await api<{ itens: LidoProjeto[]; pendencias: string[] }>(`/eng/obras/${obra.id}/${rota}`, { corpo: { arquivo: base64, nome: arquivo.name } });
       setLidos(r.itens);
       setPendencias(r.pendencias);
@@ -188,7 +200,7 @@ function LeituraProjeto({
             fonte: cand ? 'cand' : '',
             refId: cand?.id ?? '',
             quantidade: x.quantidade.toLocaleString('pt-BR', { maximumFractionDigits: 4 }),
-            descricao: ehHtml(arquivo) && cand ? cand.descricao : x.descricao,
+            descricao: (ehHtml(arquivo) || ehIfc(arquivo)) && cand ? cand.descricao : x.descricao,
           };
         }),
       );
@@ -206,12 +218,13 @@ function LeituraProjeto({
       const q = lerNumero(e?.quantidade ?? '');
       if (!e?.marcado || !e.fonte || q === null || q <= 0) return [];
       const descricao = e.descricao.trim();
+      const ifc = x.pavimento && x.tipo ? { pavimento: x.pavimento, tipo: x.tipo } : null;
       if (e.fonte === 'obra') {
         const item = itens.find((it) => it.id === e.refId);
-        return item ? [{ item, cand: null, quantidade: q, descricao }] : [];
+        return item ? [{ item, cand: null, quantidade: q, descricao, ifc }] : [];
       }
       const cand = x.candidatas.find((c) => c.id === e.refId);
-      return cand ? [{ item: null, cand, quantidade: q, descricao }] : [];
+      return cand ? [{ item: null, cand, quantidade: q, descricao, ifc }] : [];
     });
     if (escolhidas.length === 0) return setErro('Marque ao menos uma linha com composição escolhida e quantidade.');
     setErro('');
@@ -220,8 +233,9 @@ function LeituraProjeto({
     let atuais = itens;
     let feitas = 0;
     let falha = '';
+    const noIfc = new Map<string, string>();
     try {
-      for (const { item: escolhidaDaObra, cand, quantidade, descricao } of escolhidas) {
+      for (const { item: escolhidaDaObra, cand, quantidade, descricao, ifc } of escolhidas) {
         let item = escolhidaDaObra ?? undefined;
         if (!item && cand) {
           // Inclui a composição na obra só se ela ainda não estiver lá (a importação ignora o que já existe).
@@ -234,7 +248,11 @@ function LeituraProjeto({
         }
         if (!item) throw new Error('Não consegui incluir uma composição na obra. Atualize a lista de composições e tente de novo.');
         const corpo: Record<string, unknown> = { nivel: 'tarefa', descricao: (lidoDeHtml ? item.descricao : descricao || item.descricao).slice(0, 200), itemId: item.id, quantidade };
-        if (pai === 'raiz') corpo.paiId = null;
+        if (ifc) {
+          // IFC: etapa = pavimento, subetapa = tipo de elemento; o serviço entra dentro da subetapa.
+          const etapaId = await garantirNoIfc(noIfc, obra.id, `e|${ifc.pavimento}`, 'etapa', ifc.pavimento, null);
+          corpo.paiId = await garantirNoIfc(noIfc, obra.id, `s|${ifc.pavimento}|${ifc.tipo}`, 'subetapa', ROTULO_TIPO_IFC[ifc.tipo] ?? ifc.tipo, etapaId);
+        } else if (pai === 'raiz') corpo.paiId = null;
         else if (pai !== 'auto') corpo.paiId = pai;
         await api(`/eng/obras/${obra.id}/planilha`, { corpo });
         feitas++;
@@ -262,11 +280,11 @@ function LeituraProjeto({
         PDF: a IA lista os quantitativos de forma, armação e concreto. HTML: o Agrega lê as tabelas com unidade e quantidade e concilia cada linha com as composições. Se faltar uma composição, crie-a em Serviços da obra (abre em nova aba), volte aqui e clique em Atualizar composições. Nada entra no orçamento antes da sua confirmação.
       </p>
       <div className="campo">
-        <label htmlFor="lp-arquivo">Projeto (PDF) ou quantitativos (HTML com tabelas)</label>
+        <label htmlFor="lp-arquivo">Projeto (PDF), quantitativos (HTML com tabelas) ou modelo IFC</label>
         <input
           id="lp-arquivo"
           type="file"
-          accept="application/pdf,.pdf,text/html,.html,.htm"
+          accept="application/pdf,.pdf,text/html,.html,.htm,.ifc"
           onChange={(e) => {
             setArquivo(e.target.files?.[0] ?? null);
             setLidos(null);
@@ -276,7 +294,7 @@ function LeituraProjeto({
       </div>
       <div className="acoes">
         <button className="btn btn-primario" type="button" onClick={analisar} disabled={!arquivo || analisando}>
-          {analisando ? 'Lendo o arquivo…' : ehHtml(arquivo) ? 'Ler tabelas do HTML' : 'Ler com IA'}
+          {analisando ? 'Lendo o arquivo…' : ehIfc(arquivo) ? 'Ler o modelo IFC' : ehHtml(arquivo) ? 'Ler tabelas do HTML' : 'Ler com IA'}
         </button>
       </div>
       {feito && <p className="ajuda" role="status" style={{ margin: 0 }}>{feito}</p>}
