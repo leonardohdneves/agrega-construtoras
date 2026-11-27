@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Visualizador 4D</title>
+<style>
+  :root { --bg:#f5f5f2; --fg:#1d1d1b; --card:#fff; --mut:#6b6b66; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#161615; --fg:#eee; --card:#222220; --mut:#a3a39c; } }
+  :root[data-theme="dark"] { --bg:#161615; --fg:#eee; --card:#222220; --mut:#a3a39c; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--fg); font:14px system-ui,sans-serif; }
+  #cena { position:absolute; inset:0; }
+  #painel { position:absolute; left:12px; right:12px; bottom:12px; background:var(--card); border-radius:10px; padding:12px 14px; box-shadow:0 2px 12px rgba(0,0,0,.15); max-width:720px; margin:auto; }
+  #barra { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
+  #slider { flex:1; min-width:180px; }
+  #data { font-variant-numeric:tabular-nums; min-width:92px; }
+  #legenda { display:flex; gap:12px; flex-wrap:wrap; margin-top:8px; color:var(--mut); font-size:12px; }
+  #legenda span::before { content:""; display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:middle; background:var(--c); }
+  #status { color:var(--mut); margin-top:6px; font-size:12px; }
+  button,input[type=file] { font:inherit; }
+  #carregar { position:absolute; top:12px; left:12px; background:var(--card); padding:10px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.15); }
+  #associar { position:absolute; top:12px; right:12px; width:280px; background:var(--card); padding:10px 12px; border-radius:8px; box-shadow:0 2px 12px rgba(0,0,0,.15); font-size:13px; }
+  #associar h3 { margin:0 0 6px; font-size:14px; }
+  #associar select { width:100%; margin:6px 0; font:inherit; }
+  #associar .botoes { display:flex; flex-wrap:wrap; gap:6px; }
+  #associar .botoes button { flex:1 1 45%; padding:5px; font:inherit; cursor:pointer; }
+  #associar small { color:var(--mut); display:block; margin-top:6px; }
+  #aviso { color:var(--mut); margin-top:6px; min-height:1.2em; }
+</style>
+<script type="importmap">
+{ "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+    "web-ifc": "https://unpkg.com/web-ifc@0.0.66/web-ifc-api.js"
+} }
+</script>
+</head>
+<body>
+<div id="cena"></div>
+
+<div id="carregar">
+  <label>Modelo IFC: <input type="file" id="arquivoIfc" accept=".ifc"></label><br>
+  <label>Cronograma (JSON): <input type="file" id="arquivoCron" accept=".json"></label><br>
+  <label>Vínculos (JSON): <input type="file" id="arquivoVinc" accept=".json"></label>
+</div>
+
+<div id="associar">
+  <h3>Associar à EAP</h3>
+  <div id="contagemSel">Nenhum elemento selecionado.</div>
+  <select id="atividade" disabled><option>Carregue o cronograma</option></select>
+  <div class="botoes">
+    <button id="btnAssociar" disabled>Associar</button>
+    <button id="btnRemover" disabled>Remover vínculo</button>
+    <button id="btnSugerir" disabled>Sugerir por semelhança</button>
+    <button id="btnLimpar" disabled>Limpar seleção</button>
+    <button id="btnExportarVinc" disabled>Exportar vínculos</button>
+    <button id="btnExportarAprend" disabled>Exportar aprendizado</button>
+  </div>
+  <label style="display:block;margin-top:8px;">Aprendizado (JSON): <input type="file" id="arquivoAprend" accept=".json"></label>
+  <small>Clique num elemento para selecionar. Ctrl+clique adiciona ou remove da seleção.</small>
+  <div id="aviso"></div>
+</div>
+
+<div id="painel">
+  <div id="barra">
+    <button id="play">▶ Reproduzir</button>
+    <input id="slider" type="range" min="0" max="0" value="0">
+    <span id="data">--/--/----</span>
+  </div>
+  <div id="legenda">
+    <span style="--c:#9e9e9e">Não iniciado</span>
+    <span style="--c:#1e88e5">Em execução</span>
+    <span style="--c:#43a047">Concluído</span>
+    <span style="--c:#e53935">Atrasado</span>
+    <span style="--c:#d7ccc8">Sem vínculo</span>
+  </div>
+  <div id="status">Carregue o IFC, o cronograma e os vínculos para começar.</div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import * as WebIFC from 'web-ifc';
+import { intervaloDaObra, diasUteis, corDoElemento, COR } from './cronograma.js';
+import { classificar } from './classificacao_geometrica.js';
+import { assinatura, aprender, sugerir } from './reconhecimento.js';
+
+const ui = {
+  slider: document.getElementById('slider'),
+  data: document.getElementById('data'),
+  play: document.getElementById('play'),
+  status: document.getElementById('status'),
+};
+
+// --- cena ---
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(devicePixelRatio);
+renderer.setSize(innerWidth, innerHeight);
+document.getElementById('cena').appendChild(renderer.domElement);
+const cena = new THREE.Scene();
+cena.background = new THREE.Color(0xf5f5f2);
+const camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.1, 5000);
+camera.position.set(40, 40, 40);
+const controles = new OrbitControls(camera, renderer.domElement);
+cena.add(new THREE.HemisphereLight(0xffffff, 0x888888, 1.2));
+const sol = new THREE.DirectionalLight(0xffffff, 1.5);
+sol.position.set(50, 100, 50);
+cena.add(sol);
+addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+});
+(function loop() { requestAnimationFrame(loop); controles.update(); renderer.render(cena, camera); })();
+
+// --- estado ---
+// IFC é Z para cima; three.js é Y para cima. Rotação de −90° em X mantém o modelo de pé.
+const grupoModelo = new THREE.Group();
+grupoModelo.rotation.x = -Math.PI / 2;
+cena.add(grupoModelo);
+
+const estado = {
+  elementos: [], tarefasPorId: new Map(), vinculos: {}, dias: [], hoje: new Date().toISOString().slice(0, 10),
+  porGuid: new Map(),      // GlobalId -> [meshes] (um elemento pode ter várias peças)
+  assinaturas: {},         // GlobalId -> assinatura (classe + dimensões)
+  aprendizado: {},         // assinatura -> { atividadeId: contagem }
+  selecao: new Set(),      // GlobalIds selecionados
+};
+
+// expõe o estado para depuração no console (window.viewer4d.estado)
+window.viewer4d = { estado, atualizarSelecao: () => atualizarSelecao() };
+
+// --- seleção por clique ---
+const raio = new THREE.Raycaster();
+const ponteiro = new THREE.Vector2();
+let inicioClique = null;
+renderer.domElement.addEventListener('pointerdown', (e) => { inicioClique = { x: e.clientX, y: e.clientY }; });
+renderer.domElement.addEventListener('pointerup', (e) => {
+  if (!inicioClique || Math.hypot(e.clientX - inicioClique.x, e.clientY - inicioClique.y) > 5) return;
+  const r = renderer.domElement.getBoundingClientRect();
+  ponteiro.x = ((e.clientX - r.left) / r.width) * 2 - 1;
+  ponteiro.y = -((e.clientY - r.top) / r.height) * 2 + 1;
+  raio.setFromCamera(ponteiro, camera);
+  const hit = raio.intersectObjects(estado.elementos, false)[0];
+  const guid = hit?.object.userData.globalId ?? null;
+  const multi = e.ctrlKey || e.metaKey;
+  if (!multi) estado.selecao.clear();
+  if (guid) {
+    if (multi && estado.selecao.has(guid)) estado.selecao.delete(guid);
+    else estado.selecao.add(guid);
+  }
+  atualizarSelecao();
+});
+
+function atualizarSelecao() {
+  for (const m of estado.elementos) {
+    m.material.emissive.setHex(estado.selecao.has(m.userData.globalId) ? 0x553300 : 0x000000);
+  }
+  const n = estado.selecao.size;
+  document.getElementById('contagemSel').textContent = n
+    ? `${n} elemento(s) selecionado(s).` : 'Nenhum elemento selecionado.';
+  const temCron = estado.tarefasPorId.size > 0;
+  document.getElementById('btnAssociar').disabled = !(n && temCron);
+  document.getElementById('btnRemover').disabled = !n;
+  document.getElementById('btnLimpar').disabled = !n;
+}
+
+function aviso(texto) { document.getElementById('aviso').textContent = texto; }
+
+// classe e assinatura de cada elemento, a partir da caixa do mundo
+function calcularAssinaturas() {
+  estado.assinaturas = {};
+  for (const [guid, meshes] of estado.porGuid) {
+    const caixa = new THREE.Box3();
+    for (const m of meshes) caixa.union(new THREE.Box3().setFromObject(m));
+    if (caixa.isEmpty()) continue;
+    const t = caixa.getSize(new THREE.Vector3());
+    const dados = { dx: t.x, dy: t.z, dz: t.y }; // IFC: Z é a altura; three.js usa Y para cima
+    const classe = classificar(dados);
+    estado.assinaturas[guid] = assinatura({ classe, ...dados });
+  }
+}
+
+// --- IFC -> three.js (cada peça guarda o GlobalId do elemento) ---
+async function carregarIfc(arquivo) {
+  const ifc = new WebIFC.IfcAPI();
+  ifc.SetWasmPath('https://unpkg.com/web-ifc@0.0.66/', true);
+  await ifc.Init();
+  const dados = new Uint8Array(await arquivo.arrayBuffer());
+  const modelo = ifc.OpenModel(dados, { COORDINATE_TO_ORIGIN: true });
+  ifc.StreamAllMeshes(modelo, (mesh) => {
+    const expressID = mesh.expressID;
+    let globalId = null;
+    try { globalId = ifc.GetLine(modelo, expressID).GlobalId?.value ?? null; } catch (_) {}
+    for (let i = 0; i < mesh.geometries.size(); i++) {
+      const pg = mesh.geometries.get(i);
+      const g = ifc.GetGeometry(modelo, pg.geometryExpressID);
+      const v = ifc.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize());
+      const idx = ifc.GetIndexArray(g.GetIndexData(), g.GetIndexDataSize());
+      const pos = new Float32Array(v.length / 2), nor = new Float32Array(v.length / 2);
+      for (let k = 0, j = 0; k < v.length; k += 6, j += 3) {
+        pos.set(v.subarray(k, k + 3), j);
+        nor.set(v.subarray(k + 3, k + 6), j);
+      }
+      // geometrias com coordenadas inválidas (NaN) quebram o enquadramento: são ignoradas
+      if (pos.some((x) => !Number.isFinite(x))) continue;
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+      geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
+      const mat = new THREE.MeshLambertMaterial({ color: COR.SEM_VINCULO, transparent: true, opacity: 0.95 });
+      const m = new THREE.Mesh(geo, mat);
+      m.applyMatrix4(new THREE.Matrix4().fromArray(pg.flatTransformation));
+      m.userData.globalId = globalId;
+      grupoModelo.add(m);
+      estado.elementos.push(m);
+      if (!estado.porGuid.has(globalId)) estado.porGuid.set(globalId, []);
+      estado.porGuid.get(globalId).push(m);
+    }
+  });
+  ifc.CloseModel(modelo);
+  calcularAssinaturas();
+  const caixa = new THREE.Box3().setFromObject(grupoModelo);
+  if (!caixa.isEmpty()) controles.target.copy(caixa.getCenter(new THREE.Vector3()));
+}
+
+// --- cronograma e vínculos ---
+function prepararCronograma(json) {
+  estado.tarefasPorId = new Map(json.tarefas.map((t) => [t.id, t]));
+  const { inicio, fim } = intervaloDaObra(json.tarefas);
+  estado.dias = diasUteis(inicio, fim);
+  ui.slider.max = Math.max(estado.dias.length - 1, 0);
+  ui.slider.value = 0;
+  // lista de atividades folha para associar (ordenadas pela EAP)
+  const select = document.getElementById('atividade');
+  const folhas = json.tarefas.filter((t) => t.nivel === 2).sort((a, b) => (a.eapCodigo || '').localeCompare(b.eapCodigo || '', undefined, { numeric: true }));
+  select.innerHTML = folhas.map((t) => `<option value="${t.id}">${t.eapCodigo ?? ''} ${t.nome}</option>`).join('');
+  select.disabled = false;
+  for (const id of ['btnExportarVinc', 'btnExportarAprend', 'btnSugerir']) document.getElementById(id).disabled = false;
+  atualizarSelecao();
+}
+
+// --- associação, remoção e sugestão ---
+document.getElementById('btnAssociar').addEventListener('click', () => {
+  const atividade = document.getElementById('atividade').value;
+  for (const guid of estado.selecao) {
+    estado.vinculos[guid] = atividade;
+    if (estado.assinaturas[guid]) aprender(estado.aprendizado, estado.assinaturas[guid], atividade);
+  }
+  aviso(`${estado.selecao.size} elemento(s) associado(s) à atividade.`);
+  atualizarData(+ui.slider.value);
+});
+document.getElementById('btnRemover').addEventListener('click', () => {
+  for (const guid of estado.selecao) delete estado.vinculos[guid];
+  aviso(`Vínculo removido de ${estado.selecao.size} elemento(s).`);
+  atualizarData(+ui.slider.value);
+});
+document.getElementById('btnLimpar').addEventListener('click', () => { estado.selecao.clear(); atualizarSelecao(); });
+document.getElementById('btnSugerir').addEventListener('click', () => {
+  const sugestoes = sugerir(estado.assinaturas, estado.aprendizado, estado.vinculos);
+  Object.assign(estado.vinculos, sugestoes);
+  aviso(`${Object.keys(sugestoes).length} sugestão(ões) aplicada(s) por semelhança.`);
+  atualizarData(+ui.slider.value);
+});
+
+function baixar(nome, objeto) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(objeto, null, 2)], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url; a.download = nome; a.click();
+  URL.revokeObjectURL(url);
+}
+document.getElementById('btnExportarVinc').addEventListener('click', () => baixar('vinculos.json', {
+  _como_usar: 'GlobalId do IFC -> id da atividade no cronograma do Agrega.', ...estado.vinculos,
+}));
+document.getElementById('btnExportarAprend').addEventListener('click', () => baixar('aprendizado.json', estado.aprendizado));
+document.getElementById('arquivoAprend').addEventListener('change', async (e) => {
+  estado.aprendizado = JSON.parse(await e.target.files[0].text());
+  aviso(`Aprendizado carregado: ${Object.keys(estado.aprendizado).length} assinatura(s).`);
+});
+
+// --- atualização da cena para a data escolhida ---
+function atualizarData(i) {
+  const data = estado.dias[i];
+  if (!data) return;
+  ui.data.textContent = data.split('-').reverse().join('/');
+  const contagem = {};
+  for (const m of estado.elementos) {
+    const r = corDoElemento(m.userData.globalId, estado.vinculos, estado.tarefasPorId, data, estado.hoje);
+    m.material.color.setHex(r.cor);
+    const chave = r.status ?? 'sem_vinculo';
+    contagem[chave] = (contagem[chave] || 0) + 1;
+  }
+  ui.status.textContent = `Peças: ${estado.elementos.length} · ` + Object.entries(contagem).map(([k, v]) => `${k}: ${v}`).join(' · ');
+}
+
+ui.slider.addEventListener('input', () => atualizarData(+ui.slider.value));
+
+let timer = null;
+ui.play.addEventListener('click', () => {
+  if (timer) { clearInterval(timer); timer = null; ui.play.textContent = '▶ Reproduzir'; return; }
+  ui.play.textContent = '❚❚ Pausar';
+  timer = setInterval(() => {
+    const prox = +ui.slider.value + 1;
+    if (prox > +ui.slider.max) { clearInterval(timer); timer = null; ui.play.textContent = '▶ Reproduzir'; return; }
+    ui.slider.value = prox;
+    atualizarData(prox);
+  }, 300);
+});
+
+// --- entradas de arquivo (o app roda local, sem enviar o modelo a lugar nenhum) ---
+document.getElementById('arquivoIfc').addEventListener('change', async (e) => {
+  ui.status.textContent = 'Carregando IFC…';
+  estado.porGuid = new Map();
+  estado.elementos.forEach((m) => grupoModelo.remove(m));
+  estado.elementos = [];
+  await carregarIfc(e.target.files[0]);
+  ui.status.textContent = `IFC carregado (${estado.elementos.length} peças).`;
+  if (estado.dias.length) atualizarData(+ui.slider.value);
+});
+document.getElementById('arquivoCron').addEventListener('change', async (e) => {
+  prepararCronograma(JSON.parse(await e.target.files[0].text()));
+  atualizarData(0);
+});
+document.getElementById('arquivoVinc').addEventListener('change', async (e) => {
+  estado.vinculos = JSON.parse(await e.target.files[0].text());
+  atualizarData(+ui.slider.value);
+});
+// --- abertura por link: ?obraId=...&api=https://... lê o planejamento da obra no Agrega ---
+import { buscarCronogramaDaObra } from './agrega/planejamento.js';
+const parametros = new URLSearchParams(location.search);
+const obraIdLink = parametros.get('obraId');
+if (obraIdLink) {
+  const apiBase = parametros.get('api') || location.origin;
+  ui.status.textContent = 'Lendo o cronograma da obra no Agrega…';
+  buscarCronogramaDaObra({ base: apiBase, obraId: obraIdLink })
+    .then(({ tarefas }) => {
+      if (!tarefas.length) throw new Error('A obra não tem atividades com datas no planejamento.');
+      prepararCronograma({ tarefas });
+      ui.status.textContent = `Cronograma da obra carregado: ${tarefas.length} linhas. Carregue o IFC para ver o modelo.`;
+    })
+    .catch((e) => { ui.status.textContent = e.message; });
+}</script>
+</body>
+</html>

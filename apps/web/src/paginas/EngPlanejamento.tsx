@@ -15,8 +15,8 @@ type FormAtividade = { descricao: string; eapNoId: string; inicio: string; durac
 const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
 const idDe = (n: number | null | undefined) => (n ? `#${n}` : '—');
 
-/** Endereço do visualizador 4D: vem da variável VITE_VISUALIZADOR_4D_URL do build; sem ela, usa o visualizador local (scripts/servir.js). */
-const URL_VISUALIZADOR_4D: string = import.meta.env.VITE_VISUALIZADOR_4D_URL || 'http://localhost:8080/viewer4d.html';
+/** Endereço do visualizador 4D: publicado no próprio Agrega (apps/web/public/4d), no mesmo domínio para a sessão valer. A variável VITE_VISUALIZADOR_4D_URL, se definida, substitui. */
+const URL_VISUALIZADOR_4D: string = import.meta.env.VITE_VISUALIZADOR_4D_URL || '/4d/viewer4d.html';
 /** Abre o visualizador com o id da obra e a origem da API do Agrega (o visualizador lê o planejamento dela); a URL pode já ter parâmetros. */
 const urlVisualizador4D = (obraId: string) => `${URL_VISUALIZADOR_4D}${URL_VISUALIZADOR_4D!.includes('?') ? '&' : '?'}obraId=${encodeURIComponent(obraId)}&api=${encodeURIComponent(window.location.origin)}`;
 
