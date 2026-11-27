@@ -148,7 +148,7 @@ export function PlanilhaOrcamentaria({ obra, itens, setErro }: { obra: Obra; ite
         <div className="small muted" style={{ marginLeft: 'auto', alignSelf: 'center' }}>
           <Link to={`/eng/relatorios?obra=${obra.id}`}>Emitir relatório do orçamento</Link>
           {' · '}
-          <Link to={`/eng/importar-quantitativos?obra=${obra.id}`}>Importar quantitativos</Link>
+          <Link to={`/eng/importar-quantitativos?obra=${obra.id}`}>Importar quantitativos ou IFC</Link>
         </div>
       </div>
 

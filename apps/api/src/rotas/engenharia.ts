@@ -16,6 +16,7 @@ import { aplicarMapa, esquemaValoresTipo, linhasUteis, mapaRecortado, mapearColu
 import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, normalizarTexto, pontuarCandidatas, type ComposicaoRef } from '../lib/leitura-projeto.ts';
 import { geraTabelasPorScript, quantitativosDasTabelas, tabelasDoHtml } from '../lib/leitura-html.ts';
+import { quantitativosDoIfc } from '../lib/ifc-leitura.ts';
 import { FERRAMENTA_COMPOSICOES, LIMITE_ARQUIVO_COMPOSICOES, blocoDoArquivo, ehCsvPadrao, instrucaoComposicoes, lerComposicoesIa, lerCsvPadraoComposicoes, type ItemLido } from '../lib/composicoes-leitura.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
@@ -3418,6 +3419,35 @@ export function rotasEngenharia(banco: Banco) {
         tabelasLidas: tabelas.length,
         itens: itens.map((q) => ({ ...q, candidatas: pontuarCandidatas(q, composicoes) })),
         pendencias,
+      };
+    });
+
+    /**
+     * Lê os quantitativos de um modelo IFC (volume por pavimento e tipo, portas e janelas em unidades) e sugere as
+     * composições já cadastradas. Não grava nada: o usuário confere na tela e lança depois.
+     */
+    const corpoPostObrasLeituraIfc = z.object({ arquivo: z.string().min(1), nome: z.string().max(2000).optional().transform((v) => v?.slice(-200)) });
+    app.post<{ Params: { id: string } }>('/obras/:id/leitura-ifc', { bodyLimit: 40 * 1024 * 1024, schema: { body: corpoPostObrasLeituraIfc } }, async (req) => {
+      const { arquivo } = corpoPostObrasLeituraIfc.parse(req.body);
+      const empresaId = empresaDo(req);
+      const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
+      const bytes = Buffer.from(base64Puro(arquivo), 'base64');
+      if (!bytes.length || bytes.length > 30 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 30 MB).');
+      if (!bytes.subarray(0, 64).toString('latin1').includes('ISO-10303-21')) throw new ErroHttp(400, 'Envie um arquivo IFC.');
+      let lido: Awaited<ReturnType<typeof quantitativosDoIfc>>;
+      try {
+        lido = await quantitativosDoIfc(new Uint8Array(bytes));
+      } catch (e) {
+        throw new ErroHttp(400, `Não consegui ler o IFC: ${(e as Error).message}`);
+      }
+      const composicoes = await composicoesDaEmpresa(empresaId);
+      return {
+        obraId: obra.id as string,
+        itens: lido.itens.map((i) => {
+          const q = { servico: 'outro' as const, descricao: i.descricao, unidade: i.unidade, quantidade: i.quantidade, origem: i.pavimento };
+          return { ...q, pavimento: i.pavimento, tipo: i.tipo, elementos: i.elementos, candidatas: pontuarCandidatas(q, composicoes) };
+        }),
+        pendencias: lido.pendencias,
       };
     });
 
