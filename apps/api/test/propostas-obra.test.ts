@@ -114,3 +114,13 @@ test('serviços técnicos: cronograma próprio com parcelas que somam 100%', () 
   assert.deepEqual(r.parcelas.map((p) => [p.descricao, p.valor]), [['Mobilização', 200], ['Conclusão', 800]]);
   assert.throws(() => calcularProposta('servicos_tecnicos', 'informado', { dataInicio: '2026-11-05', modoPagamento: 'cronograma', marcos: [{ descricao: 'x', percentual: 50, dias: 0 }] }, itens, null), /somam 50%/);
 });
+
+
+test('desconto: reduz o total e as parcelas na mesma proporção', () => {
+  const itens = [{ descricao: 'Vistoria', unidade: 'un', quantidade: 1, precoUnitario: 1000 }];
+  const r = calcularProposta('preco_unitario', 'informado', { dataInicio: '2026-11-05', numeroParcelas: 2, descontoPct: 10 }, itens, null);
+  assert.equal(r.valorTotal, 900);
+  assert.deepEqual(r.parcelas.map((p) => p.valor), [450, 450]);
+  assert.ok(fechaParcelas(r.valorTotal, r.parcelas));
+  assert.throws(() => calcularProposta('preco_unitario', 'informado', { dataInicio: '2026-11-05', numeroParcelas: 2, descontoPct: 100 }, itens, null), /desconto/);
+});

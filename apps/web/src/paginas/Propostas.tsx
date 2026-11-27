@@ -91,7 +91,7 @@ type Form = {
   formaPagamento: 'marcos' | 'medicao'; numeroMedicoes: string;
   modoPagamento: 'entrada_saldo' | 'intermediarios' | 'cronograma'; numeroIntermediarios: string;
   numeroParcelas: string; entradaPct: string; prazoEntregaDias: string; itens: Linha[]; condicoes: string;
-  campos: Record<string, string>;
+  campos: Record<string, string>; descontoPct: string; observacoes: string;
 };
 type Detalhe = {
   id: string; numero: number; tipo: Tipo; tipoNome: string; titulo: string; status: Status; valorTotal: number; origemPreco: Origem;
@@ -108,7 +108,7 @@ const FORM_VAZIO: Form = {
   baseAdm: 'custo_direto', valorBaseInformado: '', valorInformado: '', marcos: [{ descricao: '', percentual: '', dias: '' }],
   formaPagamento: 'marcos', numeroMedicoes: '',
   modoPagamento: 'entrada_saldo', numeroIntermediarios: '',
-  numeroParcelas: '', entradaPct: '50', prazoEntregaDias: '', itens: [], condicoes: '', campos: {},
+  numeroParcelas: '', entradaPct: '50', prazoEntregaDias: '', itens: [], condicoes: '', campos: {}, descontoPct: '', observacoes: '',
 };
 
 function deProposta(p: Detalhe): Form {
@@ -142,6 +142,8 @@ function deProposta(p: Detalhe): Form {
     entradaPct: campo(q.entradaPct),
     prazoEntregaDias: campo(q.prazoEntregaDias),
     campos: (q.campos as Record<string, string>) ?? {},
+    descontoPct: campo(q.descontoPct),
+    observacoes: q.observacoes ?? '',
     itens: p.itens.map((i) => ({ obraItemId: i.obraItemId, descricao: i.descricao, unidade: i.unidade, quantidade: campo(i.quantidade), precoUnitario: campo(i.precoUnitario) })),
     condicoes: p.condicoes ?? '',
   };
@@ -180,6 +182,8 @@ function corpoDe(f: Form) {
       entradaPct: n(f.entradaPct),
       prazoEntregaDias: n(f.prazoEntregaDias),
       campos: f.campos,
+      descontoPct: n(f.descontoPct),
+      observacoes: f.observacoes.trim() || undefined,
     },
     itens: f.itens.map((i) => ({
       obraItemId: i.obraItemId,
@@ -686,6 +690,17 @@ function PropostaForm({ editando }: { editando?: Detalhe }) {
           )}
 
           <h2 style={{ fontSize: 16, margin: '20px 0 8px' }}>4. Condições gerais</h2>
+          <div className="campos">
+            <div className="campo">
+              <label htmlFor="p-desc">Desconto sobre o preço proposto (%)</label>
+              <input id="p-desc" inputMode="decimal" value={f.descontoPct} onChange={(e) => set('descontoPct', e.target.value)} placeholder="Ex.: 5" />
+              <span className="ajuda">Reduz o total e cada parcela na mesma proporção.</span>
+            </div>
+          </div>
+          <div className="campo" style={{ marginTop: 8 }}>
+            <label htmlFor="p-obs">Observações</label>
+            <textarea id="p-obs" rows={3} value={f.observacoes} onChange={(e) => set('observacoes', e.target.value)} placeholder="Observações para o cliente: premissas, condições especiais, o que não está incluído." />
+          </div>
           <div className="campo">
             <textarea id="p-cond" rows={4} value={f.condicoes} onChange={(e) => set('condicoes', e.target.value)} placeholder="Forma de pagamento, reajuste, responsabilidades, exclusões…" />
           </div>
@@ -931,6 +946,12 @@ export function PropostaDetalhe() {
             </>
           )}
 
+          {q.observacoes && (
+            <>
+              <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>Observações</h3>
+              <p style={{ whiteSpace: 'pre-wrap' }}>{q.observacoes}</p>
+            </>
+          )}
           {p.condicoes && (
             <>
               <h3 style={{ fontSize: 14, margin: '16px 0 6px' }}>Condições</h3>
@@ -942,6 +963,7 @@ export function PropostaDetalhe() {
         <aside className="card">
           <div className="small muted">Valor total</div>
           <div style={{ fontSize: 24, fontWeight: 600, marginBottom: 12 }}>{formatarMoeda(p.valorTotal)}</div>
+          {Number(q.descontoPct) > 0 && <div className="small muted" style={{ marginTop: -8, marginBottom: 12 }}>Desconto de {q.descontoPct}% já aplicado</div>}
           <table className="tabela">
             <thead>
               <tr>
@@ -1089,6 +1111,12 @@ export function PropostaImprimir() {
           <h3>Objeto</h3>
           <p style={{ whiteSpace: 'pre-wrap' }}>{p.objeto}</p>
           {p.endereco && <p className="small">Endereço da obra: {p.endereco}</p>}
+        </section>
+      )}
+      {q.observacoes && (
+        <section style={{ marginBottom: 14 }}>
+          <h3>Observações</h3>
+          <p style={{ whiteSpace: 'pre-wrap' }}>{q.observacoes}</p>
         </section>
       )}
       {p.itens.length > 0 && (
