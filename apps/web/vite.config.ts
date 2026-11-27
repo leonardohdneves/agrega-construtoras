@@ -24,7 +24,7 @@ export default defineConfig({
       },
       workbox: {
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//, /^\/manual\//],
+        navigateFallbackDenylist: [/^\/api\//, /^\/manual\//, /^\/4d\//],
       },
     }),
   ],
