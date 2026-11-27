@@ -105,6 +105,7 @@ export function CabecalhoDocumento({
   aoImprimir,
   logoDireita,
   minimalista,
+  linhaTopo,
 }: {
   modulo: string;
   titulo: string;
@@ -117,6 +118,8 @@ export function CabecalhoDocumento({
   logoDireita?: boolean;
   /** Sem a faixa escura: logo à esquerda, na linha do título, que fica à direita dela. */
   minimalista?: boolean;
+  /** Com o cabeçalho minimalista: o nome do módulo fica numa linha fina no topo, alinhado à direita, sobre a linha. */
+  linhaTopo?: boolean;
 }) {
   const { usuario, empresa } = useSessao();
   const [painel, setPainel] = useState(false);
@@ -141,6 +144,11 @@ export function CabecalhoDocumento({
           <span className="doc-modulo">{modulo}</span>
         </div>
       )}
+      {linhaTopo && (
+        <div className="doc-linha-topo">
+          <span>{modulo}</span>
+        </div>
+      )}
       <div className="doc-corpo">
         {minimalista && (
           <div className="doc-logo-minimo">
@@ -155,7 +163,7 @@ export function CabecalhoDocumento({
           </div>
         )}
         <div className="doc-titulo">
-          {minimalista && <span className="doc-modulo-minimo">{modulo}</span>}
+          {minimalista && !linhaTopo && <span className="doc-modulo-minimo">{modulo}</span>}
           <h1>{titulo}</h1>
           {descricao && <p className="doc-descricao">{descricao}</p>}
           {(periodo || filtros.length > 0) && (

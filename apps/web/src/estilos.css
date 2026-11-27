@@ -418,6 +418,7 @@ a.kpi:hover { border-color: var(--cement); color: var(--ink); }
 .doc-cabecalho-minimo .doc-titulo { min-width: 0; flex: 1; }
 .doc-modulo-minimo { display: block; font: 600 11px/1 var(--font-sans); text-transform: uppercase; letter-spacing: .1em; color: var(--ink-muted); margin-bottom: 6px; }
 .doc-cabecalho-minimo .doc-acoes { padding: 8px 0 0; }
+.doc-linha-topo { display: flex; justify-content: flex-end; border-bottom: 1px solid var(--ink-muted); padding: 0 0 5px; font: 600 11px/1 var(--font-sans); text-transform: uppercase; letter-spacing: .12em; color: var(--ink-muted); }
 .doc-acoes { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; padding: 0 18px 14px; }
 @media (max-width: 760px) { .doc-corpo { grid-template-columns: 1fr; } .doc-meta { align-items: flex-start; text-align: left; } .doc-titulo h1 { font-size: 22px; } }
 .relatorio h2 { border-left: 4px solid var(--brand-orange); padding-left: 10px; }
