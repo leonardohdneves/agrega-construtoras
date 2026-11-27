@@ -15,6 +15,11 @@ type FormAtividade = { descricao: string; eapNoId: string; inicio: string; durac
 const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
 const idDe = (n: number | null | undefined) => (n ? `#${n}` : '—');
 
+/** Endereço do visualizador 4D (configurado no build pela variável VITE_VISUALIZADOR_4D_URL). Sem ele, o botão não aparece. */
+const URL_VISUALIZADOR_4D: string | undefined = import.meta.env.VITE_VISUALIZADOR_4D_URL || undefined;
+/** Abre o visualizador com o id da obra e a origem da API do Agrega (o visualizador lê o planejamento dela); a URL pode já ter parâmetros. */
+const urlVisualizador4D = (obraId: string) => `${URL_VISUALIZADOR_4D}${URL_VISUALIZADOR_4D!.includes('?') ? '&' : '?'}obraId=${encodeURIComponent(obraId)}&api=${encodeURIComponent(window.location.origin)}`;
+
 const ABAS_PLANEJAMENTO = [
   { id: 'planejamento', texto: 'Planejamento' },
   { id: 'gantt', texto: 'Gantt' },
@@ -191,6 +196,9 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
           <h2 style={{ margin: 0 }}>Atividades</h2>
           <div className="acoes nao-imprimir">
             <button className="btn" type="button" onClick={gerarDaEap} disabled={ocupado || !nos.length} title="Cria uma atividade só para as tarefas da EAP que ainda não têm atividade. Etapas e subetapas não viram atividade.">Atualizar pela EAP</button>
+            {URL_VISUALIZADOR_4D && (
+              <a className="btn" href={urlVisualizador4D(obraId)} target="_blank" rel="noopener noreferrer" title="Abre o cronograma da obra no visualizador 4D, em nova aba.">Visualizar 4D</a>
+            )}
             <BotaoImprimir />
           </div>
         </div>
