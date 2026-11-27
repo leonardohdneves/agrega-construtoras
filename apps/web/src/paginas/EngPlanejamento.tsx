@@ -15,10 +15,15 @@ type FormAtividade = { descricao: string; eapNoId: string; inicio: string; durac
 const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
 const idDe = (n: number | null | undefined) => (n ? `#${n}` : '—');
 
-/** Endereço do visualizador 4D: publicado no próprio Agrega (apps/web/public/4d), no mesmo domínio para a sessão valer. A variável VITE_VISUALIZADOR_4D_URL, se definida, substitui. */
-const URL_VISUALIZADOR_4D: string = import.meta.env.VITE_VISUALIZADOR_4D_URL || '/4d/viewer4d.html';
-/** Abre o visualizador com o id da obra e a origem da API do Agrega (o visualizador lê o planejamento dela); a URL pode já ter parâmetros. */
-const urlVisualizador4D = (obraId: string) => `${URL_VISUALIZADOR_4D}${URL_VISUALIZADOR_4D!.includes('?') ? '&' : '?'}obraId=${encodeURIComponent(obraId)}&api=${encodeURIComponent(window.location.origin)}`;
+/** Custo 5D: publicado no próprio Agrega (apps/web/public/4d), no mesmo domínio. */
+const URL_CUSTO_5D = '/4d/custo5d.html';
+/** Ícone de cubo (contorno), como na referência do botão. */
+const IconeCubo = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
+    <path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7z" />
+    <path d="M3.5 7 12 11.5 20.5 7M12 11.5v10" />
+  </svg>
+);
 
 const ABAS_PLANEJAMENTO = [
   { id: 'planejamento', texto: 'Planejamento' },
@@ -196,7 +201,16 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
           <h2 style={{ margin: 0 }}>Atividades</h2>
           <div className="acoes nao-imprimir">
             <button className="btn" type="button" onClick={gerarDaEap} disabled={ocupado || !nos.length} title="Cria uma atividade só para as tarefas da EAP que ainda não têm atividade. Etapas e subetapas não viram atividade.">Atualizar pela EAP</button>
-            <a className="btn" href={urlVisualizador4D(obraId)} target="_blank" rel="noopener noreferrer" title="Abre o cronograma da obra no visualizador 4D, em nova aba.">Visualizar 4D</a>
+            <a
+              href={URL_CUSTO_5D}
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Abre o custo no tempo (5D) em nova aba."
+              style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '7px 14px', border: '1px solid #c9d6ea', borderRadius: 8, background: '#fff', color: '#1d4ed8', fontWeight: 500, fontSize: 14, textDecoration: 'none', whiteSpace: 'nowrap' }}
+            >
+              <IconeCubo />
+              Visualizar 5D
+            </a>
             <BotaoImprimir />
           </div>
         </div>
