@@ -17,8 +17,8 @@ const idDe = (n: number | null | undefined) => (n ? `#${n}` : '—');
 
 /** Endereço do visualizador 4D (configurado no build pela variável VITE_VISUALIZADOR_4D_URL). Sem ele, o botão não aparece. */
 const URL_VISUALIZADOR_4D: string | undefined = import.meta.env.VITE_VISUALIZADOR_4D_URL || undefined;
-/** Abre o visualizador com o id da obra; a URL pode já ter parâmetros. */
-const urlVisualizador4D = (obraId: string) => `${URL_VISUALIZADOR_4D}${URL_VISUALIZADOR_4D!.includes('?') ? '&' : '?'}obraId=${encodeURIComponent(obraId)}`;
+/** Abre o visualizador com o id da obra e a origem da API do Agrega (o visualizador lê o planejamento dela); a URL pode já ter parâmetros. */
+const urlVisualizador4D = (obraId: string) => `${URL_VISUALIZADOR_4D}${URL_VISUALIZADOR_4D!.includes('?') ? '&' : '?'}obraId=${encodeURIComponent(obraId)}&api=${encodeURIComponent(window.location.origin)}`;
 
 const ABAS_PLANEJAMENTO = [
   { id: 'planejamento', texto: 'Planejamento' },
