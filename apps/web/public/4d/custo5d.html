@@ -122,7 +122,7 @@
   <header>
     <div>
       <h1>Custo no tempo</h1>
-      <div class="sub">CASA LEO&amp;MARCELA · OB-0001 · dados da API do Agrega em 27/11/2026</div>
+      <div class="sub" id="subtitulo">Carregando a obra…</div>
     </div>
     <div class="sub" id="fonteDados"></div>
   </header>
@@ -239,6 +239,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import * as WebIFC from 'web-ifc';
 import { corDoElemento, COR } from './cronograma.js';
+import { carregarDadosObra, hojeIso } from './agrega/dados5d.js';
 import { classificar } from './classificacao_geometrica.js';
 import { assinatura, aprender, sugerir } from './reconhecimento.js';
 
@@ -888,20 +889,33 @@ $('arquivoVinc').addEventListener('change', async (e) => {
 
 // ---------- carga inicial (dados reais e exemplo) ----------
 async function carregarJson(url) { const r = await fetch(url); if (!r.ok) throw new Error(url + ' ' + r.status); return r.json(); }
+// Com ?obraId=... (link do botão do Agrega) os dados vêm da API, pela obra escolhida; sem ele, a amostra gravada.
+const parametrosLink = new URLSearchParams(location.search);
+const obraIdLink = parametrosLink.get('obraId');
 (async () => {
   try {
-    const [cron, curva, pr] = await Promise.all([
-      carregarJson('data/agrega_obra_leo.json'),
-      carregarJson('data/curvaS_leo.json'),
-      carregarJson('data/previsto_realizado_leo.json'),
-    ]);
+    let cron, curva, pr;
+    if (obraIdLink) {
+      const dados = await carregarDadosObra({ base: parametrosLink.get('api') || location.origin, obraId: obraIdLink });
+      ({ cron, curva, pr } = dados);
+      $('subtitulo').textContent = `${dados.obra} · dados da API do Agrega em ${hojeIso()}`;
+      $('fonteDados').textContent = 'Cronograma, curva e etapas: API do Agrega (obra escolhida)';
+    } else {
+      [cron, curva, pr] = await Promise.all([
+        carregarJson('data/agrega_obra_leo.json'),
+        carregarJson('data/curvaS_leo.json'),
+        carregarJson('data/previsto_realizado_leo.json'),
+      ]);
+      $('subtitulo').textContent = 'CASA LEO&MARCELA · amostra gravada da API do Agrega';
+      $('fonteDados').textContent = 'Cronograma, curva e etapas: amostra gravada da API';
+    }
     prepararCronograma(cron);
     prepararCurva(curva);
     prepararEtapas(pr);
-    $('fonteDados').textContent = 'Cronograma, curva e etapas: API do Agrega';
     atualizarTempo();
   } catch (err) {
     $('aviso').textContent = 'Não foi possível ler os dados: ' + err.message;
+    $('subtitulo').textContent = 'Não foi possível carregar a obra';
   }
   try {
     const blob = await (await fetch('data/exemplo_casa.ifc')).blob();
