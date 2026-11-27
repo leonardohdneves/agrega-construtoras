@@ -124,3 +124,12 @@ test('desconto: reduz o total e as parcelas na mesma proporção', () => {
   assert.ok(fechaParcelas(r.valorTotal, r.parcelas));
   assert.throws(() => calcularProposta('preco_unitario', 'informado', { dataInicio: '2026-11-05', numeroParcelas: 2, descontoPct: 100 }, itens, null), /desconto/);
 });
+
+
+test('desconto: a proposta guarda o valor sem desconto e o valor descontado', () => {
+  const itens = [{ descricao: 'Vistoria', unidade: 'un', quantidade: 1, precoUnitario: 1000 }];
+  const r = calcularProposta('preco_unitario', 'informado', { dataInicio: '2026-11-05', numeroParcelas: 2, descontoPct: 10 }, itens, null);
+  assert.equal(r.valorSemDesconto, 1000);
+  assert.equal(r.descontoValor, 100);
+  assert.equal(r.valorTotal, 900);
+});

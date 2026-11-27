@@ -1140,6 +1140,13 @@ export function PropostaImprimir() {
       {p.tipo === 'acompanhamento' && (
         <p className="small">Forma de cobrança: {q.modo === 'percentual_obra' ? `${q.percentualObra}% do valor da obra, em ${q.meses} parcelas mensais` : `honorário mensal de ${formatarMoeda(Number(q.honorarioMensal))} por ${q.meses} meses`}.</p>
       )}
+      {Number(q.descontoPct) > 0 && (
+        <p className="small" style={{ marginBottom: 8 }}>
+          {q.valorSemDesconto !== undefined
+            ? `Desconto de ${Number(q.descontoPct).toLocaleString('pt-BR')}% sobre o valor de ${formatarMoeda(q.valorSemDesconto)}, equivalente a ${formatarMoeda(q.descontoValor)}.`
+            : `Desconto de ${Number(q.descontoPct).toLocaleString('pt-BR')}% sobre o preço proposto.`}
+        </p>
+      )}
       <section style={{ marginBottom: 14 }}>
         <h3>Valor total: {formatarMoeda(p.valorTotal)}</h3>
         {p.parcelas.length > 0 && (
