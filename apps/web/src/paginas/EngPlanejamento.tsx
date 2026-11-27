@@ -15,8 +15,8 @@ type FormAtividade = { descricao: string; eapNoId: string; inicio: string; durac
 const VAZIO: FormAtividade = { descricao: '', eapNoId: '', inicio: '', duracaoDias: '', predecessoraId: '' };
 const idDe = (n: number | null | undefined) => (n ? `#${n}` : '—');
 
-/** Custo 5D: publicado no próprio Agrega (apps/web/public/4d), no mesmo domínio. */
-const URL_CUSTO_5D = '/4d/custo5d.html';
+/** Custo 5D: publicado no próprio Agrega (apps/web/public/4d), no mesmo domínio. Leva o id da obra para ler os dados dela. */
+const urlCusto5D = (obraId: string) => `/4d/custo5d.html?obraId=${encodeURIComponent(obraId)}`;
 /** Ícone de cubo (contorno), como na referência do botão. */
 const IconeCubo = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" aria-hidden="true">
@@ -202,7 +202,7 @@ function AbaAtividades({ obraId, nos, lista, recarregar, setErro, fechados, setF
           <div className="acoes nao-imprimir">
             <button className="btn" type="button" onClick={gerarDaEap} disabled={ocupado || !nos.length} title="Cria uma atividade só para as tarefas da EAP que ainda não têm atividade. Etapas e subetapas não viram atividade.">Atualizar pela EAP</button>
             <a
-              href={URL_CUSTO_5D}
+              href={urlCusto5D(obraId)}
               target="_blank"
               rel="noopener noreferrer"
               title="Abre o custo no tempo (5D) em nova aba."

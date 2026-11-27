@@ -18,6 +18,8 @@ const ARQUIVOS = [
   ['src/classificacao_geometrica.js', 'classificacao_geometrica.js'],
   ['src/reconhecimento.js', 'reconhecimento.js'],
   ['src/agrega/planejamento.js', 'agrega/planejamento.js'],
+  ['src/agrega/cronograma5d.js', 'agrega/cronograma5d.js'],
+  ['src/agrega/dados5d.js', 'agrega/dados5d.js'],
 ];
 
 const normalizar = (t) => t.replace(/\r\n/g, '\n');
