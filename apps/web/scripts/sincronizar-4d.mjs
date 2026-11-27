@@ -21,7 +21,15 @@ const ARQUIVOS = [
 ];
 
 const normalizar = (t) => t.replace(/\r\n/g, '\n');
-const ajustarViewer = (t) => t.replace(/'\.\.\/src\/([^']+)'/g, "'./$1'");
+/** Texto compara sem diferença de fim de linha; binário (IFC) compara byte a byte. */
+const iguais = (atual, esperado) =>
+  typeof esperado === 'string' ? normalizar(atual.toString('utf8')) === normalizar(esperado) : Buffer.compare(atual, esperado) === 0;
+// Páginas HTML: caminhos de src/ e de data/ viram relativos, porque a página fica em /4d/.
+const PAGINAS = ['viewer4d.html', 'custo5d.html'];
+// Dados que as páginas leem (JSON exportado e IFC de exemplo), copiados para /4d/data/.
+const DADOS = ['agrega_obra_leo.json', 'curvaS_leo.json', 'previsto_realizado_leo.json', 'exemplo_casa.ifc'];
+
+const ajustarPagina = (t) => t.replace(/'\.\.\/src\/([^']+)'/g, "'./$1'").replace(/'\/data\//g, "'data/");
 
 /** Conteúdo que deve estar em cada arquivo do destino. */
 function esperado() {
@@ -31,9 +39,16 @@ function esperado() {
     if (!existsSync(caminho)) throw new Error(`Falta o arquivo de origem: ${caminho}`);
     saida.set(para, readFileSync(caminho, 'utf8'));
   }
-  const viewer = join(origem, 'src', 'viewer4d.html');
-  if (!existsSync(viewer)) throw new Error(`Falta o visualizador: ${viewer}`);
-  saida.set('viewer4d.html', ajustarViewer(readFileSync(viewer, 'utf8')));
+  for (const pagina of PAGINAS) {
+    const caminho = join(origem, 'src', pagina);
+    if (!existsSync(caminho)) throw new Error(`Falta a página: ${caminho}`);
+    saida.set(pagina, ajustarPagina(readFileSync(caminho, 'utf8')));
+  }
+  for (const dado of DADOS) {
+    const caminho = join(origem, 'data', dado);
+    if (!existsSync(caminho)) throw new Error(`Falta o dado: ${caminho}`);
+    saida.set(join('data', dado), readFileSync(caminho));
+  }
   return saida;
 }
 
@@ -41,7 +56,7 @@ const alvo = esperado();
 const diferentes = [];
 for (const [arquivo, conteudo] of alvo) {
   const atual = join(destino, arquivo);
-  const igual = existsSync(atual) && normalizar(readFileSync(atual, 'utf8')) === normalizar(conteudo);
+  const igual = existsSync(atual) && iguais(readFileSync(atual), conteudo);
   if (!igual) diferentes.push(arquivo);
 }
 

@@ -1,0 +1,89 @@
+{
+  "pontos": [
+    {
+      "data": "2026-05-31",
+      "previsto": 13718.52,
+      "executado": 5780.15,
+      "realizado": 5582.36
+    },
+    {
+      "data": "2026-06-30",
+      "previsto": 13879.71,
+      "executado": 5780.15,
+      "realizado": 7179.79
+    },
+    {
+      "data": "2026-07-31",
+      "previsto": 14046.27,
+      "executado": 5780.15,
+      "realizado": 7179.79
+    },
+    {
+      "data": "2026-08-31",
+      "previsto": 14212.84,
+      "executado": 5780.15,
+      "realizado": 7179.79
+    },
+    {
+      "data": "2026-09-30",
+      "previsto": 17664.24,
+      "executado": 5780.15,
+      "realizado": 7379.79
+    },
+    {
+      "data": "2026-10-31",
+      "previsto": 55624.45,
+      "executado": 22234.14,
+      "realizado": 10765.35
+    },
+    {
+      "data": "2026-11-30",
+      "previsto": 70996.48,
+      "executado": null,
+      "realizado": null
+    },
+    {
+      "data": "2026-12-31",
+      "previsto": 73359.39,
+      "executado": null,
+      "realizado": null
+    },
+    {
+      "data": "2027-01-31",
+      "previsto": 75669.64,
+      "executado": null,
+      "realizado": null
+    },
+    {
+      "data": "2027-02-28",
+      "previsto": 77756.31,
+      "executado": null,
+      "realizado": null
+    },
+    {
+      "data": "2027-03-31",
+      "previsto": 80066.56,
+      "executado": null,
+      "realizado": null
+    },
+    {
+      "data": "2027-04-30",
+      "previsto": 82302.28,
+      "executado": null,
+      "realizado": null
+    },
+    {
+      "data": "2027-05-31",
+      "previsto": 82973,
+      "executado": null,
+      "realizado": null
+    }
+  ],
+  "hoje": "2026-11-27",
+  "custoTotal": 82973,
+  "dataUltimaMedicao": "2026-10-19",
+  "indices": {
+    "cpi": 2.7181831082818246,
+    "spi": 1.2587091109190942
+  }
+}
