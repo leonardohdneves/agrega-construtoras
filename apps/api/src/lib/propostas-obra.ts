@@ -43,6 +43,9 @@ export type Parametros = {
   entradaPct?: number;
   prazoEntregaDias?: number;
   campos?: Record<string, string>;
+  // desconto sobre o preço proposto (percentual) e observações para o cliente
+  descontoPct?: number;
+  observacoes?: string;
 };
 export type Contexto = { valorObra: number; custoDireto: number }; // reais: venda do orçamento (com BDI) e custo direto
 
@@ -65,8 +68,23 @@ function exigir(condicao: unknown, mensagem: string): asserts condicao {
   if (!condicao) throw new ErroHttp(400, mensagem);
 }
 
-/** Calcula o valor total, as parcelas e os itens de uma proposta. Lança ErroHttp 400 quando faltar dado. */
+/**
+ * Calcula o valor total, as parcelas e os itens de uma proposta, já com o desconto sobre o preço proposto.
+ * O desconto reduz o total e cada parcela na mesma proporção; a diferença de centavos vai para a última parcela.
+ */
 export function calcularProposta(tipo: TipoProposta, origemPreco: 'orcamento' | 'informado', p: Parametros, itens: ItemProposta[], ctx: Contexto | null): Resultado {
+  const base = calcularBase(tipo, origemPreco, p, itens, ctx);
+  const pct = dec(p.descontoPct ?? null) ?? 0;
+  exigir(pct >= 0 && pct < 100, 'O desconto deve estar entre 0 e 99,99%.');
+  const totalC = cent(base.valorTotal);
+  if (pct === 0 || totalC === 0) return base;
+  const novoC = Math.round(totalC * (1 - pct / 100));
+  const valores = base.parcelas.map((x) => Math.round(cent(x.valor) * (novoC / totalC)));
+  if (valores.length) valores[valores.length - 1] += novoC - valores.reduce((t, v) => t + v, 0);
+  return { valorTotal: reais(novoC), parcelas: base.parcelas.map((x, i) => ({ ...x, valor: reais(valores[i]) })), itens: base.itens };
+}
+
+function calcularBase(tipo: TipoProposta, origemPreco: 'orcamento' | 'informado', p: Parametros, itens: ItemProposta[], ctx: Contexto | null): Resultado {
   exigir(p.dataInicio && /^\d{4}-\d{2}-\d{2}$/.test(p.dataInicio), 'Informe a data de início.');
   const orcamento = origemPreco === 'orcamento';
   exigir(!orcamento || ctx, 'Escolha a obra para puxar o preço do orçamento.');

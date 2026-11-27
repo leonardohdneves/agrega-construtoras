@@ -19191,7 +19191,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:210"
+        "x-fonte": "src/rotas/propostasObra.ts:213"
       }
     },
     "/api/com/obra-propostas/servicos": {
@@ -19230,7 +19230,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:235",
+        "x-fonte": "src/rotas/propostasObra.ts:238",
         "parameters": [
           {
             "name": "obraId",
@@ -19279,7 +19279,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:244"
+        "x-fonte": "src/rotas/propostasObra.ts:247"
       },
       "post": {
         "requestBody": {
@@ -19460,6 +19460,14 @@
                           "type": "string",
                           "maxLength": 1000
                         }
+                      },
+                      "descontoPct": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "observacoes": {
+                        "type": "string",
+                        "maxLength": 4000
                       }
                     },
                     "required": [
@@ -19561,7 +19569,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:452"
+        "x-fonte": "src/rotas/propostasObra.ts:455"
       }
     },
     "/api/com/contratos-cliente/relatorio": {
@@ -19601,7 +19609,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:251",
+        "x-fonte": "src/rotas/propostasObra.ts:254",
         "parameters": [
           {
             "name": "de",
@@ -19669,7 +19677,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:285"
+        "x-fonte": "src/rotas/propostasObra.ts:288"
       }
     },
     "/api/com/contratos-cliente": {
@@ -19708,7 +19716,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:313"
+        "x-fonte": "src/rotas/propostasObra.ts:316"
       }
     },
     "/api/com/obra-propostas/calcular": {
@@ -19860,6 +19868,14 @@
                           "type": "string",
                           "maxLength": 1000
                         }
+                      },
+                      "descontoPct": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "observacoes": {
+                        "type": "string",
+                        "maxLength": 4000
                       }
                     },
                     "required": [
@@ -19954,7 +19970,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:346"
+        "x-fonte": "src/rotas/propostasObra.ts:349"
       }
     },
     "/api/com/obra-propostas/{id}": {
@@ -20003,7 +20019,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:353"
+        "x-fonte": "src/rotas/propostasObra.ts:356"
       },
       "put": {
         "requestBody": {
@@ -20184,6 +20200,14 @@
                           "type": "string",
                           "maxLength": 1000
                         }
+                      },
+                      "descontoPct": {
+                        "type": "number",
+                        "nullable": true
+                      },
+                      "observacoes": {
+                        "type": "string",
+                        "maxLength": 4000
                       }
                     },
                     "required": [
@@ -20295,7 +20319,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:458"
+        "x-fonte": "src/rotas/propostasObra.ts:461"
       }
     },
     "/api/com/obra-propostas/{id}/revisar-ia": {
@@ -20344,7 +20368,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:383"
+        "x-fonte": "src/rotas/propostasObra.ts:386"
       }
     },
     "/api/com/obra-propostas/{id}/enviar": {
@@ -20393,7 +20417,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:492"
+        "x-fonte": "src/rotas/propostasObra.ts:495"
       }
     },
     "/api/com/obra-propostas/{id}/recusar": {
@@ -20440,7 +20464,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:497"
+        "x-fonte": "src/rotas/propostasObra.ts:500"
       }
     },
     "/api/com/obra-propostas/{id}/cancelar": {
@@ -20489,7 +20513,7 @@
             "vendedor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:504"
+        "x-fonte": "src/rotas/propostasObra.ts:507"
       }
     },
     "/api/com/obra-propostas/{id}/aceitar": {
@@ -20536,7 +20560,7 @@
             "gestor"
           ]
         },
-        "x-fonte": "src/rotas/propostasObra.ts:514"
+        "x-fonte": "src/rotas/propostasObra.ts:517"
       }
     },
     "/api/com/incorporacao/estudos-disponiveis": {
