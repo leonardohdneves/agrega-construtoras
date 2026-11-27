@@ -419,7 +419,7 @@ export function rotasPropostasObra(banco: Banco) {
             `UPDATE propostas_obra SET tipo=$2, cliente_id=$3, obra_id=$4, titulo=$5, objeto=$6, endereco=$7, prazo_dias=$8, validade_dias=$9,
                     origem_preco=$10, parametros=$11, valor_total_centavos=$12, condicoes=$13, atualizado_em=now()
               WHERE id=$1`,
-            [id, d.tipo, d.clienteId, d.obraId, d.titulo, d.objeto, d.endereco, d.prazoDias, d.validadeDias, d.origemPreco, JSON.stringify(d.parametros), cent(res.valorTotal), d.condicoes],
+            [id, d.tipo, d.clienteId, d.obraId, d.titulo, d.objeto, d.endereco, d.prazoDias, d.validadeDias, d.origemPreco, JSON.stringify({ ...d.parametros, ...(res.valorSemDesconto !== undefined ? { valorSemDesconto: res.valorSemDesconto, descontoValor: res.descontoValor } : {}) }), cent(res.valorTotal), d.condicoes],
           );
           await c.query('DELETE FROM propostas_obra_itens WHERE proposta_id = $1', [id]);
           await c.query('DELETE FROM propostas_obra_parcelas WHERE proposta_id = $1', [id]);
@@ -429,7 +429,7 @@ export function rotasPropostasObra(banco: Banco) {
             await c.query(
               `INSERT INTO propostas_obra (empresa_id, numero, tipo, cliente_id, obra_id, titulo, objeto, endereco, prazo_dias, validade_dias, origem_preco, parametros, valor_total_centavos, condicoes, criado_por_id)
                VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING id`,
-              [empresaId, numero, d.tipo, d.clienteId, d.obraId, d.titulo, d.objeto, d.endereco, d.prazoDias, d.validadeDias, d.origemPreco, JSON.stringify(d.parametros), cent(res.valorTotal), d.condicoes, usuarioId],
+              [empresaId, numero, d.tipo, d.clienteId, d.obraId, d.titulo, d.objeto, d.endereco, d.prazoDias, d.validadeDias, d.origemPreco, JSON.stringify({ ...d.parametros, ...(res.valorSemDesconto !== undefined ? { valorSemDesconto: res.valorSemDesconto, descontoValor: res.descontoValor } : {}) }), cent(res.valorTotal), d.condicoes, usuarioId],
             )
           ).rows[0];
           propostaId = nova.id;

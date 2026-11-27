@@ -50,7 +50,7 @@ export type Parametros = {
 export type Contexto = { valorObra: number; custoDireto: number }; // reais: venda do orçamento (com BDI) e custo direto
 
 export type Parcela = { descricao: string; vencimento: string; valor: number };
-export type Resultado = { valorTotal: number; parcelas: Parcela[]; itens: (ItemProposta & { valor: number })[] };
+export type Resultado = { valorTotal: number; parcelas: Parcela[]; itens: (ItemProposta & { valor: number })[]; valorSemDesconto?: number; descontoValor?: number };
 
 const dec = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 const cent = (r: number) => Math.round(r * 100);
@@ -81,7 +81,7 @@ export function calcularProposta(tipo: TipoProposta, origemPreco: 'orcamento' | 
   const novoC = Math.round(totalC * (1 - pct / 100));
   const valores = base.parcelas.map((x) => Math.round(cent(x.valor) * (novoC / totalC)));
   if (valores.length) valores[valores.length - 1] += novoC - valores.reduce((t, v) => t + v, 0);
-  return { valorTotal: reais(novoC), parcelas: base.parcelas.map((x, i) => ({ ...x, valor: reais(valores[i]) })), itens: base.itens };
+  return { valorTotal: reais(novoC), parcelas: base.parcelas.map((x, i) => ({ ...x, valor: reais(valores[i]) })), itens: base.itens, valorSemDesconto: reais(totalC), descontoValor: reais(totalC - novoC) };
 }
 
 function calcularBase(tipo: TipoProposta, origemPreco: 'orcamento' | 'informado', p: Parametros, itens: ItemProposta[], ctx: Contexto | null): Resultado {
