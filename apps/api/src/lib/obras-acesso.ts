@@ -45,6 +45,8 @@ export type RegraEngenharia = { tipo: 'lista' } | { tipo: 'consulta' } | { tipo:
  */
 export function regraEngenheiroEngenharia(metodo: string, caminho: string): RegraEngenharia {
   const get = metodo === 'GET';
+  // 3D do 4D/5D: só converte o IFC que a própria pessoa envia, sem ler nem gravar nada de obra.
+  if (caminho === '/ifc/geometria') return { tipo: 'consulta' };
   if (caminho === '/obras' || caminho === '/panorama') return get ? { tipo: 'lista' } : { tipo: 'negado' };
   const cadastro = /^\/obras\/([^/]+)\/?$/.exec(caminho);
   if (cadastro) return get ? { tipo: 'obra', obraId: cadastro[1] } : { tipo: 'negado' };

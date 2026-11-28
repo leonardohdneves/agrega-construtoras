@@ -17,6 +17,7 @@ import { blocoDocumento, chamarIaComFerramenta } from '../lib/ia-documento.ts';
 import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativos, lerQuantitativos, normalizarTexto, pontuarCandidatas, type ComposicaoRef } from '../lib/leitura-projeto.ts';
 import { geraTabelasPorScript, quantitativosDasTabelas, tabelasDoHtml } from '../lib/leitura-html.ts';
 import { quantitativosDoIfc } from '../lib/ifc-leitura.ts';
+import { geometriaDoIfc } from '../lib/ifc-geometria.ts';
 import { FERRAMENTA_COMPOSICOES, LIMITE_ARQUIVO_COMPOSICOES, blocoDoArquivo, ehCsvPadrao, instrucaoComposicoes, lerComposicoesIa, lerCsvPadraoComposicoes, type ItemLido } from '../lib/composicoes-leitura.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
@@ -3449,6 +3450,20 @@ export function rotasEngenharia(banco: Banco) {
         }),
         pendencias: lido.pendencias,
       };
+    });
+
+    /** Geometria do IFC para o desenho 3D das telas 4D/5D. A leitura é feita aqui; nada é gravado. */
+    const corpoPostIfcGeometria = z.object({ arquivo: z.string().min(1) });
+    app.post('/ifc/geometria', { bodyLimit: 40 * 1024 * 1024, schema: { body: corpoPostIfcGeometria } }, async (req) => {
+      const { arquivo } = corpoPostIfcGeometria.parse(req.body);
+      const bytes = Buffer.from(base64Puro(arquivo), 'base64');
+      if (!bytes.length || bytes.length > 30 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 30 MB).');
+      if (!bytes.subarray(0, 64).toString('latin1').includes('ISO-10303-21')) throw new ErroHttp(400, 'Envie um arquivo IFC.');
+      try {
+        return await geometriaDoIfc(new Uint8Array(bytes));
+      } catch (e) {
+        throw new ErroHttp(400, `Não consegui ler o IFC: ${(e as Error).message}`);
+      }
     });
 
     /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */

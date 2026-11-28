@@ -1,7 +1,7 @@
 // Código da página, em arquivo próprio (a política de segurança do Agrega não aceita script inline).
 import * as THREE from './vendor/three/build/three.module.js';
 import { OrbitControls } from './vendor/three/examples/jsm/controls/OrbitControls.js';
-import * as WebIFC from './vendor/web-ifc/web-ifc-api.js';
+import { lerGeometriaIfc } from './agrega/ifc-servidor.js';
 import { intervaloDaObra, diasUteis, corDoElemento, COR } from './cronograma.js';
 import { classificar } from './classificacao_geometrica.js';
 import { assinatura, aprender, sugerir } from './reconhecimento.js';
@@ -102,44 +102,24 @@ function calcularAssinaturas() {
   }
 }
 
-// --- IFC -> three.js (cada peça guarda o GlobalId do elemento) ---
+// --- IFC -> three.js (o Agrega lê o IFC no servidor; cada peça guarda o GlobalId do elemento) ---
 async function carregarIfc(arquivo) {
-  const ifc = new WebIFC.IfcAPI();
-  ifc.SetWasmPath('./vendor/web-ifc/', true);
-  await ifc.Init();
-  const dados = new Uint8Array(await arquivo.arrayBuffer());
-  const modelo = ifc.OpenModel(dados, { COORDINATE_TO_ORIGIN: true });
-  ifc.StreamAllMeshes(modelo, (mesh) => {
-    const expressID = mesh.expressID;
-    let globalId = null;
-    try { globalId = ifc.GetLine(modelo, expressID).GlobalId?.value ?? null; } catch (_) {}
-    for (let i = 0; i < mesh.geometries.size(); i++) {
-      const pg = mesh.geometries.get(i);
-      const g = ifc.GetGeometry(modelo, pg.geometryExpressID);
-      const v = ifc.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize());
-      const idx = ifc.GetIndexArray(g.GetIndexData(), g.GetIndexDataSize());
-      const pos = new Float32Array(v.length / 2), nor = new Float32Array(v.length / 2);
-      for (let k = 0, j = 0; k < v.length; k += 6, j += 3) {
-        pos.set(v.subarray(k, k + 3), j);
-        nor.set(v.subarray(k + 3, k + 6), j);
-      }
-      // geometrias com coordenadas inválidas (NaN) quebram o enquadramento: são ignoradas
-      if (pos.some((x) => !Number.isFinite(x))) continue;
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-      geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-      geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
-      const mat = new THREE.MeshLambertMaterial({ color: COR.SEM_VINCULO, transparent: true, opacity: 0.95 });
-      const m = new THREE.Mesh(geo, mat);
-      m.applyMatrix4(new THREE.Matrix4().fromArray(pg.flatTransformation));
-      m.userData.globalId = globalId;
-      grupoModelo.add(m);
-      estado.elementos.push(m);
-      if (!estado.porGuid.has(globalId)) estado.porGuid.set(globalId, []);
-      estado.porGuid.get(globalId).push(m);
-    }
-  });
-  ifc.CloseModel(modelo);
+  const base = new URLSearchParams(location.search).get('api') || location.origin;
+  const { pecas } = await lerGeometriaIfc({ base, dados: new Uint8Array(await arquivo.arrayBuffer()) });
+  for (const p of pecas) {
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(p.pos, 3));
+    geo.setAttribute('normal', new THREE.BufferAttribute(p.nor, 3));
+    geo.setIndex(new THREE.BufferAttribute(p.idx, 1));
+    const mat = new THREE.MeshLambertMaterial({ color: COR.SEM_VINCULO, transparent: true, opacity: 0.95 });
+    const m = new THREE.Mesh(geo, mat);
+    m.applyMatrix4(new THREE.Matrix4().fromArray(p.matriz));
+    m.userData.globalId = p.guid;
+    grupoModelo.add(m);
+    estado.elementos.push(m);
+    if (!estado.porGuid.has(p.guid)) estado.porGuid.set(p.guid, []);
+    estado.porGuid.get(p.guid).push(m);
+  }
   calcularAssinaturas();
   const caixa = new THREE.Box3().setFromObject(grupoModelo);
   if (!caixa.isEmpty()) controles.target.copy(caixa.getCenter(new THREE.Vector3()));
@@ -228,15 +208,19 @@ ui.play.addEventListener('click', () => {
   }, 300);
 });
 
-// --- entradas de arquivo (o app roda local, sem enviar o modelo a lugar nenhum) ---
+// --- entradas de arquivo (o IFC vai ao servidor do Agrega para ser lido; não fica gravado) ---
 document.getElementById('arquivoIfc').addEventListener('change', async (e) => {
   ui.status.textContent = 'Carregando IFC…';
   estado.porGuid = new Map();
   estado.elementos.forEach((m) => grupoModelo.remove(m));
   estado.elementos = [];
-  await carregarIfc(e.target.files[0]);
-  ui.status.textContent = `IFC carregado (${estado.elementos.length} peças).`;
-  if (estado.dias.length) atualizarData(+ui.slider.value);
+  try {
+    await carregarIfc(e.target.files[0]);
+    ui.status.textContent = `IFC carregado (${estado.elementos.length} peças).`;
+    if (estado.dias.length) atualizarData(+ui.slider.value);
+  } catch (err) {
+    ui.status.textContent = String(err.message ?? err);
+  }
 });
 document.getElementById('arquivoCron').addEventListener('change', async (e) => {
   prepararCronograma(JSON.parse(await e.target.files[0].text()));

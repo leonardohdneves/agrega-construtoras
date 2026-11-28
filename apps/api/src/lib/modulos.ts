@@ -146,7 +146,9 @@ export function acessoPermitido(o: { perfil: Perfil; modulos: string[] | null; p
   if (o.metodo === 'GET' && efetivos.includes('financeiro') && CONSULTAS_FINANCEIRO.some((rx) => rx.test(path))) return true;
   if (o.perfil === 'mestre_obra') {
     // Consulta da Engenharia das obras atribuídas (a rota confere a obra). Nada de alterar.
-    if (o.metodo === 'GET' && modulo === 'engenharia' && efetivos.includes('engenharia')) return true;
+    // A leitura do 3D usa POST só para receber o arquivo; não grava nada.
+    const leitura3d = /^\/api\/eng\/ifc\/geometria\/?$/.test(path);
+    if ((o.metodo === 'GET' || leitura3d) && modulo === 'engenharia' && efetivos.includes('engenharia')) return true;
   }
   if (o.perfil === 'engenheiro_obra') {
     // Contratos e medições das obras dele (a rota confere a obra); listas de cadastro para preenchê-los.
