@@ -6,7 +6,7 @@
 //   float32 posições | float32 normais | uint32 índices | uint32 elemento da peça | uint32 forma da peça | float32 matrizes
 // O leitor fica em public/4d/agrega/modelo3d.js.
 import { createHash } from 'node:crypto';
-import { gzipSync } from 'node:zlib';
+import { gunzipSync, gzipSync } from 'node:zlib';
 import * as WebIFC from 'web-ifc';
 import { tiposDosElementos } from './ifc-geometria.ts';
 
@@ -17,6 +17,20 @@ export type ResumoModelo3d = { elementos: number; pecas: number; formas: number;
 type Forma = { pos: Float32Array; nor: Float32Array; idx: Uint32Array };
 
 const bytesDe = (v: Float32Array | Uint32Array) => Buffer.from(v.buffer, v.byteOffset, v.byteLength);
+
+/** O arquivo é um modelo convertido inteiro? Confere antes de guardar (o conteúdo descompactado tem teto). */
+export function ehModelo3d(bytes: Buffer): boolean {
+  try {
+    const dados = gunzipSync(bytes, { maxOutputLength: 300 * 1024 * 1024 });
+    if (dados.length < 12 || dados.toString('latin1', 0, 4) !== 'AG3D' || dados.readUInt32LE(4) !== VERSAO_MODELO3D) return false;
+    const tamanho = dados.readUInt32LE(8);
+    const cab = JSON.parse(dados.toString('utf8', 12, 12 + tamanho));
+    // posições e normais (24 bytes por vértice), índices (4) e, por peça, elemento, forma e matriz (72)
+    return dados.length === 12 + tamanho + cab.vertices * 24 + cab.indices * 4 + cab.pecas * 72;
+  } catch {
+    return false;
+  }
+}
 
 export async function converterIfc(bytes: Uint8Array, origem: string): Promise<{ arquivo: Buffer; resumo: ResumoModelo3d }> {
   const ifc = new WebIFC.IfcAPI();

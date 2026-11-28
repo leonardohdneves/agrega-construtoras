@@ -18,6 +18,7 @@ import { FERRAMENTA_QUANTITATIVOS, base64Puro, ehPdfBase64, instrucaoQuantitativ
 import { geraTabelasPorScript, quantitativosDasTabelas, tabelasDoHtml } from '../lib/leitura-html.ts';
 import { quantitativosDoIfc } from '../lib/ifc-leitura.ts';
 import { geometriaDoIfc } from '../lib/ifc-geometria.ts';
+import { ehModelo3d } from '../lib/modelo3d.ts';
 import { FERRAMENTA_COMPOSICOES, LIMITE_ARQUIVO_COMPOSICOES, blocoDoArquivo, ehCsvPadrao, instrucaoComposicoes, lerComposicoesIa, lerCsvPadraoComposicoes, type ItemLido } from '../lib/composicoes-leitura.ts';
 import { caminhoDaRota, empresaDo, exigir } from '../sessao.ts';
 import { LIMITE_IA } from '../lib/limites.ts';
@@ -3465,6 +3466,63 @@ export function rotasEngenharia(banco: Banco) {
       } catch (e) {
         throw new ErroHttp(400, `Não consegui ler o IFC: ${(e as Error).message}`);
       }
+    });
+
+    /** Modelo 3D convertido (.agrega3d) guardado na obra: dados do arquivo, sem o conteúdo. */
+    app.get<{ Params: { id: string } }>('/obras/:id/modelo-3d', async (req) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const m = (
+        await banco.query(
+          `SELECT m.nome, m.tamanho, m.enviado_em, u.nome AS enviado_por
+             FROM obra_modelos_3d m LEFT JOIN usuarios u ON u.id = m.enviado_por_id
+            WHERE m.obra_id = $1 AND m.empresa_id = $2`,
+          [req.params.id, empresaId],
+        )
+      ).rows[0];
+      return { modelo: m ? { nome: m.nome as string, tamanho: m.tamanho as number, enviadoEm: m.enviado_em, enviadoPor: m.enviado_por as string | null } : null };
+    });
+
+    app.get<{ Params: { id: string } }>('/obras/:id/modelo-3d/arquivo', async (req, reply) => {
+      const empresaId = empresaDo(req);
+      await obraDaEmpresa(banco, empresaId, req.params.id);
+      const m = (await banco.query('SELECT conteudo FROM obra_modelos_3d WHERE obra_id = $1 AND empresa_id = $2', [req.params.id, empresaId])).rows[0];
+      if (!m) throw naoEncontrado('Modelo 3D');
+      reply.header('Content-Type', 'application/octet-stream').header('Cache-Control', 'private, no-store');
+      return reply.send(m.conteudo);
+    });
+
+    /** Guarda o modelo na obra; enviar de novo substitui o anterior. O IFC não vem: só o arquivo já convertido. */
+    const corpoPutObrasModelo3d = z.object({ arquivo: z.string().min(1), nome: z.string().trim().min(1).max(2000).transform((v) => v.slice(-200)) });
+    app.put<{ Params: { id: string } }>('/obras/:id/modelo-3d', { bodyLimit: 28 * 1024 * 1024, schema: { body: corpoPutObrasModelo3d } }, async (req) => {
+      const empresaId = empresaDo(req);
+      const d = corpoPutObrasModelo3d.parse(req.body);
+      const bytes = Buffer.from(base64Puro(d.arquivo), 'base64');
+      if (!bytes.length || bytes.length > 20 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 20 MB).');
+      if (!ehModelo3d(bytes)) throw new ErroHttp(400, 'Envie um modelo convertido (.agrega3d). Se ele foi gerado por uma versão antiga, converta o IFC de novo.');
+      await emTransacao(banco, async (c) => {
+        await obraDaEmpresa(c, empresaId, req.params.id);
+        await c.query(
+          `INSERT INTO obra_modelos_3d (obra_id, empresa_id, nome, tamanho, conteudo, enviado_por_id)
+           VALUES ($1, $2, $3, $4, $5, $6)
+           ON CONFLICT (obra_id) DO UPDATE SET nome = EXCLUDED.nome, tamanho = EXCLUDED.tamanho, conteudo = EXCLUDED.conteudo,
+             enviado_por_id = EXCLUDED.enviado_por_id, enviado_em = now()`,
+          [req.params.id, empresaId, d.nome, bytes.length, bytes, req.usuario!.id],
+        );
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'criar', entidade: 'obra_modelos_3d', entidadeId: req.params.id, depois: { nome: d.nome, tamanho: bytes.length } });
+      });
+      return { ok: true };
+    });
+
+    app.delete<{ Params: { id: string } }>('/obras/:id/modelo-3d', async (req) => {
+      const empresaId = empresaDo(req);
+      await emTransacao(banco, async (c) => {
+        await obraDaEmpresa(c, empresaId, req.params.id);
+        const r = await c.query('DELETE FROM obra_modelos_3d WHERE obra_id = $1 AND empresa_id = $2 RETURNING nome', [req.params.id, empresaId]);
+        if (!r.rowCount) throw naoEncontrado('Modelo 3D');
+        await auditar(c, { empresaId, usuarioId: req.usuario!.id, acao: 'excluir', entidade: 'obra_modelos_3d', entidadeId: req.params.id, antes: { nome: r.rows[0].nome } });
+      });
+      return { ok: true };
     });
 
     /** Lê o PDF do projeto pela IA e sugere composições já cadastradas. Não grava nada: o usuário confirma na planilha. */
