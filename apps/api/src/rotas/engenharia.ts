@@ -3428,12 +3428,13 @@ export function rotasEngenharia(banco: Banco) {
      * composições já cadastradas. Não grava nada: o usuário confere na tela e lança depois.
      */
     const corpoPostObrasLeituraIfc = z.object({ arquivo: z.string().min(1), nome: z.string().max(2000).optional().transform((v) => v?.slice(-200)) });
-    app.post<{ Params: { id: string } }>('/obras/:id/leitura-ifc', { bodyLimit: 40 * 1024 * 1024, schema: { body: corpoPostObrasLeituraIfc } }, async (req) => {
+    // 60 MB de IFC (modelo de estrutura com ligações passa de 40 MB); o corpo vai em base64, um terço maior.
+    app.post<{ Params: { id: string } }>('/obras/:id/leitura-ifc', { bodyLimit: 84 * 1024 * 1024, schema: { body: corpoPostObrasLeituraIfc } }, async (req) => {
       const { arquivo } = corpoPostObrasLeituraIfc.parse(req.body);
       const empresaId = empresaDo(req);
       const obra = await obraDaEmpresa(banco, empresaId, req.params.id);
       const bytes = Buffer.from(base64Puro(arquivo), 'base64');
-      if (!bytes.length || bytes.length > 30 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 30 MB).');
+      if (!bytes.length || bytes.length > 60 * 1024 * 1024) throw new ErroHttp(400, 'Arquivo vazio ou grande demais (máximo 60 MB).');
       if (!bytes.subarray(0, 64).toString('latin1').includes('ISO-10303-21')) throw new ErroHttp(400, 'Envie um arquivo IFC.');
       let lido: Awaited<ReturnType<typeof quantitativosDoIfc>>;
       try {
