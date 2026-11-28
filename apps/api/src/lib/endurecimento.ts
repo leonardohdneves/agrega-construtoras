@@ -22,20 +22,14 @@ export const CSP = [
   "frame-ancestors 'none'",
 ].join('; ');
 
-/**
- * Ferramentas 3D/5D em /4d/: a leitura de IFC usa WebAssembly, que precisa de 'wasm-unsafe-eval' (sem eval de texto).
- * Só essa pasta recebe a exceção; o resto do sistema segue com a política acima.
- */
-export const CSP_4D = CSP.replace("script-src 'self'", "script-src 'self' 'wasm-unsafe-eval'");
-
 /** Cabeçalhos de segurança em toda resposta. HSTS só em produção (no localhost quebraria o http). */
 export function cabecalhosSeguranca(producao: boolean) {
-  return async (req: FastifyRequest, reply: FastifyReply, payload: unknown) => {
+  return async (_req: FastifyRequest, reply: FastifyReply, payload: unknown) => {
     reply.header('X-Content-Type-Options', 'nosniff');
     reply.header('X-Frame-Options', 'DENY');
     reply.header('Referrer-Policy', 'strict-origin-when-cross-origin');
     reply.header('Permissions-Policy', 'camera=(self), microphone=(), geolocation=(self)');
-    reply.header('Content-Security-Policy', req.url.startsWith('/4d/') ? CSP_4D : CSP);
+    reply.header('Content-Security-Policy', CSP);
     if (producao) reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
     return payload;
   };

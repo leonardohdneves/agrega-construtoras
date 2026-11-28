@@ -22,15 +22,15 @@ const ARQUIVOS = [
   ['src/agrega/dados5d.js', 'agrega/dados5d.js'],
   ['src/viewer4d.js', 'viewer4d.js'],
   ['src/custo5d.js', 'custo5d.js'],
+  ['src/agrega/ifc-servidor.js', 'agrega/ifc-servidor.js'],
 ];
 
-// Bibliotecas de 3D e IFC: copiadas de node_modules da pasta de origem para /4d/vendor/. Os caminhos nos módulos
+// Biblioteca de 3D: copiada de node_modules da pasta de origem para /4d/vendor/. Os caminhos nos módulos
 // (../node_modules/...) viram ./vendor/..., porque o site não pode carregar nada de fora (política de segurança).
+// O IFC é lido no servidor do Agrega; o navegador não precisa do web-ifc.
 const VENDOR = [
   ['node_modules/three/build/three.module.js', 'vendor/three/build/three.module.js'],
   ['node_modules/three/examples/jsm/controls/OrbitControls.js', 'vendor/three/examples/jsm/controls/OrbitControls.js', (t) => t.replace(/from 'three'/g, "from '../../../build/three.module.js'")],
-  ['node_modules/web-ifc/web-ifc-api.js', 'vendor/web-ifc/web-ifc-api.js'],
-  ['node_modules/web-ifc/web-ifc.wasm', 'vendor/web-ifc/web-ifc.wasm'],
 ];
 
 const normalizar = (t) => t.replace(/\r\n/g, '\n');

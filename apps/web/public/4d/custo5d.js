@@ -1,7 +1,7 @@
 // Código da página, em arquivo próprio (a política de segurança do Agrega não aceita script inline).
 import * as THREE from './vendor/three/build/three.module.js';
 import { OrbitControls } from './vendor/three/examples/jsm/controls/OrbitControls.js';
-import * as WebIFC from './vendor/web-ifc/web-ifc-api.js';
+import { lerGeometriaIfc } from './agrega/ifc-servidor.js';
 import { corDoElemento, COR } from './cronograma.js';
 import { carregarDadosObra, hojeIso } from './agrega/dados5d.js';
 import { classificar } from './classificacao_geometrica.js';
@@ -229,10 +229,6 @@ $('vVirar').addEventListener('click', () => {
 });
 
 // ---------- carregamento do IFC com barra de progresso ----------
-const TIPOS_ELEMENTO = ['IFCBUILDINGELEMENTPROXY', 'IFCWALL', 'IFCWALLSTANDARDCASE', 'IFCSLAB', 'IFCCOLUMN', 'IFCBEAM',
-  'IFCMEMBER', 'IFCPLATE', 'IFCFOOTING', 'IFCPILE', 'IFCDOOR', 'IFCWINDOW', 'IFCROOF', 'IFCSTAIR', 'IFCSTAIRFLIGHT',
-  'IFCRAILING', 'IFCCOVERING', 'IFCFURNISHINGELEMENT', 'IFCFLOWSEGMENT', 'IFCFLOWTERMINAL', 'IFCFLOWFITTING',
-  'IFCBUILDINGELEMENTPART', 'IFCCURTAINWALL', 'IFCRAMP', 'IFCRAMPFLIGHT'];
 const LOTE = 150; // elementos por lote; entre lotes a tela é redesenhada (barra avança)
 
 function mostrarCarregando(fase, pct) {
@@ -245,78 +241,50 @@ function ocultarCarregando() { $('carregando').hidden = true; }
 // pausa curta para o navegador redesenhar a barra; não depende de requestAnimationFrame (que pausa em abas ocultas)
 const proximoQuadro = () => new Promise((r) => setTimeout(r, 0));
 
+// O Agrega lê o IFC no servidor; aqui só montamos as malhas.
 async function carregarIfc(arquivo) {
-  mostrarCarregando('Lendo o arquivo', 0);
-  await proximoQuadro();
-  const dados = new Uint8Array(await arquivo.arrayBuffer());
-  const ifc = new WebIFC.IfcAPI();
-  ifc.SetWasmPath('./vendor/web-ifc/', true);
-  await ifc.Init();
-  mostrarCarregando('Abrindo o modelo', 5);
-  await proximoQuadro();
-  const modelo = ifc.OpenModel(dados, { COORDINATE_TO_ORIGIN: true });
+  try {
+    mostrarCarregando('Enviando o modelo ao Agrega', 5);
+    await proximoQuadro();
+    const base = new URLSearchParams(location.search).get('api') || location.origin;
+    const { pecas, ignoradas } = await lerGeometriaIfc({ base, dados: new Uint8Array(await arquivo.arrayBuffer()) });
+    // só as classes de elemento conhecidas entram nesta tela
+    const elementos = pecas.filter((p) => p.tipo);
 
-  // lista os elementos dos tipos conhecidos
-  const ids = []; // { id, tipo }
-  for (const tipo of TIPOS_ELEMENTO) {
-    if (typeof WebIFC[tipo] !== 'number') continue;
-    const v = ifc.GetLineIDsWithType(modelo, WebIFC[tipo]);
-    for (let i = 0; i < v.size(); i++) ids.push({ id: v.get(i), tipo });
-  }
-
-  grupoModelo.clear();
-  estado.elementos = [];
-  estado.porGuid = new Map();
-  let ignorados = 0;
-  for (let inicio = 0; inicio < ids.length; inicio += LOTE) {
-    const fim = Math.min(inicio + LOTE, ids.length);
-    for (let k = inicio; k < fim; k++) {
-      const fm = ifc.GetFlatMesh(modelo, ids[k].id);
-      let globalId = null, nome = null;
-      try {
-        const linha = ifc.GetLine(modelo, ids[k].id);
-        globalId = linha.GlobalId?.value ?? null;
-        nome = linha.Name?.value ?? null;
-      } catch (_) {}
-      for (let i = 0; i < fm.geometries.size(); i++) {
-        const pg = fm.geometries.get(i);
-        const g = ifc.GetGeometry(modelo, pg.geometryExpressID);
-        const v = ifc.GetVertexArray(g.GetVertexData(), g.GetVertexDataSize());
-        const idx = ifc.GetIndexArray(g.GetIndexData(), g.GetIndexDataSize());
-        const pos = new Float32Array(v.length / 2), nor = new Float32Array(v.length / 2);
-        for (let q = 0, j = 0; q < v.length; q += 6, j += 3) {
-          pos.set(v.subarray(q, q + 3), j);
-          nor.set(v.subarray(q + 3, q + 6), j);
-        }
-        // geometrias com coordenadas inválidas (NaN) quebram o enquadramento: são ignoradas
-        if (pos.some((x) => !Number.isFinite(x))) { ignorados++; continue; }
+    grupoModelo.clear();
+    estado.elementos = [];
+    estado.porGuid = new Map();
+    for (let inicio = 0; inicio < elementos.length; inicio += LOTE) {
+      const fim = Math.min(inicio + LOTE, elementos.length);
+      for (let k = inicio; k < fim; k++) {
+        const p = elementos[k];
         const geo = new THREE.BufferGeometry();
-        geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-        geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-        geo.setIndex(new THREE.BufferAttribute(new Uint32Array(idx), 1));
+        geo.setAttribute('position', new THREE.BufferAttribute(p.pos, 3));
+        geo.setAttribute('normal', new THREE.BufferAttribute(p.nor, 3));
+        geo.setIndex(new THREE.BufferAttribute(p.idx, 1));
         const m = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: COR.SEM_VINCULO }));
-        m.applyMatrix4(new THREE.Matrix4().fromArray(pg.flatTransformation));
-        m.userData.globalId = globalId;
-        m.userData.nome = nome;
-        m.userData.tipo = ids[k].tipo.replace(/^IFC/, '');
+        m.applyMatrix4(new THREE.Matrix4().fromArray(p.matriz));
+        m.userData.globalId = p.guid;
+        m.userData.nome = p.nome;
+        m.userData.tipo = p.tipo;
         grupoModelo.add(m);
         estado.elementos.push(m);
-        if (!estado.porGuid.has(globalId)) estado.porGuid.set(globalId, []);
-        estado.porGuid.get(globalId).push(m);
+        if (!estado.porGuid.has(p.guid)) estado.porGuid.set(p.guid, []);
+        estado.porGuid.get(p.guid).push(m);
       }
+      mostrarCarregando('Montando a geometria', 10 + (fim / elementos.length) * 85);
+      await proximoQuadro();
     }
-    mostrarCarregando('Montando a geometria', 10 + (fim / ids.length) * 85);
+    mostrarCarregando('Calculando classes', 97);
     await proximoQuadro();
+    calcularAssinaturas();
+    enquadrar();
+    if (ignoradas) console.warn(`${ignoradas} geometria(s) com coordenadas inválidas foram ignoradas.`);
+    atualizarTempo();
+    renderLista();
+  } finally {
+    ocultarCarregando();
   }
-  ifc.CloseModel(modelo);
-  mostrarCarregando('Calculando classes', 97);
-  await proximoQuadro();
-  calcularAssinaturas();
-  enquadrar();
-  if (ignorados) console.warn(`${ignorados} geometria(s) com coordenadas inválidas foram ignoradas.`);
-  atualizarTempo();
-  renderLista();
-  ocultarCarregando();
 }
 
 // classe e assinatura de cada elemento, a partir da caixa no mundo (para o reconhecimento)
@@ -516,7 +484,7 @@ function prepararCurva(json) {
 function prepararEtapas(json) {
   estado.pr = json;
   const etapas = json.linhas.filter((l) => l.nivel === 'etapa');
-  const maxP = Math.max(...etapas.map((e) => e.custoPrevisto));
+  const maxP = Math.max(0, ...etapas.map((e) => e.custoPrevisto)) || 1;
   $('etapas').innerHTML = etapas.map((e) => {
     const pv = (e.custoPrevisto / maxP * 100).toFixed(1);
     const ex = (e.executado / maxP * 100).toFixed(1);
@@ -535,8 +503,9 @@ function desenharCurva(i = +$('tempo').value) {
   const pontos = estado.curva?.pontos;
   if (!pontos) return;
   const W = 400, H = 240, pl = 52, pr = 10, pt = 10, pb = 28;
-  const max = Math.ceil(Math.max(...pontos.map((p) => p.previsto)) / 10000) * 10000;
-  const xi = (j) => pl + (j / (pontos.length - 1)) * (W - pl - pr);
+  // obra sem custo ou com um só mês: a escala não pode dividir por zero
+  const max = Math.ceil(Math.max(0, ...pontos.map((p) => p.previsto)) / 10000) * 10000 || 10000;
+  const xi = (j) => pl + (j / Math.max(pontos.length - 1, 1)) * (W - pl - pr);
   const yv = (v) => pt + (1 - v / max) * (H - pt - pb);
   let g = '';
   for (let k = 0; k <= 4; k++) {
@@ -643,7 +612,11 @@ $('play').addEventListener('click', () => {
 // ---------- entradas ----------
 $('arquivoIfc').addEventListener('change', async (e) => {
   $('aviso').textContent = 'Carregando IFC…';
-  await carregarIfc(e.target.files[0]);
+  try {
+    await carregarIfc(e.target.files[0]);
+  } catch (err) {
+    $('aviso').textContent = 'O modelo 3D não abriu: ' + String(err.message ?? err).slice(0, 160);
+  }
 });
 $('arquivoVinc').addEventListener('change', async (e) => {
   estado.vinculos = JSON.parse(await e.target.files[0].text());
