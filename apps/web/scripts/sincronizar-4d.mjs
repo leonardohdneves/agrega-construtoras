@@ -20,6 +20,17 @@ const ARQUIVOS = [
   ['src/agrega/planejamento.js', 'agrega/planejamento.js'],
   ['src/agrega/cronograma5d.js', 'agrega/cronograma5d.js'],
   ['src/agrega/dados5d.js', 'agrega/dados5d.js'],
+  ['src/viewer4d.js', 'viewer4d.js'],
+  ['src/custo5d.js', 'custo5d.js'],
+];
+
+// Bibliotecas de 3D e IFC: copiadas de node_modules da pasta de origem para /4d/vendor/. Os caminhos nos módulos
+// (../node_modules/...) viram ./vendor/..., porque o site não pode carregar nada de fora (política de segurança).
+const VENDOR = [
+  ['node_modules/three/build/three.module.js', 'vendor/three/build/three.module.js'],
+  ['node_modules/three/examples/jsm/controls/OrbitControls.js', 'vendor/three/examples/jsm/controls/OrbitControls.js', (t) => t.replace(/from 'three'/g, "from '../../../build/three.module.js'")],
+  ['node_modules/web-ifc/web-ifc-api.js', 'vendor/web-ifc/web-ifc-api.js'],
+  ['node_modules/web-ifc/web-ifc.wasm', 'vendor/web-ifc/web-ifc.wasm'],
 ];
 
 const normalizar = (t) => t.replace(/\r\n/g, '\n');
@@ -32,6 +43,7 @@ const PAGINAS = ['viewer4d.html', 'custo5d.html'];
 const DADOS = ['agrega_obra_leo.json', 'curvaS_leo.json', 'previsto_realizado_leo.json', 'exemplo_casa.ifc'];
 
 const ajustarPagina = (t) => t.replace(/'\.\.\/src\/([^']+)'/g, "'./$1'").replace(/'\/data\//g, "'data/");
+const ajustarModulo = (t) => t.replace(/'\.\.\/node_modules\//g, "'./vendor/").replace(/'\.\.\/src\//g, "'./").replace(/'\/data\//g, "'data/");
 
 /** Conteúdo que deve estar em cada arquivo do destino. */
 function esperado() {
@@ -39,7 +51,13 @@ function esperado() {
   for (const [de, para] of ARQUIVOS) {
     const caminho = join(origem, de);
     if (!existsSync(caminho)) throw new Error(`Falta o arquivo de origem: ${caminho}`);
-    saida.set(para, readFileSync(caminho, 'utf8'));
+    saida.set(para, ajustarModulo(readFileSync(caminho, 'utf8')));
+  }
+  for (const [de, para, ajuste] of VENDOR) {
+    const caminho = join(origem, de);
+    if (!existsSync(caminho)) throw new Error(`Falta a biblioteca: ${caminho}. Rode npm install na pasta ${origem}.`);
+    const bruto = de.endsWith('.wasm') ? readFileSync(caminho) : readFileSync(caminho, 'utf8');
+    saida.set(para, ajuste && typeof bruto === 'string' ? ajuste(bruto) : bruto);
   }
   for (const pagina of PAGINAS) {
     const caminho = join(origem, 'src', pagina);
