@@ -2,6 +2,7 @@
 import * as THREE from './vendor/three/build/three.module.js';
 import { OrbitControls } from './vendor/three/examples/jsm/controls/OrbitControls.js';
 import { lerGeometriaIfc } from './agrega/ifc-servidor.js';
+import { lerModelo3d } from './agrega/modelo3d.js';
 import { corDoElemento, COR } from './cronograma.js';
 import { carregarDadosObra, hojeIso } from './agrega/dados5d.js';
 import { classificar } from './classificacao_geometrica.js';
@@ -252,6 +253,8 @@ async function carregarIfc(arquivo) {
     const elementos = pecas.filter((p) => p.tipo);
 
     grupoModelo.clear();
+    estado.extras = null;
+    $('rotuloExtras').hidden = true;
     estado.elementos = [];
     estado.porGuid = new Map();
     for (let inicio = 0; inicio < elementos.length; inicio += LOTE) {
@@ -282,6 +285,77 @@ async function carregarIfc(arquivo) {
     if (ignoradas) console.warn(`${ignoradas} geometria(s) com coordenadas inválidas foram ignoradas.`);
     atualizarTempo();
     renderLista();
+  } finally {
+    ocultarCarregando();
+  }
+}
+
+// Modelo convertido no computador (.agrega3d): nada é enviado. Cada forma vira uma geometria compartilhada.
+// Elementos da obra são peças clicáveis; parafusos e afins vão em lote, escondidos até a pessoa pedir.
+async function carregarModelo3d(arquivo) {
+  try {
+    mostrarCarregando('Abrindo o modelo convertido', 5);
+    await proximoQuadro();
+    const modelo = await lerModelo3d(await arquivo.arrayBuffer());
+    const geometrias = modelo.formas.map((f) => {
+      const geo = new THREE.BufferGeometry();
+      geo.setAttribute('position', new THREE.BufferAttribute(f.pos, 3));
+      geo.setAttribute('normal', new THREE.BufferAttribute(f.nor, 3));
+      geo.setIndex(new THREE.BufferAttribute(f.idx, 1));
+      return geo;
+    });
+
+    grupoModelo.clear();
+    estado.elementos = [];
+    estado.porGuid = new Map();
+    estado.selecao.clear();
+    const emLote = new Map(); // forma -> peças sem classe de elemento
+    for (let inicio = 0; inicio < modelo.pecas; inicio += 2000) {
+      const fim = Math.min(inicio + 2000, modelo.pecas);
+      for (let k = inicio; k < fim; k++) {
+        const el = modelo.elementos[modelo.pecaElemento[k]];
+        const forma = modelo.pecaForma[k];
+        if (!el.tipo) {
+          if (!emLote.has(forma)) emLote.set(forma, []);
+          emLote.get(forma).push(k);
+          continue;
+        }
+        const m = new THREE.Mesh(geometrias[forma], new THREE.MeshLambertMaterial({ color: COR.SEM_VINCULO }));
+        m.applyMatrix4(new THREE.Matrix4().fromArray(modelo.matrizes, k * 16));
+        m.userData.globalId = el.guid;
+        m.userData.nome = el.nome;
+        m.userData.tipo = el.tipo;
+        grupoModelo.add(m);
+        estado.elementos.push(m);
+        if (!estado.porGuid.has(el.guid)) estado.porGuid.set(el.guid, []);
+        estado.porGuid.get(el.guid).push(m);
+      }
+      mostrarCarregando('Montando a geometria', 10 + (fim / modelo.pecas) * 80);
+      await proximoQuadro();
+    }
+
+    const extras = new THREE.Group();
+    const cinza = new THREE.MeshLambertMaterial({ color: 0x5f5e5a });
+    let quantosExtras = 0;
+    for (const [forma, lista] of emLote) {
+      const lote = new THREE.InstancedMesh(geometrias[forma], cinza, lista.length);
+      lista.forEach((k, i) => lote.setMatrixAt(i, new THREE.Matrix4().fromArray(modelo.matrizes, k * 16)));
+      extras.add(lote);
+      quantosExtras += lista.length;
+    }
+    extras.visible = $('chkExtras').checked;
+    grupoModelo.add(extras);
+    estado.extras = extras;
+    $('rotuloExtras').hidden = !quantosExtras;
+    $('quantosExtras').textContent = quantosExtras.toLocaleString('pt-BR');
+
+    mostrarCarregando('Calculando classes', 95);
+    await proximoQuadro();
+    calcularAssinaturas();
+    enquadrar();
+    atualizarTempo();
+    renderLista();
+    $('avisoAside').textContent = `Modelo aberto do computador: ${modelo.origem}.`;
   } finally {
     ocultarCarregando();
   }
@@ -618,6 +692,16 @@ $('arquivoIfc').addEventListener('change', async (e) => {
     $('aviso').textContent = 'O modelo 3D não abriu: ' + String(err.message ?? err).slice(0, 160);
   }
 });
+$('arquivoModelo').addEventListener('change', async (e) => {
+  if (!e.target.files[0]) return;
+  $('aviso').textContent = 'Abrindo o modelo…';
+  try {
+    await carregarModelo3d(e.target.files[0]);
+  } catch (err) {
+    $('aviso').textContent = 'O modelo 3D não abriu: ' + String(err.message ?? err).slice(0, 160);
+  }
+});
+$('chkExtras').addEventListener('change', (e) => { if (estado.extras) estado.extras.visible = e.target.checked; });
 $('arquivoVinc').addEventListener('change', async (e) => {
   estado.vinculos = JSON.parse(await e.target.files[0].text());
   renderLista();
