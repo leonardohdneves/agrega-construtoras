@@ -24,6 +24,7 @@ const ARQUIVOS = [
   ['src/custo5d.js', 'custo5d.js'],
   ['src/agrega/ifc-servidor.js', 'agrega/ifc-servidor.js'],
   ['src/agrega/modelo3d.js', 'agrega/modelo3d.js'],
+  ['src/agrega/modelo-obra.js', 'agrega/modelo-obra.js'],
 ];
 
 // Biblioteca de 3D: copiada de node_modules da pasta de origem para /4d/vendor/. Os caminhos nos módulos

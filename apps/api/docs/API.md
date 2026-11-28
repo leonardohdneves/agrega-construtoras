@@ -14,11 +14,11 @@
 - **O que faz:** vem do comentário acima da rota no código. Rota sem comentário fica em branco.
 - **Corpo e consulta:** campos de primeiro nível; `*` marca os obrigatórios. Os parâmetros de consulta são lidos do código e saem todos como texto.
 
-Total: 425 rotas, 10 públicas, 4 do legado da concreteira.
+Total: 429 rotas, 10 públicas, 4 do legado da concreteira.
 
 ## Engenharia
 
-130 rotas.
+134 rotas.
 
 | Rota | O que faz | Acesso | Consulta | Corpo |
 |---|---|---|---|---|
@@ -117,6 +117,10 @@ Total: 425 rotas, 10 públicas, 4 do legado da concreteira.
 | `POST /api/eng/obras/{id}/leitura-html` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `POST /api/eng/obras/{id}/leitura-ifc` | 60 MB de IFC (modelo de estrutura com ligações passa de 40 MB); o corpo vai em base64, um terço maior. | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `POST /api/eng/ifc/geometria` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  | `arquivo`* |
+| `GET /api/eng/obras/{id}/modelo-3d` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
+| `PUT /api/eng/obras/{id}/modelo-3d` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome`* |
+| `DELETE /api/eng/obras/{id}/modelo-3d` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |
+| `GET /api/eng/obras/{id}/modelo-3d/arquivo` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `POST /api/eng/obras/{id}/leitura-projeto` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `PUT /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `nivel`, `paiId`, `itemId`, `quantidade` |
 | `DELETE /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  |  |

@@ -3,6 +3,7 @@ import * as THREE from './vendor/three/build/three.module.js';
 import { OrbitControls } from './vendor/three/examples/jsm/controls/OrbitControls.js';
 import { lerGeometriaIfc } from './agrega/ifc-servidor.js';
 import { lerModelo3d } from './agrega/modelo3d.js';
+import { baixarModelo, descreverModelo, guardarModelo, infoModelo, removerModelo } from './agrega/modelo-obra.js';
 import { corDoElemento, COR } from './cronograma.js';
 import { carregarDadosObra, hojeIso } from './agrega/dados5d.js';
 import { classificar } from './classificacao_geometrica.js';
@@ -355,7 +356,7 @@ async function carregarModelo3d(arquivo) {
     enquadrar();
     atualizarTempo();
     renderLista();
-    $('avisoAside').textContent = `Modelo aberto do computador: ${modelo.origem}.`;
+    return modelo.origem;
   } finally {
     ocultarCarregando();
   }
@@ -685,6 +686,9 @@ $('play').addEventListener('click', () => {
 
 // ---------- entradas ----------
 $('arquivoIfc').addEventListener('change', async (e) => {
+  escolheuArquivo = true;
+  paraGuardar = null;
+  $('btnGuardar').hidden = true;
   $('aviso').textContent = 'Carregando IFC…';
   try {
     await carregarIfc(e.target.files[0]);
@@ -692,13 +696,75 @@ $('arquivoIfc').addEventListener('change', async (e) => {
     $('aviso').textContent = 'O modelo 3D não abriu: ' + String(err.message ?? err).slice(0, 160);
   }
 });
+// ---------- modelo guardado na obra (só quando a tela foi aberta com ?obraId) ----------
+let escolheuArquivo = false; // quem já escolheu um arquivo não tem a escolha trocada pelo modelo guardado
+let paraGuardar = null; // { arquivo, nome } do modelo aberto do computador
+const ondeGuardar = () => ({ base: new URLSearchParams(location.search).get('api') || location.origin, obraId: new URLSearchParams(location.search).get('obraId') });
+
+function mostrarGuardado(modelo) {
+  $('modeloObra').textContent = modelo ? descreverModelo(modelo) : 'Esta obra ainda não tem modelo 3D guardado.';
+  $('btnRemoverModelo').hidden = !modelo;
+}
+
+async function abrirModeloDaObra() {
+  try {
+    const modelo = await infoModelo(ondeGuardar());
+    mostrarGuardado(modelo);
+    if (!modelo) {
+      $('aviso').textContent = 'Esta obra ainda não tem modelo 3D guardado. Em Arquivos, escolha o modelo convertido e clique em Guardar na obra.';
+      return;
+    }
+    mostrarCarregando('Baixando o modelo da obra', 3);
+    const blob = await baixarModelo(ondeGuardar());
+    if (!escolheuArquivo) await carregarModelo3d(blob);
+  } catch (err) {
+    $('aviso').textContent = 'O modelo 3D da obra não abriu: ' + String(err.message ?? err).slice(0, 160);
+  } finally {
+    ocultarCarregando();
+  }
+}
+
 $('arquivoModelo').addEventListener('change', async (e) => {
-  if (!e.target.files[0]) return;
+  const arquivo = e.target.files[0];
+  if (!arquivo) return;
+  escolheuArquivo = true;
+  paraGuardar = null;
+  $('btnGuardar').hidden = true;
   $('aviso').textContent = 'Abrindo o modelo…';
   try {
-    await carregarModelo3d(e.target.files[0]);
+    const nome = await carregarModelo3d(arquivo);
+    $('avisoAside').textContent = `Modelo aberto do computador: ${nome}.`;
+    if (ondeGuardar().obraId) {
+      paraGuardar = { arquivo, nome };
+      $('btnGuardar').hidden = false;
+    }
   } catch (err) {
     $('aviso').textContent = 'O modelo 3D não abriu: ' + String(err.message ?? err).slice(0, 160);
+  }
+});
+$('btnGuardar').addEventListener('click', async () => {
+  if (!paraGuardar) return;
+  $('btnGuardar').disabled = true;
+  $('avisoAside').textContent = 'Guardando o modelo na obra…';
+  try {
+    await guardarModelo({ ...ondeGuardar(), dados: new Uint8Array(await paraGuardar.arquivo.arrayBuffer()), nome: paraGuardar.nome });
+    mostrarGuardado(await infoModelo(ondeGuardar()));
+    $('btnGuardar').hidden = true;
+    $('avisoAside').textContent = 'Modelo guardado. Ele abre direto da próxima vez, para quem tem acesso à obra.';
+  } catch (err) {
+    $('avisoAside').textContent = String(err.message ?? err);
+  } finally {
+    $('btnGuardar').disabled = false;
+  }
+});
+$('btnRemoverModelo').addEventListener('click', async () => {
+  if (!confirm('Remover o modelo 3D guardado nesta obra? Ele deixa de abrir para toda a equipe.')) return;
+  try {
+    await removerModelo(ondeGuardar());
+    mostrarGuardado(null);
+    $('avisoAside').textContent = 'Modelo removido da obra.';
+  } catch (err) {
+    $('avisoAside').textContent = String(err.message ?? err);
   }
 });
 $('chkExtras').addEventListener('change', (e) => { if (estado.extras) estado.extras.visible = e.target.checked; });
@@ -738,6 +804,8 @@ const obraIdLink = parametrosLink.get('obraId');
     $('aviso').textContent = 'Não foi possível ler os dados: ' + err.message;
     $('subtitulo').textContent = 'Não foi possível carregar a obra';
   }
+  // Com obra escolhida, abre o modelo dela; a casa de exemplo fica só para a tela aberta sem obra.
+  if (obraIdLink) return abrirModeloDaObra();
   try {
     const blob = await (await fetch('data/exemplo_casa.ifc')).blob();
     await carregarIfc(new File([blob], 'exemplo_casa.ifc'));
