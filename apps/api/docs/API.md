@@ -115,7 +115,7 @@ Total: 425 rotas, 10 públicas, 4 do legado da concreteira.
 | `GET /api/eng/obras/{id}/planilha` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  |  |
 | `POST /api/eng/obras/{id}/planilha` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `nivel`*, `paiId`, `descricao`, `itemId`, `quantidade` |
 | `POST /api/eng/obras/{id}/leitura-html` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
-| `POST /api/eng/obras/{id}/leitura-ifc` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
+| `POST /api/eng/obras/{id}/leitura-ifc` | 60 MB de IFC (modelo de estrutura com ligações passa de 40 MB); o corpo vai em base64, um terço maior. | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `POST /api/eng/ifc/geometria` |  | Dono, Gestor, Orçamentista, Engenheiro de obra, Mestre de obra |  | `arquivo`* |
 | `POST /api/eng/obras/{id}/leitura-projeto` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `arquivo`*, `nome` |
 | `PUT /api/eng/obras/{id}/planilha/{noId}` |  | Dono, Gestor, Orçamentista, Engenheiro de obra |  | `descricao`, `nivel`, `paiId`, `itemId`, `quantidade` |

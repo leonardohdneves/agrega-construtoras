@@ -180,6 +180,10 @@ function LeituraProjeto({
 
   async function analisar() {
     if (!arquivo) return setErro('Escolha o arquivo do projeto (PDF, HTML ou IFC).');
+    // Acima do limite o servidor recusa o envio inteiro; avisa aqui, antes de subir o arquivo.
+    if (ehIfc(arquivo) && arquivo.size > 60 * 1024 * 1024) {
+      return setErro(`O modelo tem ${(arquivo.size / 1048576).toLocaleString('pt-BR', { maximumFractionDigits: 1 })} MB; o máximo é 60 MB.`);
+    }
     setErro('');
     setFeito('');
     setAnalisando(true);

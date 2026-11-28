@@ -14,7 +14,13 @@ function bytesDe(base64) {
   return saida.buffer;
 }
 
+export const LIMITE_3D = 30 * 1024 * 1024;
+
 export async function lerGeometriaIfc({ base, dados, fetchImpl = globalThis.fetch }) {
+  // acima do limite o servidor recusa o envio inteiro: avisa antes de subir
+  if (dados.length > LIMITE_3D) {
+    throw new Error(`O modelo tem ${(dados.length / 1048576).toFixed(1).replace('.', ',')} MB; o 3D abre modelos de até 30 MB.`);
+  }
   const url = `${String(base).replace(/\/+$/, '')}/api/eng/ifc/geometria`;
   const res = await fetchImpl(url, {
     method: 'POST',
