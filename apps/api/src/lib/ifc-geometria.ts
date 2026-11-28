@@ -27,21 +27,26 @@ export type PecaIfc = {
 
 const base64 = (v: Float32Array | Uint32Array) => Buffer.from(v.buffer, v.byteOffset, v.byteLength).toString('base64');
 
+/** Classe conhecida de cada elemento do modelo (id da linha → classe sem o prefixo IFC). */
+export function tiposDosElementos(ifc: WebIFC.IfcAPI, modelo: number): Map<number, string> {
+  const classes = WebIFC as unknown as Record<string, unknown>;
+  const tipoDo = new Map<number, string>();
+  for (const nome of CLASSES) {
+    const codigo = classes[nome];
+    if (typeof codigo !== 'number') continue;
+    const ids = ifc.GetLineIDsWithType(modelo, codigo);
+    for (let i = 0; i < ids.size(); i++) tipoDo.set(ids.get(i), nome.replace(/^IFC/, ''));
+  }
+  return tipoDo;
+}
+
 export async function geometriaDoIfc(bytes: Uint8Array, limite = LIMITE_VERTICES): Promise<{ pecas: PecaIfc[]; ignoradas: number }> {
   const ifc = new WebIFC.IfcAPI();
   await ifc.Init();
   const modelo = ifc.OpenModel(bytes, { COORDINATE_TO_ORIGIN: true });
   if (modelo < 0) throw new Error('arquivo inválido');
   try {
-    const classes = WebIFC as unknown as Record<string, unknown>;
-    const tipoDo = new Map<number, string>();
-    for (const nome of CLASSES) {
-      const codigo = classes[nome];
-      if (typeof codigo !== 'number') continue;
-      const ids = ifc.GetLineIDsWithType(modelo, codigo);
-      for (let i = 0; i < ids.size(); i++) tipoDo.set(ids.get(i), nome.replace(/^IFC/, ''));
-    }
-
+    const tipoDo = tiposDosElementos(ifc, modelo);
     const pecas: PecaIfc[] = [];
     let ignoradas = 0;
     let vertices = 0;
